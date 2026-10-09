@@ -1,6 +1,7 @@
 mod agent;
 mod auth;
 mod highlight;
+mod mcp;
 mod models;
 mod session;
 mod settings;
@@ -78,6 +79,7 @@ async fn main() -> Result<()> {
         .ok()
         .or(settings.thinking_level);
     let mut agent = agent::Agent::new(http, credentials, model)?;
+    agent.mcp = mcp::Mcp::load().await;
     if let Some(name) = thinking_level {
         match agent::THINKING_LEVELS.iter().find(|level| **level == name) {
             Some(level) => agent.thinking_level = level,
@@ -92,6 +94,9 @@ async fn main() -> Result<()> {
     let Some(prompt) = print_prompt else {
         return tui::run(agent).await;
     };
+    for diagnostic in &agent.mcp.diagnostics {
+        eprintln!("{diagnostic}");
+    }
     let mut stdout = std::io::stdout();
     let mut printed = false;
     let mut separate = false;

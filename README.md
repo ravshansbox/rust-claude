@@ -160,9 +160,36 @@ The agent can use these tools:
 - `write`: create or replace a file
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings and keeps the file's line endings
 
+The agent can also use tools from [MCP servers](#mcp-servers).
+
 `bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice.
 
 Consecutive `read` calls show as one line with the paths separated by commas, for example `read src/main.rs (2), README.md`. A number in brackets shows how many times a file was read. A read with `offset` or `limit` shows its line range, for example `src/tools.rs:325-354`, or `src/tools.rs:325-` when only `offset` is given. A failed read starts a new line. In print mode, the line is printed when the next tool, text or notice arrives.
+
+## MCP servers
+
+rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format is the same as pi's and other MCP clients':
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    }
+  }
+}
+```
+
+- `command` is a single executable and `args` its arguments. `env` sets environment variables and `cwd` the working folder. A leading `~/` in `command`, an argument or `cwd` names the home folder.
+- `timeout` sets the time limit for each request in seconds (default 60).
+- `enabled: false` keeps an entry without connecting to it.
+- `type` is optional. When present, it must be `stdio`. HTTP and SSE servers are not supported yet.
+- Server names may only contain letters, digits, `_` and `-`.
+
+Project entries replace global entries with the same name. rust-claude starts project servers without asking (see [ADR 3](docs/adr/0003-start-project-mcp-servers-without-approval.md)).
+
+rust-claude connects to all servers at start and waits for them before the first prompt. Tools are named `mcp__<server>__<tool>`, with other characters replaced by `_` and cut to 64 characters. Text results longer than 20,000 bytes are cut. Images, audio and binary resources show as short placeholders. At start, the interface lists the connected servers and their tool counts, and shows a notice for each invalid entry or server that failed to connect. In print mode, these notices go to standard error. Servers stop when rust-claude quits.
 
 ## Decisions
 
@@ -170,6 +197,7 @@ Architecture decision records are in [docs/adr](docs/adr):
 
 - [1. Run tools without approval](docs/adr/0001-run-tools-without-approval.md)
 - [2. Identify as Claude Code](docs/adr/0002-identify-as-claude-code.md)
+- [3. Start project MCP servers without approval](docs/adr/0003-start-project-mcp-servers-without-approval.md)
 
 ## Development
 

@@ -10,7 +10,7 @@ use tokio::io::AsyncReadExt;
 const MAX_OUTPUT: usize = 20_000;
 const OUTPUT_GRACE: Duration = Duration::from_millis(100);
 
-struct ProcessGroup(Option<u32>);
+pub struct ProcessGroup(pub Option<u32>);
 
 impl Drop for ProcessGroup {
     fn drop(&mut self) {
@@ -23,7 +23,7 @@ impl Drop for ProcessGroup {
     }
 }
 
-fn truncate(mut text: String) -> String {
+pub fn truncate(mut text: String) -> String {
     if text.len() > MAX_OUTPUT {
         let mut end = MAX_OUTPUT;
         while !text.is_char_boundary(end) {
