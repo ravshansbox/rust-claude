@@ -53,6 +53,47 @@ impl Session {
         self.saved = messages.len();
         Ok(())
     }
+
+    pub fn latest_other(&self) -> Result<Option<(Session, Vec<Value>)>> {
+        let directory = sessions_directory()?;
+        if !directory.exists() {
+            return Ok(None);
+        }
+        let mut latest = None;
+        for entry in std::fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path.extension().is_none_or(|extension| extension != "jsonl") {
+                continue;
+            }
+            let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+            if id == self.id {
+                continue;
+            }
+            let modified = std::fs::metadata(&path)?.modified()?;
+            if latest
+                .as_ref()
+                .is_none_or(|(latest_modified, _, _)| modified > *latest_modified)
+            {
+                latest = Some((modified, id.to_string(), path));
+            }
+        }
+        let Some((_, id, path)) = latest else {
+            return Ok(None);
+        };
+        let messages = std::fs::read_to_string(&path)?
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(serde_json::from_str)
+            .collect::<Result<Vec<Value>, _>>()
+            .with_context(|| format!("reading {}", path.display()))?;
+        let session = Session {
+            id,
+            saved: messages.len(),
+        };
+        Ok(Some((session, messages)))
+    }
 }
 
 #[cfg(test)]
