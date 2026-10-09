@@ -310,7 +310,7 @@ impl Agent {
     }
 
     pub async fn list_models(&mut self) -> Result<Vec<String>> {
-        let token = self.credentials.access_token(&self.http).await?;
+        let (token, _) = self.credentials.access_token(&self.http).await?;
         let response = self
             .http
             .get(MODELS_URL)
@@ -333,7 +333,7 @@ impl Agent {
     }
 
     pub async fn load_quota(&mut self) -> Result<()> {
-        let token = self.credentials.access_token(&self.http).await?;
+        let (token, _) = self.credentials.access_token(&self.http).await?;
         let response = self
             .http
             .get(USAGE_URL)
@@ -490,7 +490,10 @@ impl Agent {
         &mut self,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<(Vec<Value>, String, Usage)> {
-        let token = self.credentials.access_token(&self.http).await?;
+        let (token, renewed) = self.credentials.access_token(&self.http).await?;
+        if renewed {
+            on_event(AgentEvent::Notice("renewed sign-in token".into()));
+        }
         let mut system = self.system_prompt();
         if let Some(last) = system.last_mut() {
             last["cache_control"] = json!({ "type": "ephemeral" });
