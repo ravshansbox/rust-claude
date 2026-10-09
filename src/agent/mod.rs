@@ -586,6 +586,22 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn counts_tokens_of_a_reply_that_failed_and_was_retried() {
+        let overloaded = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 500, "output_tokens": 1 } } }),
+            json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
+        ]);
+        let api = MockApi::start(vec![overloaded, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let result = agent.prompt("hi", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert_eq!(api.requests().await.len(), 2);
+        let usage = agent.stats().usage;
+        assert_eq!((usage.input, usage.output), (501, 2));
+    }
+
+    #[tokio::test]
     async fn saves_finished_tool_rounds_while_the_prompt_runs() {
         let api = MockApi::start(vec![
             tool_reply("call-1", "bash", json!({ "command": "echo round-one" })),

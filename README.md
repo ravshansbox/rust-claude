@@ -315,7 +315,7 @@ The skill name comes from `name` in the frontmatter, or from the folder name. Na
 
 ## Retries
 
-If a request fails with a rate limit (429), an overloaded API (529), a server error (5xx) or a connection error before the reply starts, rust-claude tries again up to 3 times. It waits 1, 2 and then 4 seconds, or as long as the `retry-after` header asks. It does not retry when `retry-after` is longer than 60 seconds. A notice shows each retry.
+If a request fails with a rate limit (429), an overloaded API (529), a server error (5xx) or a connection error before the reply starts, rust-claude tries again up to 3 times. It waits 1, 2 and then 4 seconds, or as long as the `retry-after` header asks. It does not retry when `retry-after` is longer than 60 seconds. A notice shows each retry. Tokens that a failed attempt already used still count toward the session's token use.
 
 A request counts as a connection error when it cannot connect within 30 seconds, or when no data arrives for 5 minutes. If no data arrives after the reply has started, the prompt fails with an error instead of hanging.
 
