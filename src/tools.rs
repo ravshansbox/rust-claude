@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use serde_json::{Value, json};
 
 const MAX_OUTPUT: usize = 20_000;
@@ -44,7 +46,10 @@ pub fn definitions() -> Value {
             "description": "Run a bash command in the current project and return stdout and stderr",
             "input_schema": {
                 "type": "object",
-                "properties": { "command": { "type": "string" } },
+                "properties": {
+                    "command": { "type": "string" },
+                    "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" }
+                },
                 "required": ["command"]
             }
         },
@@ -107,12 +112,17 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
     match name {
         "bash" => {
-            let output = tokio::process::Command::new("bash")
+            let run = tokio::process::Command::new("bash")
                 .args(["-lc", argument(input, "command")?])
                 .kill_on_drop(true)
-                .output()
-                .await
-                .map_err(|error| format!("failed to run command: {error}"))?;
+                .output();
+            let output = match input["timeout"].as_u64() {
+                Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
+                    .await
+                    .map_err(|_| format!("command timed out after {seconds}s"))?,
+                None => run.await,
+            }
+            .map_err(|error| format!("failed to run command: {error}"))?;
 
             let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -168,7 +178,17 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, read_lines};
+    use super::{MAX_OUTPUT, call, read_lines};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn times_out_bash_command() {
+        let input = json!({ "command": "sleep 5", "timeout": 1 });
+        assert_eq!(
+            call("bash", &input).await,
+            Err("command timed out after 1s".into())
+        );
+    }
 
     #[test]
     fn reads_requested_lines() {
