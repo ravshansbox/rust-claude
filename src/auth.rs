@@ -37,23 +37,38 @@ fn now_millis() -> u128 {
 
 impl Credentials {
     pub async fn load_or_login(http: &reqwest::Client) -> Result<Self> {
-        match std::fs::read_to_string(credentials_path()?) {
-            Ok(text) => Ok(serde_json::from_str(&text)?),
-            Err(_) => login(http).await,
+        let Ok(text) = std::fs::read_to_string(credentials_path()?) else {
+            return login(http).await;
+        };
+        match Self::load_and_refresh(&text, http).await {
+            Ok(credentials) => Ok(credentials),
+            Err(error) => {
+                println!("Saved sign-in is not usable ({error}). Sign in again.\n");
+                login(http).await
+            }
         }
+    }
+
+    async fn load_and_refresh(text: &str, http: &reqwest::Client) -> Result<Self> {
+        let credentials: Self = serde_json::from_str(text)?;
+        credentials.refresh(http).await
+    }
+
+    async fn refresh(&self, http: &reqwest::Client) -> Result<Self> {
+        request_tokens(
+            http,
+            json!({
+                "grant_type": "refresh_token",
+                "client_id": CLIENT_ID,
+                "refresh_token": self.refresh,
+            }),
+        )
+        .await
     }
 
     pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
         if now_millis() >= self.expires {
-            *self = request_tokens(
-                http,
-                json!({
-                    "grant_type": "refresh_token",
-                    "client_id": CLIENT_ID,
-                    "refresh_token": self.refresh,
-                }),
-            )
-            .await?;
+            *self = self.refresh(http).await?;
         }
         Ok(self.access.clone())
     }
