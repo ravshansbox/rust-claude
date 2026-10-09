@@ -824,7 +824,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
             .map(|(index, (name, description))| {
                 let text = format!("{name:<12}{description}");
                 if index == selected {
-                    Line::from(format!("› {text}").reversed())
+                    Line::from(format!("  {text}").reversed())
                 } else {
                     Line::raw(format!("  {text}"))
                 }
