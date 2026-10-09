@@ -1,6 +1,7 @@
 use std::{process::Stdio, time::Duration};
 
 use serde_json::{Value, json};
+use tokio::io::AsyncReadExt;
 
 const MAX_OUTPUT: usize = 20_000;
 
@@ -27,6 +28,19 @@ fn truncate(mut text: String) -> String {
         text.push_str("\n… output truncated");
     }
     text
+}
+
+async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin) -> std::io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut chunk = [0; 8192];
+    loop {
+        let count = reader.read(&mut chunk).await?;
+        if count == 0 {
+            return Ok(output);
+        }
+        let room = (MAX_OUTPUT + 1).saturating_sub(output.len());
+        output.extend_from_slice(&chunk[..count.min(room)]);
+    }
 }
 
 fn count_matches(content: &str, pattern: &str) -> usize {
@@ -237,12 +251,19 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 .kill_on_drop(true);
             #[cfg(unix)]
             command.process_group(0);
-            let child = command
+            let mut child = command
                 .spawn()
                 .map_err(|error| format!("failed to run command: {error}"))?;
             let mut process_group = ProcessGroup(child.id());
-            let run = child.wait_with_output();
-            let output = match timeout {
+            let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
+                return Err("failed to capture command output".into());
+            };
+            let run = async {
+                let (stdout, stderr, status) =
+                    tokio::join!(read_capped(stdout), read_capped(stderr), child.wait());
+                Ok::<_, std::io::Error>((stdout?, stderr?, status?))
+            };
+            let (stdout, stderr, status) = match timeout {
                 Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
                     .await
                     .map_err(|_| format!("command timed out after {seconds}s"))?,
@@ -251,15 +272,15 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             .map_err(|error| format!("failed to run command: {error}"))?;
             process_group.0 = None;
 
-            let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-            let stderr = String::from_utf8_lossy(&output.stderr);
+            let mut text = String::from_utf8_lossy(&stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&stderr);
             if !stderr.is_empty() {
                 text.push_str("\nstderr:\n");
                 text.push_str(&stderr);
             }
             let mut text = truncate(text);
-            if !output.status.success() {
-                text.push_str(&format!("\n{}", output.status));
+            if !status.success() {
+                text.push_str(&format!("\n{status}"));
             }
             Ok(text)
         }
@@ -410,6 +431,14 @@ mod tests {
         let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
         let text = call("bash", &input).await.unwrap();
         assert!(text.ends_with("exit status: 3"));
+    }
+
+    #[tokio::test]
+    async fn keeps_only_start_of_long_output() {
+        let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; echo b >&2", MAX_OUTPUT * 50) });
+        let text = call("bash", &input).await.unwrap();
+        assert!(text.ends_with("… output truncated"));
+        assert!(!text.contains("stderr"));
     }
 
     #[test]
