@@ -1,0 +1,177 @@
+use super::{
+    Agent, AgentEvent, Usage,
+    retry::{is_retryable_status, retry_after, retryable},
+    tool_definitions,
+};
+use crate::models;
+use anyhow::{Result, bail};
+use futures::StreamExt;
+use serde_json::{Value, json};
+use std::time::Instant;
+
+const API_URL: &str = "https://api.anthropic.com/v1/messages";
+
+impl Agent {
+    pub(super) async fn stream_message(
+        &mut self,
+        messages: &[Value],
+        tool_choice: Option<&Value>,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<(Vec<Value>, String, Usage)> {
+        let token = self.credentials.access_token(&self.http).await?;
+        if self.credentials.take_renewed() {
+            on_event(AgentEvent::Notice("renewed sign-in token".into()));
+        }
+        let mut system = self.system_prompt();
+        if let Some(last) = system.last_mut() {
+            last["cache_control"] = json!({ "type": "ephemeral" });
+        }
+        let mut body = json!({
+            "model": self.model,
+            "max_tokens": models::max_output(&self.model),
+            "stream": true,
+            "thinking": { "type": "adaptive", "display": "summarized" },
+            "output_config": { "effort": self.thinking_level },
+            "system": system,
+            "tools": tool_definitions(&self.mcp, self.ask_user),
+            "messages": messages,
+        });
+        if let Some(tool_choice) = tool_choice {
+            body["tool_choice"] = tool_choice.clone();
+        }
+        let response = self
+            .http
+            .post(API_URL)
+            .bearer_auth(token)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "oauth-2025-04-20")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|error| {
+                if error.is_connect() || error.is_timeout() || error.is_request() {
+                    retryable(error, None)
+                } else {
+                    error.into()
+                }
+            })?;
+        self.quota.update_from_headers(response.headers());
+        if !response.status().is_success() {
+            let status = response.status();
+            let delay = retry_after(response.headers());
+            let message = format!("{status}: {}", response.text().await?);
+            if is_retryable_status(status) {
+                return Err(retryable(message, delay));
+            }
+            bail!(message);
+        }
+
+        let mut content: Vec<Value> = Vec::new();
+        let mut partial_json = String::new();
+        let mut input_error = None;
+        let mut stop_reason = String::new();
+        let mut usage = Usage::default();
+        let mut first_token: Option<Instant> = None;
+        let mut buffer: Vec<u8> = Vec::new();
+        let mut stream = response.bytes_stream();
+
+        while let Some(chunk) = stream.next().await {
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(error) if content.is_empty() => return Err(retryable(error, None)),
+                Err(error) => return Err(error.into()),
+            };
+            buffer.extend_from_slice(&chunk);
+            while let Some(end) = buffer.windows(2).position(|window| window == b"\n\n") {
+                let frame_bytes: Vec<u8> = buffer.drain(..end + 2).collect();
+                let frame = String::from_utf8_lossy(&frame_bytes);
+                let Some(data) = frame.lines().find_map(|line| line.strip_prefix("data: ")) else {
+                    continue;
+                };
+                let event: Value = serde_json::from_str(data)?;
+                match event["type"].as_str().unwrap_or_default() {
+                    "message_start" => {
+                        usage.update_from_response(&event["message"]["usage"]);
+                        self.pending_usage = usage;
+                    }
+                    "content_block_start" => {
+                        first_token.get_or_insert_with(Instant::now);
+                        let block = event["content_block"].clone();
+                        partial_json.clear();
+                        content.push(block);
+                    }
+                    "content_block_delta" => {
+                        let delta = &event["delta"];
+                        let Some(block) = content.last_mut() else {
+                            continue;
+                        };
+                        let key = match delta["type"].as_str().unwrap_or_default() {
+                            "text_delta" => "text",
+                            "thinking_delta" => "thinking",
+                            "signature_delta" => "signature",
+                            "input_json_delta" => {
+                                partial_json
+                                    .push_str(delta["partial_json"].as_str().unwrap_or_default());
+                                continue;
+                            }
+                            _ => continue,
+                        };
+                        let addition = delta[key].as_str().unwrap_or_default();
+                        match block.get_mut(key) {
+                            Some(Value::String(text)) => text.push_str(addition),
+                            _ => block[key] = json!(addition),
+                        }
+                        match key {
+                            "text" => on_event(AgentEvent::Text(addition.into())),
+                            "thinking" => on_event(AgentEvent::Thinking(addition.into())),
+                            _ => {}
+                        }
+                    }
+                    "content_block_stop" => {
+                        if let Some(block) = content.last_mut()
+                            && block["type"] == "tool_use"
+                            && !partial_json.is_empty()
+                        {
+                            match serde_json::from_str(&partial_json) {
+                                Ok(input) => block["input"] = input,
+                                Err(error) => input_error = Some(error),
+                            }
+                        }
+                    }
+                    "message_delta" => {
+                        stop_reason = event["delta"]["stop_reason"]
+                            .as_str()
+                            .unwrap_or_default()
+                            .into();
+                        usage.update_from_response(&event["usage"]);
+                        usage.duration_ms =
+                            first_token.map_or(0, |start| start.elapsed().as_millis() as u64);
+                        self.pending_usage = usage;
+                    }
+                    "error" => {
+                        let message = event["error"].to_string();
+                        let retry = matches!(
+                            event["error"]["type"].as_str(),
+                            Some("overloaded_error" | "api_error" | "rate_limit_error")
+                        );
+                        if retry && content.is_empty() {
+                            return Err(retryable(message, None));
+                        }
+                        bail!(message);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        if stop_reason.is_empty() {
+            bail!("response ended before the reply finished");
+        }
+        if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use") {
+            bail!("reply stopped ({stop_reason}) before its tool call finished");
+        }
+        if let Some(error) = input_error {
+            return Err(error.into());
+        }
+        Ok((content, stop_reason, usage))
+    }
+}
