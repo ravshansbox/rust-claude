@@ -238,7 +238,7 @@ pub async fn run(agent: Agent) -> Result<()> {
 enum UiEvent {
     Agent(AgentEvent),
     Done(Result<()>),
-    Cancelled,
+    Cancelled(Result<()>),
     Sessions(Result<Vec<SessionSummary>>),
     Resumed(Result<Vec<Value>>),
     NewSession(Result<()>),
@@ -301,8 +301,7 @@ async fn agent_task(
             }
         };
         if cancelled {
-            agent.rollback(checkpoint);
-            let _ = events.send(UiEvent::Cancelled);
+            let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
         }
     }
 }
@@ -598,8 +597,11 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
             app.busy = false;
         }
-        UiEvent::Cancelled => {
+        UiEvent::Cancelled(result) => {
             app.push(Role::Event, "cancelled");
+            if let Err(error) = result {
+                app.push(Role::Event, format!("error: {error}"));
+            }
             app.busy = false;
         }
         UiEvent::Sessions(result) => {
