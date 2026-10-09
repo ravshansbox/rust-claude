@@ -864,11 +864,20 @@ fn draw(frame: &mut Frame, app: &mut App) {
     if !matches.is_empty() {
         let height = (matches.len() as u16).min(chat.height);
         let selected = app.command_selected.min(matches.len() - 1);
-        let lines: Vec<Line> = matches
+        let texts: Vec<String> = matches
             .iter()
+            .map(|(name, description)| format!(" {name:<12}{description} "))
+            .collect();
+        let width = texts
+            .iter()
+            .map(|text| Line::raw(text.as_str()).width())
+            .max()
+            .unwrap_or_default();
+        let lines: Vec<Line> = texts
+            .into_iter()
             .enumerate()
-            .map(|(index, (name, description))| {
-                let text = format!(" {name:<12}{description} ");
+            .map(|(index, text)| {
+                let text = format!("{text:<width$}");
                 if index == selected {
                     Line::from(text.reversed())
                 } else {
@@ -876,12 +885,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
                 }
             })
             .collect();
-        let width = lines
-            .iter()
-            .map(Line::width)
-            .max()
-            .unwrap_or_default()
-            .min(chat.width as usize) as u16;
+        let width = width.min(chat.width as usize) as u16;
         let area = Rect {
             y: chat.y + chat.height - height,
             height,
