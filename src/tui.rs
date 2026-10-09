@@ -704,20 +704,31 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
 }
 
 fn format_usage(usage: Usage) -> String {
-    format!(
-        "↑{} ↓{} R{} W{}",
-        format_tokens(usage.input),
-        format_tokens(usage.output),
-        format_tokens(usage.cache_read),
-        format_tokens(usage.cache_write)
-    )
+    [
+        ("↑", usage.input),
+        ("↓", usage.output),
+        ("R", usage.cache_read),
+        ("W", usage.cache_write),
+    ]
+    .into_iter()
+    .filter(|(_, count)| *count > 0)
+    .map(|(label, count)| format!("{label}{}", format_tokens(count)))
+    .collect::<Vec<_>>()
+    .join(" ")
 }
 
 fn format_tokens(count: u64) -> String {
-    match count {
-        0..1_000 => count.to_string(),
-        1_000..999_950 => format!("{:.1}k", count as f64 / 1_000.0),
-        _ => format!("{:.1}M", count as f64 / 1_000_000.0),
+    let count = count as f64;
+    if count < 1_000.0 {
+        count.to_string()
+    } else if count < 10_000.0 {
+        format!("{:.1}k", count / 1_000.0)
+    } else if count < 1_000_000.0 {
+        format!("{}k", (count / 1_000.0).round())
+    } else if count < 10_000_000.0 {
+        format!("{:.1}M", count / 1_000_000.0)
+    } else {
+        format!("{}M", (count / 1_000_000.0).round())
     }
 }
 
@@ -902,8 +913,10 @@ mod tests {
         assert_eq!(format_tokens(0), "0");
         assert_eq!(format_tokens(999), "999");
         assert_eq!(format_tokens(1_000), "1.0k");
-        assert_eq!(format_tokens(12_345), "12.3k");
-        assert_eq!(format_tokens(999_950), "1.0M");
+        assert_eq!(format_tokens(1_234), "1.2k");
+        assert_eq!(format_tokens(12_345), "12k");
+        assert_eq!(format_tokens(999_999), "1000k");
         assert_eq!(format_tokens(1_234_567), "1.2M");
+        assert_eq!(format_tokens(12_345_678), "12M");
     }
 }
