@@ -13,6 +13,30 @@ fn truncate(mut text: String) -> String {
     text
 }
 
+fn read_lines(content: &str, offset: usize, limit: usize) -> String {
+    let mut text = String::new();
+    let lines = content
+        .split_inclusive('\n')
+        .enumerate()
+        .skip(offset - 1)
+        .take(limit);
+    for (index, line) in lines {
+        if text.len() + line.len() > MAX_OUTPUT {
+            let next_line = if text.is_empty() {
+                text = truncate(line.to_string());
+                index + 2
+            } else {
+                text.push_str("… output truncated");
+                index + 1
+            };
+            text.push_str(&format!(", continue with offset {next_line}"));
+            return text;
+        }
+        text.push_str(line);
+    }
+    text
+}
+
 pub fn definitions() -> Value {
     json!([
         {
@@ -26,10 +50,14 @@ pub fn definitions() -> Value {
         },
         {
             "name": "read",
-            "description": "Read a UTF-8 file from the current project",
+            "description": "Read a UTF-8 file from the current project. Long output is cut at whole lines; use offset and limit to read the rest",
             "input_schema": {
                 "type": "object",
-                "properties": { "path": { "type": "string" } },
+                "properties": {
+                    "path": { "type": "string" },
+                    "offset": { "type": "integer", "description": "Line number to start from, counting from 1" },
+                    "limit": { "type": "integer", "description": "Maximum number of lines to read" }
+                },
                 "required": ["path"]
             }
         },
@@ -99,10 +127,14 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         }
         "read" => {
             let path = argument(input, "path")?;
-            tokio::fs::read_to_string(path)
+            let content = tokio::fs::read_to_string(path)
                 .await
-                .map(truncate)
-                .map_err(|error| format!("failed to read {path}: {error}"))
+                .map_err(|error| format!("failed to read {path}: {error}"))?;
+            let offset = input["offset"].as_u64().unwrap_or(1).max(1) as usize;
+            let limit = input["limit"]
+                .as_u64()
+                .map_or(usize::MAX, |limit| limit as usize);
+            Ok(read_lines(&content, offset, limit))
         }
         "write" => {
             let path = argument(input, "path")?;
@@ -131,5 +163,38 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             .map_err(|error| format!("failed to write {path}: {error}"))
         }
         _ => Err(format!("unknown tool: {name}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MAX_OUTPUT, read_lines};
+
+    #[test]
+    fn reads_requested_lines() {
+        let content = "one\ntwo\nthree\nfour\n";
+        assert_eq!(read_lines(content, 1, usize::MAX), content);
+        assert_eq!(read_lines(content, 2, 2), "two\nthree\n");
+        assert_eq!(read_lines(content, 10, usize::MAX), "");
+    }
+
+    #[test]
+    fn cuts_long_output_at_whole_lines() {
+        let line = format!("{}\n", "a".repeat(99));
+        let content = line.repeat(MAX_OUTPUT / 100 + 10);
+        let text = read_lines(&content, 1, usize::MAX);
+        let next_line = MAX_OUTPUT / 100 + 1;
+        assert!(text.starts_with(&line.repeat(MAX_OUTPUT / 100)));
+        assert!(text.ends_with(&format!(
+            "… output truncated, continue with offset {next_line}"
+        )));
+    }
+
+    #[test]
+    fn cuts_single_long_line() {
+        let content = format!("{}\nnext\n", "a".repeat(MAX_OUTPUT + 1));
+        let text = read_lines(&content, 1, usize::MAX);
+        assert!(text.ends_with("… output truncated, continue with offset 2"));
+        assert_eq!(read_lines(&content, 2, usize::MAX), "next\n");
     }
 }
