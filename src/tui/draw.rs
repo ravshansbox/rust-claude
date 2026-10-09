@@ -94,18 +94,35 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         ..chat
     };
 
-    let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+    let wrap = Wrap { trim: false };
+    let heights: Vec<usize> = lines
+        .iter()
+        .map(|line| {
+            Paragraph::new(line.clone())
+                .wrap(wrap)
+                .line_count(chat.width)
+        })
+        .collect();
+    let wrapped_line_count: usize = heights.iter().sum();
     let viewport_height = conversation_area.height;
-    let wrapped_line_count = conversation.line_count(chat.width);
-    let max_scroll = wrapped_line_count
-        .saturating_sub(viewport_height as usize)
-        .min(u16::MAX as usize) as u16;
+    let max_scroll = wrapped_line_count.saturating_sub(viewport_height as usize);
     app.scroll_from_bottom =
         held_scroll_from_bottom(app.scroll_from_bottom, app.max_scroll, max_scroll);
     app.max_scroll = max_scroll;
-    app.page_size = viewport_height.max(1);
+    app.page_size = viewport_height.max(1) as usize;
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    frame.render_widget(conversation.scroll((scroll, 0)), conversation_area);
+    // Paragraph offsets are u16, so drop the lines above the view and scroll
+    // only within the first visible one.
+    let mut skipped = 0;
+    let mut first_visible = 0;
+    while first_visible < heights.len() && skipped + heights[first_visible] <= scroll {
+        skipped += heights[first_visible];
+        first_visible += 1;
+    }
+    lines.drain(..first_visible);
+    let offset = (scroll - skipped).min(u16::MAX as usize) as u16;
+    let conversation = Paragraph::new(Text::from(lines)).wrap(wrap);
+    frame.render_widget(conversation.scroll((offset, 0)), conversation_area);
     if let Some((view, height, list)) = panel {
         let area = Rect {
             y: chat.y + chat.height - height,
@@ -182,7 +199,11 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(footer_paragraph, footer);
 }
 
-fn held_scroll_from_bottom(scroll_from_bottom: u16, old_max_scroll: u16, max_scroll: u16) -> u16 {
+fn held_scroll_from_bottom(
+    scroll_from_bottom: usize,
+    old_max_scroll: usize,
+    max_scroll: usize,
+) -> usize {
     if scroll_from_bottom == 0 {
         return 0;
     }
@@ -281,7 +302,7 @@ mod tests {
     use super::held_scroll_from_bottom;
     use crate::session::SessionSummary;
     use crate::tui::{
-        App, UiEvent, handle_agent_event, handle_input,
+        App, Role, UiEvent, handle_agent_event, handle_input,
         test_support::{app_with_reply, press, screen},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -292,6 +313,22 @@ mod tests {
         assert_eq!(held_scroll_from_bottom(1, 15, 20), 6);
         assert_eq!(held_scroll_from_bottom(6, 20, 18), 4);
         assert_eq!(held_scroll_from_bottom(1, 15, 10), 0);
+    }
+
+    #[test]
+    fn shows_the_end_of_a_conversation_longer_than_65535_lines() {
+        let mut app = app_with_reply();
+        for number in 0..40_000 {
+            app.push(Role::Event, format!("event {number}"));
+        }
+        let shown = screen(&mut app);
+        assert!(shown.contains("event 39999"), "{shown}");
+        press(&mut app, KeyCode::Home);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        press(&mut app, KeyCode::PageDown);
+        let shown = screen(&mut app);
+        assert!(shown.contains("event 10"), "{shown}");
     }
 
     #[test]
