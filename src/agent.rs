@@ -245,6 +245,17 @@ fn context_tokens(messages: &[Value], system_tokens: u64) -> u64 {
     usage_tokens + messages[start..].iter().map(estimate_tokens).sum::<u64>()
 }
 
+fn cache_hit_rate(messages: &[Value]) -> Option<f64> {
+    messages
+        .iter()
+        .rfind(|message| message["role"] == "assistant" && message.get("stop_reason").is_none())
+        .map(|message| Usage::from_json(&message["usage"]))
+        .and_then(|usage| {
+            let prompt_tokens = usage.input + usage.cache_read + usage.cache_write;
+            (prompt_tokens > 0).then(|| usage.cache_read as f64 / prompt_tokens as f64 * 100.0)
+        })
+}
+
 fn total_usage(messages: &[Value]) -> Usage {
     let mut total = Usage::default();
     for message in messages
@@ -370,18 +381,9 @@ impl Agent {
     }
 
     pub fn stats(&self) -> Stats {
-        let cache_hit_rate = self
-            .messages
-            .iter()
-            .rfind(|message| message["role"] == "assistant")
-            .map(|message| Usage::from_json(&message["usage"]))
-            .and_then(|usage| {
-                let prompt_tokens = usage.input + usage.cache_read + usage.cache_write;
-                (prompt_tokens > 0).then(|| usage.cache_read as f64 / prompt_tokens as f64 * 100.0)
-            });
         Stats {
             usage: total_usage(&self.messages),
-            cache_hit_rate,
+            cache_hit_rate: cache_hit_rate(&self.messages),
             context_tokens: context_tokens(
                 &self.messages,
                 estimate_prompt_tokens(&self.system_prompt(), &tools::definitions()),
@@ -632,7 +634,7 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::{Quota, context_tokens, parse_timestamp};
+    use super::{Quota, cache_hit_rate, context_tokens, parse_timestamp};
 
     #[test]
     fn keeps_quota_when_headers_are_missing() {
@@ -686,6 +688,25 @@ mod tests {
             json!({ "role": "user", "content": "12345678" }),
         ];
         assert_eq!(context_tokens(&messages, 50), 137);
+    }
+
+    #[test]
+    fn ignores_discarded_usage_in_cache_hit_rate() {
+        let messages = vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "hi" }],
+                "usage": { "input": 10, "output": 5, "cache_read": 90, "cache_write": 0 },
+            }),
+            json!({
+                "role": "assistant",
+                "stop_reason": "aborted",
+                "content": [],
+                "usage": { "input": 999 },
+            }),
+        ];
+        assert_eq!(cache_hit_rate(&messages), Some(90.0));
     }
 
     #[test]
