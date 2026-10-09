@@ -451,7 +451,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                     }
                     PickerKind::Model => {
                         app.model = value.clone();
-                        app.push(Role::Event, format!("model: {value}"));
+                        app.push(Role::Event, format!("model: {}", display_model(&value)));
                         act(Action::SetModel(value));
                     }
                 }
@@ -557,7 +557,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                     }
                     "/model" => {
                         app.model = argument.to_string();
-                        app.push(Role::Event, format!("model: {argument}"));
+                        app.push(Role::Event, format!("model: {}", display_model(argument)));
                         act(Action::SetModel(argument.to_string()));
                     }
                     "/resume" => {
@@ -669,7 +669,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                         title: "Select model",
                         items: models
                             .into_iter()
-                            .map(|model| (model.clone(), model))
+                            .map(|model| (model.clone(), display_model(&model).to_string()))
                             .collect(),
                         selected,
                     });
@@ -872,7 +872,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::raw(format!("{}:{}", app.model, app.thinking_level)),
+            Span::raw(format!("{}:{}", display_model(&app.model), app.thinking_level)),
             Span::raw(format!(" · {} ", format_stats(&app.stats))),
             context_span(&app.stats),
         ])),
@@ -960,4 +960,8 @@ mod tests {
         assert_eq!(format_tokens(1_234_567), "1.2M");
         assert_eq!(format_tokens(12_345_678), "12M");
     }
+}
+
+fn display_model(model: &str) -> &str {
+    model.strip_prefix("claude-").unwrap_or(model)
 }
