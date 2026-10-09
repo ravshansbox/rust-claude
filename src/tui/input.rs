@@ -84,42 +84,45 @@ pub(super) fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, 
     }
 }
 
-fn text_width(text: &str) -> usize {
-    text.chars()
-        .map(|character| character.width().unwrap_or(0))
-        .sum()
-}
-
-fn index_at_width(line: &str, column: usize) -> usize {
-    let mut width = 0;
-    for (index, character) in line.char_indices() {
+fn index_at(input: &str, target_row: usize, column: usize, width: usize) -> usize {
+    let mut row = 0;
+    let mut row_width = 0;
+    let mut last_index = 0;
+    for (index, character) in input.char_indices() {
         let character_width = character.width().unwrap_or(0);
-        if width + character_width > column {
+        if character != '\n' && row_width > 0 && row_width + character_width > width {
+            if row == target_row {
+                return last_index;
+            }
+            row += 1;
+            row_width = 0;
+        }
+        if row == target_row && (character == '\n' || row_width + character_width > column) {
             return index;
         }
-        width += character_width;
+        if character == '\n' {
+            row += 1;
+            row_width = 0;
+        } else {
+            row_width += character_width;
+        }
+        last_index = index;
     }
-    line.len()
+    input.len()
 }
 
-pub(super) fn line_above(input: &str, cursor: usize) -> Option<usize> {
-    let line_start = input[..cursor].rfind('\n')? + 1;
-    let previous_end = line_start - 1;
-    let previous_start = input[..previous_end]
-        .rfind('\n')
-        .map_or(0, |index| index + 1);
-    let column = text_width(&input[line_start..cursor]);
-    Some(previous_start + index_at_width(&input[previous_start..previous_end], column))
+pub(super) fn row_above(input: &str, cursor: usize, width: usize) -> Option<usize> {
+    let (row, column) = input_cursor(input, cursor, width);
+    let target_row = row.checked_sub(1)?;
+    Some(index_at(input, target_row, column, width))
 }
 
-pub(super) fn line_below(input: &str, cursor: usize) -> Option<usize> {
-    let line_start = input[..cursor].rfind('\n').map_or(0, |index| index + 1);
-    let next_start = cursor + input[cursor..].find('\n')? + 1;
-    let next_end = input[next_start..]
-        .find('\n')
-        .map_or(input.len(), |index| next_start + index);
-    let column = text_width(&input[line_start..cursor]);
-    Some(next_start + index_at_width(&input[next_start..next_end], column))
+pub(super) fn row_below(input: &str, cursor: usize, width: usize) -> Option<usize> {
+    let (row, column) = input_cursor(input, cursor, width);
+    if row + 1 >= input_rows(input, width).len() {
+        return None;
+    }
+    Some(index_at(input, row + 1, column, width))
 }
 
 #[cfg(test)]
@@ -148,15 +151,29 @@ mod tests {
     #[test]
     fn moves_between_lines_by_display_width() {
         let input = "abcd\n你好\nxy";
-        assert_eq!(line_above(input, 2), None);
-        assert_eq!(line_above(input, "abcd\n你".len()), Some(2));
-        assert_eq!(line_above(input, input.len()), Some("abcd\n你".len()));
-        assert_eq!(line_below(input, 4), Some("abcd\n你好".len()));
+        let width = usize::MAX;
+        assert_eq!(row_above(input, 2, width), None);
+        assert_eq!(row_above(input, "abcd\n你".len(), width), Some(2));
+        assert_eq!(row_above(input, input.len(), width), Some("abcd\n你".len()));
+        assert_eq!(row_below(input, 4, width), Some("abcd\n你好".len()));
         assert_eq!(
-            line_below(input, "abcd\n你".len()),
+            row_below(input, "abcd\n你".len(), width),
             Some("abcd\n你好\nxy".len())
         );
-        assert_eq!(line_below(input, input.len()), None);
+        assert_eq!(row_below(input, input.len(), width), None);
+    }
+
+    #[test]
+    fn moves_between_wrapped_rows() {
+        assert_eq!(row_above("abcdefg", 6, 4), Some(2));
+        assert_eq!(row_below("abcdefg", 1, 4), Some(5));
+        assert_eq!(row_below("abcdefg", 3, 4), Some(7));
+        assert_eq!(row_above("abcdefg", 2, 4), None);
+        assert_eq!(row_below("abcdefg", 5, 4), None);
+        assert_eq!(row_above("abc你d", 6, 4), Some(2));
+        assert_eq!(row_below("abc你d", 2, 4), Some(6));
+        assert_eq!(row_above("ab你cdef", 5, 3), Some(1));
+        assert_eq!(row_below("abcd", 0, 4), Some(4));
     }
 
     #[test]
