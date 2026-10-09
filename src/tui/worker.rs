@@ -123,18 +123,29 @@ pub(super) async fn agent_task(
                 continue;
             }
             Request::ListModels => {
-                let _ = events.send(UiEvent::Models(agent.list_models().await));
+                match until_cancelled(&mut cancel, agent.list_models()).await {
+                    Some(models) => {
+                        let _ = events.send(UiEvent::Models(models));
+                    }
+                    None => {
+                        let _ = events.send(UiEvent::Cancelled(Ok(())));
+                    }
+                }
                 notify_renewed(&mut agent, &events);
                 continue;
             }
             Request::CheckModel(model) => {
-                let result = match agent.list_models().await {
-                    Ok(models) if models.contains(&model) => {
+                let result = match until_cancelled(&mut cancel, agent.list_models()).await {
+                    Some(Ok(models)) if models.contains(&model) => {
                         agent.model = model.clone();
                         Ok(model)
                     }
-                    Ok(_) => Err(anyhow::anyhow!("unknown model: {model}")),
-                    Err(error) => Err(error),
+                    Some(Ok(_)) => Err(anyhow::anyhow!("unknown model: {model}")),
+                    Some(Err(error)) => Err(error),
+                    None => {
+                        let _ = events.send(UiEvent::Cancelled(Ok(())));
+                        continue;
+                    }
                 };
                 let _ = events.send(UiEvent::ModelChecked(result));
                 notify_renewed(&mut agent, &events);
@@ -171,11 +182,26 @@ pub(super) async fn agent_task(
     }
 }
 
+/// Runs `work` unless a cancel arrives or the interface quits first.
+async fn until_cancelled<T>(
+    cancel: &mut mpsc::UnboundedReceiver<()>,
+    work: impl Future<Output = T>,
+) -> Option<T> {
+    while cancel.try_recv().is_ok() {}
+    tokio::select! {
+        value = work => Some(value),
+        _ = cancel.recv() => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{Request, UiEvent, agent_task, quit};
     use crate::{
-        agent::{Agent, AgentEvent},
+        agent::{
+            Agent, AgentEvent,
+            test_support::{self, MockApi, Reply},
+        },
         auth::Credentials,
         mcp,
     };
@@ -232,6 +258,22 @@ mod tests {
             let sessions = config_dir.join("sessions");
             let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
         }
+        assert!(stopped.is_ok());
+    }
+
+    #[tokio::test]
+    async fn stops_loading_models_when_quitting() {
+        let api = MockApi::start(vec![Reply::Stall, Reply::Stall]).await;
+        let agent = test_support::agent(&api, reqwest::Client::new());
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        request_tx.send(Request::ListModels).unwrap();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        quit(request_tx, cancel_tx);
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
         assert!(stopped.is_ok());
     }
 
