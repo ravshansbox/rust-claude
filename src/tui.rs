@@ -181,10 +181,22 @@ fn hard_line_breaks(text: &str) -> String {
         .join("\n")
 }
 
+fn tool_message(name: &str, summary: String, diff: Option<String>) -> String {
+    match diff {
+        Some(diff) => format!("{name} {summary}\n{diff}"),
+        None => format!("{name} {summary}"),
+    }
+}
+
 fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
+    let is_edit = text.starts_with("edit ");
     let mut lines: Vec<Line<'static>> = text
         .lines()
-        .map(|line| Line::raw(line.to_string()))
+        .map(|line| match line.chars().next() {
+            Some('-') if is_edit => Line::from(line.to_string().red()),
+            Some('+') if is_edit => Line::from(line.to_string().green()),
+            _ => Line::raw(line.to_string()),
+        })
         .collect();
     if let Some(first) = text.lines().next() {
         let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
@@ -814,8 +826,12 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             Some(last) if matches!(last.role, Role::Thinking) => last.append(&text),
             _ => app.push(Role::Thinking, text),
         },
-        UiEvent::Agent(AgentEvent::ToolStart { name, summary }) => {
-            app.push(Role::Tool, format!("{name} {summary}"));
+        UiEvent::Agent(AgentEvent::ToolStart {
+            name,
+            summary,
+            diff,
+        }) => {
+            app.push(Role::Tool, tool_message(&name, summary, diff));
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error }) => {
             if let Some(error) = error {
@@ -902,7 +918,11 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
                     let name = block["name"].as_str().unwrap_or_default();
                     app.push(
                         Role::Tool,
-                        format!("{name} {}", tools::summary(name, &block["input"])),
+                        tool_message(
+                            name,
+                            tools::summary(name, &block["input"]),
+                            tools::diff(name, &block["input"]),
+                        ),
                     );
                 }
                 ("user", "text") => {

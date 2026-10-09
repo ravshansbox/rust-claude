@@ -128,6 +128,27 @@ pub fn summary(name: &str, input: &Value) -> String {
     input[key].as_str().unwrap_or_default().to_string()
 }
 
+pub fn diff(name: &str, input: &Value) -> Option<String> {
+    if name != "edit" {
+        return None;
+    }
+    let old_text = input["old_text"].as_str()?;
+    let new_text = input["new_text"].as_str()?;
+    let diff = similar::TextDiff::from_lines(old_text, new_text);
+    let lines: Vec<String> = diff
+        .iter_all_changes()
+        .map(|change| {
+            let sign = match change.tag() {
+                similar::ChangeTag::Delete => '-',
+                similar::ChangeTag::Insert => '+',
+                similar::ChangeTag::Equal => ' ',
+            };
+            format!("{sign}{}", change.value().trim_end_matches('\n'))
+        })
+        .collect();
+    Some(lines.join("\n"))
+}
+
 fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
     input[key]
         .as_str()
@@ -249,7 +270,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, call, read_lines};
+    use super::{MAX_OUTPUT, call, diff, read_lines};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -444,5 +465,12 @@ mod tests {
         let text = read_lines(&content, 1, usize::MAX);
         assert!(text.ends_with("… output truncated, continue with offset 2"));
         assert_eq!(read_lines(&content, 2, usize::MAX), "next\n");
+    }
+
+    #[test]
+    fn diffs_edit_input() {
+        let input = json!({ "path": "a", "old_text": "a\nb\n", "new_text": "a\nc\n" });
+        assert_eq!(diff("edit", &input), Some(" a\n-b\n+c".into()));
+        assert_eq!(diff("write", &input), None);
     }
 }
