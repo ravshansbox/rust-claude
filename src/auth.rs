@@ -122,30 +122,13 @@ impl Credentials {
         std::mem::take(&mut self.renewed)
     }
 
-    /// Writes a temporary file and renames it over auth.json, so readers
-    /// never see a half-written file and a crash keeps the old sign-in.
+    /// Saves auth.json atomically, so readers never see a half-written file
+    /// and a crash keeps the old sign-in.
     fn save(&self) -> Result<()> {
         let path = credentials_path()?;
         crate::config::create_private_dir(path.parent().context("invalid credentials path")?)?;
-        let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
-        let mut options = std::fs::OpenOptions::new();
-        options.write(true).create(true).truncate(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let written = options.open(&temporary).and_then(|mut file| {
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
-            }
-            file.write_all(serde_json::to_string_pretty(self)?.as_bytes())?;
-            file.sync_all()?;
-            std::fs::rename(&temporary, &path)
-        });
-        if written.is_err() {
-            let _ = std::fs::remove_file(&temporary);
-        }
-        Ok(written?)
+        crate::config::write_private_file(&path, serde_json::to_string_pretty(self)?.as_bytes())?;
+        Ok(())
     }
 }
 
