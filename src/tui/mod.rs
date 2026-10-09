@@ -25,7 +25,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
-use render::{THEME, Theme, borrowed_line, render_message, tool_message};
+use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
 use serde_json::Value;
 use status::{context_span, format_quota, format_stats};
 use std::time::{Duration, SystemTime};
@@ -882,7 +882,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
             })
             .collect();
         frame.render_widget(Clear, area);
-        frame.render_widget(Paragraph::new(lines), area);
+        frame.render_widget(Paragraph::new(lines).style(theme().subtle_style()), area);
     }
 
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));

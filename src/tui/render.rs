@@ -42,7 +42,7 @@ impl Theme {
         }
     }
 
-    fn subtle_style(self) -> Style {
+    pub(super) fn subtle_style(self) -> Style {
         match self {
             Self::Light => Style::new().bg(Color::Rgb(245, 245, 245)),
             Self::Dark => Style::new().bg(Color::Rgb(35, 35, 35)),
@@ -59,7 +59,7 @@ impl Theme {
 
 pub(super) static THEME: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
 
-fn theme() -> Theme {
+pub(super) fn theme() -> Theme {
     THEME.get().copied().unwrap_or(Theme::Light)
 }
 
