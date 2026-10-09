@@ -386,14 +386,26 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 _ if replace_all => {}
                 count => return Err(format!("old_text matches {count} times in {path}")),
             }
-            let content = if replace_all {
-                content.replace(&old_text, &new_text)
+            let (content, message) = if replace_all {
+                let count = content.matches(old_text.as_str()).count();
+                let noun = if count == 1 {
+                    "replacement"
+                } else {
+                    "replacements"
+                };
+                (
+                    content.replace(&old_text, &new_text),
+                    format!("edited {path} ({count} {noun})"),
+                )
             } else {
-                content.replacen(&old_text, &new_text, 1)
+                (
+                    content.replacen(&old_text, &new_text, 1),
+                    format!("edited {path}"),
+                )
             };
             tokio::fs::write(path, content)
                 .await
-                .map(|_| format!("edited {path}"))
+                .map(|_| message)
                 .map_err(|error| format!("failed to write {path}: {error}"))
         }
         _ => Err(format!("unknown tool: {name}")),
@@ -638,7 +650,10 @@ mod tests {
         let file = TemporaryFile::new("replace-all", "a b a");
         let input =
             json!({ "path": file.path(), "old_text": "a", "new_text": "c", "replace_all": true });
-        assert!(call("edit", &input).await.is_ok());
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {} (2 replacements)", file.path().display()))
+        );
         assert_eq!(file.content(), "c b c");
         let input =
             json!({ "path": file.path(), "old_text": "a", "new_text": "c", "replace_all": true });
@@ -648,6 +663,18 @@ mod tests {
                 .unwrap_err()
                 .contains("not found")
         );
+    }
+
+    #[tokio::test]
+    async fn counts_replacements_made() {
+        let file = TemporaryFile::new("replace-all-overlap", "aaa");
+        let input =
+            json!({ "path": file.path(), "old_text": "aa", "new_text": "b", "replace_all": true });
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {} (1 replacement)", file.path().display()))
+        );
+        assert_eq!(file.content(), "ba");
     }
 
     #[tokio::test]
