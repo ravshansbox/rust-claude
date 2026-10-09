@@ -1,5 +1,6 @@
 mod files;
 mod input;
+mod question;
 mod render;
 mod status;
 
@@ -27,6 +28,7 @@ use crossterm::{
 use files::{file_matches, file_query, list_files};
 use futures::StreamExt;
 use input::{input_cursor, input_rows, next_word_end, previous_word_start, row_above, row_below};
+use question::QuestionPrompt;
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -143,6 +145,7 @@ struct App {
     input_width: usize,
     busy: bool,
     picker: Option<Picker>,
+    question: Option<QuestionPrompt>,
     command_selected: usize,
     commands_dismissed: bool,
     files: Option<Vec<String>>,
@@ -218,6 +221,7 @@ impl App {
             input_width: usize::MAX,
             busy: false,
             picker: None,
+            question: None,
             command_selected: 0,
             commands_dismissed: false,
             files: None,
@@ -706,7 +710,8 @@ async fn agent_task(
     }
 }
 
-async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
+async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()> {
+    agent.ask_user = true;
     let mut app = App::new(&agent.model, agent.thinking_level, agent.stats());
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
@@ -894,7 +899,9 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         return false;
     }
     if let Event::Paste(text) = event {
-        if let Some(search) = &mut app.history_search {
+        if let Some(question) = &mut app.question {
+            question.paste(&text);
+        } else if let Some(search) = &mut app.history_search {
             search.query.push_str(&text.replace(['\r', '\n'], " "));
             search.selected = 0;
         } else if app.picker.is_none() {
@@ -907,6 +914,16 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     }
     let Event::Key(key) = event else { return false };
     if key.kind != KeyEventKind::Press {
+        return false;
+    }
+
+    if let Some(question) = &mut app.question {
+        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
+            return true;
+        }
+        if question.key(key) {
+            app.question = None;
+        }
         return false;
     }
 
@@ -1222,13 +1239,18 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
+        UiEvent::Agent(AgentEvent::Question { questions, reply }) => {
+            app.question = Some(QuestionPrompt::new(questions, reply));
+        }
         UiEvent::Done(result) => {
+            app.question = None;
             if result.is_err() {
                 app.restore_queued();
             }
             app.finish(result, |_, ()| {});
         }
         UiEvent::Cancelled(result) => {
+            app.question = None;
             app.push(Role::Event, "cancelled");
             app.restore_queued();
             app.finish(result, |_, ()| {});
@@ -1441,7 +1463,9 @@ fn draw(frame: &mut Frame, app: &mut App) {
     app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    if let Some(search) = &app.history_search {
+    if let Some(question) = &app.question {
+        frame.render_widget(question.view(), chat);
+    } else if let Some(search) = &app.history_search {
         frame.render_widget(history_view(search, chat.height), chat);
     } else if let Some(picker) = &app.picker {
         frame.render_widget(picker_view(picker, chat.height), chat);
@@ -1618,14 +1642,17 @@ fn display_model(model: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, App, Image, Role, UiEvent, file_matches, file_query, handle_agent_event,
+        Action, App, Image, Role, UiEvent, draw, file_matches, file_query, handle_agent_event,
         handle_input, held_scroll_from_bottom, replay_messages,
     };
     use crate::agent::{AgentEvent, Quota, Stats, Usage};
+    use crate::ask;
     use crate::skills::{Scope, Skill};
     use crate::tools;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
     use serde_json::json;
+    use tokio::sync::oneshot::{self, error::TryRecvError};
 
     fn new_app() -> App {
         let stats = Stats {
@@ -2234,5 +2261,142 @@ mod tests {
         };
         assert_eq!(texts(&live), ["edit a.rs\n-a\n+b", "edit: 3 replacements"]);
         assert_eq!(texts(&replayed), texts(&live));
+    }
+
+    fn screen(app: &mut App) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
+        terminal.draw(|frame| draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        buffer
+            .content()
+            .chunks(buffer.area.width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    fn press(app: &mut App, code: KeyCode) {
+        handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
+    }
+
+    fn type_text(app: &mut App, text: &str) {
+        for character in text.chars() {
+            press(app, KeyCode::Char(character));
+        }
+    }
+
+    fn ask(app: &mut App, input: serde_json::Value) -> oneshot::Receiver<Vec<Vec<String>>> {
+        let (reply, answers) = oneshot::channel();
+        app.busy = true;
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::Question {
+                questions: ask::parse(&input).unwrap(),
+                reply,
+            }),
+            app,
+        );
+        answers
+    }
+
+    fn output_question(multi_select: bool) -> serde_json::Value {
+        json!({ "questions": [{
+            "question": "Which output?",
+            "header": "Output",
+            "multi_select": multi_select,
+            "options": [
+                { "label": "JSON", "description": "Structured", "recommended": true },
+                { "label": "Text", "description": "Readable" }
+            ]
+        }] })
+    }
+
+    #[test]
+    fn shows_a_question_and_sends_the_chosen_option() {
+        let mut app = new_app();
+        let mut answers = ask(&mut app, output_question(false));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Output: Which output?"), "{shown}");
+        assert!(shown.contains("JSON (recommended): Structured"), "{shown}");
+        assert!(shown.contains("Text: Readable"), "{shown}");
+        assert!(shown.contains("Other: "), "{shown}");
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(answers.try_recv().unwrap(), vec![vec!["Text".to_string()]]);
+        assert!(!screen(&mut app).contains("Which output?"));
+    }
+
+    #[test]
+    fn sends_a_typed_answer_for_other() {
+        let mut app = new_app();
+        let mut answers = ask(&mut app, output_question(false));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        type_text(&mut app, "YAML please");
+        assert!(screen(&mut app).contains("Other: YAML please"));
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(
+            answers.try_recv().unwrap(),
+            vec![vec!["Other: YAML please".to_string()]]
+        );
+        assert_eq!(app.input, "");
+    }
+
+    #[test]
+    fn ignores_enter_on_an_empty_other() {
+        let mut app = new_app();
+        let mut answers = ask(&mut app, output_question(false));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(answers.try_recv(), Err(TryRecvError::Empty));
+        assert!(screen(&mut app).contains("Which output?"));
+    }
+
+    #[test]
+    fn toggles_options_in_a_multiple_choice_question() {
+        let mut app = new_app();
+        let mut answers = ask(&mut app, output_question(true));
+        press(&mut app, KeyCode::Char(' '));
+        assert!(screen(&mut app).contains("[x] JSON"));
+        assert!(screen(&mut app).contains("[ ] Text"));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        type_text(&mut app, "a b");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(
+            answers.try_recv().unwrap(),
+            vec![vec!["JSON".to_string(), "Other: a b".to_string()]]
+        );
+    }
+
+    #[test]
+    fn asks_each_question_in_turn() {
+        let mut app = new_app();
+        let mut input = output_question(false);
+        let mut second = input["questions"][0].clone();
+        second["question"] = json!("Which colour?");
+        second["header"] = json!("Colour");
+        input["questions"].as_array_mut().unwrap().push(second);
+        let mut answers = ask(&mut app, input);
+        assert!(screen(&mut app).contains("Output (1/2): Which output?"));
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(answers.try_recv(), Err(TryRecvError::Empty));
+        assert!(screen(&mut app).contains("Colour (2/2): Which colour?"));
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(
+            answers.try_recv().unwrap(),
+            vec![vec!["JSON".to_string()], vec!["Text".to_string()]]
+        );
+    }
+
+    #[test]
+    fn declines_the_question_on_escape() {
+        let mut app = new_app();
+        let mut answers = ask(&mut app, output_question(false));
+        press(&mut app, KeyCode::Esc);
+        assert_eq!(answers.try_recv(), Err(TryRecvError::Closed));
+        assert!(!screen(&mut app).contains("Which output?"));
+        assert!(app.busy);
     }
 }

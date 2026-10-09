@@ -159,6 +159,15 @@ pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "bash" => "command",
         "read" | "write" | "edit" => "path",
+        crate::ask::NAME => {
+            return input["questions"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|question| question["header"].as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+        }
         _ => return input.to_string(),
     };
     let value = input[key].as_str().unwrap_or_default().to_string();
@@ -176,6 +185,9 @@ pub fn summary(name: &str, input: &Value) -> String {
 }
 
 pub fn note(name: &str, result: &str) -> Option<String> {
+    if name == crate::ask::NAME {
+        return Some(result.into());
+    }
     if name != "edit" {
         return None;
     }
@@ -712,6 +724,19 @@ mod tests {
         );
         assert_eq!(note("edit", "edited a (b).rs"), None);
         assert_eq!(note("bash", "x (3 replacements)"), None);
+    }
+
+    #[test]
+    fn summarises_questions_and_notes_answers() {
+        let input = json!({ "questions": [
+            { "header": "Output", "question": "Which output?" },
+            { "header": "Colour", "question": "Which colour?" }
+        ] });
+        assert_eq!(summary("ask_user_question", &input), "Output, Colour");
+        assert_eq!(
+            note("ask_user_question", "Which output? → Text"),
+            Some("Which output? → Text".into())
+        );
     }
 
     #[tokio::test]
