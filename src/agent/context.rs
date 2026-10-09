@@ -50,10 +50,15 @@ pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
         if let Some(text) = last["content"].as_str().map(str::to_owned) {
             last["content"] = json!([{ "type": "text", "text": text }]);
         }
-        if let Some(block) = last["content"]
-            .as_array_mut()
-            .and_then(|blocks| blocks.last_mut())
-        {
+        // The API does not allow cache_control on thinking blocks.
+        if let Some(block) = last["content"].as_array_mut().and_then(|blocks| {
+            blocks.iter_mut().rfind(|block| {
+                !matches!(
+                    block["type"].as_str(),
+                    Some("thinking" | "redacted_thinking")
+                )
+            })
+        }) {
             block["cache_control"] = json!({ "type": "ephemeral" });
         }
     }
@@ -186,6 +191,33 @@ mod tests {
         let request = with_cache_breakpoint(&messages);
         assert_eq!(request.len(), 2);
         assert_eq!(request[1]["content"][0]["text"], "again");
+    }
+
+    #[test]
+    fn keeps_the_cache_breakpoint_off_thinking_blocks() {
+        let thinking = json!({ "type": "thinking", "thinking": "hmm", "signature": "s" });
+        let redacted = json!({ "type": "redacted_thinking", "data": "d" });
+        let messages = vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "hi" }, thinking, redacted],
+            }),
+        ];
+        let request = with_cache_breakpoint(&messages);
+        assert_eq!(
+            request[1]["content"][0]["cache_control"]["type"],
+            "ephemeral"
+        );
+        assert_eq!(request[1]["content"][1].get("cache_control"), None);
+        assert_eq!(request[1]["content"][2].get("cache_control"), None);
+
+        let only_thinking = vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({ "role": "assistant", "content": [thinking] }),
+        ];
+        let request = with_cache_breakpoint(&only_thinking);
+        assert!(!request[1].to_string().contains("cache_control"));
     }
 
     #[test]
