@@ -6,7 +6,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde_json::Value;
+use base64::{Engine, engine::general_purpose::STANDARD};
+use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
+
+use crate::images::Image;
 
 pub struct SessionSummary {
     pub id: String,
@@ -68,6 +72,26 @@ impl Session {
         Ok(())
     }
 
+    pub fn save_image(&self, image: &Image) -> Result<Value> {
+        let directory = sessions_directory()?.join(&self.id);
+        std::fs::create_dir_all(&directory)?;
+        let hash: String = Sha256::digest(&image.data)[..8]
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect();
+        let file = format!("{hash}.{}", image.extension());
+        let path = directory.join(&file);
+        if !path.exists() {
+            std::fs::write(&path, &image.data)?;
+        }
+        Ok(json!({ "type": "image", "file": file, "media_type": image.media_type }))
+    }
+
+    pub fn inline_images(&self, messages: &mut [Value]) -> Result<()> {
+        let directory = sessions_directory()?.join(&self.id);
+        inline_images(&directory, messages)
+    }
+
     pub fn list_others(&self) -> Result<Vec<SessionSummary>> {
         let directory = sessions_directory()?;
         if !directory.exists() {
@@ -115,6 +139,31 @@ impl Session {
     }
 }
 
+fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
+    let blocks = messages
+        .iter_mut()
+        .filter_map(|message| message["content"].as_array_mut())
+        .flatten()
+        .filter(|block| block["type"] == "image");
+    for block in blocks {
+        let Some(object) = block.as_object_mut() else {
+            continue;
+        };
+        let Some(file) = object.remove("file") else {
+            continue;
+        };
+        let file = file.as_str().unwrap_or_default();
+        let data = std::fs::read(directory.join(file))
+            .with_context(|| format!("failed to read image {file}"))?;
+        let media_type = object.remove("media_type").unwrap_or_default();
+        object.insert(
+            "source".into(),
+            json!({ "type": "base64", "media_type": media_type, "data": STANDARD.encode(data) }),
+        );
+    }
+    Ok(())
+}
+
 fn read_preview(path: &Path) -> Result<String> {
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
     for line in std::io::BufRead::lines(reader) {
@@ -124,6 +173,14 @@ fn read_preview(path: &Path) -> Result<String> {
         }
         let message: Value = serde_json::from_str(&line)?;
         if let Some(text) = message["content"].as_str() {
+            return Ok(text.to_string());
+        }
+        let text = message["content"]
+            .as_array()
+            .filter(|_| message["role"] == "user")
+            .and_then(|blocks| blocks.iter().find(|block| block["type"] == "text"))
+            .and_then(|block| block["text"].as_str());
+        if let Some(text) = text {
             return Ok(text.to_string());
         }
     }
@@ -141,7 +198,47 @@ fn read_messages(path: &Path) -> Result<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Session, new_uuid, read_preview, sessions_directory};
+    use super::{Session, inline_images, new_uuid, read_preview, sessions_directory};
+    use serde_json::json;
+
+    #[test]
+    fn inlines_saved_images_as_base64() {
+        let directory =
+            std::env::temp_dir().join(format!("rust-claude-images-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(directory.join("a.png"), b"abc").unwrap();
+        let mut messages = vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "image", "file": "a.png", "media_type": "image/png" },
+                { "type": "text", "text": "look" },
+            ],
+        })];
+        let result = inline_images(&directory, &mut messages);
+        std::fs::remove_dir_all(&directory).unwrap();
+        result.unwrap();
+        assert_eq!(
+            messages[0]["content"][0],
+            json!({
+                "type": "image",
+                "source": { "type": "base64", "media_type": "image/png", "data": "YWJj" },
+            })
+        );
+    }
+
+    #[test]
+    fn previews_prompt_with_images() {
+        let path =
+            std::env::temp_dir().join(format!("rust-claude-image-preview-{}", std::process::id()));
+        std::fs::write(
+            &path,
+            "{\"role\":\"user\",\"content\":[{\"type\":\"image\"},{\"type\":\"text\",\"text\":\"look\"}]}\n",
+        )
+        .unwrap();
+        let preview = read_preview(&path);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(preview.unwrap(), "look");
+    }
 
     #[test]
     fn reads_preview_without_reading_rest_of_file() {
