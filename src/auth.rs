@@ -90,12 +90,17 @@ impl Credentials {
     fn save(&self) -> Result<()> {
         let path = credentials_path()?;
         std::fs::create_dir_all(path.parent().context("invalid credentials path")?)?;
-        std::fs::write(&path, serde_json::to_string_pretty(self)?)?;
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(&path)?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
+            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
         }
+        file.write_all(serde_json::to_string_pretty(self)?.as_bytes())?;
         Ok(())
     }
 }
