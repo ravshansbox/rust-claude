@@ -118,6 +118,7 @@ struct App {
 enum PickerKind {
     Session,
     Model,
+    Thinking,
 }
 
 struct Picker {
@@ -378,6 +379,12 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         app.busy = true;
                         act(Action::Resume(value));
                     }
+                    PickerKind::Thinking => {
+                        if let Some(level) = THINKING_LEVELS.iter().find(|level| **level == value) {
+                            app.thinking_level = level;
+                            app.push(Role::Event, format!("thinking: {level}"));
+                        }
+                    }
                     PickerKind::Model => {
                         app.model = value.clone();
                         app.push(Role::Event, format!("model: {value}"));
@@ -424,14 +431,20 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         app.busy = true;
                         act(Action::NewSession);
                     }
-                    "/thinking" if argument.is_empty() => app.push(
-                        Role::Event,
-                        format!(
-                            "thinking: {} (options: {})",
-                            app.thinking_level,
-                            THINKING_LEVELS.join(", ")
-                        ),
-                    ),
+                    "/thinking" if argument.is_empty() => {
+                        app.picker = Some(Picker {
+                            kind: PickerKind::Thinking,
+                            title: "Select thinking level",
+                            items: THINKING_LEVELS
+                                .iter()
+                                .map(|level| (level.to_string(), level.to_string()))
+                                .collect(),
+                            selected: THINKING_LEVELS
+                                .iter()
+                                .position(|level| *level == app.thinking_level)
+                                .unwrap_or_default(),
+                        });
+                    }
                     "/thinking" => match THINKING_LEVELS.iter().find(|level| **level == argument) {
                         Some(level) => {
                             app.thinking_level = level;
