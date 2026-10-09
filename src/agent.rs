@@ -141,6 +141,54 @@ impl Usage {
 pub struct Stats {
     pub usage: Usage,
     pub cache_hit_rate: Option<f64>,
+    pub context_tokens: u64,
+    pub context_window: u64,
+}
+
+fn estimate_tokens(message: &Value) -> u64 {
+    let characters: usize = match &message["content"] {
+        Value::String(text) => text.chars().count(),
+        Value::Array(blocks) => blocks
+            .iter()
+            .map(|block| match block["type"].as_str().unwrap_or_default() {
+                "text" => block["text"].as_str().unwrap_or_default().chars().count(),
+                "thinking" => block["thinking"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .chars()
+                    .count(),
+                "tool_use" => {
+                    block["name"].as_str().unwrap_or_default().chars().count()
+                        + block["input"].to_string().chars().count()
+                }
+                "tool_result" => block["content"]
+                    .as_str()
+                    .unwrap_or_default()
+                    .chars()
+                    .count(),
+                _ => 0,
+            })
+            .sum(),
+        _ => 0,
+    };
+    (characters as u64).div_ceil(4)
+}
+
+fn context_tokens(messages: &[Value]) -> u64 {
+    let last_usage = messages
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(index, message)| {
+            if message["role"] != "assistant" || message.get("stop_reason").is_some() {
+                return None;
+            }
+            let usage = Usage::from_json(&message["usage"]);
+            let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
+            (tokens > 0).then_some((index, tokens))
+        });
+    let (start, usage_tokens) = last_usage.map_or((0, 0), |(index, tokens)| (index + 1, tokens));
+    usage_tokens + messages[start..].iter().map(estimate_tokens).sum::<u64>()
 }
 
 fn total_usage(messages: &[Value]) -> Usage {
@@ -245,6 +293,8 @@ impl Agent {
         Stats {
             usage: total_usage(&self.messages),
             cache_hit_rate,
+            context_tokens: context_tokens(&self.messages),
+            context_window: models::context_window(&self.model),
         }
     }
 
@@ -287,6 +337,7 @@ impl Agent {
     async fn run(&mut self, prompt: &str, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
         self.messages
             .push(json!({ "role": "user", "content": prompt }));
+        on_event(AgentEvent::Stats(self.stats()));
 
         loop {
             let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
@@ -472,5 +523,38 @@ impl Agent {
             }
         }
         Ok((content, stop_reason, usage))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::context_tokens;
+
+    #[test]
+    fn counts_context_from_last_usage_and_trailing_messages() {
+        let messages = vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({
+                "role": "assistant",
+                "content": [{ "type": "text", "text": "hi" }],
+                "usage": { "input": 10, "output": 5, "cache_read": 100, "cache_write": 20 },
+            }),
+            json!({
+                "role": "assistant",
+                "stop_reason": "aborted",
+                "content": [],
+                "usage": { "input": 999 },
+            }),
+            json!({ "role": "user", "content": "12345678" }),
+        ];
+        assert_eq!(context_tokens(&messages), 137);
+    }
+
+    #[test]
+    fn estimates_context_without_usage() {
+        let messages = vec![json!({ "role": "user", "content": "12345" })];
+        assert_eq!(context_tokens(&messages), 2);
     }
 }
