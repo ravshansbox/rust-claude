@@ -767,14 +767,48 @@ fn format_stats(stats: &Stats) -> String {
 
 fn format_quota(stats: &Stats) -> String {
     [
-        ("5h", stats.quota.five_hour_remaining),
-        ("7d", stats.quota.seven_day_remaining),
+        (
+            "5h",
+            stats.quota.five_hour_remaining,
+            stats.quota.five_hour_reset,
+        ),
+        (
+            "7d",
+            stats.quota.seven_day_remaining,
+            stats.quota.seven_day_reset,
+        ),
     ]
     .into_iter()
-    .filter_map(|(label, remaining)| {
-        remaining.map(|remaining| format!(" · {label} {remaining:.0}%"))
+    .filter_map(|(label, remaining, reset)| {
+        remaining.map(|remaining| {
+            let reset = reset
+                .map(|reset| format!(" {}", time_until(reset)))
+                .unwrap_or_default();
+            format!(" · {label} {remaining:.0}%{reset}")
+        })
     })
     .collect()
+}
+
+fn time_until(reset: u64) -> String {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format_duration(reset.saturating_sub(now))
+}
+
+fn format_duration(seconds: u64) -> String {
+    let minutes = seconds / 60;
+    let (days, hours, minutes) = (minutes / 1_440, minutes / 60 % 24, minutes % 60);
+    match (days, hours, minutes) {
+        (0, 0, 0) => "<1m".to_string(),
+        (0, 0, minutes) => format!("{minutes}m"),
+        (0, hours, 0) => format!("{hours}h"),
+        (0, hours, minutes) => format!("{hours}h{minutes}m"),
+        (days, 0, _) => format!("{days}d"),
+        (days, hours, _) => format!("{days}d{hours}h"),
+    }
 }
 
 fn context_span(stats: &Stats) -> Span<'static> {
@@ -986,7 +1020,18 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests {
-    use super::format_tokens;
+    use super::{format_duration, format_tokens};
+
+    #[test]
+    fn formats_durations() {
+        assert_eq!(format_duration(0), "<1m");
+        assert_eq!(format_duration(59), "<1m");
+        assert_eq!(format_duration(45 * 60), "45m");
+        assert_eq!(format_duration(2 * 3_600), "2h");
+        assert_eq!(format_duration(2 * 3_600 + 13 * 60), "2h13m");
+        assert_eq!(format_duration(3 * 86_400), "3d");
+        assert_eq!(format_duration(3 * 86_400 + 4 * 3_600 + 5 * 60), "3d4h");
+    }
 
     #[test]
     fn formats_tokens() {
