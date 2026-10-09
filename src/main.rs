@@ -1,5 +1,6 @@
 mod agent;
 mod auth;
+mod models;
 mod session;
 mod tools;
 mod tui;

@@ -705,7 +705,7 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
 }
 
 fn format_usage(usage: Usage) -> String {
-    [
+    let mut parts: Vec<String> = [
         ("↑", usage.input),
         ("↓", usage.output),
         ("R", usage.cache_read),
@@ -714,8 +714,9 @@ fn format_usage(usage: Usage) -> String {
     .into_iter()
     .filter(|(_, count)| *count > 0)
     .map(|(label, count)| format!("{label}{}", format_tokens(count)))
-    .collect::<Vec<_>>()
-    .join(" ")
+    .collect();
+    parts.push(format!("${:.3} (sub)", usage.cost));
+    parts.join(" ")
 }
 
 fn format_tokens(count: u64) -> String {
