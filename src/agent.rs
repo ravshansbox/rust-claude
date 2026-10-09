@@ -202,7 +202,7 @@ impl Agent {
             "model": self.model,
             "max_tokens": 8192,
             "stream": true,
-            "thinking": { "type": "adaptive" },
+            "thinking": { "type": "adaptive", "display": "summarized" },
             "output_config": { "effort": self.thinking_level },
             "system": system,
             "tools": tools::definitions(),
