@@ -148,7 +148,7 @@ Start the interactive interface:
 rust-claude
 ```
 
-Run one prompt and print the answer with `-p` or `--print`:
+Run one prompt and print the answer with `-p` or `--print`. The argument after it is always the prompt, even when it starts with `-`:
 
 ```sh
 rust-claude -p "explain src/main.rs"
