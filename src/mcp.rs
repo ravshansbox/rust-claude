@@ -162,9 +162,15 @@ async fn read_messages(
     stdin: Arc<tokio::sync::Mutex<ChildStdin>>,
     pending: Arc<Pending>,
 ) {
-    let mut lines = BufReader::new(stdout).lines();
-    while let Ok(Some(line)) = lines.next_line().await {
-        let Ok(message) = serde_json::from_str::<Value>(&line) else {
+    let mut stdout = BufReader::new(stdout);
+    let mut line = Vec::new();
+    loop {
+        line.clear();
+        match stdout.read_until(b'\n', &mut line).await {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let Ok(message) = serde_json::from_slice::<Value>(&line) else {
             continue;
         };
         let id = &message["id"];
@@ -751,6 +757,25 @@ done
             Some(Err(
                 "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
             ))
+        );
+    }
+
+    #[tokio::test]
+    async fn skips_output_lines_that_are_not_utf8() {
+        let mut mcp = Mcp::default();
+        mcp.add(
+            start(
+                "test".into(),
+                Scope::Project,
+                server_answering_calls_with(
+                    r#"printf '\377\n{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
+                ),
+            )
+            .await,
+        );
+        assert_eq!(
+            mcp.call("mcp__test__echo", &json!({})).await,
+            Some(Ok("pong".into()))
         );
     }
 
