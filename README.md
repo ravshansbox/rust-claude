@@ -38,7 +38,7 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | --- | --- |
 | `/new` | Start a new session |
 | `/resume` | Resume a previous session |
-| `/model [id]` | Select a model |
+| `/model [id]` | Select a model. An id must be in the list of available models |
 | `/thinking [level]` | Select a thinking level |
 | `/quit` | Quit |
 
