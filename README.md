@@ -97,7 +97,9 @@ Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
 
 Quitting while a prompt runs cancels it and saves the session first.
 
-A cancelled prompt stays in the session, so the model sees it in the next request. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
+A cancelled prompt stays in the session, so the model sees it in the next request.
+
+`/resume` reads each session only up to its first prompt to build the list. A damaged session shows an error when you resume it. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
 ## Tools
 
