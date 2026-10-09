@@ -1,6 +1,6 @@
 use super::{
     App, Picker, PickerKind, Role, display_model, status::format_context_use, time_ago,
-    worker::UiEvent, workspace_label,
+    worker::UiEvent,
 };
 use crate::{
     agent::{AgentEvent, parse_shell_message},
@@ -26,7 +26,9 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push_tool(&name, summary, diff);
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
-            app.workspace = workspace_label();
+            if name == "bash" {
+                app.workspace_stale = true;
+            }
             if let Some(error) = error {
                 app.push(Role::Event, format!("{name} failed: {error}"));
             }
@@ -96,7 +98,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.busy = false;
         }
         UiEvent::Shell(command, result) => {
-            app.workspace = workspace_label();
+            app.workspace_stale = true;
             app.finish(result, |app, output| app.push_shell(&command, &output));
         }
         UiEvent::ImagePasted(Ok(Some(image))) => app.attach_image(image),
@@ -105,6 +107,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push(Role::Event, format!("failed to paste image: {error}"));
         }
         UiEvent::Files(generation, files) => app.set_files(generation, files),
+        UiEvent::Workspace(label) => app.workspace = label,
         UiEvent::Resumed(result) => app.finish(result, |app, messages| {
             app.clear_session();
             replay_messages(app, &messages);
@@ -208,7 +211,6 @@ mod tests {
     use crate::tui::{
         Action, App, Role, UiEvent, handle_input,
         test_support::{new_app, screen},
-        workspace_label,
     };
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use serde_json::json;
@@ -373,11 +375,31 @@ mod tests {
         let finished_shell = || UiEvent::Shell("git switch other".into(), Ok(String::new()));
         for event in [finished_tool(), finished_shell()] {
             let mut app = new_app();
-            app.workspace = "stale-folder · stale-branch".into();
+            app.workspace = "folder · stale-branch".into();
             handle_agent_event(event, &mut app);
+            assert!(app.workspace_stale);
+            handle_agent_event(UiEvent::Workspace("folder · other".into()), &mut app);
             let screen = screen(&mut app);
             assert!(!screen.contains("stale-branch"));
-            assert!(screen.contains(&workspace_label()));
+            assert!(screen.contains("folder · other"));
+        }
+    }
+
+    #[test]
+    fn keeps_status_line_branch_after_file_tools() {
+        for name in ["read", "write", "edit"] {
+            let mut app = new_app();
+            app.workspace = "folder · branch".into();
+            handle_agent_event(
+                UiEvent::Agent(AgentEvent::ToolDone {
+                    name: name.into(),
+                    error: None,
+                    note: None,
+                }),
+                &mut app,
+            );
+            assert!(!app.workspace_stale, "{name}");
+            assert!(screen(&mut app).contains("folder · branch"), "{name}");
         }
     }
 }

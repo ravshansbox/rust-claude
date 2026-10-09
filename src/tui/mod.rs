@@ -253,6 +253,12 @@ async fn run_loop(
                 let _ = events.send(UiEvent::Files(generation, list_files()));
             });
         }
+        if std::mem::take(&mut app.workspace_stale) {
+            let events = background_events.clone();
+            tokio::task::spawn_blocking(move || {
+                let _ = events.send(UiEvent::Workspace(workspace_label()));
+            });
+        }
     };
     quit(request_tx, cancel_tx);
     if !worker_stopped {
