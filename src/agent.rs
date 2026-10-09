@@ -629,6 +629,9 @@ impl Agent {
         if stop_reason.is_empty() {
             bail!("response ended before the reply finished");
         }
+        if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use") {
+            bail!("reply stopped ({stop_reason}) before its tool call finished");
+        }
         Ok((content, stop_reason, usage))
     }
 }
