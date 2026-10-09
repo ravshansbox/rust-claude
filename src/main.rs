@@ -15,22 +15,19 @@ use std::io::{IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
 
-const USAGE: &str =
-    "usage: rust-claude [-h|--help] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
+const USAGE: &str = "usage: rust-claude [-h|--help] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
+usage: rust-claude [-h|--help] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
 
 Options:
-  -p, --print <prompt>  Run one prompt and print the answer
-      --hide-tools      Hide tool calls in print mode
-      --image <path>    Send an image with the prompt in print mode. Repeat for more images
-  -h, --help            Show this help
-
-Environment variables:
-  RUST_CLAUDE_MODEL     Model to use
-  RUST_CLAUDE_THINKING  Thinking level: low, medium, high, xhigh, max";
+      --model <id>        Model to use
+      --thinking <level>  Thinking level: low, medium, high, xhigh, max
+  -p, --print <prompt>    Run one prompt and print the answer
+      --hide-tools        Hide tool calls in print mode
+      --image <path>      Send an image with the prompt in print mode. Repeat for more images
+  -h, --help              Show this help";
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -43,7 +40,25 @@ enum Command {
     },
 }
 
-fn parse_arguments(mut arguments: Vec<String>) -> Result<Command> {
+#[derive(Debug, Default, PartialEq)]
+struct Options {
+    model: Option<String>,
+    thinking_level: Option<String>,
+}
+
+fn take_value(arguments: &mut Vec<String>, flag: &str) -> Result<Option<String>> {
+    let Some(index) = arguments.iter().position(|argument| argument == flag) else {
+        return Ok(None);
+    };
+    if index + 1 >= arguments.len() {
+        bail!(USAGE);
+    }
+    let value = arguments.remove(index + 1);
+    arguments.remove(index);
+    Ok(Some(value))
+}
+
+fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
     let hide_tools = match arguments
         .iter()
         .position(|argument| argument == "--hide-tools")
@@ -55,41 +70,48 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<Command> {
         None => false,
     };
     let mut images = Vec::new();
-    while let Some(index) = arguments.iter().position(|argument| argument == "--image") {
-        if index + 1 >= arguments.len() {
-            bail!(USAGE);
-        }
-        images.push(arguments.remove(index + 1));
-        arguments.remove(index);
+    while let Some(image) = take_value(&mut arguments, "--image")? {
+        images.push(image);
     }
+    let options = Options {
+        model: take_value(&mut arguments, "--model")?,
+        thinking_level: take_value(&mut arguments, "--thinking")?,
+    };
     let print_options = hide_tools || !images.is_empty();
-    match arguments.as_slice() {
-        [flag] if !print_options && (flag == "-h" || flag == "--help") => Ok(Command::Help),
-        [] if !print_options => Ok(Command::Interactive),
-        [flag, prompt] if flag == "-p" || flag == "--print" => Ok(Command::Print {
+    let command = match arguments.as_slice() {
+        [flag]
+            if !print_options
+                && options == Options::default()
+                && (flag == "-h" || flag == "--help") =>
+        {
+            Command::Help
+        }
+        [] if !print_options => Command::Interactive,
+        [flag, prompt] if flag == "-p" || flag == "--print" => Command::Print {
             prompt: prompt.clone(),
             hide_tools,
             images,
-        }),
+        },
         _ => bail!(USAGE),
-    }
+    };
+    Ok((command, options))
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let (print_prompt, hide_tools, image_paths) =
-        match parse_arguments(std::env::args().skip(1).collect())? {
-            Command::Help => {
-                println!("{HELP}");
-                return Ok(());
-            }
-            Command::Interactive => (None, false, Vec::new()),
-            Command::Print {
-                prompt,
-                hide_tools,
-                images,
-            } => (Some(prompt), hide_tools, images),
-        };
+    let (command, options) = parse_arguments(std::env::args().skip(1).collect())?;
+    let (print_prompt, hide_tools, image_paths) = match command {
+        Command::Help => {
+            println!("{HELP}");
+            return Ok(());
+        }
+        Command::Interactive => (None, false, Vec::new()),
+        Command::Print {
+            prompt,
+            hide_tools,
+            images,
+        } => (Some(prompt), hide_tools, images),
+    };
     let images = image_paths
         .iter()
         .map(|path| {
@@ -103,13 +125,11 @@ async fn main() -> Result<()> {
     let http = reqwest::Client::new();
     let credentials = auth::Credentials::load_or_login(&http).await?;
     let settings = settings::Settings::load();
-    let model = std::env::var("RUST_CLAUDE_MODEL")
-        .ok()
+    let model = options
+        .model
         .or(settings.model)
         .unwrap_or_else(|| "claude-opus-5-5".into());
-    let thinking_level = std::env::var("RUST_CLAUDE_THINKING")
-        .ok()
-        .or(settings.thinking_level);
+    let thinking_level = options.thinking_level.or(settings.thinking_level);
     let mut agent = agent::Agent::new(http, credentials, model)?;
     agent.mcp = mcp::Mcp::load().await;
     if let Some(name) = thinking_level {
@@ -219,9 +239,9 @@ fn flush_reads(reads: &mut tools::ReadGroup) {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, parse_arguments};
+    use super::{Command, Options, parse_arguments};
 
-    fn parse(arguments: &[&str]) -> Option<Command> {
+    fn parse_with_options(arguments: &[&str]) -> Option<(Command, Options)> {
         parse_arguments(
             arguments
                 .iter()
@@ -229,6 +249,10 @@ mod tests {
                 .collect(),
         )
         .ok()
+    }
+
+    fn parse(arguments: &[&str]) -> Option<Command> {
+        parse_with_options(arguments).map(|(command, _)| command)
     }
 
     #[test]
@@ -243,6 +267,8 @@ mod tests {
         assert_eq!(parse(&["-h", "extra"]), None);
         assert_eq!(parse(&["--image", "a.png"]), None);
         assert_eq!(parse(&["-p", "hello", "--image"]), None);
+        assert_eq!(parse(&["--help", "--model", "x"]), None);
+        assert_eq!(parse(&["--model"]), None);
     }
 
     #[test]
@@ -263,6 +289,34 @@ mod tests {
                 hide_tools: false,
                 images: vec!["a.png".into(), "b.png".into()],
             })
+        );
+    }
+
+    #[test]
+    fn parses_model_and_thinking_options() {
+        assert_eq!(
+            parse_with_options(&["--model", "claude-x", "--thinking", "high"]),
+            Some((
+                Command::Interactive,
+                Options {
+                    model: Some("claude-x".into()),
+                    thinking_level: Some("high".into()),
+                }
+            ))
+        );
+        assert_eq!(
+            parse_with_options(&["-p", "hello", "--thinking", "low"]),
+            Some((
+                Command::Print {
+                    prompt: "hello".into(),
+                    hide_tools: false,
+                    images: Vec::new(),
+                },
+                Options {
+                    model: None,
+                    thinking_level: Some("low".into()),
+                }
+            ))
         );
     }
 }

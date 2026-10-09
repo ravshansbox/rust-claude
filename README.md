@@ -27,7 +27,7 @@ Model and thinking:
 - Thinking levels with `/thinking`, `/thinking <level>` and Shift+Tab
 - Thinking text shown in the conversation
 - Model and thinking level saved to `~/.rust-claude/settings.json`
-- `RUST_CLAUDE_MODEL` and `RUST_CLAUDE_THINKING` environment variables
+- `--model` and `--thinking` options for one run
 
 Sessions and context:
 
@@ -142,6 +142,8 @@ rust-claude -p "what is wrong in this screenshot?" --image error.png
 
 In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal. Add `--hide-tools` to hide them.
 
+Choose the model and thinking level for one run with `--model <id>` and `--thinking <level>`. See [Settings](#settings).
+
 Show help with `-h` or `--help`.
 
 Markdown tables in replies wrap their cells to fit the window width.
@@ -196,16 +198,16 @@ The next line shows how much of the 5-hour and 7-day quota is left and when each
 
 ## Settings
 
-| Setting | Environment variable | `~/.rust-claude/settings.json` key | Default |
+| Setting | Option | `~/.rust-claude/settings.json` key | Default |
 | --- | --- | --- | --- |
-| Model | `RUST_CLAUDE_MODEL` | `model` | `claude-opus-5-5` |
-| Thinking level | `RUST_CLAUDE_THINKING` | `thinking_level` | `medium` |
+| Model | `--model <id>` | `model` | `claude-opus-5-5` |
+| Thinking level | `--thinking <level>` | `thinking_level` | `medium` |
 
 Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
 Each reply may use up to the model's full output limit (64,000 or 128,000 tokens). Models that rust-claude doesn't know get 8,192 tokens.
 
-Environment variables take priority over the settings file.
+Options take priority over the settings file and apply to that run only. They work in the interface and in print mode. rust-claude does not check the `--model` id, so an unknown id fails on the first request.
 
 An unknown thinking level prints a warning to standard error and uses `medium`.
 
