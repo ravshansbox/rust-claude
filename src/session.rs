@@ -92,13 +92,9 @@ impl Session {
             else {
                 continue;
             };
-            let Ok(messages) = read_messages(&path) else {
+            let Ok(preview) = read_preview(&path) else {
                 continue;
             };
-            let preview = messages
-                .iter()
-                .find_map(|message| message["content"].as_str().map(str::to_string))
-                .unwrap_or_default();
             summaries.push(SessionSummary {
                 id: id.to_string(),
                 modified,
@@ -119,6 +115,21 @@ impl Session {
     }
 }
 
+fn read_preview(path: &Path) -> Result<String> {
+    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    for line in std::io::BufRead::lines(reader) {
+        let line = line?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let message: Value = serde_json::from_str(&line)?;
+        if let Some(text) = message["content"].as_str() {
+            return Ok(text.to_string());
+        }
+    }
+    Ok(String::new())
+}
+
 fn read_messages(path: &Path) -> Result<Vec<Value>> {
     std::fs::read_to_string(path)?
         .lines()
@@ -130,7 +141,20 @@ fn read_messages(path: &Path) -> Result<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Session, new_uuid, sessions_directory};
+    use super::{Session, new_uuid, read_preview, sessions_directory};
+
+    #[test]
+    fn reads_preview_without_reading_rest_of_file() {
+        let path = std::env::temp_dir().join(format!("rust-claude-preview-{}", std::process::id()));
+        std::fs::write(
+            &path,
+            "{\"role\":\"user\",\"content\":\"first\"}\nnot json\n",
+        )
+        .unwrap();
+        let preview = read_preview(&path);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(preview.unwrap(), "first");
+    }
 
     #[test]
     fn generates_version_4_uuid() {
