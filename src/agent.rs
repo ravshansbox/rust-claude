@@ -4,7 +4,7 @@ use anyhow::{Result, bail};
 use futures::StreamExt;
 use serde_json::{Value, json};
 
-use crate::{auth::Credentials, tools};
+use crate::{auth::Credentials, session::Session, tools};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
@@ -106,18 +106,20 @@ pub struct Agent {
     pub thinking_level: &'static str,
     messages: Vec<Value>,
     pub instructions: Vec<Instructions>,
+    pub session: Session,
 }
 
 impl Agent {
-    pub fn new(http: reqwest::Client, credentials: Credentials, model: String) -> Self {
-        Self {
+    pub fn new(http: reqwest::Client, credentials: Credentials, model: String) -> Result<Self> {
+        Ok(Self {
             http,
             credentials,
             model,
             thinking_level: DEFAULT_THINKING_LEVEL,
             messages: Vec::new(),
             instructions: load_instructions(),
-        }
+            session: Session::new()?,
+        })
     }
 
     pub fn history_len(&self) -> usize {
@@ -133,8 +135,9 @@ impl Agent {
         let result = self.run(prompt, on_event).await;
         if result.is_err() {
             self.messages.truncate(checkpoint);
+            return result;
         }
-        result
+        self.session.save(&self.messages)
     }
 
     async fn run(&mut self, prompt: &str, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
