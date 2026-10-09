@@ -1,8 +1,6 @@
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
 
-const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
-
 #[derive(Default, Clone, Copy)]
 pub struct Usage {
     pub input: u64,
@@ -158,9 +156,13 @@ pub(super) fn total_usage(messages: &[Value]) -> Usage {
     total
 }
 
-pub(super) async fn fetch_quota(http: reqwest::Client, token: String) -> Result<Quota> {
+pub(super) async fn fetch_quota(
+    http: reqwest::Client,
+    url: String,
+    token: String,
+) -> Result<Quota> {
     let response = http
-        .get(USAGE_URL)
+        .get(url)
         .bearer_auth(token)
         .header("anthropic-beta", "oauth-2025-04-20")
         .send()

@@ -9,8 +9,6 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 use std::time::Instant;
 
-const API_URL: &str = "https://api.anthropic.com/v1/messages";
-
 impl Agent {
     pub(super) async fn stream_message(
         &mut self,
@@ -45,7 +43,7 @@ impl Agent {
         }
         let response = self
             .http
-            .post(API_URL)
+            .post(format!("{}/v1/messages", self.api_base))
             .bearer_auth(token)
             .header("anthropic-version", "2023-06-01")
             .header("anthropic-beta", "oauth-2025-04-20")
