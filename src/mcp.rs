@@ -14,7 +14,7 @@ use serde_json::{Value, json};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
     process::{Child, ChildStdin},
-    sync::oneshot,
+    sync::{mpsc, oneshot},
 };
 
 use crate::{
@@ -117,6 +117,15 @@ struct Pending {
     closed: AtomicBool,
 }
 
+impl Pending {
+    fn close(&self) {
+        self.closed.store(true, Ordering::SeqCst);
+        if let Ok(mut senders) = self.senders.lock() {
+            senders.clear();
+        }
+    }
+}
+
 struct PendingGuard<'a> {
     pending: &'a Pending,
     id: u64,
@@ -131,7 +140,7 @@ impl Drop for PendingGuard<'_> {
 }
 
 struct Connection {
-    stdin: Arc<tokio::sync::Mutex<ChildStdin>>,
+    writer: mpsc::UnboundedSender<String>,
     pending: Arc<Pending>,
     next_id: AtomicU64,
     stderr: Arc<Mutex<Vec<u8>>>,
@@ -140,26 +149,30 @@ struct Connection {
     _process_group: ProcessGroup,
 }
 
-async fn write_message(
-    stdin: &tokio::sync::Mutex<ChildStdin>,
-    message: &Value,
-) -> Result<(), String> {
+fn frame(message: &Value) -> String {
     let mut line = message.to_string();
     line.push('\n');
-    let mut stdin = stdin.lock().await;
-    stdin
-        .write_all(line.as_bytes())
-        .await
-        .map_err(|error| format!("failed to write to server: {error}"))?;
-    stdin
-        .flush()
-        .await
-        .map_err(|error| format!("failed to write to server: {error}"))
+    line
+}
+
+/// Writes each queued line in full, even if the request that queued it was
+/// cancelled, so the server never sees a line cut off midway.
+async fn write_messages(
+    mut stdin: ChildStdin,
+    mut lines: mpsc::UnboundedReceiver<String>,
+    pending: Arc<Pending>,
+) {
+    while let Some(line) = lines.recv().await {
+        if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
+            break;
+        }
+    }
+    pending.close();
 }
 
 async fn read_messages(
     stdout: impl tokio::io::AsyncRead + Unpin,
-    stdin: Arc<tokio::sync::Mutex<ChildStdin>>,
+    writer: mpsc::UnboundedSender<String>,
     pending: Arc<Pending>,
 ) {
     let mut stdout = BufReader::new(stdout);
@@ -187,7 +200,7 @@ async fn read_messages(
                     "error": { "code": -32601, "message": format!("method not found: {method}") },
                 })
             };
-            let _ = write_message(&stdin, &reply).await;
+            let _ = writer.send(frame(&reply));
             continue;
         }
         let Some(id) = id.as_u64() else {
@@ -210,10 +223,7 @@ async fn read_messages(
             let _ = sender.send(result);
         }
     }
-    pending.closed.store(true, Ordering::SeqCst);
-    if let Ok(mut senders) = pending.senders.lock() {
-        senders.clear();
-    }
+    pending.close();
 }
 
 async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mutex<Vec<u8>>>) {
@@ -259,16 +269,17 @@ impl Connection {
         else {
             return Err("failed to capture server input and output".into());
         };
-        let stdin = Arc::new(tokio::sync::Mutex::new(stdin));
+        let (writer, lines) = mpsc::unbounded_channel();
         let pending = Arc::new(Pending {
             senders: Mutex::new(HashMap::new()),
             closed: AtomicBool::new(false),
         });
         let stderr_tail = Arc::new(Mutex::new(Vec::new()));
-        tokio::spawn(read_messages(stdout, stdin.clone(), pending.clone()));
+        tokio::spawn(write_messages(stdin, lines, pending.clone()));
+        tokio::spawn(read_messages(stdout, writer.clone(), pending.clone()));
         tokio::spawn(read_stderr(stderr, stderr_tail.clone()));
         Ok(Self {
-            stdin,
+            writer,
             pending,
             next_id: AtomicU64::new(1),
             stderr: stderr_tail,
@@ -291,8 +302,14 @@ impl Connection {
         }
     }
 
-    async fn notify(&self, method: &str) -> Result<(), String> {
-        write_message(&self.stdin, &json!({ "jsonrpc": "2.0", "method": method })).await
+    fn send(&self, message: &Value) -> Result<(), String> {
+        self.writer
+            .send(frame(message))
+            .map_err(|_| self.with_stderr("server closed the connection".into()))
+    }
+
+    fn notify(&self, method: &str) -> Result<(), String> {
+        self.send(&json!({ "jsonrpc": "2.0", "method": method }))
     }
 
     async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
@@ -308,25 +325,15 @@ impl Connection {
         if self.pending.closed.load(Ordering::SeqCst) {
             return Err(self.with_stderr("server closed the connection".into()));
         }
-        let exchange = async {
-            write_message(
-                &self.stdin,
-                &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
-            )
-            .await
-            .map_err(|error| self.with_stderr(error))?;
-            receiver
-                .await
-                .unwrap_or_else(|_| Err(self.with_stderr("server closed the connection".into())))
-        };
-        tokio::time::timeout(self.timeout, exchange)
-            .await
-            .unwrap_or_else(|_| {
-                Err(self.with_stderr(format!(
-                    "{method} timed out after {} seconds",
-                    self.timeout.as_secs()
-                )))
-            })
+        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
+        match tokio::time::timeout(self.timeout, receiver).await {
+            Ok(Ok(result)) => result,
+            Ok(Err(_)) => Err(self.with_stderr("server closed the connection".into())),
+            Err(_) => Err(self.with_stderr(format!(
+                "{method} timed out after {} seconds",
+                self.timeout.as_secs()
+            ))),
+        }
     }
 }
 
@@ -420,10 +427,7 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
             }),
         )
         .await?;
-    connection
-        .notify("notifications/initialized")
-        .await
-        .map_err(|error| connection.with_stderr(error))?;
+    connection.notify("notifications/initialized")?;
     if initialize["capabilities"]["tools"].is_null() {
         return Ok(Server {
             name,
@@ -777,6 +781,40 @@ done
         let call =
             tokio::time::timeout(Duration::from_secs(10), mcp.call("mcp__test__echo", &large));
         assert_eq!(call.await.ok(), Some(timed_out));
+    }
+
+    #[tokio::test]
+    async fn keeps_working_after_a_large_call_is_cancelled_mid_write() {
+        let mut mcp = Mcp::default();
+        mcp.add(
+            start(
+                "test".into(),
+                Scope::Project,
+                server_answering_calls_with(
+                    r#"case "$line" in *'"slow"'*) sleep 1 ;; esac
+       id=${line#'{"id":'}; id=${id%%,*}
+       printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
+                ),
+            )
+            .await,
+        );
+        let cancel = Duration::from_millis(200);
+        let slow = json!({ "slow": true });
+        assert!(
+            tokio::time::timeout(cancel, mcp.call("mcp__test__echo", &slow))
+                .await
+                .is_err()
+        );
+        let large = json!({ "text": "a".repeat(200_000) });
+        assert!(
+            tokio::time::timeout(cancel, mcp.call("mcp__test__echo", &large))
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            mcp.call("mcp__test__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
     }
 
     #[tokio::test]
