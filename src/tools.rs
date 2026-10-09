@@ -54,6 +54,16 @@ fn snapshot(output: &Mutex<Vec<u8>>) -> Vec<u8> {
         .unwrap_or_default()
 }
 
+fn output_text(stdout_output: &Mutex<Vec<u8>>, stderr_output: &Mutex<Vec<u8>>) -> String {
+    let mut text = String::from_utf8_lossy(&snapshot(stdout_output)).into_owned();
+    let stderr = String::from_utf8_lossy(&snapshot(stderr_output)).into_owned();
+    if !stderr.is_empty() {
+        text.push_str("\nstderr:\n");
+        text.push_str(&stderr);
+    }
+    truncate(text)
+}
+
 fn count_matches(content: &str, pattern: &str) -> usize {
     let step = pattern.chars().next().map_or(1, char::len_utf8);
     let mut count = 0;
@@ -279,20 +289,27 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let status = match timeout {
                 Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
                     .await
-                    .map_err(|_| format!("command timed out after {seconds}s"))?,
-                None => run.await,
+                    .map_err(|_| seconds),
+                None => Ok(run.await),
+            };
+            match status {
+                Ok(_) => process_group.0 = None,
+                Err(_) => drop(process_group),
             }
-            .map_err(|error| format!("failed to run command: {error}"))?;
-            process_group.0 = None;
             let _ = tokio::time::timeout(OUTPUT_GRACE, futures::future::join_all(readers)).await;
-
-            let mut text = String::from_utf8_lossy(&snapshot(&stdout_output)).into_owned();
-            let stderr = String::from_utf8_lossy(&snapshot(&stderr_output)).into_owned();
-            if !stderr.is_empty() {
-                text.push_str("\nstderr:\n");
-                text.push_str(&stderr);
-            }
-            let mut text = truncate(text);
+            let status = match status {
+                Ok(status) => status.map_err(|error| format!("failed to run command: {error}"))?,
+                Err(seconds) => {
+                    let text = output_text(&stdout_output, &stderr_output);
+                    let notice = format!("command timed out after {seconds}s");
+                    return Err(if text.is_empty() {
+                        notice
+                    } else {
+                        format!("{text}\n{notice}")
+                    });
+                }
+            };
+            let mut text = output_text(&stdout_output, &stderr_output);
             if !status.success() {
                 text.push_str(&format!("\n{status}"));
             }
@@ -403,6 +420,15 @@ mod tests {
         assert_eq!(
             call("bash", &input).await,
             Err("command timed out after 1s".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_output_when_bash_command_times_out() {
+        let input = json!({ "command": "echo before; echo problem >&2; sleep 5", "timeout": 1 });
+        assert_eq!(
+            call("bash", &input).await,
+            Err("before\n\nstderr:\nproblem\n\ncommand timed out after 1s".into())
         );
     }
 
