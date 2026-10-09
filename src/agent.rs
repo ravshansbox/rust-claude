@@ -405,6 +405,7 @@ pub enum AgentEvent {
     ToolDone {
         name: String,
         error: Option<String>,
+        note: Option<String>,
     },
     Stats(Stats),
     Notice(String),
@@ -611,6 +612,7 @@ impl Agent {
                 on_event(AgentEvent::ToolDone {
                     name: name.into(),
                     error: is_error.then(|| text.clone()),
+                    note: tools::note(name, &text).filter(|_| !is_error),
                 });
                 results.push(json!({
                     "type": "tool_result",

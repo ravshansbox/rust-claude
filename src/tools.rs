@@ -164,6 +164,14 @@ pub fn summary(name: &str, input: &Value) -> String {
     input[key].as_str().unwrap_or_default().to_string()
 }
 
+pub fn note(name: &str, result: &str) -> Option<String> {
+    if name != "edit" {
+        return None;
+    }
+    let (_, count) = result.strip_suffix(')')?.rsplit_once(" (")?;
+    (count.ends_with(" replacement") || count.ends_with(" replacements")).then(|| count.into())
+}
+
 #[derive(Default)]
 pub struct ReadGroup {
     paths: Vec<(String, usize)>,
@@ -414,7 +422,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, ReadGroup, call, diff, read_lines};
+    use super::{MAX_OUTPUT, ReadGroup, call, diff, note, read_lines};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -663,6 +671,20 @@ mod tests {
                 .unwrap_err()
                 .contains("not found")
         );
+    }
+
+    #[test]
+    fn notes_replacement_count() {
+        assert_eq!(
+            note("edit", "edited a (b).rs (3 replacements)"),
+            Some("3 replacements".into())
+        );
+        assert_eq!(
+            note("edit", "edited a.rs (1 replacement)"),
+            Some("1 replacement".into())
+        );
+        assert_eq!(note("edit", "edited a (b).rs"), None);
+        assert_eq!(note("bash", "x (3 replacements)"), None);
     }
 
     #[tokio::test]
