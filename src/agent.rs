@@ -83,6 +83,14 @@ impl Agent {
         }
     }
 
+    pub fn history_len(&self) -> usize {
+        self.messages.len()
+    }
+
+    pub fn rollback(&mut self, len: usize) {
+        self.messages.truncate(len);
+    }
+
     pub async fn prompt(&mut self, prompt: &str, on_event: impl FnMut(AgentEvent)) -> Result<()> {
         let checkpoint = self.messages.len();
         let result = self.run(prompt, on_event).await;
