@@ -34,7 +34,9 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Clear, Paragraph, Wrap},
+    widgets::{
+        Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+    },
 };
 use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
 use serde_json::Value;
@@ -49,6 +51,7 @@ pub fn dark_theme() -> bool {
     matches!(Theme::detect(), Theme::Dark)
 }
 
+const MAX_LIST_ROWS: usize = 10;
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
@@ -1457,17 +1460,29 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let panel = if let Some(question) = &app.question {
         let view = question.view();
         let height = panel_height(view.line_count(chat.width));
-        Some((view, height))
+        Some((view, height, None))
     } else if let Some(search) = &app.history_search {
-        let height = panel_height(search.matches().len() + 2);
-        Some((history_view(search, height.saturating_sub(1)), height))
+        let count = search.matches().len();
+        let height = panel_height(count.min(MAX_LIST_ROWS) + 2);
+        let list = (count, 2, search.selected);
+        Some((
+            history_view(search, height.saturating_sub(1)),
+            height,
+            Some(list),
+        ))
     } else if let Some(picker) = &app.picker {
-        let height = panel_height(picker.items.len() + 1);
-        Some((picker_view(picker, height.saturating_sub(1)), height))
+        let count = picker.items.len();
+        let height = panel_height(count.min(MAX_LIST_ROWS) + 1);
+        let list = (count, 1, picker.selected);
+        Some((
+            picker_view(picker, height.saturating_sub(1)),
+            height,
+            Some(list),
+        ))
     } else {
         None
     };
-    let panel_height = panel.as_ref().map_or(0, |(_, height)| *height);
+    let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
     let conversation_area = Rect {
         height: chat.height - panel_height,
         ..chat
@@ -1485,7 +1500,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
     app.page_size = viewport_height.max(1);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
     frame.render_widget(conversation.scroll((scroll, 0)), conversation_area);
-    if let Some((view, height)) = panel {
+    if let Some((view, height, list)) = panel {
         let area = Rect {
             y: chat.y + chat.height - height,
             height,
@@ -1496,6 +1511,9 @@ fn draw(frame: &mut Frame, app: &mut App) {
             .border_style(Style::new().dark_gray());
         frame.render_widget(Clear, area);
         frame.render_widget(view.block(border), area);
+        if let Some((count, header, selected)) = list {
+            render_list_scrollbar(frame, area, count, header, selected);
+        }
     }
 
     if let Some(suggestions) = app
@@ -1564,6 +1582,32 @@ fn held_scroll_from_bottom(scroll_from_bottom: u16, old_max_scroll: u16, max_scr
     }
     let top = old_max_scroll.saturating_sub(scroll_from_bottom);
     max_scroll.saturating_sub(top)
+}
+
+fn render_list_scrollbar(
+    frame: &mut Frame,
+    area: Rect,
+    count: usize,
+    header: u16,
+    selected: usize,
+) {
+    let rows = area.height.saturating_sub(1 + header);
+    let visible = rows as usize;
+    if visible == 0 || count <= visible {
+        return;
+    }
+    let list_area = Rect {
+        y: area.y + 1 + header,
+        height: rows,
+        ..area
+    };
+    let mut state = ScrollbarState::new(count - visible + 1)
+        .viewport_content_length(visible)
+        .position((selected + 1).saturating_sub(visible));
+    let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+        .begin_symbol(None)
+        .end_symbol(None);
+    frame.render_stateful_widget(scrollbar, list_area, &mut state);
 }
 
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
@@ -2486,5 +2530,62 @@ mod tests {
         let shown = screen(&mut app);
         assert!(shown.contains("Earlier reply"), "{shown}");
         assert!(shown.contains("Prompt history"), "{shown}");
+    }
+
+    fn open_sessions(app: &mut App, count: usize) {
+        let sessions = (0..count)
+            .map(|index| SessionSummary {
+                id: index.to_string(),
+                modified: std::time::SystemTime::now(),
+                preview: format!("prompt {index:02}"),
+            })
+            .collect();
+        handle_agent_event(UiEvent::Sessions(Ok(sessions)), app);
+    }
+
+    #[test]
+    fn shows_at_most_ten_items_with_a_scrollbar() {
+        let mut app = app_with_reply();
+        open_sessions(&mut app, 15);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("prompt 00"), "{shown}");
+        assert!(shown.contains("prompt 09"), "{shown}");
+        assert!(!shown.contains("prompt 10"), "{shown}");
+        assert!(shown.contains('█'), "{shown}");
+        for _ in 0..12 {
+            press(&mut app, KeyCode::Down);
+        }
+        let shown = screen(&mut app);
+        assert!(!shown.contains("prompt 02"), "{shown}");
+        assert!(shown.contains("prompt 03"), "{shown}");
+        assert!(shown.contains("prompt 12"), "{shown}");
+        assert!(!shown.contains("prompt 13"), "{shown}");
+    }
+
+    #[test]
+    fn hides_the_scrollbar_when_items_fit() {
+        let mut app = app_with_reply();
+        open_sessions(&mut app, 10);
+        let shown = screen(&mut app);
+        assert!(shown.contains("prompt 09"), "{shown}");
+        assert!(!shown.contains('█'), "{shown}");
+    }
+
+    #[test]
+    fn shows_at_most_ten_history_prompts_with_a_scrollbar() {
+        let mut app = app_with_reply();
+        app.prompt_history = (0..15).map(|index| format!("prompt {index:02}")).collect();
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            &mut app,
+            |_| {},
+        );
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("prompt 14"), "{shown}");
+        assert!(shown.contains("prompt 05"), "{shown}");
+        assert!(!shown.contains("prompt 04"), "{shown}");
+        assert!(shown.contains('█'), "{shown}");
     }
 }
