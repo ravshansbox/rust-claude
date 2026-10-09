@@ -488,7 +488,7 @@ async fn agent_task(
             };
             let run = async {
                 match &prompt {
-                    Some(prompt) => agent.prompt(prompt, on_event).await,
+                    Some(prompt) => agent.prompt(prompt, &[], on_event).await,
                     None => agent.compact(on_event).await,
                 }
             };

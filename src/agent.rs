@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::{
     auth::Credentials,
+    images::Image,
     mcp::Mcp,
     models,
     session::{Session, SessionSummary},
@@ -597,10 +598,15 @@ impl Agent {
         self.session.save(&self.messages)
     }
 
-    pub async fn prompt(&mut self, prompt: &str, on_event: impl FnMut(AgentEvent)) -> Result<()> {
+    pub async fn prompt(
+        &mut self,
+        prompt: &str,
+        images: &[Image],
+        on_event: impl FnMut(AgentEvent),
+    ) -> Result<()> {
         let prompt = skills::expand_command(prompt, &self.skills.skills)?;
         let checkpoint = self.messages.len();
-        let result = self.run(&prompt, on_event).await;
+        let result = self.run(&prompt, images, on_event).await;
         if result.is_err() {
             self.discard_from(cancel_point(&self.messages, checkpoint), "error", false);
             self.session.save(&self.messages)?;
@@ -684,6 +690,8 @@ impl Agent {
         tool_choice: Option<Value>,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<(Vec<Value>, String, Usage)> {
+        let mut messages = messages;
+        self.session.inline_images(&mut messages)?;
         let mut attempt = 0;
         loop {
             match self
@@ -706,9 +714,24 @@ impl Agent {
         }
     }
 
-    async fn run(&mut self, prompt: &str, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
+    async fn run(
+        &mut self,
+        prompt: &str,
+        images: &[Image],
+        mut on_event: impl FnMut(AgentEvent),
+    ) -> Result<()> {
+        let content = if images.is_empty() {
+            json!(prompt)
+        } else {
+            let mut blocks = images
+                .iter()
+                .map(|image| self.session.save_image(image))
+                .collect::<Result<Vec<_>>>()?;
+            blocks.push(json!({ "type": "text", "text": prompt }));
+            Value::Array(blocks)
+        };
         self.messages
-            .push(json!({ "role": "user", "content": prompt }));
+            .push(json!({ "role": "user", "content": content }));
         on_event(AgentEvent::Stats(self.stats()));
         self.compact_if_full(self.messages.len() - 1, &mut on_event)
             .await?;

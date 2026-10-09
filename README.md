@@ -26,6 +26,12 @@ Run one prompt and print the answer with `-p` or `--print`:
 rust-claude -p "explain src/main.rs"
 ```
 
+Send images with the prompt with `--image <path>`. Repeat it for more images:
+
+```sh
+rust-claude -p "what is wrong in this screenshot?" --image error.png
+```
+
 In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal. Add `--hide-tools` to hide them.
 
 Show help with `-h` or `--help`.
@@ -137,9 +143,13 @@ The skill name comes from `name` in the frontmatter, or from the folder name. Na
 
 If a request fails with a rate limit (429), an overloaded API (529), a server error (5xx) or a connection error before the reply starts, rust-claude tries again up to 3 times. It waits 1, 2 and then 4 seconds, or as long as the `retry-after` header asks. It does not retry when `retry-after` is longer than 60 seconds. A notice shows each retry.
 
+## Images
+
+rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the limits. It scales larger images down to at most 2,000 pixels on the long edge, and converts other formats to PNG. If an image is still larger than 10 MB in base64, it uses JPEG at lower quality, then halves the size until it fits.
+
 ## Sessions
 
-Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
+Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-claude/sessions/<id>/`, and the session file refers to them by name.
 
 Quitting while a prompt runs cancels it and saves the session first.
 
