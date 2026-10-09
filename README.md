@@ -196,7 +196,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 
 ## Prompt history
 
-Press Ctrl+R to search earlier prompts. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down (or Ctrl+R again) select, Enter puts the prompt in the input to edit, and Esc closes the list. Repeated prompts show once, at their newest position.
+Press Ctrl+R to search earlier prompts. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
 
 rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The **All** tab reads this file. Prompts sent before this file existed are not in it.
 
