@@ -13,7 +13,8 @@ use anyhow::Result;
 use crossterm::{
     event::{
         DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        Event, EventStream, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind,
+        Event, EventStream, KeyCode, KeyEventKind, KeyModifiers, KeyboardEnhancementFlags,
+        MouseEventKind, PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
 };
@@ -348,8 +349,16 @@ pub async fn run(agent: Agent) -> Result<()> {
         ratatui::restore();
         return Err(error.into());
     }
+    let keyboard_enhanced = execute!(
+        std::io::stdout(),
+        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+    )
+    .is_ok();
 
     let result = run_loop(&mut terminal, agent).await;
+    if keyboard_enhanced {
+        let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
+    }
     let mouse_result = execute!(
         std::io::stdout(),
         DisableMouseCapture,
@@ -638,6 +647,17 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => return true,
             _ => {}
         }
+        return false;
+    }
+
+    if key.code == KeyCode::Enter
+        && key
+            .modifiers
+            .intersects(KeyModifiers::SHIFT | KeyModifiers::ALT)
+    {
+        app.input.insert(app.cursor, '\n');
+        app.cursor += 1;
+        app.input_changed();
         return false;
     }
 
@@ -1286,6 +1306,31 @@ mod tests {
         handle_input(control('a'), &mut app, |_| {});
         assert_eq!(app.cursor, 0);
         handle_input(control('e'), &mut app, |_| {});
+        assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn adds_newline_with_shift_or_alt_enter() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        let mut submitted = false;
+        for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
+            handle_input(Event::Paste("a".into()), &mut app, |_| {});
+            handle_input(
+                Event::Key(KeyEvent::new(KeyCode::Enter, modifiers)),
+                &mut app,
+                |_| submitted = true,
+            );
+        }
+        assert!(!submitted);
+        assert_eq!(app.input, "a\na\n");
         assert_eq!(app.cursor, app.input.len());
     }
 
