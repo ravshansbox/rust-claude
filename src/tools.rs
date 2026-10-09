@@ -137,6 +137,10 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
     match name {
         "bash" => {
+            let timeout = input["timeout"].as_u64();
+            if timeout == Some(0) {
+                return Err("timeout must be at least 1".into());
+            }
             let mut command = tokio::process::Command::new("bash");
             command
                 .args(["-lc", argument(input, "command")?])
@@ -151,7 +155,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 .map_err(|error| format!("failed to run command: {error}"))?;
             let mut process_group = ProcessGroup(child.id());
             let run = child.wait_with_output();
-            let output = match input["timeout"].as_u64() {
+            let output = match timeout {
                 Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
                     .await
                     .map_err(|_| format!("command timed out after {seconds}s"))?,
@@ -244,6 +248,15 @@ mod tests {
         assert_eq!(
             call("bash", &input).await,
             Err("command timed out after 1s".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_zero_timeout() {
+        let input = json!({ "command": "echo hi", "timeout": 0 });
+        assert_eq!(
+            call("bash", &input).await,
+            Err("timeout must be at least 1".into())
         );
     }
 
