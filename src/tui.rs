@@ -444,6 +444,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             KeyCode::Enter if !app.busy => {
                 app.input = matches[app.command_selected].0.to_string();
             }
+            KeyCode::Tab => {
+                app.input = matches[app.command_selected].0.to_string();
+                app.command_selected = 0;
+                return false;
+            }
             KeyCode::Esc => {
                 app.commands_dismissed = true;
                 return false;
