@@ -1117,20 +1117,15 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let input_rows = input_rows(&app.input, input_width);
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
     let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
-    let mut footer_lines = vec![
-        Line::raw(format!(
-            "{} · {}:{}",
-            app.workspace,
-            display_model(&app.model),
-            app.thinking_level
-        )),
-        Line::raw(format_stats(&app.stats)),
+    let mut footer_parts = vec![
+        app.workspace.to_string(),
+        format!("{}:{}", display_model(&app.model), app.thinking_level),
+        format_stats(&app.stats),
+        format_quota(&app.stats),
     ];
-    let quota = format_quota(&app.stats);
-    if !quota.is_empty() {
-        footer_lines.push(Line::raw(quota));
-    }
-    let footer_paragraph = Paragraph::new(footer_lines).wrap(Wrap { trim: false });
+    footer_parts.retain(|part| !part.is_empty());
+    let footer_paragraph =
+        Paragraph::new(Line::raw(footer_parts.join(" · "))).wrap(Wrap { trim: false });
     let footer_height = footer_paragraph
         .line_count(frame.area().width)
         .min(u16::MAX as usize) as u16;
