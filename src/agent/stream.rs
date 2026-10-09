@@ -41,12 +41,17 @@ impl Agent {
         if let Some(tool_choice) = tool_choice {
             body["tool_choice"] = tool_choice.clone();
         }
+        let mut beta = "oauth-2025-04-20";
+        if self.session.drops_mismatched_thinking() {
+            body["thinking"]["block_binding"] = json!({ "prefix_mismatch_behavior": "drop_block" });
+            beta = "oauth-2025-04-20,thinking-binding-controls-2026-08-01";
+        }
         let response = self
             .http
             .post(format!("{}/v1/messages", self.api_base))
             .bearer_auth(token)
             .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "oauth-2025-04-20")
+            .header("anthropic-beta", beta)
             .json(&body)
             .send()
             .await

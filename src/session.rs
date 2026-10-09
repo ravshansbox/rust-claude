@@ -21,6 +21,11 @@ pub struct SessionSummary {
 pub struct Session {
     pub id: String,
     saved: usize,
+    /// Whether requests ask the API to drop thinking blocks whose earlier
+    /// conversation changed, instead of rejecting the request.
+    drops_mismatched_thinking: bool,
+    /// Whether that choice still needs writing to the session file.
+    drops_mismatched_thinking_unsaved: bool,
 }
 
 fn sessions_directory() -> Result<PathBuf> {
@@ -50,11 +55,28 @@ impl Session {
         Ok(Self {
             id: new_uuid()?,
             saved: 0,
+            drops_mismatched_thinking: false,
+            drops_mismatched_thinking_unsaved: false,
         })
     }
 
+    pub fn drops_mismatched_thinking(&self) -> bool {
+        self.drops_mismatched_thinking
+    }
+
+    /// Makes every later request in this session, including after a resume,
+    /// drop thinking blocks whose earlier conversation changed. The choice is
+    /// written with the next save.
+    pub fn drop_mismatched_thinking(&mut self) {
+        if !self.drops_mismatched_thinking {
+            self.drops_mismatched_thinking = true;
+            self.drops_mismatched_thinking_unsaved = true;
+        }
+    }
+
     pub fn save(&mut self, messages: &[Value]) -> Result<()> {
-        if messages.len() <= self.saved {
+        let new_messages = messages.get(self.saved..).unwrap_or_default();
+        if new_messages.is_empty() && !self.drops_mismatched_thinking_unsaved {
             return Ok(());
         }
         let directory = sessions_directory()?;
@@ -68,12 +90,17 @@ impl Session {
             lines.push_str(&serde_json::to_string(&header())?);
             lines.push('\n');
         }
-        for message in &messages[self.saved..] {
+        for message in new_messages {
             lines.push_str(&serde_json::to_string(message)?);
             lines.push('\n');
         }
+        if self.drops_mismatched_thinking_unsaved {
+            lines.push_str(&serde_json::to_string(&drop_mismatched_thinking_line())?);
+            lines.push('\n');
+        }
         file.write_all(lines.as_bytes())?;
-        self.saved = messages.len();
+        self.saved += new_messages.len();
+        self.drops_mismatched_thinking_unsaved = false;
         Ok(())
     }
 
@@ -170,10 +197,18 @@ impl Session {
     }
 
     pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
-        let messages = read_messages(&sessions_directory()?.join(format!("{id}.jsonl")))?;
+        let lines = read_lines(&sessions_directory()?.join(format!("{id}.jsonl")))?;
+        let marker = drop_mismatched_thinking_line();
+        let drops_mismatched_thinking = lines.contains(&marker);
+        let messages: Vec<Value> = lines
+            .into_iter()
+            .filter(|line| !is_header(line) && *line != marker)
+            .collect();
         let session = Session {
             id: id.to_string(),
             saved: messages.len(),
+            drops_mismatched_thinking,
+            drops_mismatched_thinking_unsaved: false,
         };
         Ok((session, messages))
     }
@@ -218,6 +253,12 @@ fn is_header(line: &Value) -> bool {
     line["type"] == "session"
 }
 
+/// Records that the session drops thinking blocks whose earlier conversation
+/// changed.
+fn drop_mismatched_thinking_line() -> Value {
+    json!({ "type": "thinking_block_binding", "prefix_mismatch_behavior": "drop_block" })
+}
+
 fn read_folder(path: &Path) -> Result<Option<String>> {
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
     let Some(line) = std::io::BufRead::lines(reader).next().transpose()? else {
@@ -252,13 +293,12 @@ fn read_preview(path: &Path) -> Result<String> {
     Ok(String::new())
 }
 
-fn read_messages(path: &Path) -> Result<Vec<Value>> {
+fn read_lines(path: &Path) -> Result<Vec<Value>> {
     std::fs::read_to_string(path)?
         .lines()
         .filter(|line| !line.trim().is_empty())
         .map(serde_json::from_str)
         .collect::<Result<Vec<Value>, _>>()
-        .map(|lines| lines.into_iter().filter(|line| !is_header(line)).collect())
         .with_context(|| format!("reading {}", path.display()))
 }
 

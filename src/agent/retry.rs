@@ -55,6 +55,14 @@ pub(super) fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Durati
         .map(Duration::from_secs)
 }
 
+/// Whether the API rejected a request because a thinking block was made for
+/// an earlier system prompt, tool list or history than the one sent now.
+pub(super) fn is_thinking_mismatch(error: &anyhow::Error) -> bool {
+    error
+        .to_string()
+        .contains("The block is bound to a different conversation")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{retry_after, retry_delay, retryable};

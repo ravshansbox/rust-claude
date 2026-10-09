@@ -28,7 +28,7 @@ use context::{
     active_messages, context_tokens, estimate_prompt_tokens, estimate_text_tokens, estimate_tokens,
     has_uncompacted, is_compaction, scale_parts, with_cache_breakpoint,
 };
-use retry::{MAX_RETRIES, retry_delay};
+use retry::{MAX_RETRIES, is_thinking_mismatch, retry_delay};
 pub use system::Instructions;
 use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
 pub use usage::{Quota, Stats, Usage};
@@ -431,6 +431,16 @@ impl Agent {
                 .await
             {
                 Ok(reply) => return Ok(reply),
+                Err(error)
+                    if is_thinking_mismatch(&error)
+                        && !self.session.drops_mismatched_thinking() =>
+                {
+                    self.session.drop_mismatched_thinking();
+                    on_event(AgentEvent::Notice(
+                        "earlier thinking no longer matches the conversation; retrying without it"
+                            .into(),
+                    ));
+                }
                 Err(error) => {
                     let Some(delay) = retry_delay(&error, attempt) else {
                         return Err(error);
@@ -599,6 +609,58 @@ mod tests {
         assert_eq!(api.requests().await.len(), 2);
         let usage = agent.stats().usage;
         assert_eq!((usage.input, usage.output), (501, 2));
+    }
+
+    #[tokio::test]
+    async fn drops_thinking_bound_to_a_changed_conversation_for_the_rest_of_the_session() {
+        let mismatch = "messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation. Remove the block, or set `thinking.block_binding.prefix_mismatch_behavior` to \"drop_block\". The `tools` list differs from when the block was created.";
+        let api = MockApi::start(vec![
+            text_reply("first"),
+            Reply::BadRequest(mismatch.into()),
+            text_reply("second"),
+            text_reply("third"),
+            text_reply("after restart"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut notices = Vec::new();
+        let first = agent.prompt("one", &[], |_| {}).await;
+        let second = agent
+            .prompt("two", &[], |event| {
+                if let AgentEvent::Notice(notice) = event {
+                    notices.push(notice);
+                }
+            })
+            .await;
+        let third = agent.prompt("three", &[], |_| {}).await;
+        let mut restarted = test_support::agent(&api, reqwest::Client::new());
+        let resumed = restarted.resume(&agent.session.id);
+        let after_restart = restarted.prompt("four", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        first.unwrap();
+        second.unwrap();
+        third.unwrap();
+        resumed.unwrap();
+        after_restart.unwrap();
+        assert_eq!(notices.len(), 1, "{notices:?}");
+        let requests = api.requests().await;
+        let headers = api.headers().await;
+        assert_eq!(requests.len(), 5);
+        let drop_block = json!({ "prefix_mismatch_behavior": "drop_block" });
+        for index in 0..2 {
+            assert_eq!(requests[index]["thinking"].get("block_binding"), None);
+            assert!(!headers[index].contains("thinking-binding-controls-2026-08-01"));
+        }
+        for index in 2..5 {
+            assert_eq!(requests[index]["thinking"]["block_binding"], drop_block);
+            assert!(
+                headers[index].contains(
+                    "anthropic-beta: oauth-2025-04-20,thinking-binding-controls-2026-08-01"
+                ),
+                "{}",
+                headers[index]
+            );
+        }
     }
 
     #[tokio::test]
