@@ -15,7 +15,7 @@ pub fn summary(name: &str, input: &Value) -> String {
     let start = offset.unwrap_or(1).max(1);
     match (offset, limit) {
         (None, None) => value,
-        (_, Some(limit)) => format!("{value}:{start}-{}", start + limit.max(1) - 1),
+        (_, Some(limit)) => format!("{value}:{start}-{}", start.saturating_add(limit.max(1) - 1)),
         (Some(_), None) => format!("{value}:{start}-"),
     }
 }
@@ -116,6 +116,12 @@ fn write_preview(content: &str) -> Option<String> {
 mod tests {
     use super::{diff, note, summary};
     use serde_json::json;
+
+    #[test]
+    fn summarizes_reads_with_huge_limits() {
+        let input = json!({ "path": "a.txt", "offset": 5, "limit": u64::MAX });
+        assert_eq!(summary("read", &input), format!("a.txt:5-{}", u64::MAX));
+    }
 
     #[test]
     fn previews_first_lines_of_write() {
