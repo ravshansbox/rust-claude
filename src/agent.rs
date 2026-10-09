@@ -67,7 +67,12 @@ fn same_path(a: &Path, b: &Path) -> bool {
 fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
     let mut messages: Vec<Value> = messages
         .iter()
-        .filter(|message| message.get("stop_reason").is_none())
+        .filter(|message| {
+            message.get("stop_reason").is_none()
+                && message["content"]
+                    .as_array()
+                    .is_none_or(|blocks| !blocks.is_empty())
+        })
         .cloned()
         .collect();
     for message in &mut messages {
@@ -647,7 +652,19 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::{Quota, cache_hit_rate, context_tokens, parse_timestamp};
+    use super::{Quota, cache_hit_rate, context_tokens, parse_timestamp, with_cache_breakpoint};
+
+    #[test]
+    fn drops_empty_assistant_replies_from_requests() {
+        let messages = vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({ "role": "assistant", "content": [], "usage": { "output": 3 } }),
+            json!({ "role": "user", "content": "again" }),
+        ];
+        let request = with_cache_breakpoint(&messages);
+        assert_eq!(request.len(), 2);
+        assert_eq!(request[1]["content"][0]["text"], "again");
+    }
 
     #[test]
     fn keeps_quota_when_headers_are_missing() {
