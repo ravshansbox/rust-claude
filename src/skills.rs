@@ -172,7 +172,14 @@ fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
 
 fn collect_skill_files(dir: &Path, mode: Mode) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    collect_from(dir, dir, mode, &mut Vec::new(), &mut files);
+    collect_from(
+        dir,
+        dir,
+        mode,
+        &mut Vec::new(),
+        &mut HashSet::new(),
+        &mut files,
+    );
     files
 }
 
@@ -202,11 +209,18 @@ fn collect_from(
     root: &Path,
     mode: Mode,
     rules: &mut Vec<Gitignore>,
+    visited: &mut HashSet<PathBuf>,
     files: &mut Vec<PathBuf>,
 ) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
+    let Ok(real_dir) = dir.canonicalize() else {
+        return;
+    };
+    if !visited.insert(real_dir) {
+        return;
+    }
     rules.push(ignore_rules(dir));
     let mut entries: Vec<_> = entries.flatten().collect();
     entries.sort_by_key(|entry| entry.file_name());
@@ -242,7 +256,7 @@ fn collect_from(
         if !metadata.is_dir() || is_ignored(rules, &path, true) {
             continue;
         }
-        collect_from(&path, root, mode, rules, files);
+        collect_from(&path, root, mode, rules, visited, files);
     }
     rules.pop();
 }
@@ -617,6 +631,20 @@ mod tests {
                 dir.join("team/x/live/SKILL.md"),
             ]
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn visits_each_folder_once_through_symlink_loops() {
+        let root = temp_dir("symlink-loop");
+        let dir = root.join("skills");
+        write(&dir.join("a/SKILL.md"), "---\ndescription: A.\n---\n");
+        write(&dir.join("team/b/SKILL.md"), "---\ndescription: B.\n---\n");
+        std::os::unix::fs::symlink("..", dir.join("team/loop")).unwrap();
+
+        let files = collect_skill_files(&dir, Mode::Agents);
+        assert_eq!(files, [dir.join("a/SKILL.md"), dir.join("team/b/SKILL.md")]);
         let _ = std::fs::remove_dir_all(root);
     }
 
