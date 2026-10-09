@@ -128,6 +128,29 @@ pub struct Stats {
     pub cache_hit_rate: Option<f64>,
     pub context_tokens: u64,
     pub context_window: u64,
+    pub quota: Quota,
+}
+
+#[derive(Default, Clone, Copy)]
+pub struct Quota {
+    pub five_hour_remaining: Option<f64>,
+    pub seven_day_remaining: Option<f64>,
+}
+
+impl Quota {
+    fn from_headers(headers: &reqwest::header::HeaderMap) -> Self {
+        let remaining = |window: &str| {
+            headers
+                .get(format!("anthropic-ratelimit-unified-{window}-utilization"))
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<f64>().ok())
+                .map(|utilisation| (1.0 - utilisation) * 100.0)
+        };
+        Self {
+            five_hour_remaining: remaining("5h"),
+            seven_day_remaining: remaining("7d"),
+        }
+    }
 }
 
 fn estimate_tokens(message: &Value) -> u64 {
@@ -203,6 +226,7 @@ pub struct Agent {
     pub thinking_level: &'static str,
     messages: Vec<Value>,
     pending_usage: Usage,
+    quota: Quota,
     pub instructions: Vec<Instructions>,
     pub session: Session,
 }
@@ -216,6 +240,7 @@ impl Agent {
             thinking_level: DEFAULT_THINKING_LEVEL,
             messages: Vec::new(),
             pending_usage: Usage::default(),
+            quota: Quota::default(),
             instructions: load_instructions(),
             session: Session::new()?,
         })
@@ -280,6 +305,7 @@ impl Agent {
             cache_hit_rate,
             context_tokens: context_tokens(&self.messages),
             context_window: models::context_window(&self.model),
+            quota: self.quota,
         }
     }
 
@@ -403,6 +429,7 @@ impl Agent {
             .json(&body)
             .send()
             .await?;
+        self.quota = Quota::from_headers(response.headers());
         if !response.status().is_success() {
             let status = response.status();
             bail!("{status}: {}", response.text().await?);

@@ -748,6 +748,18 @@ fn format_stats(stats: &Stats) -> String {
     parts.join(" ")
 }
 
+fn format_quota(stats: &Stats) -> String {
+    [
+        ("5h", stats.quota.five_hour_remaining),
+        ("7d", stats.quota.seven_day_remaining),
+    ]
+    .into_iter()
+    .filter_map(|(label, remaining)| {
+        remaining.map(|remaining| format!(" · {label}:{remaining:.0}%"))
+    })
+    .collect()
+}
+
 fn context_span(stats: &Stats) -> Span<'static> {
     let percent = if stats.context_window > 0 {
         stats.context_tokens as f64 / stats.context_window as f64 * 100.0
@@ -878,6 +890,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
             Span::raw(format!("{}:{}", display_model(&app.model), app.thinking_level)),
             Span::raw(format!(" · {} ", format_stats(&app.stats))),
             context_span(&app.stats),
+            Span::raw(format_quota(&app.stats)),
         ])),
         footer,
     );
