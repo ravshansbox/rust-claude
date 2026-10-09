@@ -173,7 +173,10 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
                 similar::ChangeTag::Insert => '+',
                 similar::ChangeTag::Equal => ' ',
             };
-            format!("{sign}{}", change.value().trim_end_matches('\n'))
+            format!(
+                "{sign}{}",
+                change.value().trim_end_matches('\n').trim_start()
+            )
         })
         .collect();
     Some(lines.join("\n"))
@@ -187,7 +190,7 @@ fn write_preview(content: &str) -> Option<String> {
     let mut preview: Vec<String> = lines
         .iter()
         .take(WRITE_PREVIEW_LINES)
-        .map(|line| format!(" {line}"))
+        .map(|line| format!(" {}", line.trim_start()))
         .collect();
     let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
     if remaining > 0 {
@@ -531,6 +534,17 @@ mod tests {
         let input = json!({ "path": "a", "old_text": "a\nb\n", "new_text": "a\nc\n" });
         assert_eq!(diff("edit", &input), Some(" a\n-b\n+c".into()));
         assert_eq!(diff("write", &input), None);
+    }
+
+    #[test]
+    fn trims_leading_spaces_in_previews() {
+        let edit = json!({ "path": "a", "old_text": "    a\n\tb\n", "new_text": "    a\n  c\n" });
+        assert_eq!(diff("edit", &edit), Some(" a\n-b\n+c".into()));
+        let write = json!({ "path": "a", "content": "fn main() {\n    body\n}\n" });
+        assert_eq!(
+            diff("write", &write),
+            Some(" fn main() {\n body\n }".into())
+        );
     }
 
     #[test]
