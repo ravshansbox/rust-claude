@@ -1,6 +1,6 @@
 - Commit after every self-contained small fix.
 - See staged files before commit.
-- Ask questions as numbered lists with lettered options, mark the recommended one.
+- Give each question lettered options, mark the recommended one. Number questions only when there are more than 2.
 - Keep README.md up to date with every change.
 - Write the test first, watch it fail, then write the code.
 - Test in a user-observable way.
