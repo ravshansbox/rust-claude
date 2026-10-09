@@ -75,13 +75,39 @@ impl Credentials {
     }
 
     pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
+        if now_millis() < self.expires {
+            return Ok(self.access.clone());
+        }
+        // Another rust-claude may have renewed the tokens already. Its new
+        // refresh token replaces ours, so use what it saved.
+        self.adopt_saved();
         if now_millis() >= self.expires {
-            *self = self
-                .refresh(http)
-                .await
-                .context("sign-in expired: restart rust-claude to sign in again")?;
+            match self.refresh(http).await {
+                Ok(credentials) => *self = credentials,
+                Err(error) => {
+                    self.adopt_saved();
+                    if now_millis() >= self.expires {
+                        return Err(
+                            error.context("sign-in expired: restart rust-claude to sign in again")
+                        );
+                    }
+                }
+            }
         }
         Ok(self.access.clone())
+    }
+
+    /// Switches to the tokens in auth.json when they last longer than ours.
+    fn adopt_saved(&mut self) {
+        let saved = credentials_path()
+            .ok()
+            .and_then(|path| std::fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str::<Self>(&text).ok());
+        if let Some(saved) = saved
+            && saved.expires > self.expires
+        {
+            *self = saved;
+        }
     }
 
     pub fn take_renewed(&mut self) -> bool {
@@ -177,4 +203,28 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
     };
     credentials.save()?;
     Ok(credentials)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Credentials, credentials_path};
+    use serde_json::json;
+
+    #[tokio::test]
+    async fn uses_a_token_another_instance_renewed() {
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
+                .to_string(),
+        )
+        .unwrap();
+        let mut credentials: Credentials =
+            serde_json::from_value(json!({ "access": "old", "refresh": "spent", "expires": 0 }))
+                .unwrap();
+        let token = credentials.access_token(&reqwest::Client::new()).await;
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(token.unwrap(), "renewed");
+    }
 }
