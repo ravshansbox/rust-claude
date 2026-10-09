@@ -2,6 +2,114 @@
 
 A small coding agent for the terminal, written in Rust. It talks to Claude and can run shell commands and read, write and edit files in the current directory.
 
+## Features
+
+Core:
+
+- Sign in with a Claude Pro or Max account, with automatic token renewal
+- Streamed replies
+- Built-in tools: `bash`, `read`, `write` and `edit`
+- Interactive terminal interface
+
+Command line:
+
+- Print mode (`-p` / `--print`) to run one prompt and print the answer
+- `--hide-tools` to hide tool calls in print mode
+- `--image <path>` to send images in print mode
+- Syntax-highlighted tool calls on standard error in print mode
+- Help with `-h` / `--help`
+
+Model and thinking:
+
+- `/model` picker with the models available to your account
+- `/model <id>`, which checks the id before switching
+- Known context windows and output limits for each model
+- Thinking levels with `/thinking`, `/thinking <level>` and Shift+Tab
+- Thinking text shown in the conversation
+- Model and thinking level saved to `~/.rust-claude/settings.json`
+- `RUST_CLAUDE_MODEL` and `RUST_CLAUDE_THINKING` environment variables
+
+Sessions and context:
+
+- Sessions saved as JSON Lines files
+- `/resume` picker with previews and how long ago each session changed
+- Resumed sessions show messages, tool calls and failures as they appeared live
+- `/new` to start a new session
+- `/compact` to summarise the conversation
+- Automatic compaction when the context is 80% full
+- Finished tool calls kept when a prompt is cancelled or fails
+- Prompt caching
+
+Reliability:
+
+- Retries for rate limits, overload, server errors and connection errors, with back-off and `retry-after`
+- Timed-out commands stopped with all their background processes
+- Optional `timeout` for `bash`
+- Command output capped at 20,000 bytes as it arrives
+
+Tools:
+
+- `edit` with `replace_all` and a replacement count
+- `edit` support for files with Windows line endings
+- `read` with `offset` and `limit`, cutting long output at whole lines
+- `write` creates missing parent folders
+- Diff preview for `edit` and first-lines preview for `write`
+- Syntax highlighting in those previews
+- Consecutive `read` calls grouped on one line, with counts and line ranges
+
+Status line:
+
+- Input, output, cache read and cache write tokens
+- Cache hit rate
+- Output speed in tokens per second
+- Context use
+- 5-hour and 7-day quota with reset times, loaded at start and updated after each reply
+- Folder and Git branch
+
+Input and editing:
+
+- Multi-line input with Shift+Enter or Alt+Enter
+- Prompt history with Up and Down
+- Up and Down move between wrapped input rows
+- Move and delete by word
+- Ctrl+A and Ctrl+E to jump to the start or end
+- Bracketed paste
+- Tab completion for commands
+- `@` file picker
+
+Display:
+
+- Markdown replies, with tables wrapped to the window width
+- Light and dark theme detection
+- Mouse wheel scrolling
+- The view stays still while you read earlier text and a reply streams
+- Spinner with status text
+
+Images:
+
+- Paste images with Ctrl+V on macOS, Wayland and X11
+- Image markers in the prompt; deleting a marker removes the image
+- Large or unsupported images resized and converted
+- Session images saved to disk
+
+Instructions and skills:
+
+- `AGENTS.md` from your home folder and the current directory
+- [Agent Skills](https://agentskills.io/specification) from project and global folders, with ignore files, validation and collision warnings
+- `/skill:name` commands, marked `[global]` or `[project]`
+- Skills listed in the system prompt, unless `disable-model-invocation` is set
+
+MCP:
+
+- [MCP servers](#mcp-servers) over stdio, configured globally or per project
+- `~/` expansion, `env`, `cwd`, `timeout` and `enabled` options
+- Paginated tool lists, `ping` replies, and server error output shown in errors
+- Clear errors for HTTP and SSE servers, which are not supported yet
+
+Other:
+
+- [Architecture decision records](#decisions)
+
 ## Build
 
 ```sh
