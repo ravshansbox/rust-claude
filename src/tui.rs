@@ -32,6 +32,67 @@ enum Role {
 struct ChatMessage {
     role: Role,
     text: String,
+    rendered: Option<(u16, Vec<Line<'static>>)>,
+}
+
+impl ChatMessage {
+    fn append(&mut self, text: &str) {
+        self.text.push_str(text);
+        self.rendered = None;
+    }
+
+    fn render(&mut self, width: u16) {
+        if self
+            .rendered
+            .as_ref()
+            .is_none_or(|(rendered_width, _)| *rendered_width != width)
+        {
+            self.rendered = Some((width, render_message(self.role, &self.text, width)));
+        }
+    }
+}
+
+fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
+    match role {
+        Role::User => user_message_lines(text, width as usize),
+        Role::Assistant => tui_markdown::from_str(text)
+            .lines
+            .into_iter()
+            .map(owned_line)
+            .collect(),
+        Role::Thinking => text
+            .lines()
+            .map(|line| Line::from(line.to_string().dark_gray().italic()))
+            .collect(),
+        Role::Tool | Role::Event => text
+            .lines()
+            .map(|line| Line::raw(line.to_string()))
+            .collect(),
+    }
+}
+
+fn owned_line(line: Line<'_>) -> Line<'static> {
+    Line {
+        style: line.style,
+        alignment: line.alignment,
+        spans: line
+            .spans
+            .into_iter()
+            .map(|span| Span::styled(span.content.into_owned(), span.style))
+            .collect(),
+    }
+}
+
+fn borrowed_line<'a>(line: &'a Line<'static>) -> Line<'a> {
+    Line {
+        style: line.style,
+        alignment: line.alignment,
+        spans: line
+            .spans
+            .iter()
+            .map(|span| Span::styled(span.content.as_ref(), span.style))
+            .collect(),
+    }
 }
 
 struct App {
@@ -49,12 +110,9 @@ struct App {
 
 impl App {
     fn new(model: &str, thinking_level: &'static str) -> Self {
-        Self {
+        let mut app = Self {
             input: String::new(),
-            messages: vec![ChatMessage {
-                role: Role::Event,
-                text: "Ask me to inspect, explain, or edit this project.".into(),
-            }],
+            messages: Vec::new(),
             model: model.into(),
             thinking_level,
             status: String::new(),
@@ -63,13 +121,19 @@ impl App {
             max_scroll: 0,
             page_size: 1,
             busy: false,
-        }
+        };
+        app.push(
+            Role::Event,
+            "Ask me to inspect, explain, or edit this project.",
+        );
+        app
     }
 
     fn push(&mut self, role: Role, text: impl Into<String>) {
         self.messages.push(ChatMessage {
             role,
             text: text.into(),
+            rendered: None,
         });
     }
 
@@ -259,11 +323,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
 fn handle_agent_event(event: UiEvent, app: &mut App) {
     match event {
         UiEvent::Agent(AgentEvent::Text(text)) => match app.messages.last_mut() {
-            Some(last) if matches!(last.role, Role::Assistant) => last.text.push_str(&text),
+            Some(last) if matches!(last.role, Role::Assistant) => last.append(&text),
             _ => app.push(Role::Assistant, text),
         },
         UiEvent::Agent(AgentEvent::Thinking(text)) => match app.messages.last_mut() {
-            Some(last) if matches!(last.role, Role::Thinking) => last.text.push_str(&text),
+            Some(last) if matches!(last.role, Role::Thinking) => last.append(&text),
             _ => app.push(Role::Thinking, text),
         },
         UiEvent::Agent(AgentEvent::ToolStart { name, summary }) => {
@@ -326,27 +390,14 @@ fn draw(frame: &mut Frame, app: &mut App) {
         .areas(frame.area());
 
     let chat = chat.inner(Margin::new(1, 0));
+    for message in &mut app.messages {
+        message.render(chat.width);
+    }
     let mut lines = Vec::new();
     for message in &app.messages {
         lines.push(Line::default());
-        match message.role {
-            Role::User => {
-                lines.extend(user_message_lines(&message.text, chat.width as usize));
-            }
-            Role::Assistant => {
-                lines.extend(tui_markdown::from_str(&message.text).lines);
-            }
-            Role::Thinking => {
-                lines.extend(
-                    message
-                        .text
-                        .lines()
-                        .map(|line| Line::from(line.to_string().dark_gray().italic())),
-                );
-            }
-            Role::Tool | Role::Event => {
-                lines.extend(message.text.lines().map(Line::raw));
-            }
+        if let Some((_, rendered)) = &message.rendered {
+            lines.extend(rendered.iter().map(borrowed_line));
         }
     }
     if app.busy {
