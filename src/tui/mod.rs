@@ -5,6 +5,8 @@ mod status;
 
 use crate::{
     agent::{Agent, AgentEvent, Stats, THINKING_LEVELS},
+    clipboard,
+    images::{self, Image},
     session::SessionSummary,
     settings::Settings,
     skills::{self, Skill},
@@ -137,6 +139,8 @@ struct App {
     history_index: Option<usize>,
     reads: tools::ReadGroup,
     skills: Vec<Skill>,
+    images: Vec<(usize, Image)>,
+    image_count: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -178,6 +182,8 @@ impl App {
             history_index: None,
             reads: tools::ReadGroup::default(),
             skills: Vec::new(),
+            images: Vec::new(),
+            image_count: 0,
         };
         app.push(
             Role::Event,
@@ -316,6 +322,23 @@ impl App {
         }
     }
 
+    fn attach_image(&mut self, image: Image) {
+        self.image_count += 1;
+        let marker = image_marker(self.image_count);
+        self.input.insert_str(self.cursor, &marker);
+        self.cursor += marker.len();
+        self.images.push((self.image_count, image));
+        self.input_changed();
+    }
+
+    fn take_images(&mut self, prompt: &str) -> Vec<Image> {
+        std::mem::take(&mut self.images)
+            .into_iter()
+            .filter(|(number, _)| prompt.contains(&image_marker(*number)))
+            .map(|(_, image)| image)
+            .collect()
+    }
+
     fn start(&mut self, status: &str) {
         self.status = status.into();
         self.busy = true;
@@ -357,6 +380,10 @@ impl App {
     }
 }
 
+fn image_marker(number: usize) -> String {
+    format!("[image {number}]")
+}
+
 pub async fn run(agent: Agent) -> Result<()> {
     THEME.get_or_init(Theme::detect);
     let mut terminal = ratatui::init();
@@ -394,10 +421,11 @@ enum UiEvent {
     NewSession(Result<()>),
     Models(Result<Vec<String>>),
     ModelChecked(Result<String>),
+    ImagePasted(Result<Option<Image>>),
 }
 
 enum Request {
-    Prompt(String, &'static str),
+    Prompt(String, Vec<Image>, &'static str),
     Compact(&'static str),
     ListSessions,
     Resume(String),
@@ -437,7 +465,9 @@ async fn agent_task(
         };
         let Some(request) = request else { break };
         let (prompt, thinking_level) = match request {
-            Request::Prompt(prompt, thinking_level) => (Some(prompt), thinking_level),
+            Request::Prompt(prompt, images, thinking_level) => {
+                (Some((prompt, images)), thinking_level)
+            }
             Request::Compact(thinking_level) => (None, thinking_level),
             Request::ListSessions => {
                 let _ = events.send(UiEvent::Sessions(agent.list_sessions()));
@@ -488,7 +518,7 @@ async fn agent_task(
             };
             let run = async {
                 match &prompt {
-                    Some(prompt) => agent.prompt(prompt, &[], on_event).await,
+                    Some((prompt, images)) => agent.prompt(prompt, images, on_event).await,
                     None => agent.compact(on_event).await,
                 }
             };
@@ -534,6 +564,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let image_events = event_tx.clone();
     let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
@@ -562,8 +593,16 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     None => break Ok(()),
                 };
                 let quit = handle_input(event, &mut app, |action| match action {
-                    Action::Submit(prompt, thinking_level) => {
-                        let _ = request_tx.send(Request::Prompt(prompt, thinking_level));
+                    Action::Submit(prompt, images, thinking_level) => {
+                        let _ = request_tx.send(Request::Prompt(prompt, images, thinking_level));
+                    }
+                    Action::PasteImage => {
+                        let events = image_events.clone();
+                        tokio::task::spawn_blocking(move || {
+                            let result = clipboard::read_image()
+                                .and_then(|data| data.map(images::prepare).transpose());
+                            let _ = events.send(UiEvent::ImagePasted(result));
+                        });
                     }
                     Action::Compact(thinking_level) => {
                         let _ = request_tx.send(Request::Compact(thinking_level));
@@ -635,7 +674,8 @@ fn save_changed_settings(
 }
 
 enum Action {
-    Submit(String, &'static str),
+    Submit(String, Vec<Image>, &'static str),
+    PasteImage,
     Compact(&'static str),
     ListSessions,
     Resume(String),
@@ -837,7 +877,8 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         }
                         app.prompt_history.push(prompt.clone());
                         app.start("working");
-                        act(Action::Submit(prompt, app.thinking_level));
+                        let images = app.take_images(&prompt);
+                        act(Action::Submit(prompt, images, app.thinking_level));
                     }
                     command => app.push(Role::Event, format!("unknown command: {command}")),
                 }
@@ -846,7 +887,8 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.push(Role::User, prompt.clone());
             app.prompt_history.push(prompt.clone());
             app.start("working");
-            act(Action::Submit(prompt, app.thinking_level));
+            let images = app.take_images(&prompt);
+            act(Action::Submit(prompt, images, app.thinking_level));
         }
         (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
             app.cursor = previous_word_start(&app.input, app.cursor);
@@ -854,6 +896,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Right | KeyCode::Char('f'), KeyModifiers::ALT) => {
             app.cursor = next_word_end(&app.input, app.cursor);
         }
+        (KeyCode::Char('v'), KeyModifiers::CONTROL) => act(Action::PasteImage),
         (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
         (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
         (KeyCode::Left, _) => {
@@ -964,6 +1007,11 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 selected,
             });
         }),
+        UiEvent::ImagePasted(Ok(Some(image))) => app.attach_image(image),
+        UiEvent::ImagePasted(Ok(None)) => app.push(Role::Event, "no image in the clipboard"),
+        UiEvent::ImagePasted(Err(error)) => {
+            app.push(Role::Event, format!("failed to paste image: {error}"));
+        }
         UiEvent::Resumed(result) => app.finish(result, |app, messages| {
             app.clear_session();
             replay_messages(app, &messages);
@@ -995,21 +1043,7 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
         }
         let role = message["role"].as_str().unwrap_or_default();
         if let Some(text) = message["content"].as_str() {
-            match skills::parse_block(text) {
-                Some(block) => {
-                    app.push(Role::Event, format!("[skill] {}", block.name));
-                    let mut command = format!("/skill:{}", block.name);
-                    if let Some(user_message) = block.user_message {
-                        app.push(Role::User, user_message);
-                        command = format!("{command} {user_message}");
-                    }
-                    app.prompt_history.push(command);
-                }
-                None => {
-                    app.push(Role::User, text);
-                    app.prompt_history.push(text.to_string());
-                }
-            }
+            replay_prompt(app, text);
             continue;
         }
         for block in message["content"].as_array().into_iter().flatten() {
@@ -1042,13 +1076,27 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
                         None => {}
                     }
                 }
-                ("user", "text") => {
-                    let text = block["text"].as_str().unwrap_or_default();
-                    app.push(Role::User, text);
-                    app.prompt_history.push(text.to_string());
-                }
+                ("user", "text") => replay_prompt(app, block["text"].as_str().unwrap_or_default()),
                 _ => {}
             }
+        }
+    }
+}
+
+fn replay_prompt(app: &mut App, text: &str) {
+    match skills::parse_block(text) {
+        Some(block) => {
+            app.push(Role::Event, format!("[skill] {}", block.name));
+            let mut command = format!("/skill:{}", block.name);
+            if let Some(user_message) = block.user_message {
+                app.push(Role::User, user_message);
+                command = format!("{command} {user_message}");
+            }
+            app.prompt_history.push(command);
+        }
+        None => {
+            app.push(Role::User, text);
+            app.prompt_history.push(text.to_string());
         }
     }
 }
@@ -1240,8 +1288,8 @@ fn display_model(model: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, App, Role, UiEvent, file_matches, file_query, handle_agent_event, handle_input,
-        held_scroll_from_bottom, replay_messages,
+        Action, App, Image, Role, UiEvent, file_matches, file_query, handle_agent_event,
+        handle_input, held_scroll_from_bottom, replay_messages,
     };
     use crate::agent::{AgentEvent, Quota, Stats, Usage};
     use crate::skills::Skill;
@@ -1567,6 +1615,54 @@ mod tests {
     }
 
     #[test]
+    fn sends_pasted_images_whose_markers_remain() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        let mut pasting = false;
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
+            &mut app,
+            |action| pasting = matches!(action, Action::PasteImage),
+        );
+        assert!(pasting);
+        let image = |byte| Image {
+            media_type: "image/png",
+            data: vec![byte],
+        };
+        handle_agent_event(UiEvent::ImagePasted(Ok(Some(image(1)))), &mut app);
+        handle_agent_event(UiEvent::ImagePasted(Ok(Some(image(2)))), &mut app);
+        assert_eq!(app.input, "[image 1][image 2]");
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Backspace)),
+            &mut app,
+            |_| {},
+        );
+        handle_input(Event::Paste(" look".into()), &mut app, |_| {});
+        let mut sent = None;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::Submit(prompt, images, _) = action {
+                    sent = Some((prompt, images));
+                }
+            },
+        );
+        assert_eq!(
+            sent,
+            Some(("[image 1][image 2 look".into(), vec![image(1)]))
+        );
+        assert!(app.images.is_empty());
+    }
+
+    #[test]
     fn keeps_scrolled_view_still_while_content_grows() {
         assert_eq!(held_scroll_from_bottom(0, 10, 15), 0);
         assert_eq!(held_scroll_from_bottom(1, 15, 20), 6);
@@ -1684,7 +1780,7 @@ mod tests {
             Event::Key(KeyEvent::from(KeyCode::Enter)),
             &mut live,
             |action| {
-                if let Action::Submit(prompt, _) = action {
+                if let Action::Submit(prompt, _, _) = action {
                     submitted = Some(prompt);
                 }
             },

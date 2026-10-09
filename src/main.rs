@@ -1,5 +1,6 @@
 mod agent;
 mod auth;
+mod clipboard;
 mod highlight;
 mod images;
 mod mcp;
