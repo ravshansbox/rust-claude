@@ -261,7 +261,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
         }
         UiEvent::Agent(AgentEvent::Usage(usage)) => {
             app.usage = format!(
-                "↑{} · {} cache read · {} cache write · ↓{}",
+                "↑{} · R{} · W{} · ↓{}",
                 format_tokens(usage.input),
                 format_tokens(usage.cache_read),
                 format_tokens(usage.cache_write),
