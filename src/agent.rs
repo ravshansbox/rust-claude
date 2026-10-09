@@ -158,6 +158,16 @@ impl Agent {
                                 block["text"] = json!(format!("{previous}{text}"));
                                 on_event(AgentEvent::Text(text.into()));
                             }
+                            "thinking_delta" => {
+                                let thinking = delta["thinking"].as_str().unwrap_or_default();
+                                let previous = block["thinking"].as_str().unwrap_or_default();
+                                block["thinking"] = json!(format!("{previous}{thinking}"));
+                            }
+                            "signature_delta" => {
+                                let signature = delta["signature"].as_str().unwrap_or_default();
+                                let previous = block["signature"].as_str().unwrap_or_default();
+                                block["signature"] = json!(format!("{previous}{signature}"));
+                            }
                             "input_json_delta" => {
                                 partial_json
                                     .push_str(delta["partial_json"].as_str().unwrap_or_default());
