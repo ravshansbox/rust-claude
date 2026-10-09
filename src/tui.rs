@@ -7,8 +7,8 @@ use crate::{
 use anyhow::Result;
 use crossterm::{
     event::{
-        DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEventKind,
-        KeyModifiers, MouseEventKind,
+        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
+        Event, EventStream, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind,
     },
     execute,
 };
@@ -247,13 +247,17 @@ impl App {
 
 pub async fn run(agent: Agent) -> Result<()> {
     let mut terminal = ratatui::init();
-    if let Err(error) = execute!(std::io::stdout(), EnableMouseCapture) {
+    if let Err(error) = execute!(std::io::stdout(), EnableMouseCapture, EnableBracketedPaste) {
         ratatui::restore();
         return Err(error.into());
     }
 
     let result = run_loop(&mut terminal, agent).await;
-    let mouse_result = execute!(std::io::stdout(), DisableMouseCapture);
+    let mouse_result = execute!(
+        std::io::stdout(),
+        DisableMouseCapture,
+        DisableBracketedPaste
+    );
     ratatui::restore();
 
     mouse_result?;
@@ -451,6 +455,15 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             MouseEventKind::ScrollUp => app.scroll_up(3),
             MouseEventKind::ScrollDown => app.scroll_down(3),
             _ => {}
+        }
+        return false;
+    }
+    if let Event::Paste(text) = event {
+        if app.picker.is_none() {
+            app.input
+                .push_str(&text.replace("\r\n", "\n").replace('\r', "\n"));
+            app.command_selected = 0;
+            app.commands_dismissed = false;
         }
         return false;
     }
@@ -965,6 +978,11 @@ fn input_rows(input: &str, width: usize) -> Vec<String> {
     let mut rows = vec![String::new()];
     let mut row_width = 0;
     for character in input.chars() {
+        if character == '\n' {
+            rows.push(String::new());
+            row_width = 0;
+            continue;
+        }
         let character_width = character.width().unwrap_or(0);
         if row_width > 0 && row_width + character_width > width {
             rows.push(String::new());
@@ -1127,6 +1145,26 @@ mod tests {
         assert_eq!(input_rows("你好世界", 5), vec!["你好", "世界"]);
         assert_eq!(input_rows("abcd", 4), vec!["abcd", ""]);
         assert_eq!(input_rows("", 4), vec![""]);
+        assert_eq!(input_rows("ab\ncd\n", 4), vec!["ab", "cd", ""]);
+    }
+
+    #[test]
+    fn pastes_multiple_lines_without_submitting() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        let mut submitted = false;
+        let quit = handle_input(Event::Paste("first\r\nsecond".into()), &mut app, |action| {
+            submitted |= matches!(action, Action::Submit(..));
+        });
+        assert!(!quit);
+        assert!(!submitted);
+        assert_eq!(app.input, "first\nsecond");
     }
 
     #[test]
