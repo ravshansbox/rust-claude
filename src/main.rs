@@ -77,11 +77,15 @@ async fn main() -> Result<()> {
         .ok()
         .or(settings.thinking_level);
     let mut agent = agent::Agent::new(http, credentials, model)?;
-    if let Some(level) = agent::THINKING_LEVELS
-        .iter()
-        .find(|level| Some(**level) == thinking_level.as_deref())
-    {
-        agent.thinking_level = level;
+    if let Some(name) = thinking_level {
+        match agent::THINKING_LEVELS.iter().find(|level| **level == name) {
+            Some(level) => agent.thinking_level = level,
+            None => eprintln!(
+                "unknown thinking level: {name} (options: {}), using {}",
+                agent::THINKING_LEVELS.join(", "),
+                agent::DEFAULT_THINKING_LEVEL
+            ),
+        }
     }
 
     let Some(prompt) = print_prompt else {

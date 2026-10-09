@@ -79,6 +79,8 @@ Each reply may use up to the model's full output limit (64,000 or 128,000 tokens
 
 Environment variables take priority over the settings file.
 
+An unknown thinking level prints a warning to standard error and uses `medium`.
+
 Changing the model or thinking level in the interface saves only the setting you changed.
 
 ## Instructions
