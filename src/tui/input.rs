@@ -1,18 +1,26 @@
 use unicode_width::UnicodeWidthChar;
 
+fn starts_new_row(character: char, character_width: usize, row_width: usize, width: usize) -> bool {
+    if character == '\n' {
+        row_width >= width
+    } else {
+        row_width > 0 && row_width + character_width > width
+    }
+}
+
 pub(super) fn input_rows(input: &str, width: usize) -> Vec<String> {
     let mut rows = vec![String::new()];
     let mut row_width = 0;
     for character in input.chars() {
+        let character_width = character.width().unwrap_or(0);
+        if starts_new_row(character, character_width, row_width, width) {
+            rows.push(String::new());
+            row_width = 0;
+        }
         if character == '\n' {
             rows.push(String::new());
             row_width = 0;
             continue;
-        }
-        let character_width = character.width().unwrap_or(0);
-        if row_width > 0 && row_width + character_width > width {
-            rows.push(String::new());
-            row_width = 0;
         }
         if let Some(row) = rows.last_mut() {
             row.push(character);
@@ -63,7 +71,7 @@ pub(super) fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, 
     let mut row_width = 0;
     for (index, character) in input.char_indices() {
         let character_width = character.width().unwrap_or(0);
-        if character != '\n' && row_width > 0 && row_width + character_width > width {
+        if starts_new_row(character, character_width, row_width, width) {
             row += 1;
             row_width = 0;
         }
@@ -90,7 +98,7 @@ fn index_at(input: &str, target_row: usize, column: usize, width: usize) -> usiz
     let mut last_index = 0;
     for (index, character) in input.char_indices() {
         let character_width = character.width().unwrap_or(0);
-        if character != '\n' && row_width > 0 && row_width + character_width > width {
+        if starts_new_row(character, character_width, row_width, width) {
             if row == target_row {
                 return last_index;
             }
@@ -174,6 +182,15 @@ mod tests {
         assert_eq!(row_below("abc你d", 2, 4), Some(6));
         assert_eq!(row_above("ab你cdef", 5, 3), Some(1));
         assert_eq!(row_below("abcd", 0, 4), Some(4));
+    }
+
+    #[test]
+    fn moves_newline_after_full_row_to_next_row() {
+        assert_eq!(input_rows("abcd\nx", 4), vec!["abcd", "", "x"]);
+        assert_eq!(input_cursor("abcd\nx", 4, 4), (1, 0));
+        assert_eq!(input_cursor("abcd\nx", 5, 4), (2, 0));
+        assert_eq!(row_below("abcd\nx", 4, 4), Some(5));
+        assert_eq!(row_above("abcd\nx", 5, 4), Some(4));
     }
 
     #[test]
