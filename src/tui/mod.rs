@@ -318,6 +318,7 @@ enum UiEvent {
     Resumed(Result<Vec<Value>>),
     NewSession(Result<()>),
     Models(Result<Vec<String>>),
+    ModelChecked(Result<String>),
 }
 
 enum Request {
@@ -325,6 +326,7 @@ enum Request {
     ListSessions,
     Resume(String),
     SetModel(String),
+    CheckModel(String),
     NewSession,
     ListModels,
 }
@@ -372,6 +374,20 @@ async fn agent_task(
             Request::ListModels => {
                 let _ = events.send(UiEvent::Models(agent.list_models().await));
                 notify_renewed(&mut agent, &events);
+                continue;
+            }
+            Request::CheckModel(model) => {
+                let result = match agent.list_models().await {
+                    Ok(models) if models.contains(&model) => {
+                        agent.model = model.clone();
+                        Ok(model)
+                    }
+                    Ok(_) => Err(anyhow::anyhow!("unknown model: {model}")),
+                    Err(error) => Err(error),
+                };
+                let _ = events.send(UiEvent::ModelChecked(result));
+                notify_renewed(&mut agent, &events);
+                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
         };
@@ -446,6 +462,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::SetModel(model) => {
                         let _ = request_tx.send(Request::SetModel(model));
                     }
+                    Action::CheckModel(model) => {
+                        let _ = request_tx.send(Request::CheckModel(model));
+                    }
                     Action::NewSession => {
                         let _ = request_tx.send(Request::NewSession);
                     }
@@ -456,20 +475,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                         let _ = cancel_tx.send(());
                     }
                 });
-                if app.model != saved_model || app.thinking_level != saved_thinking_level {
-                    let mut settings = Settings::load();
-                    if app.model != saved_model {
-                        saved_model = app.model.clone();
-                        settings.model = Some(saved_model.clone());
-                    }
-                    if app.thinking_level != saved_thinking_level {
-                        saved_thinking_level = app.thinking_level;
-                        settings.thinking_level = Some(saved_thinking_level.to_string());
-                    }
-                    if let Err(error) = settings.save() {
-                        app.push(Role::Event, format!("failed to save settings: {error}"));
-                    }
-                }
+                save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
                 if quit {
                     break Ok(());
                 }
@@ -481,6 +487,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     handle_agent_event(event, &mut app);
                     next = event_rx.try_recv().ok();
                 }
+                save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
             }
         }
     };
@@ -490,11 +497,34 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     result
 }
 
+fn save_changed_settings(
+    app: &mut App,
+    saved_model: &mut String,
+    saved_thinking_level: &mut &'static str,
+) {
+    if app.model == *saved_model && app.thinking_level == *saved_thinking_level {
+        return;
+    }
+    let mut settings = Settings::load();
+    if app.model != *saved_model {
+        *saved_model = app.model.clone();
+        settings.model = Some(saved_model.clone());
+    }
+    if app.thinking_level != *saved_thinking_level {
+        *saved_thinking_level = app.thinking_level;
+        settings.thinking_level = Some(saved_thinking_level.to_string());
+    }
+    if let Err(error) = settings.save() {
+        app.push(Role::Event, format!("failed to save settings: {error}"));
+    }
+}
+
 enum Action {
     Submit(String, &'static str),
     ListSessions,
     Resume(String),
     SetModel(String),
+    CheckModel(String),
     NewSession,
     ListModels,
     Cancel,
@@ -644,8 +674,8 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         act(Action::ListModels);
                     }
                     "/model" => {
-                        app.set_model(argument);
-                        act(Action::SetModel(argument.to_string()));
+                        app.start("checking model");
+                        act(Action::CheckModel(argument.to_string()));
                     }
                     "/resume" => {
                         app.start("loading sessions");
@@ -753,6 +783,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.clear_session();
             app.push(Role::Event, "new session");
         }),
+        UiEvent::ModelChecked(result) => app.finish(result, |app, model| app.set_model(&model)),
         UiEvent::Models(result) => app.finish(result, |app, models| {
             if models.is_empty() {
                 app.push(Role::Event, "no models available");
@@ -1022,6 +1053,33 @@ mod tests {
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use serde_json::json;
+
+    #[test]
+    fn checks_model_before_selecting_it() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        handle_input(Event::Paste("/model other".into()), &mut app, |_| {});
+        let mut checked = None;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::CheckModel(model) = action {
+                    checked = Some(model);
+                }
+            },
+        );
+        assert_eq!(checked.as_deref(), Some("other"));
+        assert_eq!(app.model, "model");
+        assert!(app.busy);
+    }
 
     #[test]
     fn ignores_escape_while_loading_models() {
