@@ -160,6 +160,8 @@ struct App {
     picker: Option<Picker>,
     command_selected: usize,
     commands_dismissed: bool,
+    prompt_history: Vec<String>,
+    history_index: Option<usize>,
 }
 
 #[derive(Clone, Copy)]
@@ -194,6 +196,8 @@ impl App {
             picker: None,
             command_selected: 0,
             commands_dismissed: false,
+            prompt_history: Vec::new(),
+            history_index: None,
         };
         app.push(
             Role::Event,
@@ -227,6 +231,29 @@ impl App {
 
     fn scroll_to_bottom(&mut self) {
         self.scroll_from_bottom = 0;
+    }
+
+    fn previous_prompt(&mut self) {
+        let index = match self.history_index {
+            Some(index) => index.saturating_sub(1),
+            None if self.prompt_history.is_empty() => return,
+            None => self.prompt_history.len() - 1,
+        };
+        self.history_index = Some(index);
+        self.input = self.prompt_history[index].clone();
+    }
+
+    fn next_prompt(&mut self) {
+        let Some(index) = self.history_index else {
+            return;
+        };
+        if index + 1 < self.prompt_history.len() {
+            self.history_index = Some(index + 1);
+            self.input = self.prompt_history[index + 1].clone();
+        } else {
+            self.history_index = None;
+            self.input.clear();
+        }
     }
 
     fn visible_commands(&self) -> Vec<(&'static str, &'static str)> {
@@ -462,6 +489,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         if app.picker.is_none() {
             app.input
                 .push_str(&text.replace("\r\n", "\n").replace('\r', "\n"));
+            app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
         }
@@ -545,6 +573,10 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Esc, _) => return true,
         (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => return true,
         (KeyCode::BackTab, _) => app.cycle_thinking_level(),
+        (KeyCode::Up, _) if app.input.is_empty() || app.history_index.is_some() => {
+            app.previous_prompt();
+        }
+        (KeyCode::Down, _) if app.history_index.is_some() => app.next_prompt(),
         (KeyCode::Up, _) => app.scroll_up(1),
         (KeyCode::Down, _) => app.scroll_down(1),
         (KeyCode::PageUp, _) => app.scroll_up(app.page_size),
@@ -554,6 +586,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Enter, _) if !app.busy && !app.input.trim().is_empty() => {
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
+            app.history_index = None;
             if prompt.starts_with('/') {
                 let (command, argument) = prompt
                     .trim()
@@ -615,17 +648,20 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                 return false;
             }
             app.push(Role::User, prompt.clone());
+            app.prompt_history.push(prompt.clone());
             app.status = "working".into();
             app.busy = true;
             act(Action::Submit(prompt, app.thinking_level));
         }
         (KeyCode::Backspace, _) => {
             app.input.pop();
+            app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
         }
         (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
             app.input.push(character);
+            app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
         }
@@ -695,6 +731,8 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             match result {
                 Ok(()) => {
                     app.messages.clear();
+                    app.prompt_history.clear();
+                    app.history_index = None;
                     app.push(Role::Event, "new session");
                 }
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
@@ -727,6 +765,8 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             match result {
                 Ok(messages) => {
                     app.messages.clear();
+                    app.prompt_history.clear();
+                    app.history_index = None;
                     replay_messages(app, &messages);
                     app.push(Role::Event, "resumed session");
                 }
@@ -742,6 +782,7 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
         let role = message["role"].as_str().unwrap_or_default();
         if let Some(text) = message["content"].as_str() {
             app.push(Role::User, text);
+            app.prompt_history.push(text.to_string());
             continue;
         }
         for block in message["content"].as_array().into_iter().flatten() {
@@ -763,7 +804,9 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
                     );
                 }
                 ("user", "text") => {
-                    app.push(Role::User, block["text"].as_str().unwrap_or_default());
+                    let text = block["text"].as_str().unwrap_or_default();
+                    app.push(Role::User, text);
+                    app.prompt_history.push(text.to_string());
                 }
                 _ => {}
             }
@@ -844,7 +887,10 @@ fn context_span(stats: &Stats) -> Span<'static> {
     } else {
         0.0
     };
-    Span::raw(format!("{percent:.1}%/{}", format_tokens(stats.context_window)))
+    Span::raw(format!(
+        "{percent:.1}%/{}",
+        format_tokens(stats.context_window)
+    ))
 }
 
 fn format_tokens(count: u64) -> String {
@@ -1165,6 +1211,34 @@ mod tests {
         assert!(!quit);
         assert!(!submitted);
         assert_eq!(app.input, "first\nsecond");
+    }
+
+    #[test]
+    fn walks_through_prompt_history() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        for prompt in ["first", "second"] {
+            handle_input(Event::Paste(prompt.into()), &mut app, |_| {});
+            handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+            app.busy = false;
+        }
+        let mut press = |app: &mut App, code| {
+            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
+            app.input.clone()
+        };
+        assert_eq!(press(&mut app, KeyCode::Up), "second");
+        assert_eq!(press(&mut app, KeyCode::Up), "first");
+        assert_eq!(press(&mut app, KeyCode::Up), "first");
+        assert_eq!(press(&mut app, KeyCode::Down), "second");
+        assert_eq!(press(&mut app, KeyCode::Down), "");
+        app.input = "draft".into();
+        assert_eq!(press(&mut app, KeyCode::Up), "draft");
     }
 
     #[test]
