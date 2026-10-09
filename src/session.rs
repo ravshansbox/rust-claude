@@ -63,6 +63,10 @@ impl Session {
             .append(true)
             .open(directory.join(format!("{}.jsonl", self.id)))?;
         let mut lines = String::new();
+        if self.saved == 0 {
+            lines.push_str(&serde_json::to_string(&header())?);
+            lines.push('\n');
+        }
         for message in &messages[self.saved..] {
             lines.push_str(&serde_json::to_string(message)?);
             lines.push('\n');
@@ -129,6 +133,41 @@ impl Session {
         Ok(summaries)
     }
 
+    pub fn latest_in_current_folder() -> Result<Option<String>> {
+        let directory = sessions_directory()?;
+        if !directory.exists() {
+            return Ok(None);
+        }
+        let folder = current_folder();
+        let mut latest: Option<(SystemTime, String)> = None;
+        for entry in std::fs::read_dir(&directory)? {
+            let path = entry?.path();
+            if path
+                .extension()
+                .is_none_or(|extension| extension != "jsonl")
+            {
+                continue;
+            }
+            let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+            let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
+            else {
+                continue;
+            };
+            if latest
+                .as_ref()
+                .is_some_and(|(latest_modified, _)| *latest_modified >= modified)
+            {
+                continue;
+            }
+            if read_folder(&path).ok().flatten().as_deref() == Some(folder.as_str()) {
+                latest = Some((modified, id.to_string()));
+            }
+        }
+        Ok(latest.map(|(_, id)| id))
+    }
+
     pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
         let messages = read_messages(&sessions_directory()?.join(format!("{id}.jsonl")))?;
         let session = Session {
@@ -164,6 +203,31 @@ fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
     Ok(())
 }
 
+fn current_folder() -> String {
+    std::env::current_dir()
+        .map(|folder| folder.display().to_string())
+        .unwrap_or_default()
+}
+
+fn header() -> Value {
+    json!({ "type": "session", "cwd": current_folder() })
+}
+
+fn is_header(line: &Value) -> bool {
+    line["type"] == "session"
+}
+
+fn read_folder(path: &Path) -> Result<Option<String>> {
+    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
+    let Some(line) = std::io::BufRead::lines(reader).next().transpose()? else {
+        return Ok(None);
+    };
+    let line: Value = serde_json::from_str(&line)?;
+    Ok(is_header(&line)
+        .then(|| line["cwd"].as_str().map(str::to_string))
+        .flatten())
+}
+
 fn read_preview(path: &Path) -> Result<String> {
     let reader = std::io::BufReader::new(std::fs::File::open(path)?);
     for line in std::io::BufRead::lines(reader) {
@@ -193,6 +257,7 @@ fn read_messages(path: &Path) -> Result<Vec<Value>> {
         .filter(|line| !line.trim().is_empty())
         .map(serde_json::from_str)
         .collect::<Result<Vec<Value>, _>>()
+        .map(|lines| lines.into_iter().filter(|line| !is_header(line)).collect())
         .with_context(|| format!("reading {}", path.display()))
 }
 
@@ -251,6 +316,23 @@ mod tests {
         let preview = read_preview(&path);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(preview.unwrap(), "first");
+    }
+
+    #[test]
+    fn continues_latest_session_in_current_folder() {
+        let mut session = Session::new().unwrap();
+        let messages = vec![json!({ "role": "user", "content": "hello" })];
+        session.save(&messages).unwrap();
+        let latest = Session::latest_in_current_folder();
+        let loaded = Session::load(&session.id);
+        let path = sessions_directory()
+            .unwrap()
+            .join(format!("{}.jsonl", session.id));
+        let first_line = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(latest.unwrap(), Some(session.id.clone()));
+        assert_eq!(loaded.unwrap().1, messages);
+        assert!(first_line.starts_with("{\"cwd\":"));
     }
 
     #[test]

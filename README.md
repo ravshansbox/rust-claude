@@ -16,6 +16,7 @@ Command line:
 - Print mode (`-p` / `--print`) to run one prompt and print the answer
 - `--hide-tools` to hide tool calls in print mode
 - `--image <path>` to send images in print mode
+- `-c` / `--continue` to continue the latest session in the current folder
 - Syntax-highlighted tool calls on standard error in print mode
 - Help with `-h` / `--help`
 
@@ -157,6 +158,15 @@ In print mode, tool calls go to standard error, with syntax highlighting when st
 
 Choose the model and thinking level for one run with `--model <id>` and `--thinking <level>`. See [Settings](#settings).
 
+Continue the latest session started in the current folder with `-c` or `--continue`. It works in the interface and in print mode:
+
+```sh
+rust-claude -c
+rust-claude -c -p "now add tests"
+```
+
+If no session in the folder can be continued, rust-claude stops with an error.
+
 Show help with `-h` or `--help`.
 
 Markdown tables in replies wrap their cells to fit the window width.
@@ -275,7 +285,7 @@ rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the l
 
 ## Sessions
 
-Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-claude/sessions/<id>/`, and the session file refers to them by name.
+Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. The first line records the folder the session started in, which `--continue` uses. Sessions saved before this line was added are not found by `--continue`, but `/resume` still lists them. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-claude/sessions/<id>/`, and the session file refers to them by name.
 
 Quitting while a prompt runs cancels it and saves the session first.
 

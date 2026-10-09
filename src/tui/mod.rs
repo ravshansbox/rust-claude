@@ -571,6 +571,10 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     for diagnostic in &agent.mcp.diagnostics {
         app.push(Role::Event, diagnostic.to_string());
     }
+    if !agent.messages().is_empty() {
+        replay_messages(&mut app, agent.messages());
+        app.push(Role::Event, "continued session");
+    }
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
