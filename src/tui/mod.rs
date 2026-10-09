@@ -139,7 +139,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
         });
     }
     drop(mcp_tx);
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+    let mut worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
     redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -149,8 +149,16 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let mut saved_model = app.model.clone();
     let mut saved_thinking_level = app.thinking_level;
 
+    let mut worker_stopped = false;
     let result = loop {
         tokio::select! {
+            joined = &mut worker => {
+                worker_stopped = true;
+                break Err(match joined {
+                    Err(error) if error.is_panic() => anyhow::anyhow!("the agent crashed"),
+                    _ => anyhow::anyhow!("the agent stopped unexpectedly"),
+                });
+            }
             _ = redraw.tick(), if dirty => {
                 terminal.draw(|frame| draw(frame, &mut app))?;
                 dirty = false;
@@ -231,7 +239,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
         }
     };
     quit(request_tx, cancel_tx);
-    let _ = worker.await;
+    if !worker_stopped {
+        let _ = worker.await;
+    }
     result
 }
 
