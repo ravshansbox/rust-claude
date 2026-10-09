@@ -140,35 +140,17 @@ impl Session {
     }
 
     pub fn list_others(&self) -> Result<Vec<SessionSummary>> {
-        let directory = sessions_directory()?;
-        if !directory.exists() {
-            return Ok(Vec::new());
-        }
         let mut summaries = Vec::new();
-        for entry in std::fs::read_dir(&directory)? {
-            let path = entry?.path();
-            if path
-                .extension()
-                .is_none_or(|extension| extension != "jsonl")
-            {
+        for file in session_files(&sessions_directory()?)? {
+            if file.id == self.id {
                 continue;
             }
-            let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
-                continue;
-            };
-            if id == self.id {
-                continue;
-            }
-            let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
-            else {
-                continue;
-            };
-            let Ok(preview) = read_preview(&path) else {
+            let Ok(preview) = read_preview(&file.path) else {
                 continue;
             };
             summaries.push(SessionSummary {
-                id: id.to_string(),
-                modified,
+                id: file.id,
+                modified: file.modified,
                 preview,
             });
         }
@@ -233,10 +215,27 @@ fn open_locked(path: &Path, create: bool) -> Result<File> {
 }
 
 fn latest_in_folder(directory: &Path, folder: &str) -> Result<Option<String>> {
+    let mut files = session_files(directory)?;
+    files.sort_by_key(|file| std::cmp::Reverse(file.modified));
+    Ok(files
+        .into_iter()
+        .find(|file| read_folder(&file.path).ok().flatten().as_deref() == Some(folder))
+        .map(|file| file.id))
+}
+
+struct SessionFile {
+    id: String,
+    path: PathBuf,
+    modified: SystemTime,
+}
+
+/// Lists the session files in `directory`, skipping those whose name or
+/// change time can't be read.
+fn session_files(directory: &Path) -> Result<Vec<SessionFile>> {
     if !directory.exists() {
-        return Ok(None);
+        return Ok(Vec::new());
     }
-    let mut latest: Option<(SystemTime, String)> = None;
+    let mut files = Vec::new();
     for entry in std::fs::read_dir(directory)? {
         let path = entry?.path();
         if path
@@ -248,20 +247,13 @@ fn latest_in_folder(directory: &Path, folder: &str) -> Result<Option<String>> {
         let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
+        let id = id.to_string();
         let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified()) else {
             continue;
         };
-        if latest
-            .as_ref()
-            .is_some_and(|(latest_modified, _)| *latest_modified >= modified)
-        {
-            continue;
-        }
-        if read_folder(&path).ok().flatten().as_deref() == Some(folder) {
-            latest = Some((modified, id.to_string()));
-        }
+        files.push(SessionFile { id, path, modified });
     }
-    Ok(latest.map(|(_, id)| id))
+    Ok(files)
 }
 
 fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
@@ -289,7 +281,8 @@ fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
     Ok(())
 }
 
-fn current_folder() -> String {
+/// The folder rust-claude runs in, as saved in sessions and prompt history.
+pub fn current_folder() -> String {
     std::env::current_dir()
         .map(|folder| folder.display().to_string())
         .unwrap_or_default()

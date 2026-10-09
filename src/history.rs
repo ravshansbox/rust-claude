@@ -17,10 +17,8 @@ pub fn history_path() -> Option<PathBuf> {
 
 pub fn append(path: &Path, prompt: &str) -> Result<()> {
     crate::config::create_private_dir(path.parent().context("invalid history path")?)?;
-    let folder = std::env::current_dir()
-        .map(|folder| folder.display().to_string())
-        .unwrap_or_default();
-    let mut line = serde_json::to_string(&json!({ "prompt": prompt, "cwd": folder }))?;
+    let line = json!({ "prompt": prompt, "cwd": crate::session::current_folder() });
+    let mut line = serde_json::to_string(&line)?;
     line.push('\n');
     crate::config::private_file()
         .create(true)
