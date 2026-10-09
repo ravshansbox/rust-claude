@@ -9,6 +9,7 @@ use crate::{
     auth::Credentials,
     models,
     session::{Session, SessionSummary},
+    skills::{self, Skills},
     tools,
 };
 
@@ -450,6 +451,7 @@ pub struct Agent {
     pending_usage: Usage,
     quota: Quota,
     pub instructions: Vec<Instructions>,
+    pub skills: Skills,
     pub session: Session,
 }
 
@@ -464,6 +466,7 @@ impl Agent {
             pending_usage: Usage::default(),
             quota: Quota::default(),
             instructions: load_instructions(),
+            skills: skills::load(),
             session: Session::new()?,
         })
     }
@@ -557,6 +560,9 @@ impl Agent {
                 "text": format!("# Instructions from {}\n\n{}", instructions.label, instructions.text),
             }));
         }
+        if let Some(text) = skills::format_for_prompt(&self.skills.skills) {
+            system.push(json!({ "type": "text", "text": text }));
+        }
         system
     }
 
@@ -581,8 +587,9 @@ impl Agent {
     }
 
     pub async fn prompt(&mut self, prompt: &str, on_event: impl FnMut(AgentEvent)) -> Result<()> {
+        let prompt = skills::expand_command(prompt, &self.skills.skills)?;
         let checkpoint = self.messages.len();
-        let result = self.run(prompt, on_event).await;
+        let result = self.run(&prompt, on_event).await;
         if result.is_err() {
             self.discard_from(cancel_point(&self.messages, checkpoint), "error", false);
             self.session.save(&self.messages)?;

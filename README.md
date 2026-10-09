@@ -43,6 +43,7 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/compact` | Summarise the conversation to free context |
 | `/model [id]` | Select a model. An id must be in the list of available models |
 | `/thinking [level]` | Select a thinking level |
+| `/skill:name [request]` | Run a skill, with an optional request |
 | `/quit` | Quit |
 
 ## Files
@@ -101,6 +102,36 @@ rust-claude adds `AGENTS.md` from your home folder and from the current director
 
 The system prompt tells the model to put questions to the user in bold.
 It also tells the model to prefer `edit` and `write` over `bash` for changing files.
+
+## Skills
+
+rust-claude supports [Agent Skills](https://agentskills.io/specification) in the same way as pi. A skill is a folder with a `SKILL.md` file that starts with YAML frontmatter:
+
+```markdown
+---
+name: pdf-tools
+description: Extract text and tables from PDF files. Use when reading, converting, or inspecting PDFs.
+---
+
+# PDF tools
+
+Instructions for the model.
+```
+
+rust-claude looks for skills in these places, in this order:
+
+1. `.rust-claude/skills/` in the current directory
+2. `.agents/skills/` in the current directory and each parent directory, up to the Git repository root
+3. `~/.rust-claude/skills/`
+4. `~/.agents/skills/`
+
+A folder that holds `SKILL.md` is a skill, and rust-claude does not look inside it for more skills. Other folders are searched for `SKILL.md` files. Markdown files with a `description` also load as skills when they sit directly in a `.rust-claude/skills/` folder, or below the top level of an `.agents/skills/` folder. Hidden folders, `node_modules` and paths listed in `.gitignore`, `.ignore` or `.fdignore` are skipped.
+
+The system prompt lists each skill's name, description and file path. The model reads the full file with `read` when a task matches the description. Set `disable-model-invocation: true` in the frontmatter to leave a skill out of the system prompt.
+
+Type `/skill:name` to run a skill yourself. It sends the skill's instructions to the model, followed by any text after the name. The conversation shows `[skill] name` in place of the instructions. Tab completes skill commands.
+
+The skill name comes from `name` in the frontmatter, or from the folder name. Names should use lowercase letters, numbers and single hyphens, up to 64 characters. Descriptions can have up to 1,024 characters. A skill without a description does not load. If two skills share a name, the first one found wins. At start, the interface lists the loaded skills and shows a warning for each problem.
 
 ## Retries
 

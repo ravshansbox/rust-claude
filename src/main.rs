@@ -4,6 +4,7 @@ mod highlight;
 mod models;
 mod session;
 mod settings;
+mod skills;
 mod tools;
 mod tui;
 

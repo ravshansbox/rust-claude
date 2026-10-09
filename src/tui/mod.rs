@@ -7,6 +7,7 @@ use crate::{
     agent::{Agent, AgentEvent, Stats, THINKING_LEVELS},
     session::SessionSummary,
     settings::Settings,
+    skills::{self, Skill},
     tools,
 };
 use anyhow::Result;
@@ -51,14 +52,26 @@ const COMMANDS: &[(&str, &str)] = &[
     ("/quit", "quit"),
 ];
 
-fn command_matches(input: &str) -> Vec<(&'static str, &'static str)> {
+fn command_matches(input: &str, skills: &[Skill]) -> Vec<(String, String)> {
     if !input.starts_with('/') || input.contains(char::is_whitespace) {
         return Vec::new();
     }
-    COMMANDS
+    let commands = COMMANDS
         .iter()
+        .map(|(name, description)| (name.to_string(), description.to_string()));
+    let skill_commands = skills.iter().map(|skill| {
+        (
+            format!("/skill:{}", skill.name),
+            skill
+                .description
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+    });
+    commands
+        .chain(skill_commands)
         .filter(|(name, _)| name.starts_with(input))
-        .copied()
         .collect()
 }
 
@@ -123,6 +136,7 @@ struct App {
     prompt_history: Vec<String>,
     history_index: Option<usize>,
     reads: tools::ReadGroup,
+    skills: Vec<Skill>,
 }
 
 #[derive(Clone, Copy)]
@@ -163,6 +177,7 @@ impl App {
             prompt_history: Vec::new(),
             history_index: None,
             reads: tools::ReadGroup::default(),
+            skills: Vec::new(),
         };
         app.push(
             Role::Event,
@@ -247,15 +262,12 @@ impl App {
         if self.commands_dismissed {
             return None;
         }
-        let commands = command_matches(&self.input);
+        let commands = command_matches(&self.input, &self.skills);
         if !commands.is_empty() {
             return Some(Suggestions {
                 start: 0,
                 end: self.input.len(),
-                items: commands
-                    .into_iter()
-                    .map(|(name, description)| (name.to_string(), description.to_string()))
-                    .collect(),
+                items: commands,
                 files: false,
             });
         }
@@ -500,6 +512,19 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
     }
+    if !agent.skills.skills.is_empty() {
+        let names: Vec<&str> = agent
+            .skills
+            .skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect();
+        app.push(Role::Event, format!("loaded skills: {}", names.join(", ")));
+    }
+    for diagnostic in &agent.skills.diagnostics {
+        app.push(Role::Event, diagnostic.to_string());
+    }
+    app.skills = agent.skills.skills.clone();
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -792,6 +817,22 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         app.start("loading sessions");
                         act(Action::ListSessions);
                     }
+                    _ if skills::command_name(&prompt).is_some() => {
+                        let name = skills::command_name(&prompt).unwrap_or_default();
+                        if app.skills.iter().any(|skill| skill.name == name) {
+                            app.push(Role::Event, format!("[skill] {name}"));
+                            if let Some((_, arguments)) = prompt.split_once(' ')
+                                && !arguments.trim().is_empty()
+                            {
+                                app.push(Role::User, arguments.trim());
+                            }
+                        } else {
+                            app.push(Role::User, prompt.clone());
+                        }
+                        app.prompt_history.push(prompt.clone());
+                        app.start("working");
+                        act(Action::Submit(prompt, app.thinking_level));
+                    }
                     command => app.push(Role::Event, format!("unknown command: {command}")),
                 }
                 return false;
@@ -948,8 +989,21 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
         }
         let role = message["role"].as_str().unwrap_or_default();
         if let Some(text) = message["content"].as_str() {
-            app.push(Role::User, text);
-            app.prompt_history.push(text.to_string());
+            match skills::parse_block(text) {
+                Some(block) => {
+                    app.push(Role::Event, format!("[skill] {}", block.name));
+                    let mut command = format!("/skill:{}", block.name);
+                    if let Some(user_message) = block.user_message {
+                        app.push(Role::User, user_message);
+                        command = format!("{command} {user_message}");
+                    }
+                    app.prompt_history.push(command);
+                }
+                None => {
+                    app.push(Role::User, text);
+                    app.prompt_history.push(text.to_string());
+                }
+            }
             continue;
         }
         for block in message["content"].as_array().into_iter().flatten() {
@@ -1062,9 +1116,15 @@ fn draw(frame: &mut Frame, app: &mut App) {
         let matches = suggestions.items;
         let height = (matches.len() as u16).min(chat.height);
         let selected = app.command_selected.min(matches.len() - 1);
+        let name_width = matches
+            .iter()
+            .map(|(name, _)| name.chars().count() + 1)
+            .max()
+            .unwrap_or_default()
+            .max(12);
         let texts: Vec<String> = matches
             .iter()
-            .map(|(name, description)| format!(" {name:<12}{description} "))
+            .map(|(name, description)| format!(" {name:<name_width$}{description} "))
             .collect();
         let width = texts
             .iter()
@@ -1178,6 +1238,7 @@ mod tests {
         held_scroll_from_bottom, replay_messages,
     };
     use crate::agent::{AgentEvent, Quota, Stats, Usage};
+    use crate::skills::Skill;
     use crate::tools;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use serde_json::json;
@@ -1586,6 +1647,59 @@ mod tests {
             .map(|message| message.text.as_str())
             .collect();
         assert_eq!(texts, ["hello", "compacted conversation"]);
+    }
+
+    #[test]
+    fn shows_skill_commands_live_and_replayed() {
+        let stats = || Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut live = App::new("model", "medium", stats());
+        live.skills = vec![Skill {
+            name: "demo".into(),
+            description: "Run\nthe demo.".into(),
+            path: "/skills/demo/SKILL.md".into(),
+            base_dir: "/skills/demo".into(),
+            disable_model_invocation: false,
+        }];
+        handle_input(Event::Paste("/sk".into()), &mut live, |_| {});
+        assert_eq!(
+            live.visible_suggestions().unwrap().items,
+            [("/skill:demo".to_string(), "Run the demo.".to_string())]
+        );
+        live.input = "/skill:demo fix it".into();
+        let mut submitted = None;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut live,
+            |action| {
+                if let Action::Submit(prompt, _) = action {
+                    submitted = Some(prompt);
+                }
+            },
+        );
+        assert_eq!(submitted.as_deref(), Some("/skill:demo fix it"));
+        let mut replayed = App::new("model", "medium", stats());
+        replay_messages(
+            &mut replayed,
+            &[
+                json!({ "role": "user", "content": "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nBody\n</skill>\n\nfix it" }),
+            ],
+        );
+        let texts = |app: &App| -> Vec<String> {
+            app.messages[1..]
+                .iter()
+                .map(|message| message.text.clone())
+                .collect()
+        };
+        assert_eq!(texts(&live), ["[skill] demo", "fix it"]);
+        assert_eq!(texts(&replayed), texts(&live));
+        assert_eq!(replayed.prompt_history, live.prompt_history);
     }
 
     #[test]
