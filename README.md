@@ -58,6 +58,10 @@ Show help with `-h` or `--help`.
 | Alt+Backspace / Ctrl+W | Delete previous word |
 | Tab | Complete a command |
 
+## Status line
+
+The status line shows token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps).
+
 ## Settings
 
 | Setting | Environment variable | `~/.rust-claude/settings.json` key | Default |

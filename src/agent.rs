@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::time::Instant;
 
 use anyhow::{Result, bail};
 use futures::StreamExt;
@@ -100,6 +101,7 @@ pub struct Usage {
     pub cache_read: u64,
     pub cache_write: u64,
     pub output: u64,
+    pub duration_ms: u64,
 }
 
 impl Usage {
@@ -108,6 +110,7 @@ impl Usage {
         self.cache_read += other.cache_read;
         self.cache_write += other.cache_write;
         self.output += other.output;
+        self.duration_ms += other.duration_ms;
     }
 
     fn to_json(self) -> Value {
@@ -116,6 +119,7 @@ impl Usage {
             "output": self.output,
             "cache_read": self.cache_read,
             "cache_write": self.cache_write,
+            "duration_ms": self.duration_ms,
         })
     }
 
@@ -139,6 +143,7 @@ impl Usage {
             output: value["output"].as_u64().unwrap_or(0),
             cache_read: value["cache_read"].as_u64().unwrap_or(0),
             cache_write: value["cache_write"].as_u64().unwrap_or(0),
+            duration_ms: value["duration_ms"].as_u64().unwrap_or(0),
         }
     }
 }
@@ -146,6 +151,7 @@ impl Usage {
 pub struct Stats {
     pub usage: Usage,
     pub cache_hit_rate: Option<f64>,
+    pub tokens_per_second: Option<f64>,
     pub context_tokens: u64,
     pub context_window: u64,
     pub quota: Quota,
@@ -273,6 +279,20 @@ fn cache_hit_rate(messages: &[Value]) -> Option<f64> {
             let prompt_tokens = usage.input + usage.cache_read + usage.cache_write;
             (prompt_tokens > 0).then(|| usage.cache_read as f64 / prompt_tokens as f64 * 100.0)
         })
+}
+
+fn tokens_per_second(messages: &[Value]) -> Option<f64> {
+    let mut timed = Usage::default();
+    for message in messages
+        .iter()
+        .filter(|message| message["role"] == "assistant")
+    {
+        let usage = Usage::from_json(&message["usage"]);
+        if usage.duration_ms > 0 {
+            timed.add(usage);
+        }
+    }
+    (timed.duration_ms > 0).then(|| timed.output as f64 * 1_000.0 / timed.duration_ms as f64)
 }
 
 fn total_usage(messages: &[Value]) -> Usage {
@@ -410,6 +430,7 @@ impl Agent {
         Stats {
             usage: total_usage(&self.messages),
             cache_hit_rate: cache_hit_rate(&self.messages),
+            tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(
                 &self.messages,
                 estimate_prompt_tokens(&self.system_prompt(), &tools::definitions()),
@@ -559,6 +580,7 @@ impl Agent {
         let mut input_error = None;
         let mut stop_reason = String::new();
         let mut usage = Usage::default();
+        let mut first_token: Option<Instant> = None;
         let mut buffer: Vec<u8> = Vec::new();
         let mut stream = response.bytes_stream();
 
@@ -577,6 +599,7 @@ impl Agent {
                         self.pending_usage = usage;
                     }
                     "content_block_start" => {
+                        first_token.get_or_insert_with(Instant::now);
                         let block = event["content_block"].clone();
                         partial_json.clear();
                         content.push(block);
@@ -623,6 +646,8 @@ impl Agent {
                             .unwrap_or_default()
                             .into();
                         usage.update_from_response(&event["usage"]);
+                        usage.duration_ms =
+                            first_token.map_or(0, |start| start.elapsed().as_millis() as u64);
                         self.pending_usage = usage;
                     }
                     "error" => bail!("{}", event["error"]),
@@ -647,7 +672,10 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::{Quota, cache_hit_rate, context_tokens, parse_timestamp, with_cache_breakpoint};
+    use super::{
+        Quota, cache_hit_rate, context_tokens, parse_timestamp, tokens_per_second,
+        with_cache_breakpoint,
+    };
 
     #[test]
     fn drops_empty_assistant_replies_from_requests() {
@@ -738,5 +766,16 @@ mod tests {
     fn estimates_context_without_usage() {
         let messages = vec![json!({ "role": "user", "content": "12345" })];
         assert_eq!(context_tokens(&messages, 50), 52);
+    }
+
+    #[test]
+    fn averages_tokens_per_second_over_timed_replies() {
+        let messages = vec![
+            json!({ "role": "assistant", "content": [], "usage": { "output": 500 } }),
+            json!({ "role": "assistant", "content": [], "usage": { "output": 100, "duration_ms": 1_000 } }),
+            json!({ "role": "assistant", "content": [], "usage": { "output": 200, "duration_ms": 3_000 } }),
+        ];
+        assert_eq!(tokens_per_second(&messages), Some(75.0));
+        assert_eq!(tokens_per_second(&messages[..1]), None);
     }
 }
