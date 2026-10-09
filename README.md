@@ -268,7 +268,7 @@ rust-claude adds `AGENTS.md` from your home folder and from the current director
 
 The system prompt tells the model to put questions to the user in bold.
 
-The system prompt also tells the model to search code with `ast-grep`, and to fall back to `ripgrep` for plain text, comments, strings and files `ast-grep` cannot parse. Both run through the `bash` tool, so install them for this to work.
+The system prompt also tells the model to search code with `ast-grep`, and to fall back to `ripgrep` for plain text, comments, strings and files `ast-grep` cannot parse. Both run through the `bash` tool. At start, rust-claude looks for `ast-grep` and `rg` on `PATH`. For each one it cannot find, it shows a warning such as `rg not found on PATH`, in the interface or on standard error in print mode, and leaves that program out of the system prompt.
 It also tells the model to prefer `edit` and `write` over `bash` for changing files.
 
 ## Skills
