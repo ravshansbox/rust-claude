@@ -7,7 +7,7 @@ mod settings;
 mod tools;
 mod tui;
 
-use std::io::Write;
+use std::io::{IsTerminal, Write};
 
 use anyhow::{Result, bail};
 
@@ -91,6 +91,8 @@ async fn main() -> Result<()> {
     let mut printed = false;
     let mut separate = false;
     let mut line_open = false;
+    let colour = !hide_tools && std::io::stderr().is_terminal();
+    let dark = colour && tui::dark_theme();
     agent
         .prompt(&prompt, |event| match event {
             agent::AgentEvent::Text(text) => {
@@ -103,7 +105,11 @@ async fn main() -> Result<()> {
                 printed = true;
                 line_open = !text.ends_with('\n');
             }
-            agent::AgentEvent::ToolStart { name, summary, .. } => {
+            agent::AgentEvent::ToolStart {
+                name,
+                summary,
+                diff,
+            } => {
                 separate = printed;
                 if !hide_tools {
                     if line_open {
@@ -111,6 +117,15 @@ async fn main() -> Result<()> {
                         line_open = false;
                     }
                     eprintln!("{name} {summary}");
+                    if let Some(diff) = diff {
+                        if colour {
+                            for line in highlight::highlight_body(&summary, &diff, dark) {
+                                eprintln!("{}", highlight::ansi_line(&line, dark));
+                            }
+                        } else {
+                            eprintln!("{diff}");
+                        }
+                    }
                 }
             }
             agent::AgentEvent::ToolDone {

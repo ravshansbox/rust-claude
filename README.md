@@ -26,7 +26,7 @@ Run one prompt and print the answer with `-p` or `--print`:
 rust-claude -p "explain src/main.rs"
 ```
 
-In print mode, tool calls go to standard error. Add `--hide-tools` to hide them.
+In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal. Add `--hide-tools` to hide them.
 
 Show help with `-h` or `--help`.
 
