@@ -19,6 +19,7 @@ use ratatui::{
 enum Role {
     User,
     Assistant,
+    Tool,
     Event,
 }
 
@@ -128,20 +129,29 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
                 app.scroll_to_bottom();
                 let prompt = std::mem::take(&mut app.input);
                 app.push(Role::User, prompt.clone());
-                app.push(Role::Assistant, String::new());
                 app.status = "thinking".into();
                 terminal.draw(|frame| draw(frame, &mut app))?;
 
                 let result = agent
                     .prompt(&prompt, |event| {
                         match event {
-                            AgentEvent::Text(text) => {
-                                if let Some(last) = app.messages.last_mut() {
-                                    last.text.push_str(&text);
+                            AgentEvent::Text(text) => match app.messages.last_mut() {
+                                Some(last) if matches!(last.role, Role::Assistant) => {
+                                    last.text.push_str(&text)
+                                }
+                                _ => app.push(Role::Assistant, text),
+                            },
+                            AgentEvent::ToolCall(name) => app.status = format!("calling {name}"),
+                            AgentEvent::ToolStart { name, summary } => {
+                                app.status = format!("running {name}");
+                                app.push(Role::Tool, format!("{name} {summary}"));
+                            }
+                            AgentEvent::ToolDone { name, error } => {
+                                app.status = format!("used {name}");
+                                if let Some(error) = error {
+                                    app.push(Role::Event, format!("{name} failed: {error}"));
                                 }
                             }
-                            AgentEvent::ToolCall(name) => app.status = format!("calling {name}"),
-                            AgentEvent::ToolDone(name) => app.status = format!("used {name}"),
                             AgentEvent::Usage { input, output } => {
                                 app.usage = format!(
                                     "{} in · {} out",
@@ -210,6 +220,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
                 lines.push(Line::default());
                 continue;
             }
+            Role::Tool => "⏺ ".yellow(),
             Role::Event => "· ".dark_gray(),
         };
         for (index, text) in message.text.lines().enumerate() {
