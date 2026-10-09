@@ -15,7 +15,10 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
-use tokio::sync::mpsc;
+use std::time::Duration;
+use tokio::{sync::mpsc, time::MissedTickBehavior};
+
+const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 
 #[derive(Clone, Copy)]
 enum Role {
@@ -159,12 +162,18 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let worker = tokio::spawn(agent_task(agent, prompt_rx, cancel_rx, event_tx));
     let mut terminal_events = EventStream::new();
+    let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
+    redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut dirty = true;
 
     let result = loop {
-        terminal.draw(|frame| draw(frame, &mut app))?;
-
         tokio::select! {
+            _ = redraw.tick(), if dirty => {
+                terminal.draw(|frame| draw(frame, &mut app))?;
+                dirty = false;
+            }
             event = terminal_events.next() => {
+                dirty = true;
                 let event = match event {
                     Some(Ok(event)) => event,
                     Some(Err(error)) => break Err(error.into()),
@@ -183,6 +192,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                 }
             }
             Some(event) = event_rx.recv() => {
+                dirty = true;
                 let mut next = Some(event);
                 while let Some(event) = next {
                     handle_agent_event(event, &mut app);
