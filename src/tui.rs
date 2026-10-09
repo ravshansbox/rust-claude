@@ -1270,6 +1270,31 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
         .collect()
 }
 
+fn workspace_label() -> String {
+    let folder = std::env::current_dir()
+        .ok()
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
+        .unwrap_or_default();
+    let branch = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|branch| !branch.is_empty());
+    match branch {
+        Some(branch) => format!("{folder} ({branch})"),
+        None => folder,
+    }
+}
+
+fn display_model(model: &str) -> &str {
+    model.strip_prefix("claude-").unwrap_or(model)
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1553,29 +1578,4 @@ mod tests {
         assert_eq!(format_tokens(1_234_567), "1.2M");
         assert_eq!(format_tokens(12_345_678), "12M");
     }
-}
-
-fn workspace_label() -> String {
-    let folder = std::env::current_dir()
-        .ok()
-        .and_then(|path| {
-            path.file_name()
-                .map(|name| name.to_string_lossy().into_owned())
-        })
-        .unwrap_or_default();
-    let branch = std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .filter(|branch| !branch.is_empty());
-    match branch {
-        Some(branch) => format!("{folder} ({branch})"),
-        None => folder,
-    }
-}
-
-fn display_model(model: &str) -> &str {
-    model.strip_prefix("claude-").unwrap_or(model)
 }
