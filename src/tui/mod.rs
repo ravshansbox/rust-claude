@@ -345,11 +345,21 @@ async fn agent_task(
     mut cancel: mpsc::UnboundedReceiver<()>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
-    if agent.load_quota().await.is_ok() {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
-    }
+    let mut quota = agent.quota_request().await.ok().map(tokio::spawn);
     notify_renewed(&mut agent, &events);
-    while let Some(request) = requests.recv().await {
+    loop {
+        let request = tokio::select! {
+            Some(result) = async { Some(quota.as_mut()?.await) }, if quota.is_some() => {
+                quota = None;
+                if let Ok(Ok(value)) = result {
+                    agent.merge_quota(value);
+                    let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                }
+                continue;
+            }
+            request = requests.recv() => request,
+        };
+        let Some(request) = request else { break };
         let (prompt, thinking_level) = match request {
             Request::Prompt(prompt, thinking_level) => (prompt, thinking_level),
             Request::ListSessions => {

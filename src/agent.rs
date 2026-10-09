@@ -307,6 +307,32 @@ fn total_usage(messages: &[Value]) -> Usage {
     total
 }
 
+async fn fetch_quota(http: reqwest::Client, token: String) -> Result<Quota> {
+    let response = http
+        .get(USAGE_URL)
+        .bearer_auth(token)
+        .header("anthropic-beta", "oauth-2025-04-20")
+        .send()
+        .await?;
+    if !response.status().is_success() {
+        let status = response.status();
+        bail!("{status}: {}", response.text().await?);
+    }
+    let body: Value = response.json().await?;
+    let remaining = |window: &str| {
+        body[window]["utilization"]
+            .as_f64()
+            .map(|utilisation| 100.0 - utilisation)
+    };
+    let reset = |window: &str| body[window]["resets_at"].as_str().and_then(parse_timestamp);
+    Ok(Quota {
+        five_hour_remaining: remaining("five_hour"),
+        seven_day_remaining: remaining("seven_day"),
+        five_hour_reset: reset("five_hour"),
+        seven_day_reset: reset("seven_day"),
+    })
+}
+
 fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
     messages[checkpoint..]
         .iter()
@@ -399,33 +425,20 @@ impl Agent {
             .collect())
     }
 
-    pub async fn load_quota(&mut self) -> Result<()> {
+    pub async fn quota_request(
+        &mut self,
+    ) -> Result<impl Future<Output = Result<Quota>> + Send + 'static> {
         let token = self.credentials.access_token(&self.http).await?;
-        let response = self
-            .http
-            .get(USAGE_URL)
-            .bearer_auth(token)
-            .header("anthropic-beta", "oauth-2025-04-20")
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            bail!("{status}: {}", response.text().await?);
-        }
-        let body: Value = response.json().await?;
-        let remaining = |window: &str| {
-            body[window]["utilization"]
-                .as_f64()
-                .map(|utilisation| 100.0 - utilisation)
-        };
-        let reset = |window: &str| body[window]["resets_at"].as_str().and_then(parse_timestamp);
+        Ok(fetch_quota(self.http.clone(), token))
+    }
+
+    pub fn merge_quota(&mut self, quota: Quota) {
         self.quota = Quota {
-            five_hour_remaining: remaining("five_hour"),
-            seven_day_remaining: remaining("seven_day"),
-            five_hour_reset: reset("five_hour"),
-            seven_day_reset: reset("seven_day"),
+            five_hour_remaining: self.quota.five_hour_remaining.or(quota.five_hour_remaining),
+            seven_day_remaining: self.quota.seven_day_remaining.or(quota.seven_day_remaining),
+            five_hour_reset: self.quota.five_hour_reset.or(quota.five_hour_reset),
+            seven_day_reset: self.quota.seven_day_reset.or(quota.seven_day_reset),
         };
-        Ok(())
     }
 
     pub fn new_session(&mut self) -> Result<()> {
