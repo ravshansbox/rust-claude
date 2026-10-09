@@ -180,6 +180,12 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let limit = input["limit"]
                 .as_u64()
                 .map_or(usize::MAX, |limit| limit as usize);
+            let line_count = content.split_inclusive('\n').count();
+            if offset > line_count.max(1) {
+                return Err(format!(
+                    "offset {offset} is past the end of {path}, which has {line_count} lines"
+                ));
+            }
             Ok(read_lines(&content, offset, limit))
         }
         "write" => {
@@ -284,6 +290,17 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert_eq!(result, Err("old_text must not be empty".into()));
         assert_eq!(content, "");
+    }
+
+    #[tokio::test]
+    async fn rejects_offset_past_end_of_file() {
+        let path = std::env::temp_dir().join(format!("rust-claude-offset-{}", std::process::id()));
+        std::fs::write(&path, "one\ntwo\n").unwrap();
+        let past_end = call("read", &json!({ "path": path, "offset": 3 })).await;
+        let last_line = call("read", &json!({ "path": path, "offset": 2 })).await;
+        std::fs::remove_file(&path).unwrap();
+        assert!(past_end.unwrap_err().contains("which has 2 lines"));
+        assert_eq!(last_line, Ok("two\n".into()));
     }
 
     #[tokio::test]
