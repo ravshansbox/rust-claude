@@ -79,7 +79,7 @@ Input and editing:
 - Up and Down move between wrapped input rows
 - Move and delete by word
 - Ctrl+A and Ctrl+E to jump to the start or end
-- Bracketed paste
+- Bracketed paste; tabs in pasted text show as four spaces in the input and the conversation
 - Tab completion for commands
 - `@` file picker
 

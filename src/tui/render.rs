@@ -244,6 +244,15 @@ mod tests {
     }
 
     #[test]
+    fn shows_tab_indentation_in_user_message() {
+        let rows: Vec<String> = user_message_lines("\tx", 8)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
+        assert_eq!(rows, vec!["        ", "     x  ", "        "]);
+    }
+
+    #[test]
     fn fits_assistant_table_to_width() {
         let text = "| Name | Description |\n| --- | --- |\n| alpha | a fairly long description that needs wrapping |";
         let lines = render_message(Role::Assistant, text, 30);

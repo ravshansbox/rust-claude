@@ -1,6 +1,24 @@
 use unicode_segmentation::UnicodeSegmentation;
 use unicode_width::UnicodeWidthStr;
 
+const TAB: &str = "    ";
+
+/// The text drawn for a grapheme other than a line break. ratatui skips
+/// control characters, so a tab shows as spaces and the rest show as nothing.
+fn shown(grapheme: &str) -> &str {
+    if grapheme == "\t" {
+        TAB
+    } else if grapheme.contains(char::is_control) {
+        ""
+    } else {
+        grapheme
+    }
+}
+
+fn shown_width(grapheme: &str) -> usize {
+    shown(grapheme).width()
+}
+
 fn starts_new_row(grapheme: &str, grapheme_width: usize, row_width: usize, width: usize) -> bool {
     if grapheme == "\n" {
         row_width >= width
@@ -13,7 +31,7 @@ pub(super) fn input_rows(input: &str, width: usize) -> Vec<String> {
     let mut rows = vec![String::new()];
     let mut row_width = 0;
     for grapheme in input.graphemes(true) {
-        let grapheme_width = grapheme.width();
+        let grapheme_width = shown_width(grapheme);
         if starts_new_row(grapheme, grapheme_width, row_width, width) {
             rows.push(String::new());
             row_width = 0;
@@ -24,7 +42,7 @@ pub(super) fn input_rows(input: &str, width: usize) -> Vec<String> {
             continue;
         }
         if let Some(row) = rows.last_mut() {
-            row.push_str(grapheme);
+            row.push_str(shown(grapheme));
         }
         row_width += grapheme_width;
     }
@@ -87,7 +105,7 @@ pub(super) fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, 
     let mut row = 0;
     let mut row_width = 0;
     for (index, grapheme) in input.grapheme_indices(true) {
-        let grapheme_width = grapheme.width();
+        let grapheme_width = shown_width(grapheme);
         if starts_new_row(grapheme, grapheme_width, row_width, width) {
             row += 1;
             row_width = 0;
@@ -114,7 +132,7 @@ fn index_at(input: &str, target_row: usize, column: usize, width: usize) -> usiz
     let mut row_width = 0;
     let mut last_index = 0;
     for (index, grapheme) in input.grapheme_indices(true) {
-        let grapheme_width = grapheme.width();
+        let grapheme_width = shown_width(grapheme);
         if starts_new_row(grapheme, grapheme_width, row_width, width) {
             if row == target_row {
                 return last_index;
@@ -216,6 +234,17 @@ mod tests {
         assert_eq!(input_cursor("abcd\nx", 5, 4), (2, 0));
         assert_eq!(row_below("abcd\nx", 4, 4), Some(5));
         assert_eq!(row_above("abcd\nx", 5, 4), Some(4));
+    }
+
+    #[test]
+    fn lays_out_tabs_and_control_characters_as_drawn() {
+        assert_eq!(input_rows("\tif x {", 20), vec!["    if x {"]);
+        assert_eq!(input_rows("\t\tab", 7), vec!["    ", "    ab"]);
+        assert_eq!(input_cursor("\tab", 1, 20), (0, 4));
+        assert_eq!(input_cursor("\u{1b}ab", 3, 20), (0, 2));
+        assert_eq!(input_rows("\u{1b}ab", 20), vec!["ab"]);
+        assert_eq!(row_above("\tab\nxyzwv", "\tab\nxyzwv".len(), 20), Some(2));
+        assert_eq!(row_below("ab\n\tcd", 1, 20), Some(3));
     }
 
     #[test]
