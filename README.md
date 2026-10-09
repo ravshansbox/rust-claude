@@ -289,7 +289,7 @@ Instructions for the model.
 rust-claude looks for skills in these places, in this order:
 
 1. `.rust-claude/skills/` in the current directory
-2. `.agents/skills/` in the current directory and each parent directory, up to the Git repository root
+2. `.agents/skills/` in the current directory and each parent directory, up to the Git repository root, or up to the filesystem root outside a repository
 3. `~/.rust-claude/skills/`
 4. `~/.agents/skills/`
 
