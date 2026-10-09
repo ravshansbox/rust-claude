@@ -129,6 +129,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
                 app.push(Role::User, prompt.clone());
                 app.push(Role::Assistant, String::new());
                 app.status = "thinking".into();
+                terminal.draw(|frame| draw(frame, &mut app))?;
 
                 let result = agent
                     .prompt(&prompt, |event| {
