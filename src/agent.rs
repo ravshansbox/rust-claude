@@ -341,6 +341,30 @@ fn estimate_prompt_tokens(system: &[Value], tools: &Value) -> u64 {
     (characters as u64).div_ceil(4)
 }
 
+fn estimate_text_tokens(text: &str) -> u64 {
+    (text.chars().count() as u64).div_ceil(4)
+}
+
+fn scale_parts(parts: Vec<(&'static str, u64)>, total: u64) -> Vec<(&'static str, u64)> {
+    let estimated: u64 = parts.iter().map(|(_, tokens)| tokens).sum();
+    if estimated == 0 {
+        return parts;
+    }
+    parts
+        .into_iter()
+        .map(|(name, tokens)| {
+            let scaled = (tokens as f64 * total as f64 / estimated as f64).round();
+            (name, scaled as u64)
+        })
+        .collect()
+}
+
+pub struct ContextUse {
+    pub parts: Vec<(&'static str, u64)>,
+    pub total: u64,
+    pub window: u64,
+}
+
 fn context_tokens(messages: &[Value], system_tokens: u64) -> u64 {
     let last_usage = messages
         .iter()
@@ -583,6 +607,45 @@ impl Agent {
             ),
             context_window: models::context_window(&self.model),
             quota: self.quota,
+        }
+    }
+
+    pub fn context_use(&self) -> ContextUse {
+        let stats = self.stats();
+        let instructions = self
+            .instructions
+            .iter()
+            .map(|instructions| estimate_text_tokens(&instructions.text))
+            .sum();
+        let skills = skills::format_for_prompt(&self.skills.skills)
+            .map_or(0, |text| estimate_text_tokens(&text));
+        let mcp_tools = self
+            .mcp
+            .definitions()
+            .map(|definition| estimate_text_tokens(&definition.to_string()))
+            .sum();
+        let messages = active_messages(&self.messages)
+            .iter()
+            .map(estimate_tokens)
+            .sum();
+        let parts = vec![
+            (
+                "system prompt",
+                estimate_text_tokens(IDENTITY) + estimate_text_tokens(SYSTEM_PROMPT),
+            ),
+            ("instructions", instructions),
+            ("skills", skills),
+            (
+                "built-in tools",
+                estimate_text_tokens(&tools::definitions().to_string()),
+            ),
+            ("MCP tools", mcp_tools),
+            ("messages", messages),
+        ];
+        ContextUse {
+            parts: scale_parts(parts, stats.context_tokens),
+            total: stats.context_tokens,
+            window: stats.context_window,
         }
     }
 
@@ -1009,10 +1072,19 @@ mod tests {
 
     use super::{
         Quota, active_messages, cache_hit_rate, cancel_point, context_tokens, has_uncompacted,
-        parse_shell_message, parse_timestamp, retry_after, retry_delay, retryable, shell_message,
-        tokens_per_second, with_cache_breakpoint,
+        parse_shell_message, parse_timestamp, retry_after, retry_delay, retryable, scale_parts,
+        shell_message, tokens_per_second, with_cache_breakpoint,
     };
     use std::time::Duration;
+
+    #[test]
+    fn scales_context_parts_to_total() {
+        assert_eq!(
+            scale_parts(vec![("a", 10), ("b", 30)], 80),
+            vec![("a", 20), ("b", 60)]
+        );
+        assert_eq!(scale_parts(vec![("a", 0)], 80), vec![("a", 0)]);
+    }
 
     #[test]
     fn parses_shell_messages() {
