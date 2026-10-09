@@ -140,13 +140,14 @@ pub fn definitions() -> Value {
         },
         {
             "name": "edit",
-            "description": "Replace text in a UTF-8 file. old_text must match exactly once",
+            "description": "Replace text in a UTF-8 file. old_text must match exactly once, unless replace_all is true",
             "input_schema": {
                 "type": "object",
                 "properties": {
                     "path": { "type": "string" },
                     "old_text": { "type": "string" },
-                    "new_text": { "type": "string" }
+                    "new_text": { "type": "string" },
+                    "replace_all": { "type": "boolean", "description": "Replace every match of old_text. Defaults to false" }
                 },
                 "required": ["path", "old_text", "new_text"]
             }
@@ -363,6 +364,10 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             if old_text.is_empty() {
                 return Err("old_text must not be empty".into());
             }
+            let replace_all = match &input["replace_all"] {
+                Value::Null => false,
+                value => value.as_bool().ok_or("replace_all must be true or false")?,
+            };
             let content = tokio::fs::read_to_string(path)
                 .await
                 .map_err(|error| format!("failed to read {path}: {error}"))?;
@@ -376,11 +381,17 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 new_text = new_text.replace("\r\n", "\n").replace('\n', "\r\n");
             }
             match count_matches(&content, &old_text) {
-                1 => {}
                 0 => return Err(format!("old_text not found in {path}")),
+                1 => {}
+                _ if replace_all => {}
                 count => return Err(format!("old_text matches {count} times in {path}")),
             }
-            tokio::fs::write(path, content.replacen(&old_text, &new_text, 1))
+            let content = if replace_all {
+                content.replace(&old_text, &new_text)
+            } else {
+                content.replacen(&old_text, &new_text, 1)
+            };
+            tokio::fs::write(path, content)
                 .await
                 .map(|_| format!("edited {path}"))
                 .map_err(|error| format!("failed to write {path}: {error}"))
@@ -620,6 +631,35 @@ mod tests {
                 .contains("matches 2 times")
         );
         assert_eq!(file.content(), "aaa");
+    }
+
+    #[tokio::test]
+    async fn replaces_all_matches() {
+        let file = TemporaryFile::new("replace-all", "a b a");
+        let input =
+            json!({ "path": file.path(), "old_text": "a", "new_text": "c", "replace_all": true });
+        assert!(call("edit", &input).await.is_ok());
+        assert_eq!(file.content(), "c b c");
+        let input =
+            json!({ "path": file.path(), "old_text": "a", "new_text": "c", "replace_all": true });
+        assert!(
+            call("edit", &input)
+                .await
+                .unwrap_err()
+                .contains("not found")
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_replace_all() {
+        let file = TemporaryFile::new("replace-all-invalid", "a b a");
+        let input =
+            json!({ "path": file.path(), "old_text": "a", "new_text": "c", "replace_all": "yes" });
+        assert_eq!(
+            call("edit", &input).await,
+            Err("replace_all must be true or false".into())
+        );
+        assert_eq!(file.content(), "a b a");
     }
 
     #[tokio::test]
