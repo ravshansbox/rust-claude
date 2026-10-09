@@ -89,7 +89,7 @@ The system prompt tells the model to put questions to the user in bold.
 
 ## Sessions
 
-Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
+Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
 ## Tools
 
