@@ -183,7 +183,15 @@ fn estimate_tokens(message: &Value) -> u64 {
     (characters as u64).div_ceil(4)
 }
 
-fn context_tokens(messages: &[Value]) -> u64 {
+fn estimate_system_tokens(system: &[Value]) -> u64 {
+    let characters: usize = system
+        .iter()
+        .map(|block| block["text"].as_str().unwrap_or_default().chars().count())
+        .sum();
+    (characters as u64).div_ceil(4)
+}
+
+fn context_tokens(messages: &[Value], system_tokens: u64) -> u64 {
     let last_usage = messages
         .iter()
         .enumerate()
@@ -196,7 +204,8 @@ fn context_tokens(messages: &[Value]) -> u64 {
             let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
             (tokens > 0).then_some((index, tokens))
         });
-    let (start, usage_tokens) = last_usage.map_or((0, 0), |(index, tokens)| (index + 1, tokens));
+    let (start, usage_tokens) =
+        last_usage.map_or((0, system_tokens), |(index, tokens)| (index + 1, tokens));
     usage_tokens + messages[start..].iter().map(estimate_tokens).sum::<u64>()
 }
 
@@ -330,10 +339,27 @@ impl Agent {
         Stats {
             usage: total_usage(&self.messages),
             cache_hit_rate,
-            context_tokens: context_tokens(&self.messages),
+            context_tokens: context_tokens(
+                &self.messages,
+                estimate_system_tokens(&self.system_prompt()),
+            ),
             context_window: models::context_window(&self.model),
             quota: self.quota,
         }
+    }
+
+    fn system_prompt(&self) -> Vec<Value> {
+        let mut system = vec![
+            json!({ "type": "text", "text": IDENTITY }),
+            json!({ "type": "text", "text": SYSTEM_PROMPT }),
+        ];
+        for instructions in &self.instructions {
+            system.push(json!({
+                "type": "text",
+                "text": format!("# Instructions from {}\n\n{}", instructions.label, instructions.text),
+            }));
+        }
+        system
     }
 
     fn discard_from(&mut self, index: usize, stop_reason: &str) {
@@ -424,16 +450,7 @@ impl Agent {
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<(Vec<Value>, String, Usage)> {
         let token = self.credentials.access_token(&self.http).await?;
-        let mut system = vec![
-            json!({ "type": "text", "text": IDENTITY }),
-            json!({ "type": "text", "text": SYSTEM_PROMPT }),
-        ];
-        for instructions in &self.instructions {
-            system.push(json!({
-                "type": "text",
-                "text": format!("# Instructions from {}\n\n{}", instructions.label, instructions.text),
-            }));
-        }
+        let mut system = self.system_prompt();
         if let Some(last) = system.last_mut() {
             last["cache_control"] = json!({ "type": "ephemeral" });
         }
@@ -588,12 +605,12 @@ mod tests {
             }),
             json!({ "role": "user", "content": "12345678" }),
         ];
-        assert_eq!(context_tokens(&messages), 137);
+        assert_eq!(context_tokens(&messages, 50), 137);
     }
 
     #[test]
     fn estimates_context_without_usage() {
         let messages = vec![json!({ "role": "user", "content": "12345" })];
-        assert_eq!(context_tokens(&messages), 2);
+        assert_eq!(context_tokens(&messages, 50), 52);
     }
 }
