@@ -166,10 +166,11 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 text.push_str("\nstderr:\n");
                 text.push_str(&stderr);
             }
+            let mut text = truncate(text);
             if !output.status.success() {
                 text.push_str(&format!("\nexit status: {}", output.status));
             }
-            Ok(truncate(text))
+            Ok(text)
         }
         "read" => {
             let path = argument(input, "path")?;
@@ -233,6 +234,13 @@ mod tests {
             call("bash", &input).await,
             Err("command timed out after 1s".into())
         );
+    }
+
+    #[tokio::test]
+    async fn keeps_exit_status_when_output_is_truncated() {
+        let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
+        let text = call("bash", &input).await.unwrap();
+        assert!(text.ends_with("exit status: 3"));
     }
 
     #[tokio::test]
