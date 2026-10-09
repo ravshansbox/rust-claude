@@ -638,8 +638,10 @@ impl Agent {
                             _ => continue,
                         };
                         let addition = delta[key].as_str().unwrap_or_default();
-                        let previous = block[key].as_str().unwrap_or_default();
-                        block[key] = json!(format!("{previous}{addition}"));
+                        match block.get_mut(key) {
+                            Some(Value::String(text)) => text.push_str(addition),
+                            _ => block[key] = json!(addition),
+                        }
                         match key {
                             "text" => on_event(AgentEvent::Text(addition.into())),
                             "thinking" => on_event(AgentEvent::Thinking(addition.into())),
