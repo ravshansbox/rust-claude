@@ -1,3 +1,7 @@
+mod input;
+mod render;
+mod status;
+
 use crate::{
     agent::{Agent, AgentEvent, Stats, THINKING_LEVELS},
     session::SessionSummary,
@@ -13,17 +17,19 @@ use crossterm::{
     execute,
 };
 use futures::StreamExt;
+use input::{input_cursor, input_rows, next_word_end, previous_word_start};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Style, Stylize},
+    style::Stylize,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
+use render::{THEME, Theme, borrowed_line, render_message, tool_message};
 use serde_json::Value;
+use status::{context_span, format_quota, format_stats};
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
-use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
@@ -77,158 +83,6 @@ impl ChatMessage {
         {
             self.rendered = Some((width, render_message(self.role, &self.text, width)));
         }
-    }
-}
-
-#[derive(Clone, Copy)]
-enum Theme {
-    Light,
-    Dark,
-}
-
-impl Theme {
-    fn detect() -> Self {
-        match terminal_colorsaurus::theme_mode(terminal_colorsaurus::QueryOptions::default()) {
-            Ok(terminal_colorsaurus::ThemeMode::Light) => Self::Light,
-            Ok(terminal_colorsaurus::ThemeMode::Dark) => Self::Dark,
-            Err(_) => std::env::var("COLORFGBG")
-                .ok()
-                .and_then(|value| Self::from_colorfgbg(&value))
-                .unwrap_or(Self::Light),
-        }
-    }
-
-    fn from_colorfgbg(value: &str) -> Option<Self> {
-        match value.rsplit(';').next()?.parse::<u8>().ok()? {
-            0..=6 | 8 => Some(Self::Dark),
-            7 | 9..=15 => Some(Self::Light),
-            _ => None,
-        }
-    }
-
-    fn highlight_style(self) -> Style {
-        match self {
-            Self::Light => Style::new()
-                .fg(Color::Rgb(62, 62, 62))
-                .bg(Color::Rgb(230, 230, 230)),
-            Self::Dark => Style::new()
-                .fg(Color::Rgb(220, 220, 220))
-                .bg(Color::Rgb(50, 50, 50)),
-        }
-    }
-
-    fn code_theme(self) -> tui_markdown::BuiltinCodeTheme {
-        match self {
-            Self::Light => tui_markdown::BuiltinCodeTheme::Base16OceanLight,
-            Self::Dark => tui_markdown::BuiltinCodeTheme::Base16OceanDark,
-        }
-    }
-}
-
-static THEME: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
-
-fn theme() -> Theme {
-    THEME.get().copied().unwrap_or(Theme::Light)
-}
-
-#[derive(Clone)]
-struct MarkdownStyleSheet;
-
-impl tui_markdown::StyleSheet for MarkdownStyleSheet {
-    fn code(&self) -> Style {
-        theme().highlight_style()
-    }
-}
-
-fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
-    match role {
-        Role::User => user_message_lines(text, width as usize),
-        Role::Assistant => tui_markdown::from_str_with_options(
-            &hard_line_breaks(text),
-            &tui_markdown::Options::new(MarkdownStyleSheet).code_theme(theme().code_theme()),
-        )
-        .lines
-        .into_iter()
-        .map(owned_line)
-        .collect(),
-        Role::Thinking => text
-            .lines()
-            .map(|line| Line::from(line.to_string().dark_gray().italic()))
-            .collect(),
-        Role::Tool => tool_message_lines(text),
-        Role::Event => text
-            .lines()
-            .map(|line| Line::raw(line.to_string()))
-            .collect(),
-    }
-}
-
-fn hard_line_breaks(text: &str) -> String {
-    let mut in_fence = false;
-    text.lines()
-        .map(|line| {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-                in_fence = !in_fence;
-                line.to_string()
-            } else if in_fence {
-                line.to_string()
-            } else {
-                format!("{line}  ")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
-}
-
-fn tool_message(name: &str, summary: String, diff: Option<String>) -> String {
-    match diff {
-        Some(diff) => format!("{name} {summary}\n{diff}"),
-        None => format!("{name} {summary}"),
-    }
-}
-
-fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
-    let is_edit = text.starts_with("edit ");
-    let mut lines: Vec<Line<'static>> = text
-        .lines()
-        .map(|line| match line.chars().next() {
-            Some('-') if is_edit => Line::from(line.to_string().red()),
-            Some('+') if is_edit => Line::from(line.to_string().green()),
-            _ => Line::raw(line.to_string()),
-        })
-        .collect();
-    if let Some(first) = text.lines().next() {
-        let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
-        lines[0] = Line::from(vec![
-            Span::styled(format!(" {name} "), theme().highlight_style()),
-            Span::raw(format!(" {rest}")),
-        ]);
-    }
-    lines
-}
-
-fn owned_line(line: Line<'_>) -> Line<'static> {
-    Line {
-        style: line.style,
-        alignment: line.alignment,
-        spans: line
-            .spans
-            .into_iter()
-            .map(|span| Span::styled(span.content.into_owned(), span.style))
-            .collect(),
-    }
-}
-
-fn borrowed_line<'a>(line: &'a Line<'static>) -> Line<'a> {
-    Line {
-        style: line.style,
-        alignment: line.alignment,
-        spans: line
-            .spans
-            .iter()
-            .map(|span| Span::styled(span.content.as_ref(), span.style))
-            .collect(),
     }
 }
 
@@ -936,100 +790,6 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
     }
 }
 
-fn format_stats(stats: &Stats) -> String {
-    let usage = &stats.usage;
-    let mut parts: Vec<String> = [
-        ("↑", usage.input),
-        ("↓", usage.output),
-        ("R", usage.cache_read),
-        ("W", usage.cache_write),
-    ]
-    .into_iter()
-    .filter(|(_, count)| *count > 0)
-    .map(|(label, count)| format!("{label}{}", format_tokens(count)))
-    .collect();
-    if let Some(rate) = stats.cache_hit_rate
-        && (usage.cache_read > 0 || usage.cache_write > 0)
-    {
-        parts.push(format!("CH{rate:.1}%"));
-    }
-    parts.join(" ")
-}
-
-fn format_quota(stats: &Stats) -> String {
-    [
-        (
-            "5h",
-            stats.quota.five_hour_remaining,
-            stats.quota.five_hour_reset,
-        ),
-        (
-            "7d",
-            stats.quota.seven_day_remaining,
-            stats.quota.seven_day_reset,
-        ),
-    ]
-    .into_iter()
-    .filter_map(|(label, remaining, reset)| {
-        remaining.map(|remaining| {
-            let reset = reset
-                .map(|reset| format!(" {}", time_until(reset)))
-                .unwrap_or_default();
-            format!("{label} {remaining:.0}%{reset}")
-        })
-    })
-    .collect::<Vec<_>>()
-    .join(" · ")
-}
-
-fn time_until(reset: u64) -> String {
-    let now = SystemTime::now()
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-    format_duration(reset.saturating_sub(now))
-}
-
-fn format_duration(seconds: u64) -> String {
-    let minutes = seconds / 60;
-    let (days, hours, minutes) = (minutes / 1_440, minutes / 60 % 24, minutes % 60);
-    match (days, hours, minutes) {
-        (0, 0, 0) => "<1m".to_string(),
-        (0, 0, minutes) => format!("{minutes}m"),
-        (0, hours, 0) => format!("{hours}h"),
-        (0, hours, minutes) => format!("{hours}h{minutes}m"),
-        (days, 0, _) => format!("{days}d"),
-        (days, hours, _) => format!("{days}d{hours}h"),
-    }
-}
-
-fn context_span(stats: &Stats) -> Span<'static> {
-    let percent = if stats.context_window > 0 {
-        stats.context_tokens as f64 / stats.context_window as f64 * 100.0
-    } else {
-        0.0
-    };
-    Span::raw(format!(
-        "{percent:.1}%/{}",
-        format_tokens(stats.context_window)
-    ))
-}
-
-fn format_tokens(count: u64) -> String {
-    let count = count as f64;
-    if count < 1_000.0 {
-        count.to_string()
-    } else if count < 10_000.0 {
-        format!("{:.1}k", count / 1_000.0)
-    } else if count < 1_000_000.0 {
-        format!("{}k", (count / 1_000.0).round())
-    } else if count < 10_000_000.0 {
-        format!("{:.1}M", count / 1_000_000.0)
-    } else {
-        format!("{}M", (count / 1_000_000.0).round())
-    }
-}
-
 fn draw(frame: &mut Frame, app: &mut App) {
     let input_width = frame.area().width.max(1) as usize;
     let input_rows = input_rows(&app.input, input_width);
@@ -1138,90 +898,6 @@ fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(footer_paragraph, footer);
 }
 
-fn input_rows(input: &str, width: usize) -> Vec<String> {
-    let mut rows = vec![String::new()];
-    let mut row_width = 0;
-    for character in input.chars() {
-        if character == '\n' {
-            rows.push(String::new());
-            row_width = 0;
-            continue;
-        }
-        let character_width = character.width().unwrap_or(0);
-        if row_width > 0 && row_width + character_width > width {
-            rows.push(String::new());
-            row_width = 0;
-        }
-        if let Some(row) = rows.last_mut() {
-            row.push(character);
-        }
-        row_width += character_width;
-    }
-    if row_width >= width {
-        rows.push(String::new());
-    }
-    rows
-}
-
-fn is_word_character(character: char) -> bool {
-    character.is_alphanumeric() || character == '_'
-}
-
-fn previous_word_start(input: &str, cursor: usize) -> usize {
-    let mut characters = input[..cursor].char_indices().rev().peekable();
-    while characters
-        .next_if(|(_, character)| !is_word_character(*character))
-        .is_some()
-    {}
-    let mut start = characters.peek().map_or(0, |(index, _)| *index);
-    while let Some((index, _)) = characters.next_if(|(_, character)| is_word_character(*character))
-    {
-        start = index;
-    }
-    start
-}
-
-fn next_word_end(input: &str, cursor: usize) -> usize {
-    let mut characters = input[cursor..].char_indices().peekable();
-    while characters
-        .next_if(|(_, character)| !is_word_character(*character))
-        .is_some()
-    {}
-    while characters
-        .next_if(|(_, character)| is_word_character(*character))
-        .is_some()
-    {}
-    characters
-        .peek()
-        .map_or(input.len(), |(index, _)| cursor + index)
-}
-
-fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, usize) {
-    let mut row = 0;
-    let mut row_width = 0;
-    for (index, character) in input.char_indices() {
-        let character_width = character.width().unwrap_or(0);
-        if character != '\n' && row_width > 0 && row_width + character_width > width {
-            row += 1;
-            row_width = 0;
-        }
-        if index == cursor {
-            return (row, row_width);
-        }
-        if character == '\n' {
-            row += 1;
-            row_width = 0;
-        } else {
-            row_width += character_width;
-        }
-    }
-    if row_width >= width {
-        (row + 1, 0)
-    } else {
-        (row, row_width)
-    }
-}
-
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let mut lines = vec![Line::from(
         format!("{} (↑↓ select, Enter confirm, Esc cancel)", picker.title).bold(),
@@ -1251,25 +927,6 @@ fn time_ago(time: SystemTime) -> String {
     }
 }
 
-fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
-    let content_width = width.saturating_sub(2).max(1);
-    let mut rows = vec![String::new()];
-    for line in text.lines() {
-        let mut line_rows = input_rows(line, content_width);
-        if line_rows.len() > 1 && line_rows.last().is_some_and(String::is_empty) {
-            line_rows.pop();
-        }
-        rows.extend(line_rows);
-    }
-    rows.push(String::new());
-    rows.into_iter()
-        .map(|row| {
-            let padding = content_width.saturating_sub(row.width()) + 1;
-            Line::from(format!(" {row}{}", " ".repeat(padding))).style(theme().highlight_style())
-        })
-        .collect()
-}
-
 fn workspace_label() -> String {
     let folder = std::env::current_dir()
         .ok()
@@ -1297,10 +954,7 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        Action, App, format_duration, format_tokens, handle_input, input_cursor, input_rows,
-        next_word_end, previous_word_start, user_message_lines,
-    };
+    use super::{Action, App, handle_input};
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -1352,71 +1006,6 @@ mod tests {
             assert!(!quit);
         }
         assert_eq!(app.input, "hello");
-    }
-
-    #[test]
-    fn wraps_user_message_by_display_width() {
-        let rows: Vec<String> = user_message_lines("日本語のテキスト\n\nabcd", 8)
-            .iter()
-            .map(|line| line.to_string())
-            .collect();
-        assert_eq!(
-            rows,
-            vec![
-                "        ",
-                " 日本語 ",
-                " のテキ ",
-                " スト   ",
-                "        ",
-                " abcd   ",
-                "        ",
-            ]
-        );
-    }
-
-    #[test]
-    fn wraps_input_by_display_width() {
-        assert_eq!(input_rows("你好世界", 5), vec!["你好", "世界"]);
-        assert_eq!(input_rows("abcd", 4), vec!["abcd", ""]);
-        assert_eq!(input_rows("", 4), vec![""]);
-        assert_eq!(input_rows("ab\ncd\n", 4), vec!["ab", "cd", ""]);
-    }
-
-    #[test]
-    fn places_cursor_by_display_width() {
-        assert_eq!(input_cursor("你好世界", 3, 5), (0, 2));
-        assert_eq!(input_cursor("你好世界", 6, 5), (1, 0));
-        assert_eq!(input_cursor("你好世界", 12, 5), (1, 4));
-        assert_eq!(input_cursor("abcd", 4, 4), (1, 0));
-        assert_eq!(input_cursor("ab\ncd", 2, 4), (0, 2));
-        assert_eq!(input_cursor("ab\ncd", 3, 4), (1, 0));
-        assert_eq!(input_cursor("", 0, 4), (0, 0));
-    }
-
-    #[test]
-    fn finds_word_boundaries() {
-        let input = "fn  snake_case(héllo) ";
-        assert_eq!(
-            previous_word_start(input, input.len()),
-            "fn  snake_case(".len()
-        );
-        assert_eq!(
-            previous_word_start(input, "fn  snake_case(".len()),
-            "fn  ".len()
-        );
-        assert_eq!(previous_word_start(input, "fn  sna".len()), "fn  ".len());
-        assert_eq!(previous_word_start(input, "fn  ".len()), 0);
-        assert_eq!(previous_word_start(input, 0), 0);
-        assert_eq!(next_word_end(input, 0), "fn".len());
-        assert_eq!(next_word_end(input, "fn".len()), "fn  snake_case".len());
-        assert_eq!(
-            next_word_end(input, "fn  snake_case".len()),
-            "fn  snake_case(héllo".len()
-        );
-        assert_eq!(
-            next_word_end(input, "fn  snake_case(héllo".len()),
-            input.len()
-        );
     }
 
     #[test]
@@ -1554,28 +1143,5 @@ mod tests {
         assert_eq!(press(&mut app, KeyCode::Down), "");
         app.input = "draft".into();
         assert_eq!(press(&mut app, KeyCode::Up), "draft");
-    }
-
-    #[test]
-    fn formats_durations() {
-        assert_eq!(format_duration(0), "<1m");
-        assert_eq!(format_duration(59), "<1m");
-        assert_eq!(format_duration(45 * 60), "45m");
-        assert_eq!(format_duration(2 * 3_600), "2h");
-        assert_eq!(format_duration(2 * 3_600 + 13 * 60), "2h13m");
-        assert_eq!(format_duration(3 * 86_400), "3d");
-        assert_eq!(format_duration(3 * 86_400 + 4 * 3_600 + 5 * 60), "3d4h");
-    }
-
-    #[test]
-    fn formats_tokens() {
-        assert_eq!(format_tokens(0), "0");
-        assert_eq!(format_tokens(999), "999");
-        assert_eq!(format_tokens(1_000), "1.0k");
-        assert_eq!(format_tokens(1_234), "1.2k");
-        assert_eq!(format_tokens(12_345), "12k");
-        assert_eq!(format_tokens(999_999), "1000k");
-        assert_eq!(format_tokens(1_234_567), "1.2M");
-        assert_eq!(format_tokens(12_345_678), "12M");
     }
 }
