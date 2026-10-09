@@ -23,6 +23,7 @@ use ratatui::{
 use serde_json::Value;
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
@@ -849,17 +850,10 @@ fn format_tokens(count: u64) -> String {
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
-    let input_width = frame.area().width.max(1) as usize;
-    let input_characters: Vec<char> = app.input.chars().collect();
-    let cursor_row = input_characters.len() / input_width;
-    let cursor_column = input_characters.len() % input_width;
-    let input_lines: Vec<Line> = (0..=cursor_row)
-        .map(|row| {
-            let start = (row * input_width).min(input_characters.len());
-            let end = (start + input_width).min(input_characters.len());
-            Line::raw(input_characters[start..end].iter().collect::<String>())
-        })
-        .collect();
+    let input_rows = input_rows(&app.input, frame.area().width.max(1) as usize);
+    let cursor_row = input_rows.len() - 1;
+    let cursor_column = input_rows[cursor_row].width();
+    let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
     let mut footer_lines = vec![
         Line::raw(format!(
             "{} · {}:{}",
@@ -967,6 +961,26 @@ fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(footer_paragraph, footer);
 }
 
+fn input_rows(input: &str, width: usize) -> Vec<String> {
+    let mut rows = vec![String::new()];
+    let mut row_width = 0;
+    for character in input.chars() {
+        let character_width = character.width().unwrap_or(0);
+        if row_width > 0 && row_width + character_width > width {
+            rows.push(String::new());
+            row_width = 0;
+        }
+        if let Some(row) = rows.last_mut() {
+            row.push(character);
+        }
+        row_width += character_width;
+    }
+    if row_width >= width {
+        rows.push(String::new());
+    }
+    rows
+}
+
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let mut lines = vec![Line::from(
         format!("{} (↑↓ select, Enter confirm, Esc cancel)", picker.title).bold(),
@@ -1034,7 +1048,7 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, App, format_duration, format_tokens, handle_input};
+    use super::{Action, App, format_duration, format_tokens, handle_input, input_rows};
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -1086,6 +1100,13 @@ mod tests {
             assert!(!quit);
         }
         assert_eq!(app.input, "hello");
+    }
+
+    #[test]
+    fn wraps_input_by_display_width() {
+        assert_eq!(input_rows("你好世界", 5), vec!["你好", "世界"]);
+        assert_eq!(input_rows("abcd", 4), vec!["abcd", ""]);
+        assert_eq!(input_rows("", 4), vec![""]);
     }
 
     #[test]
