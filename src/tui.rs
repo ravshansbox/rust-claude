@@ -523,8 +523,10 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     match (key.code, key.modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
-            app.status = "cancelling".into();
-            act(Action::Cancel);
+            if app.status == "working" {
+                app.status = "cancelling".into();
+                act(Action::Cancel);
+            }
         }
         (KeyCode::Esc, _) => return true,
         (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => return true,
@@ -1032,7 +1034,34 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{format_duration, format_tokens};
+    use super::{Action, App, format_duration, format_tokens, handle_input};
+    use crate::agent::{Quota, Stats, Usage};
+    use crossterm::event::{Event, KeyCode, KeyEvent};
+
+    #[test]
+    fn ignores_escape_while_loading_models() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        app.busy = true;
+        app.status = "loading models".into();
+        let mut cancelled = false;
+        let quit = handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Esc)),
+            &mut app,
+            |action| {
+                cancelled |= matches!(action, Action::Cancel);
+            },
+        );
+        assert!(!quit);
+        assert!(!cancelled);
+        assert_eq!(app.status, "loading models");
+    }
 
     #[test]
     fn formats_durations() {
