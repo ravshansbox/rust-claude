@@ -610,7 +610,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.command_selected = 0;
             app.commands_dismissed = false;
         }
-        (KeyCode::Char(character), _) => {
+        (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
             app.input.push(character);
             app.command_selected = 0;
             app.commands_dismissed = false;
@@ -1036,7 +1036,7 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 mod tests {
     use super::{Action, App, format_duration, format_tokens, handle_input};
     use crate::agent::{Quota, Stats, Usage};
-    use crossterm::event::{Event, KeyCode, KeyEvent};
+    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
     fn ignores_escape_while_loading_models() {
@@ -1061,6 +1061,31 @@ mod tests {
         assert!(!quit);
         assert!(!cancelled);
         assert_eq!(app.status, "loading models");
+    }
+
+    #[test]
+    fn ignores_unbound_control_keys() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        app.input = "hello".into();
+        for character in ['a', 'd'] {
+            let quit = handle_input(
+                Event::Key(KeyEvent::new(
+                    KeyCode::Char(character),
+                    KeyModifiers::CONTROL,
+                )),
+                &mut app,
+                |_| {},
+            );
+            assert!(!quit);
+        }
+        assert_eq!(app.input, "hello");
     }
 
     #[test]
