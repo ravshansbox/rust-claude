@@ -668,6 +668,8 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.busy = true;
             act(Action::Submit(prompt, app.thinking_level));
         }
+        (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
+        (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
         (KeyCode::Left, _) => {
             if let Some(character) = app.input[..app.cursor].chars().next_back() {
                 app.cursor -= character.len_utf8();
@@ -1193,7 +1195,7 @@ mod tests {
         };
         let mut app = App::new("model", "medium", stats);
         app.input = "hello".into();
-        for character in ['a', 'd'] {
+        for character in ['g', 'd'] {
             let quit = handle_input(
                 Event::Key(KeyEvent::new(
                     KeyCode::Char(character),
@@ -1274,6 +1276,16 @@ mod tests {
         handle_input(Event::Paste("!".into()), &mut app, |_| {});
         assert_eq!(app.input, "jé!llo");
         assert_eq!(app.cursor, "jé!".len());
+        let control = |character| {
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(character),
+                KeyModifiers::CONTROL,
+            ))
+        };
+        handle_input(control('a'), &mut app, |_| {});
+        assert_eq!(app.cursor, 0);
+        handle_input(control('e'), &mut app, |_| {});
+        assert_eq!(app.cursor, app.input.len());
     }
 
     #[test]
