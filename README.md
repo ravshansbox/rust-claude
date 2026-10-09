@@ -264,7 +264,7 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 
 Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
-Most models use adaptive thinking, with the level sent as the effort. Haiku 4.5, Sonnet 4.5 and Opus 4.5 do not support adaptive thinking, so the level sets a thinking budget instead: 4,000 tokens for `low`, 16,000 for `medium`, 32,000 for `high`, and one token less than the output limit for `xhigh` and `max`. Opus 4.5 also gets the effort for `low`, `medium` and `high`. Models that rust-claude doesn't know use adaptive thinking.
+Most models use adaptive thinking, with the level sent as the effort. Opus 4.6 and Sonnet 4.6 do not support `xhigh`, so they get `high` instead. Haiku 4.5, Sonnet 4.5 and Opus 4.5 do not support adaptive thinking, so the level sets a thinking budget instead: 4,000 tokens for `low`, 16,000 for `medium`, 32,000 for `high`, and one token less than the output limit for `xhigh` and `max`. Opus 4.5 also gets the effort for `low`, `medium` and `high`. Models that rust-claude doesn't know use adaptive thinking.
 
 Each reply may use up to the model's full output limit (64,000 or 128,000 tokens). Models that rust-claude doesn't know get 8,192 tokens.
 

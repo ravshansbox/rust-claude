@@ -4,7 +4,7 @@ const DEFAULT_MAX_OUTPUT: u64 = 8192;
 
 #[derive(Clone, Copy)]
 enum Thinking {
-    Adaptive,
+    Adaptive { xhigh: bool },
     Budget { effort: bool },
 }
 
@@ -20,13 +20,13 @@ const MODELS: &[Model] = &[
         id: "claude-fable-5",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-fable-5-1",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-haiku-4-5",
@@ -44,7 +44,7 @@ const MODELS: &[Model] = &[
         id: "claude-haiku-5-5",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-opus-4-5",
@@ -62,31 +62,31 @@ const MODELS: &[Model] = &[
         id: "claude-opus-4-6",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: false },
     },
     Model {
         id: "claude-opus-4-7",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-opus-4-8",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-opus-5",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-opus-5-5",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-sonnet-4-5",
@@ -104,19 +104,19 @@ const MODELS: &[Model] = &[
         id: "claude-sonnet-4-6",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: false },
     },
     Model {
         id: "claude-sonnet-5",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
     Model {
         id: "claude-sonnet-5-5",
         context_window: 1_000_000,
         max_output: 128_000,
-        thinking: Thinking::Adaptive,
+        thinking: Thinking::Adaptive { xhigh: true },
     },
 ];
 
@@ -133,11 +133,15 @@ pub fn max_output(model: &str) -> u64 {
 }
 
 pub fn thinking_settings(model: &str, level: &str) -> Value {
-    let thinking = find(model).map_or(Thinking::Adaptive, |model| model.thinking);
+    let thinking = find(model).map_or(Thinking::Adaptive { xhigh: true }, |model| model.thinking);
     let Thinking::Budget { effort } = thinking else {
+        let effort = match (thinking, level) {
+            (Thinking::Adaptive { xhigh: false }, "xhigh") => "high",
+            _ => level,
+        };
         return json!({
             "thinking": { "type": "adaptive", "display": "summarized" },
-            "output_config": { "effort": level },
+            "output_config": { "effort": effort },
         });
     };
     let budget = match level {
@@ -170,6 +174,19 @@ mod tests {
         assert_eq!(
             thinking_settings("claude-unknown", "low")["thinking"]["type"],
             "adaptive"
+        );
+    }
+
+    #[test]
+    fn sends_high_effort_for_xhigh_on_models_without_it() {
+        for model in ["claude-opus-4-6", "claude-sonnet-4-6"] {
+            let effort = |level| thinking_settings(model, level)["output_config"]["effort"].clone();
+            assert_eq!(effort("xhigh"), "high", "{model}");
+            assert_eq!(effort("max"), "max", "{model}");
+        }
+        assert_eq!(
+            thinking_settings("claude-opus-4-7", "xhigh")["output_config"]["effort"],
+            "xhigh"
         );
     }
 
