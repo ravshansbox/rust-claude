@@ -278,6 +278,14 @@ enum Request {
     ListModels,
 }
 
+fn notify_renewed(agent: &mut Agent, events: &mpsc::UnboundedSender<UiEvent>) {
+    if agent.take_renewed() {
+        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(
+            "renewed sign-in token".into(),
+        )));
+    }
+}
+
 async fn agent_task(
     mut agent: Agent,
     mut requests: mpsc::UnboundedReceiver<Request>,
@@ -287,6 +295,7 @@ async fn agent_task(
     if agent.load_quota().await.is_ok() {
         let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
     }
+    notify_renewed(&mut agent, &events);
     while let Some(request) = requests.recv().await {
         let (prompt, thinking_level) = match request {
             Request::Prompt(prompt, thinking_level) => (prompt, thinking_level),
@@ -311,6 +320,7 @@ async fn agent_task(
             }
             Request::ListModels => {
                 let _ = events.send(UiEvent::Models(agent.list_models().await));
+                notify_renewed(&mut agent, &events);
                 continue;
             }
         };

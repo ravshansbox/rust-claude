@@ -21,6 +21,8 @@ pub struct Credentials {
     access: String,
     refresh: String,
     expires: u128,
+    #[serde(skip)]
+    renewed: bool,
 }
 
 fn credentials_path() -> Result<PathBuf> {
@@ -58,7 +60,7 @@ impl Credentials {
     }
 
     async fn refresh(&self, http: &reqwest::Client) -> Result<Self> {
-        request_tokens(
+        let mut credentials = request_tokens(
             http,
             json!({
                 "grant_type": "refresh_token",
@@ -66,18 +68,23 @@ impl Credentials {
                 "refresh_token": self.refresh,
             }),
         )
-        .await
+        .await?;
+        credentials.renewed = true;
+        Ok(credentials)
     }
 
-    pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<(String, bool)> {
-        let renewed = now_millis() >= self.expires;
-        if renewed {
+    pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
+        if now_millis() >= self.expires {
             *self = self
                 .refresh(http)
                 .await
                 .context("sign-in expired: restart rust-claude to sign in again")?;
         }
-        Ok((self.access.clone(), renewed))
+        Ok(self.access.clone())
+    }
+
+    pub fn take_renewed(&mut self) -> bool {
+        std::mem::take(&mut self.renewed)
     }
 
     fn save(&self) -> Result<()> {
@@ -160,6 +167,7 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
             .into(),
         expires: now_millis() + data["expires_in"].as_u64().unwrap_or(0) as u128 * 1000
             - 5 * 60 * 1000,
+        renewed: false,
     };
     credentials.save()?;
     Ok(credentials)
