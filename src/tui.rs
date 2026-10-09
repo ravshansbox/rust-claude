@@ -290,11 +290,22 @@ fn format_tokens(count: u64) -> String {
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
+    let input_width = frame.area().width.saturating_sub(2).max(1) as usize;
+    let input_characters: Vec<char> = app.input.chars().collect();
+    let cursor_row = input_characters.len() / input_width;
+    let cursor_column = input_characters.len() % input_width;
+    let input_lines: Vec<Line> = (0..=cursor_row)
+        .map(|row| {
+            let start = (row * input_width).min(input_characters.len());
+            let end = (start + input_width).min(input_characters.len());
+            Line::raw(input_characters[start..end].iter().collect::<String>())
+        })
+        .collect();
     let [chat, input, footer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
-            Constraint::Length(3),
+            Constraint::Length(input_lines.len().min(u16::MAX as usize - 2) as u16 + 2),
             Constraint::Length(1),
         ])
         .areas(frame.area());
@@ -345,12 +356,17 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
     frame.render_widget(conversation.scroll((scroll, 0)), chat);
 
+    let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
-        Paragraph::new(app.input.as_str())
-            .block(Block::default().title(" Prompt ").borders(Borders::ALL)),
+        Paragraph::new(input_lines)
+            .block(Block::default().title(" Prompt ").borders(Borders::ALL))
+            .scroll((input_scroll, 0)),
         input,
     );
-    frame.set_cursor_position((input.x + app.input.chars().count() as u16 + 1, input.y + 1));
+    frame.set_cursor_position((
+        input.x + cursor_column as u16 + 1,
+        input.y + cursor_row as u16 - input_scroll + 1,
+    ));
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
