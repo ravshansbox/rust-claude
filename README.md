@@ -235,7 +235,7 @@ Output is capped at 20,000 bytes, as with the `bash` tool. The command has no ti
 
 ## Queued prompts
 
-While the agent works, Enter queues the prompt instead of sending it. Queued prompts show below the spinner. After the next round of tool calls, rust-claude adds them to the conversation, so the model reads them before it carries on. If the reply ends first, they go out together as a new prompt. Commands such as `/new` are not queued.
+While the agent works, Enter queues the prompt instead of sending it. Queued prompts show below the spinner. After the next round of tool calls, rust-claude adds them to the conversation, so the model reads them before it carries on. If the reply ends first, they go out together as a new prompt. Commands such as `/new`, skill commands and `!` commands are not queued.
 
 If you cancel with Esc, or the prompt fails, the queued prompts go back into the input so you can edit or resend them.
 
