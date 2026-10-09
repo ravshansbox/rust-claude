@@ -283,6 +283,9 @@ async fn agent_task(
     mut cancel: mpsc::UnboundedReceiver<()>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
+    if agent.load_quota().await.is_ok() {
+        let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+    }
     while let Some(request) = requests.recv().await {
         let (prompt, thinking_level) = match request {
             Request::Prompt(prompt, thinking_level) => (prompt, thinking_level),
