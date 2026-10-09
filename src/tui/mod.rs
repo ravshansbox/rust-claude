@@ -435,12 +435,15 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     }
                 });
                 if app.model != saved_model || app.thinking_level != saved_thinking_level {
-                    saved_model = app.model.clone();
-                    saved_thinking_level = app.thinking_level;
-                    let settings = Settings {
-                        model: Some(saved_model.clone()),
-                        thinking_level: Some(saved_thinking_level.to_string()),
-                    };
+                    let mut settings = Settings::load();
+                    if app.model != saved_model {
+                        saved_model = app.model.clone();
+                        settings.model = Some(saved_model.clone());
+                    }
+                    if app.thinking_level != saved_thinking_level {
+                        saved_thinking_level = app.thinking_level;
+                        settings.thinking_level = Some(saved_thinking_level.to_string());
+                    }
                     if let Err(error) = settings.save() {
                         app.push(Role::Event, format!("failed to save settings: {error}"));
                     }
