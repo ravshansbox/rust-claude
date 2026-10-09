@@ -176,10 +176,21 @@ fn draw(frame: &mut Frame, app: &mut App) {
     for message in &app.messages {
         let label = match message.role {
             Role::User => "> ".cyan().bold(),
-            Role::Assistant => "  ".into(),
+            Role::Assistant => {
+                lines.extend(tui_markdown::from_str(&message.text).lines);
+                lines.push(Line::default());
+                continue;
+            }
             Role::Event => "· ".dark_gray(),
         };
-        lines.push(Line::from(vec![label, Span::raw(&message.text)]));
+        for (index, text) in message.text.lines().enumerate() {
+            let prefix = if index == 0 {
+                label.clone()
+            } else {
+                "  ".into()
+            };
+            lines.push(Line::from(vec![prefix, Span::raw(text)]));
+        }
         lines.push(Line::default());
     }
 
