@@ -303,6 +303,7 @@ async fn agent_task(
         if cancelled {
             let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
         }
+        let _ = events.send(UiEvent::Agent(AgentEvent::Usage(agent.usage())));
     }
 }
 
