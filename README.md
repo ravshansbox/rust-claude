@@ -71,6 +71,7 @@ Input and editing:
 
 - Multi-line input with Shift+Enter or Alt+Enter
 - Prompts queued while the agent works
+- `!command` to run a shell command and share its output with the model
 - Prompt history with Up and Down
 - Up and Down move between wrapped input rows
 - Move and delete by word
@@ -213,6 +214,12 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 While a reply streams, the view follows new text only when it is scrolled to the bottom. If you scroll up, the view stays where it is.
 
 Shift+Enter works in terminals that support the kitty keyboard protocol, such as kitty, WezTerm, Ghostty and iTerm2. Other terminals send it as Enter, so use Alt+Enter there.
+
+## Shell commands
+
+Start a prompt with `!` to run the rest as a shell command, for example `!git status`. The command runs in the current directory, and its output shows in the conversation. It is also added to the conversation, so the model sees the command and its output with your next prompt. It is not sent on its own.
+
+Output is capped at 20,000 bytes, as with the `bash` tool. The command has no time limit; press Esc to stop it. Resumed sessions show these commands and their output.
 
 ## Queued prompts
 

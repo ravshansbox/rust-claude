@@ -446,6 +446,17 @@ pub enum AgentEvent {
     Queued(String),
 }
 
+pub fn shell_message(command: &str, output: &str) -> String {
+    format!("<bash-input>{command}</bash-input>\n<bash-output>{output}</bash-output>")
+}
+
+pub fn parse_shell_message(text: &str) -> Option<(&str, &str)> {
+    let (command, rest) = text
+        .strip_prefix("<bash-input>")?
+        .split_once("</bash-input>\n<bash-output>")?;
+    Some((command, rest.strip_suffix("</bash-output>")?))
+}
+
 pub struct Queued {
     pub prompt: String,
     pub images: Vec<(usize, Image)>,
@@ -635,6 +646,18 @@ impl Agent {
             return result;
         }
         self.session.save(&self.messages)
+    }
+
+    pub async fn shell(&mut self, command: &str) -> Result<String> {
+        let output = match tools::call("bash", &json!({ "command": command })).await {
+            Ok(output) | Err(output) => output,
+        };
+        self.messages.push(json!({
+            "role": "user",
+            "content": shell_message(command, &output),
+        }));
+        self.session.save(&self.messages)?;
+        Ok(output)
     }
 
     pub async fn compact(&mut self, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
@@ -986,10 +1009,17 @@ mod tests {
 
     use super::{
         Quota, active_messages, cache_hit_rate, cancel_point, context_tokens, has_uncompacted,
-        parse_timestamp, retry_after, retry_delay, retryable, tokens_per_second,
-        with_cache_breakpoint,
+        parse_shell_message, parse_timestamp, retry_after, retry_delay, retryable, shell_message,
+        tokens_per_second, with_cache_breakpoint,
     };
     use std::time::Duration;
+
+    #[test]
+    fn parses_shell_messages() {
+        let text = shell_message("ls -a", "a\nb\n");
+        assert_eq!(parse_shell_message(&text), Some(("ls -a", "a\nb\n")));
+        assert_eq!(parse_shell_message("hello"), None);
+    }
 
     #[test]
     fn backs_off_on_retryable_errors() {
