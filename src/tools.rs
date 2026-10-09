@@ -153,7 +153,12 @@ pub fn summary(name: &str, input: &Value) -> String {
     input[key].as_str().unwrap_or_default().to_string()
 }
 
+const WRITE_PREVIEW_LINES: usize = 10;
+
 pub fn diff(name: &str, input: &Value) -> Option<String> {
+    if name == "write" {
+        return write_preview(input["content"].as_str()?);
+    }
     if name != "edit" {
         return None;
     }
@@ -172,6 +177,24 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
         })
         .collect();
     Some(lines.join("\n"))
+}
+
+fn write_preview(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+    let mut preview: Vec<String> = lines
+        .iter()
+        .take(WRITE_PREVIEW_LINES)
+        .map(|line| format!(" {line}"))
+        .collect();
+    let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
+    if remaining > 0 {
+        let noun = if remaining == 1 { "line" } else { "lines" };
+        preview.push(format!("… {remaining} more {noun}"));
+    }
+    Some(preview.join("\n"))
 }
 
 fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
@@ -372,6 +395,17 @@ mod tests {
         let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
         let text = call("bash", &input).await.unwrap();
         assert!(text.ends_with("exit status: 3"));
+    }
+
+    #[test]
+    fn previews_first_lines_of_write() {
+        let content: String = (1..=12).map(|number| format!("line {number}\n")).collect();
+        let preview = diff("write", &json!({ "path": "a.txt", "content": content })).unwrap();
+        let lines: Vec<&str> = preview.lines().collect();
+        assert_eq!(lines.len(), 11);
+        assert_eq!(lines[0], " line 1");
+        assert_eq!(lines[9], " line 10");
+        assert_eq!(lines[10], "… 2 more lines");
     }
 
     #[tokio::test]
