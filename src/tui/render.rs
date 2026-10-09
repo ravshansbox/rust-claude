@@ -2,6 +2,7 @@ use super::{Role, input::input_rows};
 use ratatui::{
     style::{Color, Style, Stylize},
     text::{Line, Span},
+    widgets::{Paragraph, Wrap},
 };
 use unicode_width::UnicodeWidthStr;
 
@@ -181,7 +182,7 @@ fn owned_line(line: Line<'_>) -> Line<'static> {
     }
 }
 
-pub(super) fn borrowed_line<'a>(line: &'a Line<'static>) -> Line<'a> {
+pub(super) fn borrowed_line<'a>(line: &'a Line<'_>) -> Line<'a> {
     Line {
         style: line.style,
         alignment: line.alignment,
@@ -191,6 +192,12 @@ pub(super) fn borrowed_line<'a>(line: &'a Line<'static>) -> Line<'a> {
             .map(|span| Span::styled(span.content.as_ref(), span.style))
             .collect(),
     }
+}
+
+pub(super) fn wrapped_height(line: &Line, width: u16) -> usize {
+    Paragraph::new(borrowed_line(line))
+        .wrap(Wrap { trim: false })
+        .line_count(width)
 }
 
 fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
