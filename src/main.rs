@@ -144,7 +144,6 @@ async fn main() -> Result<()> {
             .context("no session to continue in this folder")?;
         agent.resume(&id)?;
     }
-    agent.mcp = mcp::Mcp::load().await;
     if let Some(name) = thinking_level {
         match agent::THINKING_LEVELS.iter().find(|level| **level == name) {
             Some(level) => agent.thinking_level = level,
@@ -157,8 +156,15 @@ async fn main() -> Result<()> {
     }
 
     let Some(prompt) = print_prompt else {
+        agent.mcp = mcp::Mcp::load().await;
         return tui::run(agent).await;
     };
+    let interrupt = tokio::signal::ctrl_c();
+    tokio::pin!(interrupt);
+    tokio::select! {
+        mcp = mcp::Mcp::load() => agent.mcp = mcp,
+        _ = &mut interrupt => return interrupted(agent),
+    }
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{diagnostic}");
     }
@@ -172,78 +178,94 @@ async fn main() -> Result<()> {
     let colour = !hide_tools && std::io::stderr().is_terminal();
     let dark = colour && tui::dark_theme();
     let mut reads = tools::ReadGroup::default();
-    let result = agent
-        .prompt(&prompt, &images, |event| match event {
-            agent::AgentEvent::Text(text) => {
-                flush_reads(&mut reads);
-                if separate {
-                    let _ = write!(stdout, "\n\n");
-                    separate = false;
-                }
-                let _ = write!(stdout, "{text}");
-                let _ = stdout.flush();
-                printed = true;
-                line_open = !text.ends_with('\n');
+    let checkpoint = agent.history_len();
+    let run = agent.prompt(&prompt, &images, |event| match event {
+        agent::AgentEvent::Text(text) => {
+            flush_reads(&mut reads);
+            if separate {
+                let _ = write!(stdout, "\n\n");
+                separate = false;
             }
-            agent::AgentEvent::ToolStart {
-                name,
-                summary,
-                diff,
-            } => {
-                separate = printed;
-                if !hide_tools {
-                    if line_open {
-                        eprintln!();
-                        line_open = false;
-                    }
-                    if name == "read" && diff.is_none() {
-                        reads.add(summary);
-                        return;
-                    }
-                    flush_reads(&mut reads);
-                    eprintln!("{name} {summary}");
-                    if let Some(diff) = diff {
-                        if colour {
-                            for line in highlight::highlight_body(&summary, &diff, dark) {
-                                eprintln!("{}", highlight::ansi_line(&line, dark));
-                            }
-                        } else {
-                            eprintln!("{diff}");
-                        }
-                    }
-                }
-            }
-            agent::AgentEvent::ToolDone {
-                name,
-                error: Some(error),
-                ..
-            } if !hide_tools => {
-                flush_reads(&mut reads);
+            let _ = write!(stdout, "{text}");
+            let _ = stdout.flush();
+            printed = true;
+            line_open = !text.ends_with('\n');
+        }
+        agent::AgentEvent::ToolStart {
+            name,
+            summary,
+            diff,
+        } => {
+            separate = printed;
+            if !hide_tools {
                 if line_open {
                     eprintln!();
                     line_open = false;
                 }
-                eprintln!("{name} failed: {error}");
-            }
-            agent::AgentEvent::ToolDone {
-                name,
-                note: Some(note),
-                ..
-            } if !hide_tools => {
+                if name == "read" && diff.is_none() {
+                    reads.add(summary);
+                    return;
+                }
                 flush_reads(&mut reads);
-                eprintln!("{name}: {note}");
+                eprintln!("{name} {summary}");
+                if let Some(diff) = diff {
+                    if colour {
+                        for line in highlight::highlight_body(&summary, &diff, dark) {
+                            eprintln!("{}", highlight::ansi_line(&line, dark));
+                        }
+                    } else {
+                        eprintln!("{diff}");
+                    }
+                }
             }
-            agent::AgentEvent::Notice(text) => {
-                flush_reads(&mut reads);
-                eprintln!("\n{text}");
+        }
+        agent::AgentEvent::ToolDone {
+            name,
+            error: Some(error),
+            ..
+        } if !hide_tools => {
+            flush_reads(&mut reads);
+            if line_open {
+                eprintln!();
+                line_open = false;
             }
-            _ => {}
-        })
-        .await;
+            eprintln!("{name} failed: {error}");
+        }
+        agent::AgentEvent::ToolDone {
+            name,
+            note: Some(note),
+            ..
+        } if !hide_tools => {
+            flush_reads(&mut reads);
+            eprintln!("{name}: {note}");
+        }
+        agent::AgentEvent::Notice(text) => {
+            flush_reads(&mut reads);
+            eprintln!("\n{text}");
+        }
+        _ => {}
+    });
+    let result = tokio::select! {
+        result = run => Some(result),
+        _ = &mut interrupt => None,
+    };
     flush_reads(&mut reads);
+    let Some(result) = result else {
+        let saved = agent.cancel(checkpoint);
+        if let Err(error) = saved {
+            eprintln!("failed to save session: {error}");
+        }
+        return interrupted(agent);
+    };
     result?;
     writeln!(stdout)?;
     Ok(())
+}
+
+fn interrupted(agent: agent::Agent) -> Result<()> {
+    drop(agent);
+    eprintln!("\ncancelled");
+    std::process::exit(130);
 }
 
 fn flush_reads(reads: &mut tools::ReadGroup) {
