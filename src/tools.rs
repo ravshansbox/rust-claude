@@ -194,6 +194,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         }
         "write" => {
             let path = argument(input, "path")?;
+            let content = argument(input, "content")?;
             if let Some(parent) = std::path::Path::new(path).parent()
                 && !parent.as_os_str().is_empty()
             {
@@ -201,7 +202,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                     .await
                     .map_err(|error| format!("failed to write {path}: {error}"))?;
             }
-            tokio::fs::write(path, argument(input, "content")?)
+            tokio::fs::write(path, content)
                 .await
                 .map(|_| format!("wrote {path}"))
                 .map_err(|error| format!("failed to write {path}: {error}"))
@@ -272,6 +273,19 @@ mod tests {
         std::fs::remove_dir_all(&directory).unwrap();
         assert!(result.is_ok());
         assert_eq!(content.unwrap(), "hello");
+    }
+
+    #[tokio::test]
+    async fn write_without_content_creates_no_directory() {
+        let directory =
+            std::env::temp_dir().join(format!("rust-claude-empty-{}", std::process::id()));
+        let path = directory.join("file.txt");
+        let input = json!({ "path": path.to_str().unwrap() });
+        let result = call("write", &input).await;
+        let created = directory.exists();
+        let _ = std::fs::remove_dir_all(&directory);
+        assert_eq!(result, Err("missing argument: content".into()));
+        assert!(!created);
     }
 
     #[tokio::test]
