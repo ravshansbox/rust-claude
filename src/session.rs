@@ -49,6 +49,9 @@ impl Session {
     }
 
     pub fn save(&mut self, messages: &[Value]) -> Result<()> {
+        if messages.len() <= self.saved {
+            return Ok(());
+        }
         let directory = sessions_directory()?;
         std::fs::create_dir_all(&directory)?;
         let mut file = OpenOptions::new()
@@ -121,7 +124,7 @@ fn read_messages(path: &Path) -> Result<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use super::new_uuid;
+    use super::{Session, new_uuid, sessions_directory};
 
     #[test]
     fn generates_version_4_uuid() {
@@ -129,5 +132,15 @@ mod tests {
         assert_eq!(uuid.len(), 36);
         assert_eq!(&uuid[14..15], "4");
         assert!(matches!(&uuid[19..20], "8" | "9" | "a" | "b"));
+    }
+
+    #[test]
+    fn does_not_create_file_without_messages() {
+        let mut session = Session::new().unwrap();
+        session.save(&[]).unwrap();
+        let path = sessions_directory()
+            .unwrap()
+            .join(format!("{}.jsonl", session.id));
+        assert!(!path.exists());
     }
 }
