@@ -640,12 +640,23 @@ mod tests {
     #[test]
     fn skips_unreadable_session_files() {
         let session = Session::new().unwrap();
+        let mut readable = Session::new().unwrap();
+        readable
+            .save(&[json!({ "role": "user", "content": "hello" })])
+            .unwrap();
         let directory = sessions_directory().unwrap();
-        std::fs::create_dir_all(&directory).unwrap();
-        let path = directory.join(format!("{}.jsonl", new_uuid().unwrap()));
+        let unreadable = new_uuid().unwrap();
+        let path = directory.join(format!("{unreadable}.jsonl"));
         std::fs::write(&path, "not json\n").unwrap();
-        let result = session.list_others();
+        let listed = session.list_others();
         std::fs::remove_file(&path).unwrap();
-        assert!(result.is_ok());
+        std::fs::remove_file(directory.join(format!("{}.jsonl", readable.id))).unwrap();
+        let ids: Vec<String> = listed
+            .unwrap()
+            .into_iter()
+            .map(|summary| summary.id)
+            .collect();
+        assert!(ids.contains(&readable.id));
+        assert!(!ids.contains(&unreadable));
     }
 }
