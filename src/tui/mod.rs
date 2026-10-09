@@ -202,7 +202,7 @@ struct Picker {
 
 impl App {
     fn new(model: &str, thinking_level: &'static str, stats: Stats) -> Self {
-        let mut app = Self {
+        Self {
             input: String::new(),
             cursor: 0,
             messages: Vec::new(),
@@ -230,12 +230,7 @@ impl App {
             queue: Queue::default(),
             history_file: None,
             history_search: None,
-        };
-        app.push(
-            Role::Event,
-            "Ask me to inspect, explain, or edit this project.",
-        );
-        app
+        }
     }
 
     fn push(&mut self, role: Role, text: impl Into<String>) {
@@ -741,6 +736,10 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     for diagnostic in &agent.mcp.diagnostics {
         app.push(Role::Event, diagnostic.to_string());
     }
+    app.push(
+        Role::Event,
+        "Ask me to inspect, explain, or edit this project.",
+    );
     if !agent.messages().is_empty() {
         replay_messages(&mut app, agent.messages());
         app.push(Role::Event, "continued session");
@@ -2100,7 +2099,7 @@ mod tests {
         app.push_tool("read", "a.rs".into(), None);
         app.push(Role::Event, "read failed: missing");
         app.push_tool("read", "c.rs".into(), None);
-        let texts: Vec<&str> = app.messages[1..]
+        let texts: Vec<&str> = app.messages[..]
             .iter()
             .map(|message| message.text.as_str())
             .collect();
@@ -2122,7 +2121,7 @@ mod tests {
                 json!({ "role": "user", "content": [result("1", false), result("2", true), result("3", false)] }),
             ],
         );
-        let texts: Vec<&str> = app.messages[1..]
+        let texts: Vec<&str> = app.messages[..]
             .iter()
             .map(|message| message.text.as_str())
             .collect();
@@ -2142,7 +2141,7 @@ mod tests {
                 json!({ "role": "assistant", "stop_reason": "compacted", "content": [], "summary": "greeted" }),
             ],
         );
-        let texts: Vec<&str> = app.messages[1..]
+        let texts: Vec<&str> = app.messages[..]
             .iter()
             .map(|message| message.text.as_str())
             .collect();
@@ -2188,7 +2187,7 @@ mod tests {
             ],
         );
         let texts = |app: &App| -> Vec<String> {
-            app.messages[1..]
+            app.messages[..]
                 .iter()
                 .map(|message| message.text.clone())
                 .collect()
@@ -2228,7 +2227,7 @@ mod tests {
             ],
         );
         let texts = |app: &App| -> Vec<String> {
-            app.messages[1..]
+            app.messages[..]
                 .iter()
                 .map(|message| message.text.clone())
                 .collect()
