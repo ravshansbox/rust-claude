@@ -168,7 +168,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             }
             let mut text = truncate(text);
             if !output.status.success() {
-                text.push_str(&format!("\nexit status: {}", output.status));
+                text.push_str(&format!("\n{}", output.status));
             }
             Ok(text)
         }
@@ -241,6 +241,15 @@ mod tests {
         let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
         let text = call("bash", &input).await.unwrap();
         assert!(text.ends_with("exit status: 3"));
+    }
+
+    #[tokio::test]
+    async fn reports_exit_status_once() {
+        let input = json!({ "command": "echo hi; exit 2" });
+        assert_eq!(
+            call("bash", &input).await,
+            Ok("hi\n\nexit status: 2".into())
+        );
     }
 
     #[tokio::test]
