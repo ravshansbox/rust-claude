@@ -46,18 +46,29 @@ impl Credentials {
         match Self::load_and_refresh(&text, http).await {
             Ok(credentials) => Ok(credentials),
             Err(error) => {
-                println!("Saved sign-in is not usable ({error}). Sign in again.\n");
+                eprintln!("Saved sign-in is not usable ({error}). Sign in again.\n");
                 login(http).await
             }
         }
     }
 
     async fn load_and_refresh(text: &str, http: &reqwest::Client) -> Result<Self> {
-        let credentials: Self = serde_json::from_str(text)?;
+        let mut credentials: Self = serde_json::from_str(text)?;
         if now_millis() < credentials.expires {
             return Ok(credentials);
         }
-        credentials.refresh(http).await
+        match credentials.refresh(http).await {
+            Ok(credentials) => Ok(credentials),
+            Err(error) => {
+                // Another rust-claude may have renewed the tokens since we
+                // read auth.json, spending the refresh token we hold.
+                credentials.adopt_saved();
+                if now_millis() >= credentials.expires {
+                    return Err(error);
+                }
+                Ok(credentials)
+            }
+        }
     }
 
     async fn refresh(&self, http: &reqwest::Client) -> Result<Self> {
@@ -152,9 +163,9 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
         ],
     )?;
 
-    println!("Open this URL and sign in with your Claude Pro/Max account:\n\n{url}\n");
-    print!("Paste the code: ");
-    std::io::stdout().flush()?;
+    eprintln!("Open this URL and sign in with your Claude Pro/Max account:\n\n{url}\n");
+    eprint!("Paste the code: ");
+    std::io::stderr().flush()?;
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
 
@@ -210,8 +221,38 @@ mod tests {
     use super::{Credentials, credentials_path};
     use serde_json::json;
 
+    /// Tests share one auth.json, so they take turns.
+    static AUTH_FILE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    fn unreachable_client() -> reqwest::Client {
+        reqwest::Client::builder()
+            .proxy(reqwest::Proxy::all("http://127.0.0.1:1").unwrap())
+            .build()
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn uses_a_sign_in_another_instance_renewed_after_startup() {
+        let _lock = AUTH_FILE.lock().await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
+                .to_string(),
+        )
+        .unwrap();
+        let read_at_startup =
+            json!({ "access": "old", "refresh": "spent", "expires": 0 }).to_string();
+        let credentials =
+            Credentials::load_and_refresh(&read_at_startup, &unreachable_client()).await;
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(credentials.unwrap().access, "renewed");
+    }
+
     #[tokio::test]
     async fn uses_a_token_another_instance_renewed() {
+        let _lock = AUTH_FILE.lock().await;
         let path = credentials_path().unwrap();
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(
