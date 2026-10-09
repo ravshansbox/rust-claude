@@ -13,7 +13,14 @@ const IMAGE_TYPES: [&str; 5] = [
 
 #[cfg(target_os = "macos")]
 pub fn read_image() -> Result<Option<Vec<u8>>> {
-    let path = std::env::temp_dir().join(format!("rust-claude-clipboard-{}", std::process::id()));
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // Each paste gets its own file, since several pastes may run at once.
+    static NEXT: AtomicU64 = AtomicU64::new(0);
+    let path = std::env::temp_dir().join(format!(
+        "rust-claude-clipboard-{}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed)
+    ));
     for class in ["PNGf", "TIFF"] {
         let status = Command::new("osascript")
             .args([
