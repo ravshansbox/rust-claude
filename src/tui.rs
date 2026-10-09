@@ -722,7 +722,6 @@ fn format_stats(stats: &Stats) -> String {
     {
         parts.push(format!("CH{rate:.1}%"));
     }
-    parts.push(format!("${:.3} (sub)", usage.cost));
     parts.join(" ")
 }
 

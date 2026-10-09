@@ -94,7 +94,6 @@ pub struct Usage {
     pub cache_read: u64,
     pub cache_write: u64,
     pub output: u64,
-    pub cost: f64,
 }
 
 impl Usage {
@@ -103,18 +102,6 @@ impl Usage {
         self.cache_read += other.cache_read;
         self.cache_write += other.cache_write;
         self.output += other.output;
-        self.cost += other.cost;
-    }
-
-    fn priced(mut self, model: &str) -> Self {
-        self.cost = models::cost(
-            model,
-            self.input,
-            self.output,
-            self.cache_read,
-            self.cache_write,
-        );
-        self
     }
 
     fn to_json(self) -> Value {
@@ -123,7 +110,6 @@ impl Usage {
             "output": self.output,
             "cache_read": self.cache_read,
             "cache_write": self.cache_write,
-            "cost": self.cost,
         })
     }
 
@@ -133,7 +119,6 @@ impl Usage {
             output: value["output"].as_u64().unwrap_or(0),
             cache_read: value["cache_read"].as_u64().unwrap_or(0),
             cache_write: value["cache_write"].as_u64().unwrap_or(0),
-            cost: value["cost"].as_f64().unwrap_or(0.0),
         }
     }
 }
@@ -300,7 +285,7 @@ impl Agent {
 
     fn discard_from(&mut self, index: usize, stop_reason: &str) {
         let mut lost = total_usage(&self.messages[index..]);
-        lost.add(std::mem::take(&mut self.pending_usage).priced(&self.model));
+        lost.add(std::mem::take(&mut self.pending_usage));
         self.messages.truncate(index);
         if lost.input + lost.output + lost.cache_read + lost.cache_write > 0 {
             self.messages.push(json!({
@@ -342,7 +327,7 @@ impl Agent {
         loop {
             let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
             self.messages
-                .push(json!({ "role": "assistant", "content": content, "usage": usage.priced(&self.model).to_json() }));
+                .push(json!({ "role": "assistant", "content": content, "usage": usage.to_json() }));
             self.pending_usage = Usage::default();
             on_event(AgentEvent::Stats(self.stats()));
             if stop_reason == "max_tokens" {
