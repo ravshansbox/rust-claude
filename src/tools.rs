@@ -1,8 +1,21 @@
-use std::time::Duration;
+use std::{process::Stdio, time::Duration};
 
 use serde_json::{Value, json};
 
 const MAX_OUTPUT: usize = 20_000;
+
+struct ProcessGroup(Option<u32>);
+
+impl Drop for ProcessGroup {
+    fn drop(&mut self) {
+        #[cfg(unix)]
+        if let Some(id) = self.0 {
+            unsafe {
+                libc::killpg(id as libc::pid_t, libc::SIGKILL);
+            }
+        }
+    }
+}
 
 fn truncate(mut text: String) -> String {
     if text.len() > MAX_OUTPUT {
@@ -112,10 +125,20 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
     match name {
         "bash" => {
-            let run = tokio::process::Command::new("bash")
+            let mut command = tokio::process::Command::new("bash");
+            command
                 .args(["-lc", argument(input, "command")?])
-                .kill_on_drop(true)
-                .output();
+                .stdin(Stdio::null())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .kill_on_drop(true);
+            #[cfg(unix)]
+            command.process_group(0);
+            let child = command
+                .spawn()
+                .map_err(|error| format!("failed to run command: {error}"))?;
+            let mut process_group = ProcessGroup(child.id());
+            let run = child.wait_with_output();
             let output = match input["timeout"].as_u64() {
                 Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
                     .await
@@ -123,6 +146,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 None => run.await,
             }
             .map_err(|error| format!("failed to run command: {error}"))?;
+            process_group.0 = None;
 
             let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -188,6 +212,24 @@ mod tests {
             call("bash", &input).await,
             Err("command timed out after 1s".into())
         );
+    }
+
+    #[tokio::test]
+    async fn kills_background_processes_on_timeout() {
+        let pid_file =
+            std::env::temp_dir().join(format!("rust-claude-test-{}", std::process::id()));
+        let command = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+        let input = json!({ "command": command, "timeout": 1 });
+        assert!(call("bash", &input).await.is_err());
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        std::fs::remove_file(&pid_file).unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        let alive = std::process::Command::new("kill")
+            .args(["-0", pid.trim()])
+            .status()
+            .unwrap()
+            .success();
+        assert!(!alive);
     }
 
     #[test]
