@@ -65,9 +65,9 @@ pub(super) struct App {
     pub(super) status: String,
     pub(super) spinner_frame: usize,
     pub(super) stats: Stats,
-    pub(super) scroll_from_bottom: u16,
-    pub(super) max_scroll: u16,
-    pub(super) page_size: u16,
+    pub(super) scroll_from_bottom: usize,
+    pub(super) max_scroll: usize,
+    pub(super) page_size: usize,
     pub(super) input_width: usize,
     pub(super) busy: bool,
     pub(super) picker: Option<Picker>,
@@ -243,14 +243,14 @@ impl App {
         });
     }
 
-    pub(super) fn scroll_up(&mut self, amount: u16) {
+    pub(super) fn scroll_up(&mut self, amount: usize) {
         self.scroll_from_bottom = self
             .scroll_from_bottom
             .saturating_add(amount)
             .min(self.max_scroll);
     }
 
-    pub(super) fn scroll_down(&mut self, amount: u16) {
+    pub(super) fn scroll_down(&mut self, amount: usize) {
         self.scroll_from_bottom = self.scroll_from_bottom.saturating_sub(amount);
     }
 
