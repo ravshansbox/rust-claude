@@ -315,7 +315,7 @@ rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the l
 
 Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. The first line records the folder the session started in, which `--continue` uses. Sessions saved before this line was added are not found by `--continue`, but `/resume` still lists them. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-claude/sessions/<id>/`, and the session file refers to them by name.
 
-Quitting while a prompt runs cancels it and saves the session first.
+Quitting while a prompt runs cancels it and saves the session first. Requests still waiting when you quit, such as a prompt sent just before, are not started.
 
 A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request.
 

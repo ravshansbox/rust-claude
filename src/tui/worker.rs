@@ -34,6 +34,11 @@ pub(super) enum Request {
     Context,
 }
 
+pub(super) fn quit(requests: mpsc::UnboundedSender<Request>, cancel: mpsc::UnboundedSender<()>) {
+    drop(requests);
+    drop(cancel);
+}
+
 pub(super) fn notify_renewed(agent: &mut Agent, events: &mpsc::UnboundedSender<UiEvent>) {
     if agent.take_renewed() {
         let _ = events.send(UiEvent::Agent(AgentEvent::Notice(
@@ -63,6 +68,9 @@ pub(super) async fn agent_task(
             request = requests.recv() => request,
         };
         let Some(request) = request else { break };
+        if cancel.is_closed() {
+            break;
+        }
         if let Request::Shell(command) = request {
             while cancel.try_recv().is_ok() {}
             tokio::select! {
@@ -151,5 +159,68 @@ pub(super) async fn agent_task(
             let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
         }
         let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Request, agent_task, quit};
+    use crate::{agent::Agent, auth::Credentials};
+    use serde_json::json;
+    use tokio::sync::mpsc;
+
+    fn agent() -> Agent {
+        let credentials: Credentials = serde_json::from_value(json!({
+            "access": "access",
+            "refresh": "refresh",
+            "expires": 4_102_444_800_000u64,
+        }))
+        .unwrap();
+        Agent::new(reqwest::Client::new(), credentials, "model".into()).unwrap()
+    }
+
+    #[tokio::test]
+    async fn does_not_start_requests_sent_before_quitting() {
+        let marker = std::env::temp_dir().join(format!("rust-claude-quit-{}", std::process::id()));
+        let agent = agent();
+        let session_id = agent.session.id.clone();
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        request_tx
+            .send(Request::Shell(format!("touch {}", marker.display())))
+            .unwrap();
+        quit(request_tx, cancel_tx);
+        agent_task(agent, request_rx, cancel_rx, event_tx).await;
+        let ran = marker.exists();
+        let _ = std::fs::remove_file(&marker);
+        if let Some(home) = std::env::var_os("HOME") {
+            let sessions = std::path::Path::new(&home)
+                .join(".rust-claude")
+                .join("sessions");
+            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
+        }
+        assert!(!ran);
+    }
+
+    #[tokio::test]
+    async fn stops_running_request_when_quitting() {
+        let agent = agent();
+        let session_id = agent.session.id.clone();
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        request_tx.send(Request::Shell("sleep 30".into())).unwrap();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        quit(request_tx, cancel_tx);
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
+        if let Some(home) = std::env::var_os("HOME") {
+            let sessions = std::path::Path::new(&home)
+                .join(".rust-claude")
+                .join("sessions");
+            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
+        }
+        assert!(stopped.is_ok());
     }
 }

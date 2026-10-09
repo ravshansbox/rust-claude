@@ -30,7 +30,7 @@ use render::{THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
-use worker::{Request, UiEvent, agent_task};
+use worker::{Request, UiEvent, agent_task, quit};
 
 pub fn dark_theme() -> bool {
     matches!(Theme::detect(), Theme::Dark)
@@ -205,8 +205,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
             }
         }
     };
-    drop(request_tx);
-    let _ = cancel_tx.send(());
+    quit(request_tx, cancel_tx);
     let _ = worker.await;
     result
 }
