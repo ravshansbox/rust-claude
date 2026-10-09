@@ -30,7 +30,7 @@ In print mode, tool calls go to standard error, with syntax highlighting when st
 
 Show help with `-h` or `--help`.
 
-Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background.
+Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background. Leading spaces are removed from each line to save room.
 
 ## Commands
 
