@@ -305,7 +305,7 @@ rust-claude looks for skills in these places, in this order:
 3. `~/.rust-claude/skills/`
 4. `~/.agents/skills/`
 
-A folder that holds `SKILL.md` is a skill, and rust-claude does not look inside it for more skills. Other folders are searched for `SKILL.md` files. Markdown files with a `description` also load as skills when they sit directly in a `.rust-claude/skills/` folder, or below the top level of an `.agents/skills/` folder. Hidden folders, `node_modules` and paths listed in `.gitignore`, `.ignore` or `.fdignore` are skipped. As in Git, the patterns in an ignore file apply relative to the folder that holds it.
+A folder that holds `SKILL.md` is a skill, and rust-claude does not look inside it for more skills. Other folders are searched for `SKILL.md` files. Markdown files with a `description` also load as skills when they sit directly in a `.rust-claude/skills/` folder, or below the top level of an `.agents/skills/` folder. Hidden folders, `node_modules` and paths listed in `.gitignore`, `.ignore` or `.fdignore` are skipped. As in Git, the patterns in an ignore file apply relative to the folder that holds it. Symlinked folders are followed, but each folder is searched only once, so a symlink loop does not stall the search.
 
 The system prompt lists each skill's name, description and file path. The model reads the full file with `read` when a task matches the description. Set `disable-model-invocation: true` in the frontmatter to leave a skill out of the system prompt.
 
