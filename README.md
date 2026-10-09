@@ -133,6 +133,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 Architecture decision records are in [docs/adr](docs/adr):
 
 - [1. Run tools without approval](docs/adr/0001-run-tools-without-approval.md)
+- [2. Identify as Claude Code](docs/adr/0002-identify-as-claude-code.md)
 
 ## Development
 
