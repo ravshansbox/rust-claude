@@ -65,6 +65,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 | Esc | Cancel the running prompt, or quit when idle |
 | Ctrl+C | Clear input, or quit when input is empty |
 | Ctrl+D | Quit when input is empty |
+| Ctrl+V | Paste an image from the clipboard |
 | Shift+Tab | Cycle thinking level |
 | Up / Down | Browse prompt history, move between input rows, or scroll |
 | Page Up / Page Down | Scroll by a page |
@@ -144,6 +145,8 @@ The skill name comes from `name` in the frontmatter, or from the folder name. Na
 If a request fails with a rate limit (429), an overloaded API (529), a server error (5xx) or a connection error before the reply starts, rust-claude tries again up to 3 times. It waits 1, 2 and then 4 seconds, or as long as the `retry-after` header asks. It does not retry when `retry-after` is longer than 60 seconds. A notice shows each retry.
 
 ## Images
+
+Press Ctrl+V to paste an image from the clipboard. It adds a marker such as `[image 1]` at the cursor. Only images whose marker is still in the prompt are sent, so deleting the marker removes the image. On macOS, rust-claude reads the clipboard with `osascript`. On Linux, it uses `wl-paste` under Wayland and `xclip` otherwise.
 
 rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the limits. It scales larger images down to at most 2,000 pixels on the long edge, and converts other formats to PNG. If an image is still larger than 10 MB in base64, it uses JPEG at lower quality, then halves the size until it fits.
 
