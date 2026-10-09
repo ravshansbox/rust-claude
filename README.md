@@ -40,6 +40,7 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | --- | --- |
 | `/new` | Start a new session |
 | `/resume` | Resume a previous session |
+| `/compact` | Summarise the conversation to free context |
 | `/model [id]` | Select a model. An id must be in the list of available models |
 | `/thinking [level]` | Select a thinking level |
 | `/quit` | Quit |
@@ -112,6 +113,8 @@ Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
 Quitting while a prompt runs cancels it and saves the session first.
 
 A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request.
+
+`/compact` asks the model to summarise the conversation. Later requests send the summary in place of the earlier messages. The session file keeps the full conversation and a compaction entry that holds the summary. A resumed session shows the earlier messages, then a `compacted conversation` notice. Esc cancels a running compaction.
 
 `/resume` reads each session only up to its first prompt to build the list. A damaged session shows an error when you resume it. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
