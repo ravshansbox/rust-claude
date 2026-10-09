@@ -125,21 +125,30 @@ impl Credentials {
         std::mem::take(&mut self.renewed)
     }
 
+    /// Writes a temporary file and renames it over auth.json, so readers
+    /// never see a half-written file and a crash keeps the old sign-in.
     fn save(&self) -> Result<()> {
         let path = credentials_path()?;
         std::fs::create_dir_all(path.parent().context("invalid credentials path")?)?;
+        let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);
         #[cfg(unix)]
         std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
-        let mut file = options.open(&path)?;
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+        let written = options.open(&temporary).and_then(|mut file| {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            }
+            file.write_all(serde_json::to_string_pretty(self)?.as_bytes())?;
+            file.sync_all()?;
+            std::fs::rename(&temporary, &path)
+        });
+        if written.is_err() {
+            let _ = std::fs::remove_file(&temporary);
         }
-        file.write_all(serde_json::to_string_pretty(self)?.as_bytes())?;
-        Ok(())
+        Ok(written?)
     }
 }
 
@@ -267,5 +276,42 @@ mod tests {
         let token = credentials.access_token(&reqwest::Client::new()).await;
         let _ = std::fs::remove_file(&path);
         assert_eq!(token.unwrap(), "renewed");
+    }
+
+    #[tokio::test]
+    async fn saving_never_leaves_a_reader_with_a_partial_sign_in() {
+        use std::io::Read;
+        use std::os::unix::fs::PermissionsExt;
+
+        let _lock = AUTH_FILE.lock().await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let old = json!({ "access": "old", "refresh": "old", "expires": 1 }).to_string();
+        std::fs::write(&path, &old).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let mut reader = std::fs::File::open(&path).unwrap();
+
+        let new: Credentials =
+            serde_json::from_value(json!({ "access": "new", "refresh": "new", "expires": 2 }))
+                .unwrap();
+        new.save().unwrap();
+
+        let mut seen_by_reader = String::new();
+        reader.read_to_string(&mut seen_by_reader).unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        let saved: Credentials =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let leftovers = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter(|entry| {
+                let name = entry.as_ref().unwrap().file_name();
+                name.to_string_lossy().starts_with("auth.json.")
+            })
+            .count();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(seen_by_reader, old);
+        assert_eq!(mode, 0o600);
+        assert_eq!((saved.access.as_str(), saved.expires), ("new", 2));
+        assert_eq!(leftovers, 0);
     }
 }
