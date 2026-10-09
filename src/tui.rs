@@ -852,7 +852,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::raw(format!(" {}:{}", app.model, app.thinking_level)),
+            Span::raw(format!("{}:{}", app.model, app.thinking_level)),
             Span::raw(format!(" · {} ", format_stats(&app.stats))),
             context_span(&app.stats),
         ])),
