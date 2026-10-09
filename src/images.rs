@@ -7,7 +7,7 @@ use image::{
 };
 
 const MAX_EDGE: u32 = 2000;
-const MAX_ENCODED_BYTES: usize = 10_000_000;
+const MAX_ENCODED_BYTES: usize = 5 * 1024 * 1024;
 const JPEG_QUALITIES: [u8; 4] = [85, 70, 55, 40];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -167,5 +167,23 @@ mod tests {
     #[test]
     fn rejects_data_that_is_not_an_image() {
         assert!(prepare(b"not an image".to_vec()).is_err());
+    }
+
+    #[test]
+    fn shrinks_images_over_the_api_5_mb_base64_limit() {
+        // Noise compresses poorly: this PNG is about 9 MB in base64.
+        let mut seed: u32 = 1;
+        let noise = RgbImage::from_fn(1500, 1500, |_, _| {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            image::Rgb((seed >> 8).to_le_bytes()[..3].try_into().unwrap())
+        });
+        let mut data = Vec::new();
+        DynamicImage::ImageRgb8(noise)
+            .write_to(&mut Cursor::new(&mut data), ImageFormat::Png)
+            .unwrap();
+        let base64_len = data.len().div_ceil(3) * 4;
+        assert!(base64_len > 5_250_000 && base64_len < 10_000_000);
+        let image = prepare(data).unwrap();
+        assert!(image.data.len().div_ceil(3) * 4 <= 5 * 1024 * 1024);
     }
 }
