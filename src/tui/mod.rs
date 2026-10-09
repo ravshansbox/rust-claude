@@ -247,10 +247,10 @@ async fn run_loop(
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
             }
         }
-        if app.start_listing_files() {
+        if let Some(generation) = app.start_listing_files() {
             let events = background_events.clone();
             tokio::task::spawn_blocking(move || {
-                let _ = events.send(UiEvent::Files(list_files()));
+                let _ = events.send(UiEvent::Files(generation, list_files()));
             });
         }
     };

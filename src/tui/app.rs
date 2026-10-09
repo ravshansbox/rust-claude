@@ -98,6 +98,8 @@ pub(super) struct App {
     pub(super) commands_dismissed: bool,
     pub(super) files: Option<Vec<String>>,
     pub(super) listing_files: bool,
+    /// Counts prompts sent, so a list read before the last one is dropped.
+    files_generation: u64,
     pub(super) prompt_history: Vec<String>,
     pub(super) history_index: Option<usize>,
     pub(super) reads: tools::ReadGroup,
@@ -176,6 +178,7 @@ impl App {
             commands_dismissed: false,
             files: None,
             listing_files: false,
+            files_generation: 0,
             prompt_history: Vec::new(),
             history_index: None,
             reads: tools::ReadGroup::default(),
@@ -375,21 +378,30 @@ impl App {
     }
 
     /// Whether the file list should start loading now, for an `@` the user
-    /// just typed. Returns true once until the list arrives.
-    pub(super) fn start_listing_files(&mut self) -> bool {
+    /// just typed. Returns the list's generation once until the list arrives.
+    pub(super) fn start_listing_files(&mut self) -> Option<u64> {
         if self.files.is_some()
             || self.listing_files
             || file_query(&self.input, self.cursor).is_none()
         {
-            return false;
+            return None;
         }
         self.listing_files = true;
-        true
+        Some(self.files_generation)
     }
 
-    pub(super) fn set_files(&mut self, files: Vec<String>) {
-        self.files = Some(files);
+    pub(super) fn set_files(&mut self, generation: u64, files: Vec<String>) {
+        if generation == self.files_generation {
+            self.files = Some(files);
+            self.listing_files = false;
+        }
+    }
+
+    /// Makes the next `@` read the files again, as the prompt may change them.
+    pub(super) fn forget_files(&mut self) {
+        self.files = None;
         self.listing_files = false;
+        self.files_generation += 1;
     }
 
     pub(super) fn attach_image(&mut self, image: Image) {
@@ -422,7 +434,7 @@ impl App {
     pub(super) fn queue_prompt(&mut self) {
         let prompt = std::mem::take(&mut self.input);
         self.cursor = 0;
-        self.files = None;
+        self.forget_files();
         self.history_index = None;
         self.remember(&prompt);
         let images = self.take_numbered_images(&prompt);
@@ -559,23 +571,39 @@ mod tests {
     #[test]
     fn lists_files_once_in_the_background_and_shows_them_when_ready() {
         let mut app = new_app();
-        assert!(!app.start_listing_files());
+        assert!(app.start_listing_files().is_none());
         handle_input(Event::Paste("read @ma".into()), &mut app, |_| {});
         assert!(app.visible_suggestions().is_none());
-        assert!(app.start_listing_files());
+        let generation = app.start_listing_files().unwrap();
         handle_input(
             Event::Key(KeyEvent::from(KeyCode::Char('i'))),
             &mut app,
             |_| {},
         );
-        assert!(!app.start_listing_files());
+        assert!(app.start_listing_files().is_none());
         handle_agent_event(
-            UiEvent::Files(vec!["README.md".into(), "src/main.rs".into()]),
+            UiEvent::Files(generation, vec!["README.md".into(), "src/main.rs".into()]),
             &mut app,
         );
         let suggestions = app.visible_suggestions().unwrap();
         assert_eq!(suggestions.items, [("src/main.rs".into(), String::new())]);
         assert!(screen(&mut app).contains("src/main.rs"));
-        assert!(!app.start_listing_files());
+        assert!(app.start_listing_files().is_none());
+    }
+
+    #[test]
+    fn drops_a_file_list_started_before_the_prompt_was_sent() {
+        for status in ["", "working"] {
+            let mut app = new_app();
+            app.busy = !status.is_empty();
+            app.status = status.into();
+            handle_input(Event::Paste("read @".into()), &mut app, |_| {});
+            let generation = app.start_listing_files().unwrap();
+            handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+            handle_agent_event(UiEvent::Files(generation, vec!["old.rs".into()]), &mut app);
+            handle_input(Event::Paste("@".into()), &mut app, |_| {});
+            assert!(app.start_listing_files().is_some(), "{status}");
+            assert!(!screen(&mut app).contains("old.rs"), "{status}");
+        }
     }
 }
