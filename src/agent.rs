@@ -183,11 +183,12 @@ fn estimate_tokens(message: &Value) -> u64 {
     (characters as u64).div_ceil(4)
 }
 
-fn estimate_system_tokens(system: &[Value]) -> u64 {
+fn estimate_prompt_tokens(system: &[Value], tools: &Value) -> u64 {
     let characters: usize = system
         .iter()
         .map(|block| block["text"].as_str().unwrap_or_default().chars().count())
-        .sum();
+        .sum::<usize>()
+        + tools.to_string().chars().count();
     (characters as u64).div_ceil(4)
 }
 
@@ -341,7 +342,7 @@ impl Agent {
             cache_hit_rate,
             context_tokens: context_tokens(
                 &self.messages,
-                estimate_system_tokens(&self.system_prompt()),
+                estimate_prompt_tokens(&self.system_prompt(), &tools::definitions()),
             ),
             context_window: models::context_window(&self.model),
             quota: self.quota,
