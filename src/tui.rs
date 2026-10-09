@@ -204,6 +204,7 @@ enum Request {
     Prompt(String, &'static str),
     ListSessions,
     Resume(String),
+    SetModel(String),
 }
 
 async fn agent_task(
@@ -221,6 +222,10 @@ async fn agent_task(
             }
             Request::Resume(id) => {
                 let _ = events.send(UiEvent::Resumed(agent.resume(&id)));
+                continue;
+            }
+            Request::SetModel(model) => {
+                agent.model = model;
                 continue;
             }
         };
@@ -284,6 +289,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::Resume(id) => {
                         let _ = request_tx.send(Request::Resume(id));
                     }
+                    Action::SetModel(model) => {
+                        let _ = request_tx.send(Request::SetModel(model));
+                    }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
                     }
@@ -310,6 +318,7 @@ enum Action {
     Submit(String, &'static str),
     ListSessions,
     Resume(String),
+    SetModel(String),
     Cancel,
 }
 
@@ -393,6 +402,14 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                             ),
                         ),
                     },
+                    "/model" if argument.is_empty() => {
+                        app.push(Role::Event, format!("model: {}", app.model));
+                    }
+                    "/model" => {
+                        app.model = argument.to_string();
+                        app.push(Role::Event, format!("model: {argument}"));
+                        act(Action::SetModel(argument.to_string()));
+                    }
                     "/resume" => {
                         app.status = "loading sessions".into();
                         app.busy = true;
