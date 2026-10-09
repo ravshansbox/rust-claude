@@ -26,10 +26,13 @@ async fn main() -> Result<()> {
         .ok()
         .or(settings.model)
         .unwrap_or_else(|| "claude-opus-5-5".into());
+    let thinking_level = std::env::var("RUST_CLAUDE_THINKING")
+        .ok()
+        .or(settings.thinking_level);
     let mut agent = agent::Agent::new(http, credentials, model)?;
     if let Some(level) = agent::THINKING_LEVELS
         .iter()
-        .find(|level| Some(**level) == settings.thinking_level.as_deref())
+        .find(|level| Some(**level) == thinking_level.as_deref())
     {
         agent.thinking_level = level;
     }
