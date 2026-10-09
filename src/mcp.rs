@@ -17,7 +17,10 @@ use tokio::{
     sync::oneshot,
 };
 
-use crate::tools::{self, ProcessGroup};
+use crate::{
+    skills::Scope,
+    tools::{self, ProcessGroup},
+};
 
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const DEFAULT_TIMEOUT: u64 = 60;
@@ -55,7 +58,8 @@ fn expand_home(text: &str, home: Option<&Path>) -> String {
 
 fn read_config(
     path: &Path,
-    servers: &mut BTreeMap<String, ServerConfig>,
+    scope: Scope,
+    servers: &mut BTreeMap<String, (Scope, ServerConfig)>,
     diagnostics: &mut Vec<String>,
 ) {
     let Ok(text) = std::fs::read_to_string(path) else {
@@ -86,7 +90,7 @@ fn read_config(
         }
         match serde_json::from_value(entry.clone()) {
             Ok(server) => {
-                servers.insert(name.clone(), server);
+                servers.insert(name.clone(), (scope, server));
             }
             Err(error) => {
                 servers.remove(name);
@@ -96,12 +100,18 @@ fn read_config(
     }
 }
 
-fn config_paths() -> Vec<PathBuf> {
+fn config_paths() -> Vec<(Scope, PathBuf)> {
     let mut paths = Vec::new();
     if let Some(home) = std::env::var_os("HOME") {
-        paths.push(PathBuf::from(home).join(".rust-claude").join("mcp.json"));
+        paths.push((
+            Scope::Global,
+            PathBuf::from(home).join(".rust-claude").join("mcp.json"),
+        ));
     }
-    paths.push(PathBuf::from(".rust-claude").join("mcp.json"));
+    paths.push((
+        Scope::Project,
+        PathBuf::from(".rust-claude").join("mcp.json"),
+    ));
     paths
 }
 
@@ -320,6 +330,7 @@ struct Tool {
 
 struct Server {
     name: String,
+    scope: Scope,
     connection: Connection,
     tools: Vec<Tool>,
 }
@@ -377,7 +388,7 @@ async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
     }
 }
 
-async fn connect(name: String, config: ServerConfig) -> Result<Server, String> {
+async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Server, String> {
     let command = match (config.kind.as_deref(), &config.command, &config.url) {
         (Some("sse"), _, _) => return Err("the SSE transport is not supported".into()),
         (Some("http" | "streamable-http"), _, _) | (None, None, Some(_)) => {
@@ -405,6 +416,7 @@ async fn connect(name: String, config: ServerConfig) -> Result<Server, String> {
     if initialize["capabilities"]["tools"].is_null() {
         return Ok(Server {
             name,
+            scope,
             connection,
             tools: Vec::new(),
         });
@@ -424,6 +436,7 @@ async fn connect(name: String, config: ServerConfig) -> Result<Server, String> {
         .collect();
     Ok(Server {
         name,
+        scope,
         connection,
         tools,
     })
@@ -461,14 +474,14 @@ impl Mcp {
     pub async fn load() -> Self {
         let mut configs = BTreeMap::new();
         let mut diagnostics = Vec::new();
-        for path in config_paths() {
-            read_config(&path, &mut configs, &mut diagnostics);
+        for (scope, path) in config_paths() {
+            read_config(&path, scope, &mut configs, &mut diagnostics);
         }
         let connections = configs
             .into_iter()
-            .filter(|(_, config)| config.enabled != Some(false))
-            .map(|(name, config)| async move {
-                let result = connect(name.clone(), config).await;
+            .filter(|(_, (_, config))| config.enabled != Some(false))
+            .map(|(name, (scope, config))| async move {
+                let result = connect(name.clone(), scope, config).await;
                 (name, result)
             });
         let mut mcp = Self {
@@ -500,16 +513,20 @@ impl Mcp {
         mcp
     }
 
-    pub fn loaded(&self) -> Option<String> {
-        if self.servers.is_empty() {
-            return None;
-        }
-        let servers: Vec<String> = self
-            .servers
-            .iter()
-            .map(|server| format!("{} ({} tools)", server.name, server.tools.len()))
-            .collect();
-        Some(format!("loaded MCP servers: {}", servers.join(", ")))
+    pub fn loaded(&self) -> Vec<String> {
+        [Scope::Global, Scope::Project]
+            .into_iter()
+            .filter_map(|scope| {
+                let servers: Vec<String> = self
+                    .servers
+                    .iter()
+                    .filter(|server| server.scope == scope)
+                    .map(|server| format!("{} ({} tools)", server.name, server.tools.len()))
+                    .collect();
+                (!servers.is_empty())
+                    .then(|| format!("loaded {scope} MCP servers: {}", servers.join(", ")))
+            })
+            .collect()
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = Value> + '_ {
@@ -618,11 +635,12 @@ mod tests {
         .unwrap();
         let mut servers = BTreeMap::new();
         let mut diagnostics = Vec::new();
-        read_config(&global, &mut servers, &mut diagnostics);
-        read_config(&project, &mut servers, &mut diagnostics);
+        read_config(&global, Scope::Global, &mut servers, &mut diagnostics);
+        read_config(&project, Scope::Project, &mut servers, &mut diagnostics);
         std::fs::remove_dir_all(&directory).unwrap();
         assert_eq!(servers.len(), 1);
-        assert_eq!(servers["docs"].command.as_deref(), Some("c"));
+        assert_eq!(servers["docs"].0, Scope::Project);
+        assert_eq!(servers["docs"].1.command.as_deref(), Some("c"));
         assert_eq!(diagnostics.len(), 1);
     }
 
@@ -648,11 +666,14 @@ done
             enabled: None,
             timeout: Some(5),
         };
-        let server = connect("test".into(), config).await.unwrap();
+        let server = connect("test".into(), Scope::Project, config)
+            .await
+            .unwrap();
         let mcp = Mcp {
             servers: vec![server],
             diagnostics: Vec::new(),
         };
+        assert_eq!(mcp.loaded(), ["loaded project MCP servers: test (1 tools)"]);
         assert_eq!(mcp.definitions().count(), 1);
         assert_eq!(
             mcp.call("mcp__test__echo", &json!({})).await,
