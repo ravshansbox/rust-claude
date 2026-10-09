@@ -14,7 +14,7 @@ use crossterm::{
 use futures::StreamExt;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Direction, Layout, Margin, Rect},
+    layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
@@ -798,7 +798,6 @@ fn draw(frame: &mut Frame, app: &mut App) {
         ])
         .areas(frame.area());
 
-    let chat = chat.inner(Margin::new(1, 0));
     for message in &mut app.messages {
         message.render(chat.width);
     }
