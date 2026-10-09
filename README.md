@@ -85,7 +85,7 @@ Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
 
 The agent can use these tools:
 
-- `bash`: run a shell command
+- `bash`: run a shell command. Its description suggests `ast-grep` for searching code structure and `rg` for searching text
 - `read`: read a file
 - `write`: create or replace a file
 - `edit`: replace text in a file

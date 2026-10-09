@@ -68,7 +68,7 @@ pub fn definitions() -> Value {
     json!([
         {
             "name": "bash",
-            "description": "Run a bash command in the current project and return stdout and stderr",
+            "description": "Run a bash command in the current project and return stdout and stderr. Prefer ast-grep for searching code structure and rg for searching text",
             "input_schema": {
                 "type": "object",
                 "properties": {
