@@ -105,7 +105,7 @@ A cancelled prompt stays in the session, so the model sees it in the next reques
 
 The agent can use these tools:
 
-- `bash`: run a shell command. Its description suggests `ast-grep` for searching code structure and `rg` for searching text, but only the ones found on `PATH`
+- `bash`: run a shell command
 - `read`: read a file
 - `write`: create or replace a file
 - `edit`: replace text in a file
