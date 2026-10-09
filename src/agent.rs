@@ -553,7 +553,7 @@ impl Agent {
         }
         let body = json!({
             "model": self.model,
-            "max_tokens": 8192,
+            "max_tokens": models::max_output(&self.model),
             "stream": true,
             "thinking": { "type": "adaptive", "display": "summarized" },
             "output_config": { "effort": self.thinking_level },
