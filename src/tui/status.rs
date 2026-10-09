@@ -27,21 +27,37 @@ pub(super) fn format_stats(stats: &Stats) -> String {
 }
 
 pub(super) fn format_quota(stats: &Stats) -> String {
-    [
-        (stats.quota.five_hour_remaining, stats.quota.five_hour_reset),
-        (stats.quota.seven_day_remaining, stats.quota.seven_day_reset),
+    let windows: Vec<_> = [
+        (
+            "5h",
+            stats.quota.five_hour_remaining,
+            stats.quota.five_hour_reset,
+        ),
+        (
+            "7d",
+            stats.quota.seven_day_remaining,
+            stats.quota.seven_day_reset,
+        ),
     ]
     .into_iter()
-    .filter_map(|(remaining, reset)| {
-        remaining.map(|remaining| {
+    .filter_map(|(label, remaining, reset)| remaining.map(|remaining| (label, remaining, reset)))
+    .collect();
+    let single = windows.len() == 1;
+    windows
+        .into_iter()
+        .map(|(label, remaining, reset)| {
+            let label = if single {
+                format!("{label} ")
+            } else {
+                String::new()
+            };
             let reset = reset
                 .map(|reset| format!(" {}", time_until(reset)))
                 .unwrap_or_default();
-            format!("{remaining:.0}%{reset}")
+            format!("{label}{remaining:.0}%{reset}")
         })
-    })
-    .collect::<Vec<_>>()
-    .join(" · ")
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 fn time_until(reset: u64) -> String {
@@ -129,6 +145,38 @@ fn format_tokens(count: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{Quota, Usage};
+
+    fn stats_with(quota: Quota) -> Stats {
+        Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota,
+        }
+    }
+
+    #[test]
+    fn labels_single_quota_window() {
+        let five_hour = Quota {
+            five_hour_remaining: Some(95.0),
+            ..Quota::default()
+        };
+        assert_eq!(format_quota(&stats_with(five_hour)), "5h 95%");
+        let seven_day = Quota {
+            seven_day_remaining: Some(81.0),
+            ..Quota::default()
+        };
+        assert_eq!(format_quota(&stats_with(seven_day)), "7d 81%");
+        let both = Quota {
+            five_hour_remaining: Some(95.0),
+            seven_day_remaining: Some(81.0),
+            ..Quota::default()
+        };
+        assert_eq!(format_quota(&stats_with(both)), "95% · 81%");
+    }
 
     #[test]
     fn formats_durations() {
