@@ -239,7 +239,6 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             Some(last) if matches!(last.role, Role::Assistant) => last.text.push_str(&text),
             _ => app.push(Role::Assistant, text),
         },
-        UiEvent::Agent(AgentEvent::ToolCall(_)) => {}
         UiEvent::Agent(AgentEvent::ToolStart { name, summary }) => {
             app.push(Role::Tool, format!("{name} {summary}"));
         }

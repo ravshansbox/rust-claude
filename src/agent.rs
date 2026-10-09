@@ -58,7 +58,6 @@ fn same_path(a: &Path, b: &Path) -> bool {
 
 pub enum AgentEvent {
     Text(String),
-    ToolCall(String),
     ToolStart { name: String, summary: String },
     ToolDone { name: String, error: Option<String> },
     Usage { input: u64, output: u64 },
@@ -208,11 +207,6 @@ impl Agent {
                     }
                     "content_block_start" => {
                         let block = event["content_block"].clone();
-                        if block["type"] == "tool_use" {
-                            on_event(AgentEvent::ToolCall(
-                                block["name"].as_str().unwrap_or_default().into(),
-                            ));
-                        }
                         partial_json.clear();
                         content.push(block);
                     }
