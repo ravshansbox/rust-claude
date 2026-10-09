@@ -251,6 +251,32 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 mod tests {
     use super::{MAX_OUTPUT, call, read_lines};
     use serde_json::json;
+    use std::path::{Path, PathBuf};
+
+    struct TemporaryFile(PathBuf);
+
+    impl TemporaryFile {
+        fn new(name: &str, content: &str) -> Self {
+            let path =
+                std::env::temp_dir().join(format!("rust-claude-{name}-{}", std::process::id()));
+            std::fs::write(&path, content).unwrap();
+            Self(path)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+
+        fn content(&self) -> String {
+            std::fs::read_to_string(&self.0).unwrap()
+        }
+    }
+
+    impl Drop for TemporaryFile {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.0);
+        }
+    }
 
     #[tokio::test]
     async fn times_out_bash_command() {
@@ -262,21 +288,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejects_zero_timeout() {
-        let input = json!({ "command": "echo hi", "timeout": 0 });
-        assert_eq!(
-            call("bash", &input).await,
-            Err("timeout must be at least 1".into())
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_negative_timeout() {
-        let input = json!({ "command": "echo hi", "timeout": -1 });
-        assert_eq!(
-            call("bash", &input).await,
-            Err("timeout must be at least 1".into())
-        );
+    async fn rejects_invalid_numbers() {
+        let cases = [
+            (
+                "bash",
+                json!({ "command": "echo hi", "timeout": 0 }),
+                "timeout must be at least 1",
+            ),
+            (
+                "bash",
+                json!({ "command": "echo hi", "timeout": -1 }),
+                "timeout must be at least 1",
+            ),
+            (
+                "read",
+                json!({ "path": "Cargo.toml", "limit": 0 }),
+                "limit must be at least 1",
+            ),
+            (
+                "read",
+                json!({ "path": "Cargo.toml", "limit": -1 }),
+                "limit must be at least 1",
+            ),
+            (
+                "read",
+                json!({ "path": "Cargo.toml", "offset": -5 }),
+                "offset must be at least 1",
+            ),
+        ];
+        for (name, input, error) in cases {
+            assert_eq!(call(name, &input).await, Err(error.into()), "{input}");
+        }
     }
 
     #[tokio::test]
@@ -284,33 +326,6 @@ mod tests {
         let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
         let text = call("bash", &input).await.unwrap();
         assert!(text.ends_with("exit status: 3"));
-    }
-
-    #[tokio::test]
-    async fn rejects_zero_limit() {
-        let input = json!({ "path": "Cargo.toml", "limit": 0 });
-        assert_eq!(
-            call("read", &input).await,
-            Err("limit must be at least 1".into())
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_negative_offset() {
-        let input = json!({ "path": "Cargo.toml", "offset": -5 });
-        assert_eq!(
-            call("read", &input).await,
-            Err("offset must be at least 1".into())
-        );
-    }
-
-    #[tokio::test]
-    async fn rejects_negative_limit() {
-        let input = json!({ "path": "Cargo.toml", "limit": -1 });
-        assert_eq!(
-            call("read", &input).await,
-            Err("limit must be at least 1".into())
-        );
     }
 
     #[tokio::test]
@@ -349,13 +364,11 @@ mod tests {
 
     #[tokio::test]
     async fn kills_background_processes_on_timeout() {
-        let pid_file =
-            std::env::temp_dir().join(format!("rust-claude-test-{}", std::process::id()));
-        let command = format!("sleep 30 & echo $! > {}; wait", pid_file.display());
+        let pid_file = TemporaryFile::new("pid", "");
+        let command = format!("sleep 30 & echo $! > {}; wait", pid_file.path().display());
         let input = json!({ "command": command, "timeout": 1 });
         assert!(call("bash", &input).await.is_err());
-        let pid = std::fs::read_to_string(&pid_file).unwrap();
-        std::fs::remove_file(&pid_file).unwrap();
+        let pid = pid_file.content();
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
         let alive = std::process::Command::new("kill")
             .args(["-0", pid.trim()])
@@ -394,37 +407,35 @@ mod tests {
 
     #[tokio::test]
     async fn rejects_empty_old_text() {
-        let path = std::env::temp_dir().join(format!("rust-claude-edit-{}", std::process::id()));
-        std::fs::write(&path, "").unwrap();
-        let input = json!({ "path": path, "old_text": "", "new_text": "added" });
-        let result = call("edit", &input).await;
-        let content = std::fs::read_to_string(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(result, Err("old_text must not be empty".into()));
-        assert_eq!(content, "");
+        let file = TemporaryFile::new("edit", "");
+        let input = json!({ "path": file.path(), "old_text": "", "new_text": "added" });
+        assert_eq!(
+            call("edit", &input).await,
+            Err("old_text must not be empty".into())
+        );
+        assert_eq!(file.content(), "");
     }
 
     #[tokio::test]
     async fn rejects_offset_past_end_of_file() {
-        let path = std::env::temp_dir().join(format!("rust-claude-offset-{}", std::process::id()));
-        std::fs::write(&path, "one\ntwo\n").unwrap();
-        let past_end = call("read", &json!({ "path": path, "offset": 3 })).await;
-        let last_line = call("read", &json!({ "path": path, "offset": 2 })).await;
-        std::fs::remove_file(&path).unwrap();
+        let file = TemporaryFile::new("offset", "one\ntwo\n");
+        let past_end = call("read", &json!({ "path": file.path(), "offset": 3 })).await;
+        let last_line = call("read", &json!({ "path": file.path(), "offset": 2 })).await;
         assert!(past_end.unwrap_err().contains("which has 2 lines"));
         assert_eq!(last_line, Ok("two\n".into()));
     }
 
     #[tokio::test]
     async fn rejects_overlapping_old_text() {
-        let path = std::env::temp_dir().join(format!("rust-claude-overlap-{}", std::process::id()));
-        std::fs::write(&path, "aaa").unwrap();
-        let input = json!({ "path": path, "old_text": "aa", "new_text": "b" });
-        let result = call("edit", &input).await;
-        let content = std::fs::read_to_string(&path).unwrap();
-        std::fs::remove_file(&path).unwrap();
-        assert!(result.unwrap_err().contains("matches 2 times"));
-        assert_eq!(content, "aaa");
+        let file = TemporaryFile::new("overlap", "aaa");
+        let input = json!({ "path": file.path(), "old_text": "aa", "new_text": "b" });
+        assert!(
+            call("edit", &input)
+                .await
+                .unwrap_err()
+                .contains("matches 2 times")
+        );
+        assert_eq!(file.content(), "aaa");
     }
 
     #[test]
