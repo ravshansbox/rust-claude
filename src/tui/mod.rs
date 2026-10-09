@@ -525,6 +525,12 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
         app.push(Role::Event, diagnostic.to_string());
     }
     app.skills = agent.skills.skills.clone();
+    if let Some(loaded) = agent.mcp.loaded() {
+        app.push(Role::Event, loaded);
+    }
+    for diagnostic in &agent.mcp.diagnostics {
+        app.push(Role::Event, diagnostic.to_string());
+    }
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
