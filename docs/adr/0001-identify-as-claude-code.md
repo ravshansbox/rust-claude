@@ -1,4 +1,4 @@
-# 2. Identify as Claude Code
+# 1. Identify as Claude Code
 
 Date: 2026-10-09
 

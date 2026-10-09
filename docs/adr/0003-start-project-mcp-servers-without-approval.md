@@ -12,10 +12,10 @@ A project can list MCP servers in `.rust-claude/mcp.json`. Stdio servers are com
 
 ## Decision
 
-rust-claude reads `.rust-claude/mcp.json` in the current directory and starts its servers without asking, in line with [ADR 1](0001-run-tools-without-approval.md).
+rust-claude reads `.rust-claude/mcp.json` in the current directory and starts its servers without asking, in line with [ADR 2](0002-run-tools-without-approval.md).
 
 ## Consequences
 
 - Project servers work with no extra step.
 - Starting rust-claude in a project runs any command its `mcp.json` lists, before the first prompt.
-- As with ADR 1, use rust-claude only in projects you trust.
+- As with ADR 2, use rust-claude only in projects you trust.

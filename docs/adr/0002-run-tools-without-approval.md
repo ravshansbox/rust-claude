@@ -1,4 +1,4 @@
-# 1. Run tools without approval
+# 2. Run tools without approval
 
 Date: 2026-10-09
 
