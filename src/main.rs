@@ -1,6 +1,7 @@
 mod agent;
 mod auth;
 mod clipboard;
+mod config;
 mod highlight;
 mod history;
 mod images;
@@ -16,20 +17,21 @@ use std::io::{IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
 
-const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
+const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [-c|--continue] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
+usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
 
 Options:
-  -c, --continue          Continue the latest session in the current folder
-      --model <id>        Model to use
-      --thinking <level>  Thinking level: low, medium, high, xhigh, max
-  -p, --print <prompt>    Run one prompt and print the answer
-      --hide-tools        Hide tool calls in print mode
-      --image <path>      Send an image with the prompt in print mode. Repeat for more images
-  -h, --help              Show this help";
+  -c, --continue           Continue the latest session in the current folder
+      --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-claude
+      --model <id>         Model to use
+      --thinking <level>   Thinking level: low, medium, high, xhigh, max
+  -p, --print <prompt>     Run one prompt and print the answer
+      --hide-tools         Hide tool calls in print mode
+      --image <path>       Send an image with the prompt in print mode. Repeat for more images
+  -h, --help               Show this help";
 
 #[derive(Debug, PartialEq)]
 enum Command {
@@ -47,6 +49,7 @@ struct Options {
     model: Option<String>,
     thinking_level: Option<String>,
     continue_session: bool,
+    config_dir: Option<String>,
 }
 
 fn take_flag(arguments: &mut Vec<String>, flags: &[&str]) -> bool {
@@ -84,6 +87,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
         model: take_value(&mut arguments, "--model")?,
         thinking_level: take_value(&mut arguments, "--thinking")?,
         continue_session: take_flag(&mut arguments, &["-c", "--continue"]),
+        config_dir: take_value(&mut arguments, "--config-dir")?,
     };
     let print_options = hide_tools || !images.is_empty();
     let command = match arguments.as_slice() {
@@ -108,6 +112,9 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let (command, options) = parse_arguments(std::env::args().skip(1).collect())?;
+    if let Some(config_dir) = &options.config_dir {
+        config::set_dir(config_dir.into());
+    }
     let (print_prompt, hide_tools, image_paths) = match command {
         Command::Help => {
             println!("{HELP}");
@@ -352,6 +359,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_config_dir_option() {
+        assert_eq!(
+            parse_with_options(&["--config-dir", "/tmp/rc", "-p", "hello"])
+                .map(|(_, options)| options.config_dir),
+            Some(Some("/tmp/rc".into()))
+        );
+        assert_eq!(parse(&["--config-dir"]), None);
+        assert_eq!(parse(&["--config-dir", "/tmp/rc", "--help"]), None);
+    }
+
+    #[test]
     fn parses_model_and_thinking_options() {
         assert_eq!(
             parse_with_options(&["--model", "claude-x", "--thinking", "high"]),
@@ -361,6 +379,7 @@ mod tests {
                     model: Some("claude-x".into()),
                     thinking_level: Some("high".into()),
                     continue_session: false,
+                    config_dir: None,
                 }
             ))
         );
@@ -376,6 +395,7 @@ mod tests {
                     model: None,
                     thinking_level: Some("low".into()),
                     continue_session: false,
+                    config_dir: None,
                 }
             ))
         );

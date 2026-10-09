@@ -13,12 +13,7 @@ pub struct Entry {
 }
 
 pub fn history_path() -> Option<PathBuf> {
-    let home = std::env::var_os("HOME")?;
-    Some(
-        PathBuf::from(home)
-            .join(".rust-claude")
-            .join("history.jsonl"),
-    )
+    Some(crate::config::dir()?.join("history.jsonl"))
 }
 
 pub fn append(path: &Path, prompt: &str) -> Result<()> {
