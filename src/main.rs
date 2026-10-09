@@ -1,5 +1,6 @@
 mod agent;
 mod auth;
+mod highlight;
 mod models;
 mod session;
 mod settings;
