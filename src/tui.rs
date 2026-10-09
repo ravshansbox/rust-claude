@@ -1,5 +1,6 @@
 use crate::{
     agent::{Agent, AgentEvent, THINKING_LEVELS},
+    session::SessionSummary,
     tools,
 };
 use anyhow::Result;
@@ -19,7 +20,7 @@ use ratatui::{
     widgets::{Block, Borders, Paragraph, Wrap},
 };
 use serde_json::Value;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
@@ -110,6 +111,12 @@ struct App {
     max_scroll: u16,
     page_size: u16,
     busy: bool,
+    picker: Option<Picker>,
+}
+
+struct Picker {
+    sessions: Vec<SessionSummary>,
+    selected: usize,
 }
 
 impl App {
@@ -125,6 +132,7 @@ impl App {
             max_scroll: 0,
             page_size: 1,
             busy: false,
+            picker: None,
         };
         app.push(
             Role::Event,
@@ -188,12 +196,14 @@ enum UiEvent {
     Agent(AgentEvent),
     Done(Result<()>),
     Cancelled,
-    Resumed(Result<Option<Vec<Value>>>),
+    Sessions(Result<Vec<SessionSummary>>),
+    Resumed(Result<Vec<Value>>),
 }
 
 enum Request {
     Prompt(String, &'static str),
-    Resume,
+    ListSessions,
+    Resume(String),
 }
 
 async fn agent_task(
@@ -205,8 +215,12 @@ async fn agent_task(
     while let Some(request) = requests.recv().await {
         let (prompt, thinking_level) = match request {
             Request::Prompt(prompt, thinking_level) => (prompt, thinking_level),
-            Request::Resume => {
-                let _ = events.send(UiEvent::Resumed(agent.resume_latest()));
+            Request::ListSessions => {
+                let _ = events.send(UiEvent::Sessions(agent.list_sessions()));
+                continue;
+            }
+            Request::Resume(id) => {
+                let _ = events.send(UiEvent::Resumed(agent.resume(&id)));
                 continue;
             }
         };
@@ -264,8 +278,11 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::Submit(prompt, thinking_level) => {
                         let _ = request_tx.send(Request::Prompt(prompt, thinking_level));
                     }
-                    Action::Resume => {
-                        let _ = request_tx.send(Request::Resume);
+                    Action::ListSessions => {
+                        let _ = request_tx.send(Request::ListSessions);
+                    }
+                    Action::Resume(id) => {
+                        let _ = request_tx.send(Request::Resume(id));
                     }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
@@ -291,7 +308,8 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
 
 enum Action {
     Submit(String, &'static str),
-    Resume,
+    ListSessions,
+    Resume(String),
     Cancel,
 }
 
@@ -306,6 +324,24 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     }
     let Event::Key(key) = event else { return false };
     if key.kind != KeyEventKind::Press {
+        return false;
+    }
+
+    if let Some(picker) = &mut app.picker {
+        match key.code {
+            KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
+            KeyCode::Down => picker.selected = (picker.selected + 1).min(picker.sessions.len() - 1),
+            KeyCode::Enter => {
+                let id = picker.sessions[picker.selected].id.clone();
+                app.picker = None;
+                app.status = "resuming".into();
+                app.busy = true;
+                act(Action::Resume(id));
+            }
+            KeyCode::Esc => app.picker = None,
+            KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => return true,
+            _ => {}
+        }
         return false;
     }
 
@@ -330,9 +366,9 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             if prompt.starts_with('/') {
                 match prompt.trim() {
                     "/resume" => {
-                        app.status = "resuming".into();
+                        app.status = "loading sessions".into();
                         app.busy = true;
-                        act(Action::Resume);
+                        act(Action::ListSessions);
                     }
                     command => app.push(Role::Event, format!("unknown command: {command}")),
                 }
@@ -389,14 +425,28 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push(Role::Event, "cancelled");
             app.busy = false;
         }
+        UiEvent::Sessions(result) => {
+            match result {
+                Ok(sessions) if sessions.is_empty() => {
+                    app.push(Role::Event, "no session to resume");
+                }
+                Ok(sessions) => {
+                    app.picker = Some(Picker {
+                        sessions,
+                        selected: 0,
+                    });
+                }
+                Err(error) => app.push(Role::Event, format!("error: {error}")),
+            }
+            app.busy = false;
+        }
         UiEvent::Resumed(result) => {
             match result {
-                Ok(Some(messages)) => {
+                Ok(messages) => {
                     app.messages.clear();
                     replay_messages(app, &messages);
-                    app.push(Role::Event, "resumed latest session");
+                    app.push(Role::Event, "resumed session");
                 }
-                Ok(None) => app.push(Role::Event, "no session to resume"),
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
             }
             app.busy = false;
@@ -492,7 +542,11 @@ fn draw(frame: &mut Frame, app: &mut App) {
     app.page_size = viewport_height.max(1);
     app.scroll_from_bottom = app.scroll_from_bottom.min(app.max_scroll);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    frame.render_widget(conversation.scroll((scroll, 0)), chat);
+    if let Some(picker) = &app.picker {
+        frame.render_widget(picker_view(picker, chat.height), chat);
+    } else {
+        frame.render_widget(conversation.scroll((scroll, 0)), chat);
+    }
 
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
@@ -521,6 +575,37 @@ fn draw(frame: &mut Frame, app: &mut App) {
         ])),
         footer,
     );
+}
+
+fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
+    let mut lines = vec![Line::from(
+        "Resume session (↑↓ select, Enter resume, Esc cancel)".bold(),
+    )];
+    let visible = (height as usize).saturating_sub(1).max(1);
+    let first = (picker.selected + 1).saturating_sub(visible);
+    for (index, session) in picker.sessions.iter().enumerate().skip(first).take(visible) {
+        let preview = session.preview.lines().next().unwrap_or_default();
+        let text = format!("{:>8}  {preview}", time_ago(session.modified));
+        lines.push(if index == picker.selected {
+            Line::from(format!("› {text}").reversed())
+        } else {
+            Line::raw(format!("  {text}"))
+        });
+    }
+    Paragraph::new(lines)
+}
+
+fn time_ago(time: SystemTime) -> String {
+    let seconds = SystemTime::now()
+        .duration_since(time)
+        .unwrap_or_default()
+        .as_secs();
+    match seconds {
+        0..60 => format!("{seconds}s ago"),
+        60..3_600 => format!("{}m ago", seconds / 60),
+        3_600..86_400 => format!("{}h ago", seconds / 3_600),
+        _ => format!("{}d ago", seconds / 86_400),
+    }
 }
 
 fn thinking_colour(level: &str) -> Color {
