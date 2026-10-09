@@ -314,33 +314,21 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let mut lines = Vec::new();
     for message in &app.messages {
         lines.push(Line::default());
-        let label = match message.role {
+        match message.role {
             Role::User => {
                 lines.extend(user_message_lines(&message.text, chat.width as usize));
-                continue;
             }
             Role::Assistant => {
                 lines.extend(tui_markdown::from_str(&message.text).lines);
-                continue;
             }
-            Role::Tool => "⏺ ".yellow(),
-            Role::Event => "· ".dark_gray(),
-        };
-        for (index, text) in message.text.lines().enumerate() {
-            let prefix = if index == 0 {
-                label.clone()
-            } else {
-                "  ".into()
-            };
-            lines.push(Line::from(vec![prefix, Span::raw(text)]));
+            Role::Tool | Role::Event => {
+                lines.extend(message.text.lines().map(Line::raw));
+            }
         }
     }
     if app.busy {
         lines.push(Line::default());
-        lines.push(Line::from(vec![
-            "· ".dark_gray(),
-            app.status.as_str().dark_gray(),
-        ]));
+        lines.push(Line::from(app.status.as_str().dark_gray()));
     }
 
     let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
