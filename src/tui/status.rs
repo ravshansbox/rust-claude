@@ -17,7 +17,7 @@ pub(super) fn format_stats(stats: &Stats) -> String {
     if let Some(rate) = stats.cache_hit_rate
         && (usage.cache_read > 0 || usage.cache_write > 0)
     {
-        parts.push(format!("CH{rate:.1}%"));
+        parts.push(format!("CH{rate:.0}%"));
     }
     let mut sections = vec![parts.join(" ")];
     if let Some(rate) = stats.tokens_per_second {
@@ -81,7 +81,7 @@ pub(super) fn context_span(stats: &Stats) -> Span<'static> {
         0.0
     };
     Span::raw(format!(
-        "{percent:.1}%/{}",
+        "{percent:.0}%/{}",
         format_tokens(stats.context_window)
     ))
 }
@@ -90,12 +90,8 @@ fn format_tokens(count: u64) -> String {
     let count = count as f64;
     if count < 1_000.0 {
         count.to_string()
-    } else if count < 10_000.0 {
-        format!("{:.1}k", count / 1_000.0)
     } else if count < 1_000_000.0 {
         format!("{}k", (count / 1_000.0).round())
-    } else if count < 10_000_000.0 {
-        format!("{:.1}M", count / 1_000_000.0)
     } else {
         format!("{}M", (count / 1_000_000.0).round())
     }
@@ -120,11 +116,11 @@ mod tests {
     fn formats_tokens() {
         assert_eq!(format_tokens(0), "0");
         assert_eq!(format_tokens(999), "999");
-        assert_eq!(format_tokens(1_000), "1.0k");
-        assert_eq!(format_tokens(1_234), "1.2k");
+        assert_eq!(format_tokens(1_000), "1k");
+        assert_eq!(format_tokens(2_500), "3k");
         assert_eq!(format_tokens(12_345), "12k");
         assert_eq!(format_tokens(999_999), "1000k");
-        assert_eq!(format_tokens(1_234_567), "1.2M");
+        assert_eq!(format_tokens(1_500_000), "2M");
         assert_eq!(format_tokens(12_345_678), "12M");
     }
 }
