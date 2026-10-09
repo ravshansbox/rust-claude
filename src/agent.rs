@@ -475,6 +475,10 @@ impl Agent {
         })
     }
 
+    pub fn messages(&self) -> &[Value] {
+        &self.messages
+    }
+
     pub fn history_len(&self) -> usize {
         self.messages.len()
     }
