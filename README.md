@@ -110,10 +110,23 @@ Other:
 
 - [Architecture decision records](#decisions)
 
-## Build
+## Install
+
+You need [Rust](https://rustup.rs).
 
 ```sh
-cargo build --release
+cargo install --locked --force --git https://github.com/ravshansbox/rust-claude
+```
+
+This puts `rust-claude` in `~/.cargo/bin`. `--force` makes cargo rebuild even if this version is already installed, so the same command also upgrades or reinstalls.
+
+**Upgrade or reinstall:** run the `cargo install` command again.
+
+**Uninstall:**
+
+```sh
+cargo uninstall rust-claude
+rm -r ~/.rust-claude                     # optional: sign-in, settings, sessions, skills and MCP config
 ```
 
 ## Sign in
