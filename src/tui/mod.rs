@@ -8,7 +8,7 @@ use crate::{
         Agent, AgentEvent, ContextUse, Queue, Queued, Stats, THINKING_LEVELS, parse_shell_message,
         take_queued,
     },
-    clipboard,
+    clipboard, history,
     images::{self, Image},
     session::SessionSummary,
     settings::Settings,
@@ -31,13 +31,16 @@ use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Stylize,
-    text::{Line, Text},
+    text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
 use serde_json::Value;
 use status::{format_context, format_context_use, format_quota, format_stats};
-use std::time::{Duration, SystemTime};
+use std::{
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 pub fn dark_theme() -> bool {
@@ -150,6 +153,37 @@ struct App {
     images: Vec<(usize, Image)>,
     image_count: usize,
     queue: Queue,
+    history_file: Option<PathBuf>,
+    history_search: Option<HistorySearch>,
+}
+
+struct HistorySearch {
+    all: bool,
+    query: String,
+    current: Vec<String>,
+    everywhere: Vec<history::Entry>,
+    selected: usize,
+}
+
+impl HistorySearch {
+    fn matches(&self) -> Vec<(&str, Option<&str>)> {
+        let query = self.query.to_lowercase();
+        let entries: Vec<(&str, Option<&str>)> = if self.all {
+            self.everywhere
+                .iter()
+                .map(|entry| (entry.prompt.as_str(), Some(entry.folder.as_str())))
+                .collect()
+        } else {
+            self.current
+                .iter()
+                .map(|prompt| (prompt.as_str(), None))
+                .collect()
+        };
+        entries
+            .into_iter()
+            .filter(|(prompt, _)| prompt.to_lowercase().contains(&query))
+            .collect()
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -194,6 +228,8 @@ impl App {
             images: Vec::new(),
             image_count: 0,
             queue: Queue::default(),
+            history_file: None,
+            history_search: None,
         };
         app.push(
             Role::Event,
@@ -234,6 +270,39 @@ impl App {
         let output = output.trim_end();
         let diff = (!output.is_empty()).then(|| output.to_string());
         self.push(Role::Tool, tool_message("!", command.to_string(), diff));
+    }
+
+    fn remember(&mut self, prompt: &str) {
+        self.prompt_history.push(prompt.to_string());
+        let Some(path) = &self.history_file else {
+            return;
+        };
+        if let Err(error) = history::append(path, prompt) {
+            self.push(
+                Role::Event,
+                format!("failed to save prompt history: {error}"),
+            );
+        }
+    }
+
+    fn open_history_search(&mut self) {
+        let mut current: Vec<String> = Vec::new();
+        for prompt in self.prompt_history.iter().rev() {
+            if !current.contains(prompt) {
+                current.push(prompt.clone());
+            }
+        }
+        self.history_search = Some(HistorySearch {
+            all: false,
+            query: String::new(),
+            current,
+            everywhere: self
+                .history_file
+                .as_deref()
+                .map(history::load)
+                .unwrap_or_default(),
+            selected: 0,
+        });
     }
 
     fn scroll_up(&mut self, amount: u16) {
@@ -370,7 +439,7 @@ impl App {
         self.cursor = 0;
         self.files = None;
         self.history_index = None;
-        self.prompt_history.push(prompt.clone());
+        self.remember(&prompt);
         let images = self.take_numbered_images(&prompt);
         if let Ok(mut queue) = self.queue.lock() {
             queue.push(Queued { prompt, images });
@@ -681,6 +750,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let image_events = event_tx.clone();
     app.queue = agent.queue.clone();
+    app.history_file = history::history_path();
     let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
@@ -825,7 +895,10 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         return false;
     }
     if let Event::Paste(text) = event {
-        if app.picker.is_none() {
+        if let Some(search) = &mut app.history_search {
+            search.query.push_str(&text.replace(['\r', '\n'], " "));
+            search.selected = 0;
+        } else if app.picker.is_none() {
             let text = text.replace("\r\n", "\n").replace('\r', "\n");
             app.input.insert_str(app.cursor, &text);
             app.cursor += text.len();
@@ -860,6 +933,44 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             }
             KeyCode::Esc => app.picker = None,
             KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => return true,
+            _ => {}
+        }
+        return false;
+    }
+
+    if let Some(search) = &mut app.history_search {
+        let count = search.matches().len();
+        match (key.code, key.modifiers) {
+            (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
+            (KeyCode::Up, _) => search.selected = search.selected.saturating_sub(1),
+            (KeyCode::Down, _) | (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                search.selected = (search.selected + 1).min(count.saturating_sub(1));
+            }
+            (KeyCode::Left | KeyCode::Right, _) => {
+                search.all = !search.all;
+                search.selected = 0;
+            }
+            (KeyCode::Backspace, _) => {
+                search.query.pop();
+                search.selected = 0;
+            }
+            (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
+                search.query.push(character);
+                search.selected = 0;
+            }
+            (KeyCode::Enter, _) => {
+                let prompt = search
+                    .matches()
+                    .get(search.selected)
+                    .map(|(prompt, _)| prompt.to_string());
+                app.history_search = None;
+                if let Some(prompt) = prompt {
+                    app.input = prompt;
+                    app.cursor = app.input.len();
+                    app.input_changed();
+                }
+            }
+            (KeyCode::Esc, _) => app.history_search = None,
             _ => {}
         }
         return false;
@@ -957,7 +1068,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.history_index = None;
             if let Some(command) = prompt.strip_prefix('!') {
                 let command = command.trim().to_string();
-                app.prompt_history.push(prompt.clone());
+                app.remember(&prompt);
                 if !command.is_empty() {
                     app.start("running");
                     act(Action::Shell(command));
@@ -1024,7 +1135,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         } else {
                             app.push(Role::User, prompt.clone());
                         }
-                        app.prompt_history.push(prompt.clone());
+                        app.remember(&prompt);
                         app.start("working");
                         let images = app.take_images(&prompt);
                         act(Action::Submit(prompt, images, app.thinking_level));
@@ -1034,7 +1145,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                 return false;
             }
             app.push(Role::User, prompt.clone());
-            app.prompt_history.push(prompt.clone());
+            app.remember(&prompt);
             app.start("working");
             let images = app.take_images(&prompt);
             act(Action::Submit(prompt, images, app.thinking_level));
@@ -1046,6 +1157,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.cursor = next_word_end(&app.input, app.cursor);
         }
         (KeyCode::Char('v'), KeyModifiers::CONTROL) => act(Action::PasteImage),
+        (KeyCode::Char('r'), KeyModifiers::CONTROL) => app.open_history_search(),
         (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
         (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
         (KeyCode::Left, _) => {
@@ -1328,13 +1440,18 @@ fn draw(frame: &mut Frame, app: &mut App) {
     app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    if let Some(picker) = &app.picker {
+    if let Some(search) = &app.history_search {
+        frame.render_widget(history_view(search, chat.height), chat);
+    } else if let Some(picker) = &app.picker {
         frame.render_widget(picker_view(picker, chat.height), chat);
     } else {
         frame.render_widget(conversation.scroll((scroll, 0)), chat);
     }
 
-    if let Some(suggestions) = app.visible_suggestions() {
+    if let Some(suggestions) = app
+        .visible_suggestions()
+        .filter(|_| app.history_search.is_none())
+    {
         let matches = suggestions.items;
         let height = (matches.len() as u16).min(chat.height);
         let selected = app.command_selected.min(matches.len() - 1);
@@ -1411,6 +1528,50 @@ fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
         } else {
             Line::raw(text.as_str())
         });
+    }
+    Paragraph::new(lines)
+}
+
+fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
+    let tab = |label: &'static str, active: bool| {
+        if active {
+            Span::from(label).reversed()
+        } else {
+            Span::from(label)
+        }
+    };
+    let mut lines = vec![
+        Line::from(vec![
+            Span::from("Prompt history ").bold(),
+            tab(" Current ", !search.all),
+            Span::raw(" "),
+            tab(" All ", search.all),
+            Span::from(" (←→ tab, ↑↓ select, Enter edit, Esc cancel)").bold(),
+        ]),
+        Line::raw(format!("search: {}", search.query)),
+    ];
+    let matches = search.matches();
+    let visible = (height as usize).saturating_sub(2).max(1);
+    let first = (search.selected + 1).saturating_sub(visible);
+    for (index, (prompt, folder)) in matches.into_iter().enumerate().skip(first).take(visible) {
+        let mut text = prompt.lines().next().unwrap_or_default().to_string();
+        if prompt.lines().nth(1).is_some() {
+            text.push_str(" …");
+        }
+        let mut spans = vec![if index == search.selected {
+            Span::from(text).reversed()
+        } else {
+            Span::from(text)
+        }];
+        if let Some(folder) = folder {
+            let name = std::path::Path::new(folder)
+                .file_name()
+                .map_or(folder.to_string(), |name| {
+                    name.to_string_lossy().into_owned()
+                });
+            spans.push(Span::from(format!("  {name}")).dark_gray());
+        }
+        lines.push(Line::from(spans));
     }
     Paragraph::new(lines)
 }
@@ -1552,6 +1713,49 @@ mod tests {
         assert_eq!(app.input, "first\n\ndraft");
         assert!(app.queued_prompts().is_empty());
         assert!(app.send_queued().is_none());
+    }
+
+    #[test]
+    fn searches_prompt_history_in_tabs() {
+        let path = std::env::temp_dir().join(format!(
+            "rust-claude-tui-history-{}/history.jsonl",
+            std::process::id()
+        ));
+        crate::history::append(&path, "elsewhere fix").unwrap();
+        let mut app = new_app();
+        app.history_file = Some(path.clone());
+        for prompt in ["fix tests", "add docs", "fix tests"] {
+            app.remember(prompt);
+        }
+        let control = |character| {
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(character),
+                KeyModifiers::CONTROL,
+            ))
+        };
+        let key = |code| Event::Key(KeyEvent::from(code));
+        handle_input(control('r'), &mut app, |_| {});
+        let search = app.history_search.as_ref().unwrap();
+        assert_eq!(search.matches(), [("fix tests", None), ("add docs", None)]);
+        handle_input(Event::Paste("FIX".into()), &mut app, |_| {});
+        assert_eq!(app.history_search.as_ref().unwrap().matches().len(), 1);
+        handle_input(key(KeyCode::Right), &mut app, |_| {});
+        let search = app.history_search.as_ref().unwrap();
+        let prompts: Vec<&str> = search.matches().iter().map(|(prompt, _)| *prompt).collect();
+        assert_eq!(prompts, ["fix tests", "elsewhere fix"]);
+        handle_input(key(KeyCode::Down), &mut app, |_| {});
+        let mut submitted = false;
+        handle_input(key(KeyCode::Enter), &mut app, |action| {
+            submitted |= matches!(action, Action::Submit(..));
+        });
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        assert!(!submitted);
+        assert!(app.history_search.is_none());
+        assert_eq!(app.input, "elsewhere fix");
+        handle_input(control('r'), &mut app, |_| {});
+        handle_input(key(KeyCode::Esc), &mut app, |_| {});
+        assert!(app.history_search.is_none());
+        assert_eq!(app.input, "elsewhere fix");
     }
 
     #[test]

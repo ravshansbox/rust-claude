@@ -74,6 +74,7 @@ Input and editing:
 - Prompts queued while the agent works
 - `!command` to run a shell command and share its output with the model
 - Prompt history with Up and Down
+- Ctrl+R to search prompts from this session or from all folders
 - Up and Down move between wrapped input rows
 - Move and delete by word
 - Ctrl+A and Ctrl+E to jump to the start or end
@@ -130,7 +131,7 @@ This puts `rust-claude` in `~/.cargo/bin`. `--force` makes cargo rebuild even if
 
 ```sh
 cargo uninstall rust-claude
-rm -r ~/.rust-claude                     # optional: sign-in, settings, sessions, skills and MCP config
+rm -r ~/.rust-claude                     # optional: sign-in, settings, sessions, prompt history, skills and MCP config
 ```
 
 ## Sign in
@@ -193,6 +194,12 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 
 Type `@` to pick a file. The list shows up to 10 project files whose path contains the text after `@`, ignoring case. Use Up / Down to select, and Tab or Enter to insert `@path` into the prompt. Esc closes the list. In a Git repository the list holds tracked files and untracked files that `.gitignore` does not exclude. Otherwise it holds all files, except hidden ones and those in `target`.
 
+## Prompt history
+
+Press Ctrl+R to search earlier prompts. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down (or Ctrl+R again) select, Enter puts the prompt in the input to edit, and Esc closes the list. Repeated prompts show once, at their newest position.
+
+rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The **All** tab reads this file. Prompts sent before this file existed are not in it.
+
 ## Keys
 
 | Key | Action |
@@ -203,6 +210,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 | Ctrl+C | Clear input, or quit when input is empty |
 | Ctrl+D | Quit when input is empty |
 | Ctrl+V | Paste an image from the clipboard |
+| Ctrl+R | Search prompt history |
 | Shift+Tab | Cycle thinking level |
 | Up / Down | Browse prompt history, move between input rows, or scroll |
 | Page Up / Page Down | Scroll by a page |
