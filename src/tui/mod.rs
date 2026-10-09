@@ -11,7 +11,7 @@ mod status;
 mod test_support;
 mod worker;
 
-use crate::{agent::Agent, clipboard, history, images, settings::Settings, skills::Scope};
+use crate::{agent::Agent, clipboard, history, images, mcp, settings::Settings, skills::Scope};
 use anyhow::Result;
 use app::{App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
@@ -91,10 +91,8 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
         app.push(Role::Event, diagnostic.to_string());
     }
     app.skills = agent.skills.skills.clone();
-    for loaded in agent.mcp.loaded() {
-        app.push(Role::Event, loaded);
-    }
-    for diagnostic in &agent.mcp.diagnostics {
+    let startup = mcp::startup();
+    for diagnostic in &startup.diagnostics {
         app.push(Role::Event, diagnostic.to_string());
     }
     for program in &agent.missing_programs {
@@ -111,7 +109,15 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let image_events = event_tx.clone();
     app.queue = agent.queue.clone();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
+    let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+    for server in startup.servers {
+        let mcp_tx = mcp_tx.clone();
+        tokio::spawn(async move {
+            let _ = mcp_tx.send(server.await);
+        });
+    }
+    drop(mcp_tx);
+    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
     redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
