@@ -10,8 +10,8 @@ use crossterm::{
 use futures::StreamExt;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Direction, Layout},
-    style::Stylize,
+    layout::{Constraint, Direction, Layout, Margin},
+    style::{Color, Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
@@ -290,7 +290,7 @@ fn format_tokens(count: u64) -> String {
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
-    let input_width = frame.area().width.saturating_sub(2).max(1) as usize;
+    let input_width = frame.area().width.max(1) as usize;
     let input_characters: Vec<char> = app.input.chars().collect();
     let cursor_row = input_characters.len() / input_width;
     let cursor_column = input_characters.len() % input_width;
@@ -310,13 +310,17 @@ fn draw(frame: &mut Frame, app: &mut App) {
         ])
         .areas(frame.area());
 
+    let chat = chat.inner(Margin::new(1, 0));
     let mut lines = Vec::new();
     for message in &app.messages {
+        lines.push(Line::default());
         let label = match message.role {
-            Role::User => "> ".cyan().bold(),
+            Role::User => {
+                lines.extend(user_message_lines(&message.text, chat.width as usize));
+                continue;
+            }
             Role::Assistant => {
                 lines.extend(tui_markdown::from_str(&message.text).lines);
-                lines.push(Line::default());
                 continue;
             }
             Role::Tool => "⏺ ".yellow(),
@@ -330,23 +334,17 @@ fn draw(frame: &mut Frame, app: &mut App) {
             };
             lines.push(Line::from(vec![prefix, Span::raw(text)]));
         }
-        lines.push(Line::default());
     }
     if app.busy {
+        lines.push(Line::default());
         lines.push(Line::from(vec![
             "· ".dark_gray(),
             app.status.as_str().dark_gray(),
         ]));
     }
 
-    let conversation = Paragraph::new(Text::from(lines))
-        .block(
-            Block::default()
-                .title(" Conversation ")
-                .borders(Borders::ALL),
-        )
-        .wrap(Wrap { trim: false });
-    let viewport_height = chat.height.saturating_sub(2);
+    let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
+    let viewport_height = chat.height;
     let wrapped_line_count = conversation.line_count(chat.width);
     app.max_scroll = wrapped_line_count
         .saturating_sub(viewport_height as usize)
@@ -359,12 +357,16 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
         Paragraph::new(input_lines)
-            .block(Block::default().title(" Prompt ").borders(Borders::ALL))
+            .block(
+                Block::default()
+                    .borders(Borders::TOP | Borders::BOTTOM)
+                    .border_style(thinking_colour(app.thinking_level)),
+            )
             .scroll((input_scroll, 0)),
         input,
     );
     frame.set_cursor_position((
-        input.x + cursor_column as u16 + 1,
+        input.x + cursor_column as u16,
         input.y + cursor_row as u16 - input_scroll + 1,
     ));
 
@@ -379,6 +381,41 @@ fn draw(frame: &mut Frame, app: &mut App) {
         ])),
         footer,
     );
+}
+
+const USER_MESSAGE_BACKGROUND: Color = Color::Rgb(33, 59, 73);
+
+fn thinking_colour(level: &str) -> Color {
+    match level {
+        "low" => Color::Rgb(84, 137, 164),
+        "medium" => Color::Rgb(97, 133, 204),
+        "high" => Color::Rgb(151, 118, 229),
+        "xhigh" => Color::Rgb(222, 84, 193),
+        "max" => Color::Rgb(254, 84, 98),
+        _ => Color::Rgb(118, 129, 134),
+    }
+}
+
+fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
+    let content_width = width.saturating_sub(2).max(1);
+    let mut rows = vec![String::new()];
+    for line in text.lines() {
+        let characters: Vec<char> = line.chars().collect();
+        if characters.is_empty() {
+            rows.push(String::new());
+        }
+        for chunk in characters.chunks(content_width) {
+            rows.push(chunk.iter().collect());
+        }
+    }
+    rows.push(String::new());
+    rows.into_iter()
+        .map(|row| {
+            let padding = content_width.saturating_sub(row.chars().count()) + 1;
+            Line::from(format!(" {row}{}", " ".repeat(padding)))
+                .style(Style::new().bg(USER_MESSAGE_BACKGROUND))
+        })
+        .collect()
 }
 
 #[cfg(test)]
