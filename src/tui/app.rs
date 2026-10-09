@@ -83,6 +83,9 @@ pub(super) struct App {
     pub(super) cursor: usize,
     pub(super) messages: Vec<ChatMessage>,
     pub(super) workspace: String,
+    /// Set after a command that may have switched branches, until the run
+    /// loop starts reading the folder and branch again.
+    pub(super) workspace_stale: bool,
     pub(super) model: String,
     pub(super) thinking_level: &'static str,
     pub(super) status: String,
@@ -163,6 +166,7 @@ impl App {
             cursor: 0,
             messages: Vec::new(),
             workspace: workspace_label(),
+            workspace_stale: false,
             model: model.into(),
             thinking_level,
             status: String::new(),

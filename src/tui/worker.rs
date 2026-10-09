@@ -21,6 +21,7 @@ pub(super) enum UiEvent {
     Shell(String, Result<String>),
     Context(ContextUse),
     Files(u64, Vec<String>),
+    Workspace(String),
 }
 
 pub(super) enum Request {
