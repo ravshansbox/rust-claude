@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
@@ -442,6 +443,21 @@ pub enum AgentEvent {
     },
     Stats(Stats),
     Notice(String),
+    Queued(String),
+}
+
+pub struct Queued {
+    pub prompt: String,
+    pub images: Vec<(usize, Image)>,
+}
+
+pub type Queue = Arc<Mutex<Vec<Queued>>>;
+
+pub fn take_queued(queue: &Queue) -> Vec<Queued> {
+    queue
+        .lock()
+        .map(|mut queued| std::mem::take(&mut *queued))
+        .unwrap_or_default()
 }
 
 pub struct Agent {
@@ -456,6 +472,7 @@ pub struct Agent {
     pub skills: Skills,
     pub mcp: Mcp,
     pub session: Session,
+    pub queue: Queue,
 }
 
 impl Agent {
@@ -472,6 +489,7 @@ impl Agent {
             skills: skills::load(),
             mcp: Mcp::default(),
             session: Session::new()?,
+            queue: Queue::default(),
         })
     }
 
@@ -783,6 +801,13 @@ impl Agent {
                     "content": text,
                     "is_error": is_error,
                 }));
+            }
+            for queued in take_queued(&self.queue) {
+                for (_, image) in &queued.images {
+                    results.push(self.session.save_image(image)?);
+                }
+                results.push(json!({ "type": "text", "text": queued.prompt }));
+                on_event(AgentEvent::Queued(queued.prompt));
             }
             self.messages
                 .push(json!({ "role": "user", "content": results }));
