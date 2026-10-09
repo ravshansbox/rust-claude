@@ -218,7 +218,7 @@ In the interface, rust-claude saves each prompt you send, including `!` commands
 | --- | --- |
 | Enter | Send prompt, or queue it while the agent works |
 | Shift+Enter / Alt+Enter | Add a new line |
-| Esc | Cancel the running prompt, or quit when idle |
+| Esc | Cancel the running prompt or model lookup, or quit when idle |
 | Ctrl+C | Clear input, or quit when input is empty |
 | Ctrl+D | Quit when input is empty |
 | Ctrl+V | Paste an image from the clipboard |

@@ -166,7 +166,15 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
-            if ["working", "compacting", "running"].contains(&app.status.as_str()) {
+            if [
+                "working",
+                "compacting",
+                "running",
+                "loading models",
+                "checking model",
+            ]
+            .contains(&app.status.as_str())
+            {
                 app.status = "cancelling".into();
                 act(Action::Cancel);
             }
@@ -351,6 +359,25 @@ mod tests {
         assert_eq!(checked.as_deref(), Some("other"));
         assert_eq!(app.model, "model");
         assert!(app.busy);
+    }
+
+    #[test]
+    fn esc_cancels_model_loading() {
+        for status in ["loading models", "checking model"] {
+            let mut app = new_app();
+            app.start(status);
+            let mut cancelled = false;
+            let quit = handle_input(
+                Event::Key(KeyEvent::from(KeyCode::Esc)),
+                &mut app,
+                |action| {
+                    cancelled |= matches!(action, Action::Cancel);
+                },
+            );
+            assert!(!quit && cancelled, "{status}");
+            handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
+            assert!(!app.busy);
+        }
     }
 
     fn queue_while_working(app: &mut App, prompt: &str) {
@@ -559,10 +586,10 @@ mod tests {
     }
 
     #[test]
-    fn ignores_escape_while_loading_models() {
+    fn ignores_escape_while_loading_sessions() {
         let mut app = new_app();
         app.busy = true;
-        app.status = "loading models".into();
+        app.status = "loading sessions".into();
         let mut cancelled = false;
         let quit = handle_input(
             Event::Key(KeyEvent::from(KeyCode::Esc)),
@@ -573,7 +600,7 @@ mod tests {
         );
         assert!(!quit);
         assert!(!cancelled);
-        assert_eq!(app.status, "loading models");
+        assert_eq!(app.status, "loading sessions");
     }
 
     #[test]
