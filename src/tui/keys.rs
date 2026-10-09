@@ -448,12 +448,19 @@ mod tests {
             "rust-claude-tui-history-{}/history.jsonl",
             std::process::id()
         ));
-        crate::history::append(&path, "elsewhere fix").unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            "{\"prompt\":\"elsewhere fix\",\"cwd\":\"/somewhere/else\"}\n",
+        )
+        .unwrap();
         let mut app = new_app();
-        app.history_file = Some(path.clone());
+        app.load_history(Some(path.clone()));
         for prompt in ["fix tests", "add docs", "fix tests"] {
             app.remember(prompt);
         }
+        // Searching uses the history loaded at start-up, not the file.
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         let control = |character| {
             Event::Key(KeyEvent::new(
                 KeyCode::Char(character),
@@ -475,7 +482,6 @@ mod tests {
         handle_input(key(KeyCode::Enter), &mut app, |action| {
             submitted |= matches!(action, Action::Submit(..));
         });
-        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         assert!(!submitted);
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "elsewhere fix");
@@ -495,7 +501,7 @@ mod tests {
             std::process::id()
         ));
         for prompt in ["first", "second", "first"] {
-            crate::history::append(&path, prompt).unwrap();
+            crate::history::append(&path, &crate::history::Entry::here(prompt)).unwrap();
         }
         std::fs::OpenOptions::new()
             .append(true)
