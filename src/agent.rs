@@ -93,6 +93,7 @@ impl Usage {
 
 pub enum AgentEvent {
     Text(String),
+    Thinking(String),
     ToolStart { name: String, summary: String },
     ToolDone { name: String, error: Option<String> },
     Usage(Usage),
@@ -268,6 +269,7 @@ impl Agent {
                                 let thinking = delta["thinking"].as_str().unwrap_or_default();
                                 let previous = block["thinking"].as_str().unwrap_or_default();
                                 block["thinking"] = json!(format!("{previous}{thinking}"));
+                                on_event(AgentEvent::Thinking(thinking.into()));
                             }
                             "signature_delta" => {
                                 let signature = delta["signature"].as_str().unwrap_or_default();
