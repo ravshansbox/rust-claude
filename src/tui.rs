@@ -80,14 +80,28 @@ impl ChatMessage {
     }
 }
 
+#[derive(Clone)]
+struct MarkdownStyleSheet;
+
+impl tui_markdown::StyleSheet for MarkdownStyleSheet {
+    fn code(&self) -> Style {
+        Style::new()
+            .fg(Color::Rgb(62, 62, 62))
+            .bg(Color::Rgb(230, 230, 230))
+    }
+}
+
 fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
     match role {
         Role::User => user_message_lines(text, width as usize),
-        Role::Assistant => tui_markdown::from_str(&hard_line_breaks(text))
-            .lines
-            .into_iter()
-            .map(owned_line)
-            .collect(),
+        Role::Assistant => tui_markdown::from_str_with_options(
+            &hard_line_breaks(text),
+            &tui_markdown::Options::new(MarkdownStyleSheet),
+        )
+        .lines
+        .into_iter()
+        .map(owned_line)
+        .collect(),
         Role::Thinking => text
             .lines()
             .map(|line| Line::from(line.to_string().dark_gray().italic()))
