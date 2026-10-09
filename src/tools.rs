@@ -184,7 +184,13 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let content = tokio::fs::read_to_string(path)
                 .await
                 .map_err(|error| format!("failed to read {path}: {error}"))?;
-            let offset = input["offset"].as_u64().unwrap_or(1).max(1) as usize;
+            let offset = match &input["offset"] {
+                Value::Null => 1,
+                value => match value.as_u64() {
+                    Some(offset) => offset.max(1) as usize,
+                    None => return Err("offset must be at least 1".into()),
+                },
+            };
             let limit = match &input["limit"] {
                 Value::Null => usize::MAX,
                 value => match value.as_u64() {
@@ -286,6 +292,15 @@ mod tests {
         assert_eq!(
             call("read", &input).await,
             Err("limit must be at least 1".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_negative_offset() {
+        let input = json!({ "path": "Cargo.toml", "offset": -5 });
+        assert_eq!(
+            call("read", &input).await,
+            Err("offset must be at least 1".into())
         );
     }
 
