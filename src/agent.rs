@@ -13,6 +13,8 @@ Use your tools to inspect and change the project in the current working director
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely."#;
 const MAX_TURNS: usize = 20;
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
+pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+pub const DEFAULT_THINKING_LEVEL: &str = "medium";
 
 pub struct Instructions {
     pub label: String,
@@ -67,6 +69,7 @@ pub struct Agent {
     http: reqwest::Client,
     credentials: Credentials,
     pub model: String,
+    pub thinking_level: &'static str,
     messages: Vec<Value>,
     pub instructions: Vec<Instructions>,
 }
@@ -77,6 +80,7 @@ impl Agent {
             http,
             credentials,
             model,
+            thinking_level: DEFAULT_THINKING_LEVEL,
             messages: Vec::new(),
             instructions: load_instructions(),
         }
@@ -166,6 +170,8 @@ impl Agent {
             "model": self.model,
             "max_tokens": 8192,
             "stream": true,
+            "thinking": { "type": "adaptive" },
+            "output_config": { "effort": self.thinking_level },
             "system": system,
             "tools": tools::definitions(),
             "messages": self.messages,
