@@ -146,6 +146,7 @@ fn borrowed_line<'a>(line: &'a Line<'static>) -> Line<'a> {
 
 struct App {
     input: String,
+    cursor: usize,
     messages: Vec<ChatMessage>,
     workspace: String,
     model: String,
@@ -182,6 +183,7 @@ impl App {
     fn new(model: &str, thinking_level: &'static str, stats: Stats) -> Self {
         let mut app = Self {
             input: String::new(),
+            cursor: 0,
             messages: Vec::new(),
             workspace: workspace_label(),
             model: model.into(),
@@ -241,6 +243,7 @@ impl App {
         };
         self.history_index = Some(index);
         self.input = self.prompt_history[index].clone();
+        self.cursor = self.input.len();
     }
 
     fn next_prompt(&mut self) {
@@ -254,6 +257,7 @@ impl App {
             self.history_index = None;
             self.input.clear();
         }
+        self.cursor = self.input.len();
     }
 
     fn visible_commands(&self) -> Vec<(&'static str, &'static str)> {
@@ -487,8 +491,9 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     }
     if let Event::Paste(text) = event {
         if app.picker.is_none() {
-            app.input
-                .push_str(&text.replace("\r\n", "\n").replace('\r', "\n"));
+            let text = text.replace("\r\n", "\n").replace('\r', "\n");
+            app.input.insert_str(app.cursor, &text);
+            app.cursor += text.len();
             app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
@@ -548,9 +553,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             }
             KeyCode::Enter if !app.busy => {
                 app.input = matches[app.command_selected].0.to_string();
+                app.cursor = app.input.len();
             }
             KeyCode::Tab => {
                 app.input = matches[app.command_selected].0.to_string();
+                app.cursor = app.input.len();
                 app.command_selected = 0;
                 return false;
             }
@@ -565,6 +572,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     match (key.code, key.modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) if !app.input.is_empty() => {
             app.input.clear();
+            app.cursor = 0;
             app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
@@ -592,6 +600,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Enter, _) if !app.busy && !app.input.trim().is_empty() => {
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
+            app.cursor = 0;
             app.history_index = None;
             if prompt.starts_with('/') {
                 let (command, argument) = prompt
@@ -659,14 +668,28 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.busy = true;
             act(Action::Submit(prompt, app.thinking_level));
         }
+        (KeyCode::Left, _) => {
+            if let Some(character) = app.input[..app.cursor].chars().next_back() {
+                app.cursor -= character.len_utf8();
+            }
+        }
+        (KeyCode::Right, _) => {
+            if let Some(character) = app.input[app.cursor..].chars().next() {
+                app.cursor += character.len_utf8();
+            }
+        }
         (KeyCode::Backspace, _) => {
-            app.input.pop();
+            if let Some(character) = app.input[..app.cursor].chars().next_back() {
+                app.cursor -= character.len_utf8();
+                app.input.remove(app.cursor);
+            }
             app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
         }
         (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
-            app.input.push(character);
+            app.input.insert(app.cursor, character);
+            app.cursor += character.len_utf8();
             app.history_index = None;
             app.command_selected = 0;
             app.commands_dismissed = false;
@@ -915,9 +938,9 @@ fn format_tokens(count: u64) -> String {
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
-    let input_rows = input_rows(&app.input, frame.area().width.max(1) as usize);
-    let cursor_row = input_rows.len() - 1;
-    let cursor_column = input_rows[cursor_row].width();
+    let input_width = frame.area().width.max(1) as usize;
+    let input_rows = input_rows(&app.input, input_width);
+    let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
     let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
     let mut footer_lines = vec![
         Line::raw(format!(
@@ -1047,6 +1070,32 @@ fn input_rows(input: &str, width: usize) -> Vec<String> {
     rows
 }
 
+fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, usize) {
+    let mut row = 0;
+    let mut row_width = 0;
+    for (index, character) in input.char_indices() {
+        let character_width = character.width().unwrap_or(0);
+        if character != '\n' && row_width > 0 && row_width + character_width > width {
+            row += 1;
+            row_width = 0;
+        }
+        if index == cursor {
+            return (row, row_width);
+        }
+        if character == '\n' {
+            row += 1;
+            row_width = 0;
+        } else {
+            row_width += character_width;
+        }
+    }
+    if row_width >= width {
+        (row + 1, 0)
+    } else {
+        (row, row_width)
+    }
+}
+
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let mut lines = vec![Line::from(
         format!("{} (↑↓ select, Enter confirm, Esc cancel)", picker.title).bold(),
@@ -1102,7 +1151,8 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, App, format_duration, format_tokens, handle_input, input_rows, user_message_lines,
+        Action, App, format_duration, format_tokens, handle_input, input_cursor, input_rows,
+        user_message_lines,
     };
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -1183,6 +1233,47 @@ mod tests {
         assert_eq!(input_rows("abcd", 4), vec!["abcd", ""]);
         assert_eq!(input_rows("", 4), vec![""]);
         assert_eq!(input_rows("ab\ncd\n", 4), vec!["ab", "cd", ""]);
+    }
+
+    #[test]
+    fn places_cursor_by_display_width() {
+        assert_eq!(input_cursor("你好世界", 3, 5), (0, 2));
+        assert_eq!(input_cursor("你好世界", 6, 5), (1, 0));
+        assert_eq!(input_cursor("你好世界", 12, 5), (1, 4));
+        assert_eq!(input_cursor("abcd", 4, 4), (1, 0));
+        assert_eq!(input_cursor("ab\ncd", 2, 4), (0, 2));
+        assert_eq!(input_cursor("ab\ncd", 3, 4), (1, 0));
+        assert_eq!(input_cursor("", 0, 4), (0, 0));
+    }
+
+    #[test]
+    fn edits_input_at_cursor() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        handle_input(Event::Paste("héllo".into()), &mut app, |_| {});
+        for code in [KeyCode::Left, KeyCode::Left, KeyCode::Left, KeyCode::Left] {
+            handle_input(Event::Key(KeyEvent::from(code)), &mut app, |_| {});
+        }
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Backspace)),
+            &mut app,
+            |_| {},
+        );
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Char('j'))),
+            &mut app,
+            |_| {},
+        );
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Right)), &mut app, |_| {});
+        handle_input(Event::Paste("!".into()), &mut app, |_| {});
+        assert_eq!(app.input, "jé!llo");
+        assert_eq!(app.cursor, "jé!".len());
     }
 
     #[test]
