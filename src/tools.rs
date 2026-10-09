@@ -181,6 +181,9 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let limit = input["limit"]
                 .as_u64()
                 .map_or(usize::MAX, |limit| limit as usize);
+            if limit == 0 {
+                return Err("limit must be at least 1".into());
+            }
             let line_count = content.split_inclusive('\n').count();
             if offset > line_count.max(1) {
                 return Err(format!(
@@ -248,6 +251,15 @@ mod tests {
         let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
         let text = call("bash", &input).await.unwrap();
         assert!(text.ends_with("exit status: 3"));
+    }
+
+    #[tokio::test]
+    async fn rejects_zero_limit() {
+        let input = json!({ "path": "Cargo.toml", "limit": 0 });
+        assert_eq!(
+            call("read", &input).await,
+            Err("limit must be at least 1".into())
+        );
     }
 
     #[tokio::test]
