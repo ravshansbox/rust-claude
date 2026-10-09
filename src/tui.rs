@@ -1,5 +1,5 @@
 use crate::{
-    agent::{Agent, AgentEvent, THINKING_LEVELS},
+    agent::{Agent, AgentEvent, THINKING_LEVELS, Usage, total_usage},
     session::SessionSummary,
     tools,
 };
@@ -583,15 +583,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
-        UiEvent::Agent(AgentEvent::Usage(usage)) => {
-            app.usage = format!(
-                "↑{} ↓{} R{} W{}",
-                format_tokens(usage.input),
-                format_tokens(usage.output),
-                format_tokens(usage.cache_read),
-                format_tokens(usage.cache_write)
-            );
-        }
+        UiEvent::Agent(AgentEvent::Usage(usage)) => app.usage = format_usage(usage),
         UiEvent::Done(result) => {
             if let Err(error) = result {
                 app.push(Role::Event, format!("error: {error}"));
@@ -667,6 +659,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 Ok(messages) => {
                     app.messages.clear();
                     replay_messages(app, &messages);
+                    app.usage = format_usage(total_usage(&messages));
                     app.push(Role::Event, "resumed session");
                 }
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
@@ -708,6 +701,16 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
             }
         }
     }
+}
+
+fn format_usage(usage: Usage) -> String {
+    format!(
+        "↑{} ↓{} R{} W{}",
+        format_tokens(usage.input),
+        format_tokens(usage.output),
+        format_tokens(usage.cache_read),
+        format_tokens(usage.cache_write)
+    )
 }
 
 fn format_tokens(count: u64) -> String {
