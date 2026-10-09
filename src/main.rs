@@ -152,7 +152,6 @@ async fn main() -> Result<()> {
     }
 
     let Some(prompt) = print_prompt else {
-        agent.mcp = mcp::Mcp::load().await;
         return tui::run(agent).await;
     };
     let interrupt = tokio::signal::ctrl_c();

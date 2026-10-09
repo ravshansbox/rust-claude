@@ -467,63 +467,105 @@ pub struct Mcp {
     pub diagnostics: Vec<String>,
 }
 
+pub struct Started {
+    name: String,
+    result: Result<Server, String>,
+}
+
+async fn start(name: String, scope: Scope, config: ServerConfig) -> Started {
+    let result = connect(name.clone(), scope, config).await;
+    Started { name, result }
+}
+
+#[cfg(test)]
+pub fn failed_start(name: &str, error: &str) -> Started {
+    Started {
+        name: name.into(),
+        result: Err(error.into()),
+    }
+}
+
+pub type Starting = std::pin::Pin<Box<dyn Future<Output = Started> + Send>>;
+
+pub struct Startup {
+    pub diagnostics: Vec<String>,
+    pub servers: Vec<Starting>,
+}
+
+pub fn startup() -> Startup {
+    let mut configs = BTreeMap::new();
+    let mut diagnostics = Vec::new();
+    for (scope, path) in config_paths() {
+        read_config(&path, scope, &mut configs, &mut diagnostics);
+    }
+    let servers = configs
+        .into_iter()
+        .filter(|(_, (_, config))| config.enabled != Some(false))
+        .map(|(name, (scope, config))| Box::pin(start(name, scope, config)) as Starting)
+        .collect();
+    Startup {
+        diagnostics,
+        servers,
+    }
+}
+
 impl Mcp {
     pub async fn load() -> Self {
-        let mut configs = BTreeMap::new();
-        let mut diagnostics = Vec::new();
-        for (scope, path) in config_paths() {
-            read_config(&path, scope, &mut configs, &mut diagnostics);
-        }
-        let connections = configs
-            .into_iter()
-            .filter(|(_, (_, config))| config.enabled != Some(false))
-            .map(|(name, (scope, config))| async move {
-                let result = connect(name.clone(), scope, config).await;
-                (name, result)
-            });
+        let startup = startup();
         let mut mcp = Self {
             servers: Vec::new(),
-            diagnostics,
+            diagnostics: startup.diagnostics,
         };
-        let mut seen = HashMap::new();
-        for (name, result) in futures::future::join_all(connections).await {
-            match result {
-                Ok(mut server) => {
-                    server.tools.retain(|tool| {
-                        if let Some(other) = seen.get(&tool.qualified_name) {
-                            mcp.diagnostics.push(format!(
-                                "MCP server {name}: skipped tool {} because its name clashes with {other}",
-                                tool.name
-                            ));
-                            return false;
-                        }
-                        seen.insert(tool.qualified_name.clone(), format!("{name}/{}", tool.name));
-                        true
-                    });
-                    mcp.servers.push(server);
-                }
-                Err(error) => mcp
-                    .diagnostics
-                    .push(format!("MCP server {name} failed: {error}")),
-            }
+        for started in futures::future::join_all(startup.servers).await {
+            let (diagnostics, _) = mcp.add_server(started);
+            mcp.diagnostics.extend(diagnostics);
         }
         mcp
     }
 
-    pub fn loaded(&self) -> Vec<String> {
-        [Scope::Global, Scope::Project]
-            .into_iter()
-            .filter_map(|scope| {
-                let servers: Vec<String> = self
-                    .servers
-                    .iter()
-                    .filter(|server| server.scope == scope)
-                    .map(|server| format!("{} ({} tools)", server.name, server.tools.len()))
-                    .collect();
-                (!servers.is_empty())
-                    .then(|| format!("loaded {scope} MCP servers: {}", servers.join(", ")))
+    pub fn add(&mut self, started: Started) -> Vec<String> {
+        let (mut messages, loaded) = self.add_server(started);
+        messages.extend(loaded);
+        messages
+    }
+
+    fn add_server(&mut self, started: Started) -> (Vec<String>, Option<String>) {
+        let Started { name, result } = started;
+        let mut server = match result {
+            Ok(server) => server,
+            Err(error) => return (vec![format!("MCP server {name} failed: {error}")], None),
+        };
+        let mut diagnostics = Vec::new();
+        let mut seen: HashMap<String, String> = self
+            .servers
+            .iter()
+            .flat_map(|server| {
+                server.tools.iter().map(|tool| {
+                    (
+                        tool.qualified_name.clone(),
+                        format!("{}/{}", server.name, tool.name),
+                    )
+                })
             })
-            .collect()
+            .collect();
+        server.tools.retain(|tool| {
+            if let Some(other) = seen.get(&tool.qualified_name) {
+                diagnostics.push(format!(
+                    "MCP server {name}: skipped tool {} because its name clashes with {other}",
+                    tool.name
+                ));
+                return false;
+            }
+            seen.insert(tool.qualified_name.clone(), format!("{name}/{}", tool.name));
+            true
+        });
+        let loaded = format!(
+            "loaded {} MCP server: {name} ({} tools)",
+            server.scope,
+            server.tools.len()
+        );
+        self.servers.push(server);
+        (diagnostics, Some(loaded))
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = Value> + '_ {
@@ -641,8 +683,7 @@ mod tests {
         assert_eq!(diagnostics.len(), 1);
     }
 
-    #[tokio::test]
-    async fn calls_stdio_server_tools() {
+    fn echo_server() -> ServerConfig {
         let script = r#"
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
@@ -653,7 +694,7 @@ while IFS= read -r line; do
   esac
 done
 "#;
-        let config = ServerConfig {
+        ServerConfig {
             kind: None,
             command: Some("bash".into()),
             args: vec!["-c".into(), script.into()],
@@ -662,20 +703,44 @@ done
             url: None,
             enabled: None,
             timeout: Some(5),
-        };
-        let server = connect("test".into(), Scope::Project, config)
-            .await
-            .unwrap();
-        let mcp = Mcp {
-            servers: vec![server],
-            diagnostics: Vec::new(),
-        };
-        assert_eq!(mcp.loaded(), ["loaded project MCP servers: test (1 tools)"]);
+        }
+    }
+
+    #[tokio::test]
+    async fn calls_stdio_server_tools() {
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, echo_server()).await);
         assert_eq!(mcp.definitions().count(), 1);
         assert_eq!(
             mcp.call("mcp__test__echo", &json!({})).await,
             Some(Ok("pong".into()))
         );
         assert_eq!(mcp.call("bash", &json!({})).await, None);
+    }
+
+    #[tokio::test]
+    async fn reports_each_server_as_it_starts() {
+        let mut mcp = Mcp::default();
+        let started = start("test".into(), Scope::Project, echo_server()).await;
+        assert_eq!(
+            mcp.add(started),
+            ["loaded project MCP server: test (1 tools)"]
+        );
+        let mut broken = echo_server();
+        broken.command = None;
+        let failed = start("broken".into(), Scope::Global, broken).await;
+        assert_eq!(
+            mcp.add(failed),
+            ["MCP server broken failed: command is missing"]
+        );
+        let clash = start("test".into(), Scope::Global, echo_server()).await;
+        assert_eq!(
+            mcp.add(clash),
+            [
+                "MCP server test: skipped tool echo because its name clashes with test/echo",
+                "loaded global MCP server: test (0 tools)",
+            ]
+        );
+        assert!(mcp.diagnostics.is_empty());
     }
 }

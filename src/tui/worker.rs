@@ -1,6 +1,7 @@
 use crate::{
     agent::{Agent, AgentEvent, ContextUse},
     images::Image,
+    mcp::Started,
     session::SessionSummary,
 };
 use anyhow::Result;
@@ -51,6 +52,7 @@ pub(super) async fn agent_task(
     mut agent: Agent,
     mut requests: mpsc::UnboundedReceiver<Request>,
     mut cancel: mpsc::UnboundedReceiver<()>,
+    mut mcp_servers: mpsc::UnboundedReceiver<Started>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
     let mut quota = agent.quota_request().await.ok().map(tokio::spawn);
@@ -63,6 +65,13 @@ pub(super) async fn agent_task(
                     agent.merge_quota(value);
                     let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 }
+                continue;
+            }
+            Some(started) = mcp_servers.recv() => {
+                for message in agent.mcp.add(started) {
+                    let _ = events.send(UiEvent::Agent(AgentEvent::Notice(message)));
+                }
+                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
             request = requests.recv() => request,
@@ -164,8 +173,12 @@ pub(super) async fn agent_task(
 
 #[cfg(test)]
 mod tests {
-    use super::{Request, agent_task, quit};
-    use crate::{agent::Agent, auth::Credentials};
+    use super::{Request, UiEvent, agent_task, quit};
+    use crate::{
+        agent::{Agent, AgentEvent},
+        auth::Credentials,
+        mcp,
+    };
     use serde_json::json;
     use tokio::sync::mpsc;
 
@@ -186,12 +199,13 @@ mod tests {
         let session_id = agent.session.id.clone();
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
         request_tx
             .send(Request::Shell(format!("touch {}", marker.display())))
             .unwrap();
         quit(request_tx, cancel_tx);
-        agent_task(agent, request_rx, cancel_rx, event_tx).await;
+        agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx).await;
         let ran = marker.exists();
         let _ = std::fs::remove_file(&marker);
         if let Some(config_dir) = crate::config::dir() {
@@ -207,9 +221,10 @@ mod tests {
         let session_id = agent.session.id.clone();
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
         request_tx.send(Request::Shell("sleep 30".into())).unwrap();
-        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         quit(request_tx, cancel_tx);
         let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
@@ -218,5 +233,58 @@ mod tests {
             let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
         }
         assert!(stopped.is_ok());
+    }
+
+    async fn wait_for_event(
+        events: &mut mpsc::UnboundedReceiver<UiEvent>,
+        matches: impl Fn(&UiEvent) -> bool,
+    ) -> bool {
+        let wait = async {
+            while let Some(event) = events.recv().await {
+                if matches(&event) {
+                    return true;
+                }
+            }
+            false
+        };
+        tokio::time::timeout(std::time::Duration::from_secs(5), wait)
+            .await
+            .unwrap_or(false)
+    }
+
+    #[tokio::test]
+    async fn runs_requests_while_mcp_servers_start() {
+        let agent = agent();
+        let session_id = agent.session.id.clone();
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        request_tx.send(Request::Shell("echo hi".into())).unwrap();
+        let ran = wait_for_event(
+            &mut event_rx,
+            |event| matches!(event, UiEvent::Shell(_, Ok(output)) if output == "hi\n"),
+        )
+        .await;
+        mcp_tx
+            .send(mcp::failed_start("slow", "initialize timed out"))
+            .unwrap();
+        let reported = wait_for_event(&mut event_rx, |event| {
+            matches!(
+                event,
+                UiEvent::Agent(AgentEvent::Notice(text))
+                    if text == "MCP server slow failed: initialize timed out"
+            )
+        })
+        .await;
+        quit(request_tx, cancel_tx);
+        let _ = worker.await;
+        if let Some(config_dir) = crate::config::dir() {
+            let sessions = config_dir.join("sessions");
+            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
+        }
+        assert!(ran);
+        assert!(reported);
     }
 }

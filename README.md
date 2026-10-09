@@ -107,6 +107,7 @@ Instructions and skills:
 MCP:
 
 - [MCP servers](#mcp-servers) over stdio, configured globally or per project
+- MCP servers started in the background in the interface
 - `~/` expansion, `env`, `cwd`, `timeout` and `enabled` options
 - Paginated tool lists, `ping` replies, and server error output shown in errors
 - Clear errors for HTTP and SSE servers, which are not supported yet
@@ -375,7 +376,7 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
 
 Project entries replace global entries with the same name. rust-claude starts project servers without asking (see [ADR 3](docs/adr/0003-start-project-mcp-servers-without-approval.md)).
 
-rust-claude connects to all servers at start and waits for them before the first prompt. Tools are named `mcp__<server>__<tool>`, with other characters replaced by `_` and cut to 64 characters. Text results longer than 20,000 bytes are cut. Images, audio and binary resources show as short placeholders. At start, the interface lists the connected global and project servers on separate lines with their tool counts, and shows a notice for each invalid entry or server that failed to connect. In print mode, these notices go to standard error. Servers stop when rust-claude quits.
+In the interface, rust-claude starts all servers in the background, so you can type and send prompts straight away. Each server's tools become available once it is ready, with a notice such as `loaded project MCP server: docs (3 tools)`. A prompt sent before then goes without those tools, and a server that becomes ready while a prompt runs joins after that prompt. The interface also shows a notice for each invalid entry or server that failed to connect. In print mode, rust-claude waits for all servers before sending the prompt, and the notices for invalid entries and failed servers go to standard error. Tools are named `mcp__<server>__<tool>`, with other characters replaced by `_` and cut to 64 characters. Text results longer than 20,000 bytes are cut. Images, audio and binary resources show as short placeholders. Servers stop when rust-claude quits.
 
 ## Decisions
 
