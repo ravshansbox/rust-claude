@@ -464,6 +464,57 @@ mod tests {
     }
 
     #[test]
+    fn keeps_folder_prompt_history_across_restarts_and_new_sessions() {
+        let path = std::env::temp_dir().join(format!(
+            "rust-claude-tui-saved-history-{}/history.jsonl",
+            std::process::id()
+        ));
+        for prompt in ["first", "second", "first"] {
+            crate::history::append(&path, prompt).unwrap();
+        }
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .and_then(|mut file| {
+                std::io::Write::write_all(
+                    &mut file,
+                    b"{\"prompt\":\"elsewhere\",\"cwd\":\"/somewhere/else\"}\n",
+                )
+            })
+            .unwrap();
+        let mut app = new_app();
+        app.load_history(Some(path.clone()));
+        let press = |app: &mut App, code| {
+            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
+            app.input.clone()
+        };
+        assert_eq!(press(&mut app, KeyCode::Up), "first");
+        assert_eq!(press(&mut app, KeyCode::Up), "second");
+        assert_eq!(press(&mut app, KeyCode::Up), "second");
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Down);
+        handle_input(Event::Paste("third".into()), &mut app, |_| {});
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        app.busy = false;
+        handle_agent_event(UiEvent::NewSession(Ok(())), &mut app);
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            &mut app,
+            |_| {},
+        );
+        let search = app.history_search.take().unwrap();
+        assert_eq!(
+            search.matches(),
+            [("third", None), ("first", None), ("second", None)]
+        );
+        let mut restarted = new_app();
+        restarted.load_history(Some(path.clone()));
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        assert_eq!(press(&mut restarted, KeyCode::Up), "third");
+        assert_eq!(press(&mut restarted, KeyCode::Up), "first");
+    }
+
+    #[test]
     fn shows_context_use() {
         let mut app = new_app();
         handle_input(Event::Paste("/context".into()), &mut app, |_| {});
