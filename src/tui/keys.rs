@@ -1,6 +1,8 @@
 use super::{
     App, Picker, PickerKind, Role,
-    input::{next_word_end, previous_word_start, row_above, row_below},
+    input::{
+        next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
+    },
 };
 use crate::{agent::THINKING_LEVELS, images::Image, skills};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
@@ -302,16 +304,8 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         (KeyCode::Char('r'), KeyModifiers::CONTROL) => app.open_history_search(),
         (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
         (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
-        (KeyCode::Left, _) => {
-            if let Some(character) = app.input[..app.cursor].chars().next_back() {
-                app.cursor -= character.len_utf8();
-            }
-        }
-        (KeyCode::Right, _) => {
-            if let Some(character) = app.input[app.cursor..].chars().next() {
-                app.cursor += character.len_utf8();
-            }
-        }
+        (KeyCode::Left, _) => app.cursor = previous_grapheme(&app.input, app.cursor),
+        (KeyCode::Right, _) => app.cursor = next_grapheme(&app.input, app.cursor),
         (KeyCode::Backspace, KeyModifiers::ALT) | (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
             let start = previous_word_start(&app.input, app.cursor);
             app.input.replace_range(start..app.cursor, "");
@@ -319,10 +313,9 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             app.input_changed();
         }
         (KeyCode::Backspace, _) => {
-            if let Some(character) = app.input[..app.cursor].chars().next_back() {
-                app.cursor -= character.len_utf8();
-                app.input.remove(app.cursor);
-            }
+            let start = previous_grapheme(&app.input, app.cursor);
+            app.input.replace_range(start..app.cursor, "");
+            app.cursor = start;
             app.input_changed();
         }
         (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
@@ -341,6 +334,26 @@ mod tests {
     use crate::images::Image;
     use crate::tui::{App, UiEvent, handle_agent_event, test_support::new_app};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+
+    #[test]
+    fn edits_emoji_as_whole_graphemes() {
+        let mut app = new_app();
+        let key = |app: &mut App, code| {
+            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
+        };
+        handle_input(Event::Paste("a👍🏽❤️".into()), &mut app, |_| {});
+        key(&mut app, KeyCode::Left);
+        assert_eq!(app.cursor, "a👍🏽".len());
+        key(&mut app, KeyCode::Left);
+        assert_eq!(app.cursor, "a".len());
+        key(&mut app, KeyCode::Right);
+        assert_eq!(app.cursor, "a👍🏽".len());
+        key(&mut app, KeyCode::Right);
+        key(&mut app, KeyCode::Backspace);
+        assert_eq!(app.input, "a👍🏽");
+        key(&mut app, KeyCode::Backspace);
+        assert_eq!(app.input, "a");
+    }
 
     #[test]
     fn checks_model_before_selecting_it() {
