@@ -1,6 +1,9 @@
 use super::argument;
 use serde_json::{Value, json};
 
+/// Larger files are refused rather than loaded whole into memory.
+const MAX_SIZE: u64 = 10 * 1024 * 1024;
+
 pub(super) fn definition() -> Value {
     json!({
         "name": "edit",
@@ -28,6 +31,15 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         Value::Null => false,
         value => value.as_bool().ok_or("replace_all must be true or false")?,
     };
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|error| format!("failed to read {path}: {error}"))?;
+    if !metadata.is_file() {
+        return Err(format!("{path} is not a regular file"));
+    }
+    if metadata.len() > MAX_SIZE {
+        return Err(format!("{path} is larger than 10 MiB, too large to edit"));
+    }
     let content = tokio::fs::read_to_string(path)
         .await
         .map_err(|error| format!("failed to read {path}: {error}"))?;
@@ -94,6 +106,40 @@ fn count_matches(content: &str, pattern: &str) -> usize {
 mod tests {
     use crate::tools::{call, test_support::TemporaryFile};
     use serde_json::json;
+    use std::time::Duration;
+
+    #[tokio::test]
+    async fn refuses_files_that_are_not_regular() {
+        let fifo = TemporaryFile::fifo("edit-fifo");
+        let input = json!({ "path": fifo.path(), "old_text": "a", "new_text": "b" });
+        let edit = tokio::time::timeout(Duration::from_secs(5), call("edit", &input)).await;
+        assert_eq!(
+            edit,
+            Ok(Err(format!(
+                "{} is not a regular file",
+                fifo.path().display()
+            )))
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_files_over_10_mib() {
+        let file = TemporaryFile::new("edit-large", "");
+        std::fs::File::options()
+            .write(true)
+            .open(file.path())
+            .unwrap()
+            .set_len(10 * 1024 * 1024 + 1)
+            .unwrap();
+        let input = json!({ "path": file.path(), "old_text": "a", "new_text": "b" });
+        assert_eq!(
+            call("edit", &input).await,
+            Err(format!(
+                "{} is larger than 10 MiB, too large to edit",
+                file.path().display()
+            ))
+        );
+    }
 
     #[tokio::test]
     async fn rejects_empty_old_text() {
