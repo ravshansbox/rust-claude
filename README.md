@@ -267,6 +267,8 @@ Changing the model or thinking level in the interface saves only the setting you
 rust-claude adds `AGENTS.md` from your home folder and from the current directory to the system prompt.
 
 The system prompt tells the model to put questions to the user in bold.
+
+The system prompt also tells the model to search code with `ast-grep`, and to fall back to `ripgrep` for plain text, comments, strings and files `ast-grep` cannot parse. Both run through the `bash` tool, so install them for this to work.
 It also tells the model to prefer `edit` and `write` over `bash` for changing files.
 
 ## Skills

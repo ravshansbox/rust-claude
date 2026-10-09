@@ -25,6 +25,7 @@ const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
 Prefer edit and write over bash for changing files.
+Search code with ast-grep. Fall back to ripgrep for plain text, comments, strings and files ast-grep cannot parse.
 Put questions to the user in bold."#;
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
@@ -1103,7 +1104,7 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::{AgentEvent, ask_user, tool_definitions};
+    use super::{AgentEvent, SYSTEM_PROMPT, ask_user, tool_definitions};
     use super::{
         Quota, active_messages, cache_hit_rate, cancel_point, context_tokens, has_uncompacted,
         parse_shell_message, parse_timestamp, retry_after, retry_delay, retryable, scale_parts,
@@ -1119,6 +1120,13 @@ mod tests {
             .iter()
             .map(|definition| definition["name"].as_str().unwrap().to_string())
             .collect()
+    }
+
+    #[test]
+    fn tells_the_model_to_prefer_ast_grep_for_code_search() {
+        assert!(SYSTEM_PROMPT.contains(
+            "Search code with ast-grep. Fall back to ripgrep for plain text, comments, strings and files ast-grep cannot parse."
+        ));
     }
 
     #[test]
