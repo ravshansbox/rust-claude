@@ -1,6 +1,7 @@
 use crate::{
     agent::{Agent, AgentEvent, Stats, THINKING_LEVELS},
     session::SessionSummary,
+    settings::Settings,
     tools,
 };
 use anyhow::Result;
@@ -351,6 +352,8 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let mut spinner = tokio::time::interval(SPINNER_INTERVAL);
     spinner.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut dirty = true;
+    let mut saved_model = app.model.clone();
+    let mut saved_thinking_level = app.thinking_level;
 
     let result = loop {
         tokio::select! {
@@ -392,6 +395,17 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                         let _ = cancel_tx.send(());
                     }
                 });
+                if app.model != saved_model || app.thinking_level != saved_thinking_level {
+                    saved_model = app.model.clone();
+                    saved_thinking_level = app.thinking_level;
+                    let settings = Settings {
+                        model: Some(saved_model.clone()),
+                        thinking_level: Some(saved_thinking_level.to_string()),
+                    };
+                    if let Err(error) = settings.save() {
+                        app.push(Role::Event, format!("failed to save settings: {error}"));
+                    }
+                }
                 if quit {
                     break Ok(());
                 }
@@ -890,7 +904,11 @@ fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::raw(format!("{} · ", app.workspace)),
-            Span::raw(format!("{}:{}", display_model(&app.model), app.thinking_level)),
+            Span::raw(format!(
+                "{}:{}",
+                display_model(&app.model),
+                app.thinking_level
+            )),
             Span::raw(format!(" · {} ", format_stats(&app.stats))),
             context_span(&app.stats),
             Span::raw(format_quota(&app.stats)),
@@ -984,7 +1002,10 @@ mod tests {
 fn workspace_label() -> String {
     let folder = std::env::current_dir()
         .ok()
-        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+        .and_then(|path| {
+            path.file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+        })
         .unwrap_or_default();
     let branch = std::process::Command::new("git")
         .args(["rev-parse", "--abbrev-ref", "HEAD"])
