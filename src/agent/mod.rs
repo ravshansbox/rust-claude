@@ -512,19 +512,43 @@ impl Agent {
                     "is_error": is_error,
                 }));
             }
-            for queued in take_queued(&self.queue) {
-                for (_, image) in &queued.images {
-                    results.push(self.session.save_image(image)?);
-                }
-                results.push(json!({ "type": "text", "text": queued.prompt }));
-                on_event(AgentEvent::Queued(queued.prompt));
-            }
             self.messages
                 .push(json!({ "role": "user", "content": results }));
             self.session.save(&self.messages)?;
+            // Compact before adding queued prompts, so they follow the summary
+            // word for word instead of being summarised.
             self.compact_if_full(self.messages.len(), &mut on_event)
                 .await?;
+            if let Some(prompts) = self.take_queued_prompts(&mut on_event)? {
+                self.messages
+                    .push(json!({ "role": "user", "content": prompts }));
+            }
         }
+    }
+
+    /// Turns queued prompts into message blocks. The prompts stay queued when
+    /// saving one of their images fails.
+    fn take_queued_prompts(
+        &self,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<Option<Vec<Value>>> {
+        let Ok(mut queue) = self.queue.lock() else {
+            return Ok(None);
+        };
+        if queue.is_empty() {
+            return Ok(None);
+        }
+        let mut blocks = Vec::new();
+        for queued in queue.iter() {
+            for (_, image) in &queued.images {
+                blocks.push(self.session.save_image(image)?);
+            }
+            blocks.push(json!({ "type": "text", "text": queued.prompt }));
+        }
+        for queued in queue.drain(..) {
+            on_event(AgentEvent::Queued(queued.prompt));
+        }
+        Ok(Some(blocks))
     }
 }
 
@@ -534,7 +558,7 @@ mod tests {
     use std::time::Duration;
 
     use super::{
-        AgentEvent, cancel_point, http_client_with, parse_shell_message, shell_message,
+        AgentEvent, Queued, cancel_point, http_client_with, parse_shell_message, shell_message,
         test_support::{self, MockApi, Reply, text_reply, tool_reply},
     };
 
@@ -591,6 +615,41 @@ mod tests {
         assert!(
             saved.contains("tool_result") && saved.contains("round-one"),
             "{saved}"
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_queued_prompts_word_for_word_when_compacting_after_a_tool_round() {
+        let full_context_tool_call = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "true" } } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        ]);
+        let api = MockApi::start(vec![
+            full_context_tool_call,
+            text_reply("summary of the work"),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        agent.queue.lock().unwrap().push(Queued {
+            prompt: "also update the README".into(),
+            images: Vec::new(),
+        });
+        let result = agent.prompt("fix the bug", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 3);
+        let after_compaction = requests[2]["messages"].to_string();
+        assert!(
+            after_compaction.contains("summary of the work"),
+            "{after_compaction}"
+        );
+        assert!(
+            after_compaction.contains("also update the README"),
+            "{after_compaction}"
         );
     }
 
