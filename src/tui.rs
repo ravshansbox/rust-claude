@@ -331,7 +331,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let transcript = Paragraph::new(Text::from(lines))
         .block(
             Block::default()
-                .title(" rust-claude ")
+                .title(" Conversation ")
                 .borders(Borders::ALL),
         )
         .wrap(Wrap { trim: false });
