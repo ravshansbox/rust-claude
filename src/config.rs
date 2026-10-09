@@ -28,7 +28,57 @@ fn default_dir() -> Option<PathBuf> {
 
 #[cfg(test)]
 fn default_dir() -> Option<PathBuf> {
-    Some(std::env::temp_dir().join(format!("rust-claude-test-config-{}", std::process::id())))
+    static DIR: std::sync::LazyLock<(PathBuf, std::fs::File)> = std::sync::LazyLock::new(|| {
+        test_dir(&std::env::temp_dir().join("rust-claude-test-config"))
+    });
+    Some(DIR.0.clone())
+}
+
+/// Gives this test process its own folder under `base`, locked while the
+/// returned file stays open, and removes the folders of test processes that
+/// have exited.
+#[cfg(test)]
+fn test_dir(base: &Path) -> (PathBuf, std::fs::File) {
+    let id = std::process::id().to_string();
+    // Lock the folder before giving it the name other processes look at, so
+    // they never see it unlocked.
+    let unnamed = base.join(format!(".{id}"));
+    let _ = std::fs::remove_dir_all(&unnamed);
+    create_private_dir(&unnamed).unwrap();
+    let lock = std::fs::File::open(&unnamed).unwrap();
+    lock.lock().unwrap();
+    let own = base.join(&id);
+    // A folder with this id is left from an exited process, and another
+    // process may be removing it too.
+    let mut attempts = 0;
+    while let Err(error) = std::fs::rename(&unnamed, &own) {
+        attempts += 1;
+        assert!(attempts < 100, "{error}");
+        let _ = std::fs::remove_dir_all(&own);
+    }
+    remove_unlocked(base, &id);
+    (own, lock)
+}
+
+/// Removes the test folders in `base`, other than `own`, that no running
+/// process holds a lock on.
+#[cfg(test)]
+fn remove_unlocked(base: &Path, own: &str) {
+    let Ok(entries) = std::fs::read_dir(base) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let name = entry.file_name();
+        if name == own || name.to_string_lossy().starts_with('.') {
+            continue;
+        }
+        let path = entry.path();
+        if let Ok(folder) = std::fs::File::open(&path)
+            && folder.try_lock().is_ok()
+        {
+            let _ = std::fs::remove_dir_all(&path);
+        }
+    }
 }
 
 /// Creates a folder, and any missing parents, that only the user can open.
@@ -89,4 +139,35 @@ pub(crate) fn permissions(path: &Path) -> Option<u32> {
     std::fs::metadata(path)
         .ok()
         .map(|metadata| metadata.permissions().mode() & 0o777)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_dir;
+
+    #[test]
+    fn removes_test_folders_of_exited_processes() {
+        let base =
+            std::env::temp_dir().join(format!("rust-claude-test-folders-{}", std::process::id()));
+        let exited = base.join("1");
+        let running = base.join("2");
+        let reused = base.join(std::process::id().to_string());
+        for folder in [&exited, &running, &reused] {
+            std::fs::create_dir_all(folder).unwrap();
+            std::fs::write(folder.join("settings.json"), "{}").unwrap();
+        }
+        let running_lock = std::fs::File::open(&running).unwrap();
+        running_lock.lock().unwrap();
+        let (own, _lock) = test_dir(&base);
+        let own_is_locked = std::fs::File::open(&own).unwrap().try_lock().is_err();
+        let found = (
+            exited.exists(),
+            running.exists(),
+            own == reused,
+            std::fs::read_dir(&own).unwrap().count(),
+            own_is_locked,
+        );
+        std::fs::remove_dir_all(&base).unwrap();
+        assert_eq!(found, (false, true, true, 0, true));
+    }
 }
