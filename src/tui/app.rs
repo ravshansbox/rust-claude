@@ -105,6 +105,8 @@ pub(super) struct App {
     pub(super) images: Vec<(usize, Image)>,
     pub(super) image_count: usize,
     pub(super) queue: Queue,
+    /// Every prompt in the history file and sent since, oldest first.
+    pub(super) history: Vec<history::Entry>,
     pub(super) history_file: Option<PathBuf>,
     pub(super) history_search: Option<HistorySearch>,
 }
@@ -181,6 +183,7 @@ impl App {
             images: Vec::new(),
             image_count: 0,
             queue: Queue::default(),
+            history: Vec::new(),
             history_file: None,
             history_search: None,
         }
@@ -224,12 +227,19 @@ impl App {
         self.push(Role::Tool, tool_message("!", command.to_string(), diff));
     }
 
+    /// Loads the prompt history once; prompts sent later are added to it.
     pub(super) fn load_history(&mut self, path: Option<PathBuf>) {
-        let folder = crate::session::current_folder();
-        self.prompt_history = path
-            .as_deref()
-            .map(|path| history::load_folder(path, &folder))
-            .unwrap_or_default();
+        self.history = path.as_deref().map(history::load).unwrap_or_default();
+        if let Some(path) = &path
+            && let Err(error) = history::trim(path, &mut self.history)
+        {
+            self.push(
+                Role::Event,
+                format!("failed to trim prompt history: {error}"),
+            );
+        }
+        self.prompt_history =
+            history::folder_prompts(&self.history, &crate::session::current_folder());
         self.history_file = path;
     }
 
@@ -240,10 +250,13 @@ impl App {
 
     pub(super) fn remember(&mut self, prompt: &str) {
         self.add_prompt(prompt.to_string());
-        let Some(path) = &self.history_file else {
-            return;
-        };
-        if let Err(error) = history::append(path, prompt) {
+        let entry = history::Entry::here(prompt);
+        let saved = self
+            .history_file
+            .as_deref()
+            .map(|path| history::append(path, &entry));
+        self.history.push(entry);
+        if let Some(Err(error)) = saved {
             self.push(
                 Role::Event,
                 format!("failed to save prompt history: {error}"),
@@ -257,11 +270,7 @@ impl App {
             all: false,
             query: String::new(),
             current,
-            everywhere: self
-                .history_file
-                .as_deref()
-                .map(history::load)
-                .unwrap_or_default(),
+            everywhere: history::newest_unique(&self.history),
             selected: 0,
         });
     }
