@@ -143,8 +143,7 @@ fn tool_header(first: &str) -> Line<'static> {
     let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
     Line::from(vec![
         Span::styled(format!(" {name} "), theme().highlight_style()),
-        Span::raw(" "),
-        Span::styled(format!(" {rest} "), theme().subtle_style()),
+        Span::raw(format!(" {rest}")),
     ])
 }
 
