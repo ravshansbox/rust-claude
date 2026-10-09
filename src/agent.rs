@@ -126,6 +126,15 @@ impl Agent {
         self.messages.len()
     }
 
+    pub fn resume_latest(&mut self) -> Result<Option<Vec<Value>>> {
+        let Some((session, messages)) = self.session.latest_other()? else {
+            return Ok(None);
+        };
+        self.session = session;
+        self.messages = messages.clone();
+        Ok(Some(messages))
+    }
+
     pub fn rollback(&mut self, len: usize) {
         self.messages.truncate(len);
     }
