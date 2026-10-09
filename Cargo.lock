@@ -2041,6 +2041,7 @@ dependencies = [
  "crossterm",
  "futures",
  "getrandom 0.4.3",
+ "libc",
  "ratatui",
  "reqwest",
  "serde",
