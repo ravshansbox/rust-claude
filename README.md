@@ -116,6 +116,8 @@ A cancelled or failed prompt stays in the session with its finished tool calls, 
 
 `/compact` asks the model to summarise the conversation. Later requests send the summary in place of the earlier messages. The session file keeps the full conversation and a compaction entry that holds the summary. A resumed session shows the earlier messages, then a `compacted conversation` notice. Esc cancels a running compaction.
 
+rust-claude also compacts automatically when the context is 80% full: before sending a new prompt, and after each round of tool calls. A prompt sent at that point is kept word for word after the summary. Models that rust-claude doesn't know have no known context window, so they only compact with `/compact`.
+
 `/resume` reads each session only up to its first prompt to build the list. A damaged session shows an error when you resume it. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
 ## Tools

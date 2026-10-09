@@ -26,6 +26,7 @@ pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"]
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
 const SUMMARY_INTRODUCTION: &str = "The earlier conversation was compacted to save context. You wrote the summary below of everything that happened in it. Treat it as an accurate record and continue from where the conversation stopped.";
+const COMPACT_AT_PERCENT: u64 = 80;
 const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
 
@@ -419,8 +420,8 @@ async fn fetch_quota(http: reqwest::Client, token: String) -> Result<Quota> {
 fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
     messages[checkpoint..]
         .iter()
-        .rposition(|message| message["role"] == "user" && message["content"].is_array())
-        .map_or(checkpoint + 1, |index| checkpoint + index + 1)
+        .rposition(|message| message["role"] == "user" || is_compaction(message))
+        .map_or(checkpoint, |index| checkpoint + index + 1)
 }
 
 pub enum AgentEvent {
@@ -600,6 +601,23 @@ impl Agent {
         result
     }
 
+    fn context_full(&self) -> bool {
+        let stats = self.stats();
+        stats.context_window > 0
+            && stats.context_tokens * 100 >= stats.context_window * COMPACT_AT_PERCENT
+    }
+
+    async fn compact_if_full(
+        &mut self,
+        end: usize,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<()> {
+        if self.context_full() && has_uncompacted(&self.messages[..end]) {
+            self.compact_history(end, on_event).await?;
+        }
+        Ok(())
+    }
+
     async fn compact_history(
         &mut self,
         end: usize,
@@ -674,6 +692,8 @@ impl Agent {
         self.messages
             .push(json!({ "role": "user", "content": prompt }));
         on_event(AgentEvent::Stats(self.stats()));
+        self.compact_if_full(self.messages.len() - 1, &mut on_event)
+            .await?;
 
         loop {
             let messages = with_cache_breakpoint(&active_messages(&self.messages));
@@ -717,6 +737,8 @@ impl Agent {
             }
             self.messages
                 .push(json!({ "role": "user", "content": results }));
+            self.compact_if_full(self.messages.len(), &mut on_event)
+                .await?;
         }
     }
 
@@ -928,6 +950,15 @@ mod tests {
         let tool_use = json!({ "role": "assistant", "content": [{ "type": "tool_use" }] });
         let tool_result = json!({ "role": "user", "content": [{ "type": "tool_result" }] });
         assert_eq!(cancel_point(std::slice::from_ref(&prompt), 0), 1);
+        let compaction = json!({ "role": "assistant", "stop_reason": "compacted", "content": [] });
+        assert_eq!(
+            cancel_point(&[compaction.clone(), prompt.clone(), tool_use.clone()], 0),
+            2
+        );
+        assert_eq!(
+            cancel_point(&[prompt.clone(), compaction, tool_use.clone()], 0),
+            2
+        );
         assert_eq!(
             cancel_point(
                 &[prompt.clone(), tool_use.clone(), tool_result, tool_use],
