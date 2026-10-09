@@ -129,7 +129,7 @@ impl Credentials {
     /// never see a half-written file and a crash keeps the old sign-in.
     fn save(&self) -> Result<()> {
         let path = credentials_path()?;
-        std::fs::create_dir_all(path.parent().context("invalid credentials path")?)?;
+        crate::config::create_private_dir(path.parent().context("invalid credentials path")?)?;
         let temporary = path.with_extension(format!("json.{}.tmp", std::process::id()));
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create(true).truncate(true);

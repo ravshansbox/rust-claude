@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, OpenOptions, TryLockError},
+    fs::{File, TryLockError},
     io::{Read, Write},
     path::{Path, PathBuf},
     time::SystemTime,
@@ -86,7 +86,7 @@ impl Session {
             Some(file) => file,
             None => {
                 let directory = sessions_directory()?;
-                std::fs::create_dir_all(&directory)?;
+                crate::config::create_private_dir(&directory)?;
                 let path = directory.join(format!("{}.jsonl", self.id));
                 self.file.insert(open_locked(&path, true)?)
             }
@@ -117,7 +117,7 @@ impl Session {
 
     pub fn save_image(&self, image: &Image) -> Result<Value> {
         let directory = sessions_directory()?.join(&self.id);
-        std::fs::create_dir_all(&directory)?;
+        crate::config::create_private_dir(&directory)?;
         let hash: String = Sha256::digest(&image.data)[..8]
             .iter()
             .map(|byte| format!("{byte:02x}"))
@@ -125,7 +125,12 @@ impl Session {
         let file = format!("{hash}.{}", image.extension());
         let path = directory.join(&file);
         if !path.exists() {
-            std::fs::write(&path, &image.data)?;
+            crate::config::private_file()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&path)?
+                .write_all(&image.data)?;
         }
         Ok(json!({ "type": "image", "file": file, "media_type": image.media_type }))
     }
@@ -205,7 +210,7 @@ impl Session {
 
 /// Opens a session file for appending, locked until it is closed.
 fn open_locked(path: &Path, create: bool) -> Result<File> {
-    let file = OpenOptions::new()
+    let file = crate::config::private_file()
         .create(create)
         .read(true)
         .append(true)
@@ -574,6 +579,33 @@ mod tests {
         let loaded = Session::load(&id);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(loaded.unwrap().1, messages[..1]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saves_session_and_images_only_the_user_can_read() {
+        use crate::config::permissions;
+        let mut session = Session::new().unwrap();
+        session
+            .save(&[json!({ "role": "user", "content": "secret" })])
+            .unwrap();
+        let image = session.save_image(&crate::images::Image {
+            media_type: "image/png",
+            data: b"png".to_vec(),
+        });
+        let file = sessions_directory()
+            .unwrap()
+            .join(format!("{}.jsonl", session.id));
+        let images = sessions_directory().unwrap().join(&session.id);
+        let image_file = image.map(|block| images.join(block["file"].as_str().unwrap()));
+        let found = (
+            permissions(&file),
+            permissions(&images),
+            permissions(&image_file.unwrap()),
+        );
+        std::fs::remove_file(&file).unwrap();
+        std::fs::remove_dir_all(&images).unwrap();
+        assert_eq!(found, (Some(0o600), Some(0o700), Some(0o600)));
     }
 
     #[test]
