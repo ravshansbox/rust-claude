@@ -686,6 +686,14 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                 app.cursor += character.len_utf8();
             }
         }
+        (KeyCode::Backspace, KeyModifiers::ALT) | (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
+            let start = previous_word_start(&app.input, app.cursor);
+            app.input.replace_range(start..app.cursor, "");
+            app.cursor = start;
+            app.history_index = None;
+            app.command_selected = 0;
+            app.commands_dismissed = false;
+        }
         (KeyCode::Backspace, _) => {
             if let Some(character) = app.input[..app.cursor].chars().next_back() {
                 app.cursor -= character.len_utf8();
@@ -1334,6 +1342,33 @@ mod tests {
         handle_input(alt(KeyCode::Char('f')), &mut app, |_| {});
         assert_eq!(app.cursor, "one two".len());
         assert_eq!(app.input, "one two");
+    }
+
+    #[test]
+    fn deletes_previous_word() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        handle_input(Event::Paste("one two three".into()), &mut app, |_| {});
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Left)), &mut app, |_| {});
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT)),
+            &mut app,
+            |_| {},
+        );
+        assert_eq!(app.input, "one two e");
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL)),
+            &mut app,
+            |_| {},
+        );
+        assert_eq!(app.input, "one e");
+        assert_eq!(app.cursor, "one ".len());
     }
 
     #[test]
