@@ -19,12 +19,6 @@ pub(super) fn press(app: &mut App, code: KeyCode) {
     handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
 }
 
-pub(super) fn type_text(app: &mut App, text: &str) {
-    for character in text.chars() {
-        press(app, KeyCode::Char(character));
-    }
-}
-
 pub(super) fn screen(app: &mut App) -> String {
     let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
     terminal.draw(|frame| draw(frame, app)).unwrap();

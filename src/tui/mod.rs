@@ -4,7 +4,6 @@ mod draw;
 mod files;
 mod input;
 mod keys;
-mod question;
 mod render;
 mod replay;
 mod status;
@@ -68,8 +67,7 @@ pub async fn run(agent: Agent) -> Result<()> {
     result
 }
 
-async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()> {
-    agent.ask_user = true;
+async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let mut app = App::new(&agent.model, agent.thinking_level, agent.stats());
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
