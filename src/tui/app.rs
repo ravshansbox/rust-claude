@@ -2,7 +2,7 @@ use super::{
     commands::command_matches,
     display_model,
     files::{file_matches, file_query},
-    render::{render_message, tool_message},
+    render::{render_message, tool_message, wrapped_height},
     workspace_label,
 };
 use crate::{
@@ -35,7 +35,15 @@ pub(super) enum Role {
 pub(super) struct ChatMessage {
     pub(super) role: Role,
     pub(super) text: String,
-    pub(super) rendered: Option<(u16, Vec<Line<'static>>)>,
+    pub(super) rendered: Option<Rendered>,
+}
+
+pub(super) struct Rendered {
+    pub(super) width: u16,
+    pub(super) lines: Vec<Line<'static>>,
+    /// Rows each line takes once wrapped to `width`.
+    pub(super) heights: Vec<usize>,
+    pub(super) height: usize,
 }
 
 impl ChatMessage {
@@ -48,10 +56,25 @@ impl ChatMessage {
         if self
             .rendered
             .as_ref()
-            .is_none_or(|(rendered_width, _)| *rendered_width != width)
+            .is_none_or(|rendered| rendered.width != width)
         {
-            self.rendered = Some((width, render_message(self.role, &self.text, width)));
+            let lines = render_message(self.role, &self.text, width);
+            let heights: Vec<usize> = lines
+                .iter()
+                .map(|line| wrapped_height(line, width))
+                .collect();
+            self.rendered = Some(Rendered {
+                width,
+                height: heights.iter().sum(),
+                lines,
+                heights,
+            });
         }
+    }
+
+    /// Rows the message takes once rendered and wrapped.
+    pub(super) fn height(&self) -> usize {
+        self.rendered.as_ref().map_or(0, |rendered| rendered.height)
     }
 }
 
