@@ -167,7 +167,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             };
             let mut command = tokio::process::Command::new("bash");
             command
-                .args(["-lc", argument(input, "command")?])
+                .args(["-c", argument(input, "command")?])
                 .stdin(Stdio::null())
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
