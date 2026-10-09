@@ -198,6 +198,7 @@ enum UiEvent {
     Cancelled,
     Sessions(Result<Vec<SessionSummary>>),
     Resumed(Result<Vec<Value>>),
+    NewSession(Result<()>),
 }
 
 enum Request {
@@ -205,6 +206,7 @@ enum Request {
     ListSessions,
     Resume(String),
     SetModel(String),
+    NewSession,
 }
 
 async fn agent_task(
@@ -226,6 +228,10 @@ async fn agent_task(
             }
             Request::SetModel(model) => {
                 agent.model = model;
+                continue;
+            }
+            Request::NewSession => {
+                let _ = events.send(UiEvent::NewSession(agent.new_session()));
                 continue;
             }
         };
@@ -292,6 +298,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::SetModel(model) => {
                         let _ = request_tx.send(Request::SetModel(model));
                     }
+                    Action::NewSession => {
+                        let _ = request_tx.send(Request::NewSession);
+                    }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
                     }
@@ -319,6 +328,7 @@ enum Action {
     ListSessions,
     Resume(String),
     SetModel(String),
+    NewSession,
     Cancel,
 }
 
@@ -381,6 +391,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                     });
                 match command {
                     "/quit" => return true,
+                    "/new" => {
+                        app.status = "starting new session".into();
+                        app.busy = true;
+                        act(Action::NewSession);
+                    }
                     "/thinking" if argument.is_empty() => app.push(
                         Role::Event,
                         format!(
@@ -480,6 +495,17 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                         sessions,
                         selected: 0,
                     });
+                }
+                Err(error) => app.push(Role::Event, format!("error: {error}")),
+            }
+            app.busy = false;
+        }
+        UiEvent::NewSession(result) => {
+            match result {
+                Ok(()) => {
+                    app.messages.clear();
+                    app.usage.clear();
+                    app.push(Role::Event, "new session");
                 }
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
             }
