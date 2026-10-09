@@ -11,6 +11,8 @@ use tokio::{
 pub(crate) enum Reply {
     Stall,
     Events(Vec<Value>),
+    /// A 400 `invalid_request_error` with this message.
+    BadRequest(String),
 }
 
 pub(crate) fn text_reply(text: &str) -> Reply {
@@ -35,10 +37,10 @@ pub(crate) fn tool_reply(id: &str, name: &str, input: Value) -> Reply {
 }
 
 /// A local stand-in for the Messages API. It answers each request with the
-/// next scripted reply and records the request bodies it received.
+/// next scripted reply and records the request headers and bodies it received.
 pub(crate) struct MockApi {
     pub base: String,
-    requests: Arc<Mutex<Vec<Value>>>,
+    requests: Arc<Mutex<Vec<(String, Value)>>>,
 }
 
 impl MockApi {
@@ -50,10 +52,10 @@ impl MockApi {
         let recorded = requests.clone();
         tokio::spawn(async move {
             while let Ok((mut stream, _)) = listener.accept().await {
-                let Some(body) = read_request(&mut stream).await else {
+                let Some(request) = read_request(&mut stream).await else {
                     continue;
                 };
-                recorded.lock().await.push(body);
+                recorded.lock().await.push(request);
                 tokio::spawn(respond(stream, replies.pop_front()));
             }
         });
@@ -61,11 +63,21 @@ impl MockApi {
     }
 
     pub(crate) async fn requests(&self) -> Vec<Value> {
-        self.requests.lock().await.clone()
+        let requests = self.requests.lock().await;
+        requests.iter().map(|(_, body)| body.clone()).collect()
+    }
+
+    /// The headers of each request, lowercased.
+    pub(crate) async fn headers(&self) -> Vec<String> {
+        let requests = self.requests.lock().await;
+        requests
+            .iter()
+            .map(|(headers, _)| headers.clone())
+            .collect()
     }
 }
 
-async fn read_request(stream: &mut TcpStream) -> Option<Value> {
+async fn read_request(stream: &mut TcpStream) -> Option<(String, Value)> {
     let mut data = Vec::new();
     let mut chunk = [0u8; 8192];
     let header_end = loop {
@@ -91,7 +103,8 @@ async fn read_request(stream: &mut TcpStream) -> Option<Value> {
         }
         data.extend_from_slice(&chunk[..read]);
     }
-    Some(serde_json::from_slice(&data[header_end..]).unwrap_or(Value::Null))
+    let body = serde_json::from_slice(&data[header_end..]).unwrap_or(Value::Null);
+    Some((headers, body))
 }
 
 async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
@@ -118,16 +131,22 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
                 .await;
             std::future::pending::<()>().await;
         }
-        None => {
-            let body =
-                r#"{"error":{"type":"invalid_request_error","message":"no scripted reply"}}"#;
-            let response = format!(
-                "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
-        }
+        Some(Reply::BadRequest(message)) => bad_request(stream, &message).await,
+        None => bad_request(stream, "no scripted reply").await,
     }
+}
+
+async fn bad_request(mut stream: TcpStream, message: &str) {
+    let body = json!({
+        "type": "error",
+        "error": { "type": "invalid_request_error", "message": message },
+    })
+    .to_string();
+    let response = format!(
+        "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
 }
 
 pub(crate) fn agent(api: &MockApi, http: reqwest::Client) -> Agent {
