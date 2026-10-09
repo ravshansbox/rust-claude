@@ -47,56 +47,44 @@ struct Options {
     config_dir: Option<String>,
 }
 
-fn take_flag(arguments: &mut Vec<String>, flags: &[&str]) -> bool {
-    match arguments
-        .iter()
-        .position(|argument| flags.contains(&argument.as_str()))
-    {
-        Some(index) => {
-            arguments.remove(index);
-            true
+/// Stores the value after an option, which may be given once.
+fn set_value(
+    slot: &mut Option<String>,
+    arguments: &mut impl Iterator<Item = String>,
+) -> Result<()> {
+    match (slot.is_none(), arguments.next()) {
+        (true, Some(value)) => {
+            *slot = Some(value);
+            Ok(())
         }
-        None => false,
+        _ => bail!(USAGE),
     }
 }
 
-fn take_value(arguments: &mut Vec<String>, flag: &str) -> Result<Option<String>> {
-    let Some(index) = arguments.iter().position(|argument| argument == flag) else {
-        return Ok(None);
-    };
-    if index + 1 >= arguments.len() {
-        bail!(USAGE);
-    }
-    let value = arguments.remove(index + 1);
-    arguments.remove(index);
-    Ok(Some(value))
-}
-
-fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
+/// Reads arguments left to right, so a value such as the prompt after `-p`
+/// is never mistaken for an option.
+fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
+    let mut arguments = arguments.into_iter();
+    let mut options = Options::default();
     let mut images = Vec::new();
-    while let Some(image) = take_value(&mut arguments, "--image")? {
-        images.push(image);
-    }
-    let options = Options {
-        model: take_value(&mut arguments, "--model")?,
-        thinking_level: take_value(&mut arguments, "--thinking")?,
-        continue_session: take_flag(&mut arguments, &["-c", "--continue"]),
-        config_dir: take_value(&mut arguments, "--config-dir")?,
-    };
-    let print_options = !images.is_empty();
-    let command = match arguments.as_slice() {
-        [flag]
-            if !print_options
-                && options == Options::default()
-                && (flag == "-h" || flag == "--help") =>
-        {
-            Command::Help
+    let mut prompt = None;
+    let mut help = false;
+    while let Some(argument) = arguments.next() {
+        match argument.as_str() {
+            "--image" => images.push(arguments.next().context(USAGE)?),
+            "--model" => set_value(&mut options.model, &mut arguments)?,
+            "--thinking" => set_value(&mut options.thinking_level, &mut arguments)?,
+            "--config-dir" => set_value(&mut options.config_dir, &mut arguments)?,
+            "-p" | "--print" => set_value(&mut prompt, &mut arguments)?,
+            "-c" | "--continue" if !options.continue_session => options.continue_session = true,
+            "-h" | "--help" if !help => help = true,
+            _ => bail!(USAGE),
         }
-        [] if !print_options => Command::Interactive,
-        [flag, prompt] if flag == "-p" || flag == "--print" => Command::Print {
-            prompt: prompt.clone(),
-            images,
-        },
+    }
+    let command = match (help, prompt) {
+        (true, None) if images.is_empty() && options == Options::default() => Command::Help,
+        (false, None) if images.is_empty() => Command::Interactive,
+        (false, Some(prompt)) => Command::Print { prompt, images },
         _ => bail!(USAGE),
     };
     Ok((command, options))
@@ -371,6 +359,35 @@ mod tests {
                     thinking_level: Some("low".into()),
                     continue_session: false,
                     config_dir: None,
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn takes_a_prompt_that_looks_like_an_option() {
+        for prompt in ["-c", "--model", "--image", "-h", "--config-dir"] {
+            assert_eq!(
+                parse_with_options(&["-p", prompt]),
+                Some((
+                    Command::Print {
+                        prompt: prompt.into(),
+                        images: Vec::new(),
+                    },
+                    Options::default()
+                ))
+            );
+        }
+        assert_eq!(
+            parse_with_options(&["--model", "-p", "-p", "-c"]),
+            Some((
+                Command::Print {
+                    prompt: "-c".into(),
+                    images: Vec::new(),
+                },
+                Options {
+                    model: Some("-p".into()),
+                    ..Options::default()
                 }
             ))
         );
