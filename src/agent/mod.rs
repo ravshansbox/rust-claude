@@ -127,6 +127,8 @@ pub struct Agent {
     pub thinking_level: &'static str,
     messages: Vec<Value>,
     pending_usage: Usage,
+    /// Results of the tool calls in the current round that have finished.
+    tool_results: Vec<Value>,
     quota: Quota,
     pub instructions: Vec<Instructions>,
     pub skills: Skills,
@@ -146,6 +148,7 @@ impl Agent {
             thinking_level: DEFAULT_THINKING_LEVEL,
             messages: Vec::new(),
             pending_usage: Usage::default(),
+            tool_results: Vec::new(),
             quota: Quota::default(),
             instructions: load_instructions(),
             skills: skills::load(),
@@ -314,7 +317,38 @@ impl Agent {
         }
     }
 
+    /// Answers each tool call of the last reply: with its result when the
+    /// call finished, or as cancelled when it did not.
+    fn push_tool_results(&mut self) {
+        let mut results = std::mem::take(&mut self.tool_results);
+        let Some(reply) = self.messages.last() else {
+            return;
+        };
+        if reply["role"] != "assistant" || reply.get("stop_reason").is_some() {
+            return;
+        }
+        let unfinished = reply["content"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|block| block["type"] == "tool_use")
+            .skip(results.len());
+        for block in unfinished {
+            results.push(json!({
+                "type": "tool_result",
+                "tool_use_id": block["id"],
+                "content": "cancelled by the user",
+                "is_error": true,
+            }));
+        }
+        if !results.is_empty() {
+            self.messages
+                .push(json!({ "role": "user", "content": results }));
+        }
+    }
+
     pub fn cancel(&mut self, checkpoint: usize) -> Result<()> {
+        self.push_tool_results();
         self.discard_from(cancel_point(&self.messages, checkpoint), "aborted", true);
         self.session.save(&self.messages)
     }
@@ -518,7 +552,6 @@ impl Agent {
                 return Ok(());
             }
 
-            let mut results = Vec::new();
             for block in content.iter().filter(|block| block["type"] == "tool_use") {
                 let name = block["name"].as_str().unwrap_or_default();
                 on_event(AgentEvent::ToolStart {
@@ -539,15 +572,14 @@ impl Agent {
                     error: is_error.then(|| text.clone()),
                     note: tools::note(name, &text).filter(|_| !is_error),
                 });
-                results.push(json!({
+                self.tool_results.push(json!({
                     "type": "tool_result",
                     "tool_use_id": block["id"],
                     "content": text,
                     "is_error": is_error,
                 }));
             }
-            self.messages
-                .push(json!({ "role": "user", "content": results }));
+            self.push_tool_results();
             self.session.save(&self.messages)?;
             // Compact before adding queued prompts, so they follow the summary
             // word for word instead of being summarised.
@@ -738,6 +770,70 @@ mod tests {
             saved.contains("tool_result") && saved.contains("round-one"),
             "{saved}"
         );
+    }
+
+    #[tokio::test]
+    async fn keeps_finished_tool_calls_when_cancelled_during_a_later_call() {
+        let two_tool_calls = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "echo first-done" } } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "call-2", "name": "bash", "input": { "command": "sleep 30" } } }),
+            json!({ "type": "content_block_stop", "index": 1 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        ]);
+        let api = MockApi::start(vec![two_tool_calls, text_reply("ok")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let session_file = test_support::session_file(&agent);
+        let finished = std::cell::Cell::new(0);
+        let mut prompt = Box::pin(agent.prompt("run both", &[], |event| {
+            if let AgentEvent::ToolDone { .. } = event {
+                finished.set(finished.get() + 1);
+            }
+        }));
+        // The second call sleeps for 30 seconds, so it is still running once
+        // the first call is done.
+        let first_call_finished = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    _ = &mut prompt => return false,
+                    _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                        if finished.get() == 1 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        })
+        .await;
+        drop(prompt);
+        let cancelled = agent.cancel(0);
+        let saved = std::fs::read_to_string(&session_file).unwrap_or_default();
+        let next = agent.prompt("next", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        assert_eq!(first_call_finished, Ok(true));
+        assert_eq!(finished.get(), 1);
+        cancelled.unwrap();
+        next.unwrap();
+        assert!(saved.contains("first-done"), "{saved}");
+        let requests = api.requests().await;
+        let results: Vec<_> = requests[1]["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|message| message["content"].as_array())
+            .flatten()
+            .filter(|block| block["type"] == "tool_result")
+            .map(|block| (block["tool_use_id"].clone(), block["is_error"].clone()))
+            .collect();
+        assert_eq!(
+            results,
+            vec![
+                (json!("call-1"), json!(false)),
+                (json!("call-2"), json!(true))
+            ]
+        );
+        assert!(requests[1]["messages"].to_string().contains("first-done"));
     }
 
     #[tokio::test]
