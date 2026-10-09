@@ -1,5 +1,5 @@
 use crate::{
-    agent::{Agent, AgentEvent, THINKING_LEVELS, Usage, total_usage},
+    agent::{Agent, AgentEvent, Stats, THINKING_LEVELS},
     session::SessionSummary,
     tools,
 };
@@ -269,6 +269,7 @@ async fn agent_task(
             }
             Request::Resume(id) => {
                 let _ = events.send(UiEvent::Resumed(agent.resume(&id)));
+                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
             Request::SetModel(model) => {
@@ -303,7 +304,7 @@ async fn agent_task(
         if cancelled {
             let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
         }
-        let _ = events.send(UiEvent::Agent(AgentEvent::Usage(agent.usage())));
+        let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
     }
 }
 
@@ -584,7 +585,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
-        UiEvent::Agent(AgentEvent::Usage(usage)) => app.usage = format_usage(usage),
+        UiEvent::Agent(AgentEvent::Stats(stats)) => app.usage = format_stats(&stats),
         UiEvent::Done(result) => {
             if let Err(error) = result {
                 app.push(Role::Event, format!("error: {error}"));
@@ -660,7 +661,6 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 Ok(messages) => {
                     app.messages.clear();
                     replay_messages(app, &messages);
-                    app.usage = format_usage(total_usage(&messages));
                     app.push(Role::Event, "resumed session");
                 }
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
@@ -704,7 +704,8 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
     }
 }
 
-fn format_usage(usage: Usage) -> String {
+fn format_stats(stats: &Stats) -> String {
+    let usage = &stats.usage;
     let mut parts: Vec<String> = [
         ("↑", usage.input),
         ("↓", usage.output),
@@ -715,6 +716,11 @@ fn format_usage(usage: Usage) -> String {
     .filter(|(_, count)| *count > 0)
     .map(|(label, count)| format!("{label}{}", format_tokens(count)))
     .collect();
+    if let Some(rate) = stats.cache_hit_rate
+        && (usage.cache_read > 0 || usage.cache_write > 0)
+    {
+        parts.push(format!("CH{rate:.1}%"));
+    }
     parts.push(format!("${:.3} (sub)", usage.cost));
     parts.join(" ")
 }

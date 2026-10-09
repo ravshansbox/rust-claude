@@ -138,7 +138,12 @@ impl Usage {
     }
 }
 
-pub fn total_usage(messages: &[Value]) -> Usage {
+pub struct Stats {
+    pub usage: Usage,
+    pub cache_hit_rate: Option<f64>,
+}
+
+fn total_usage(messages: &[Value]) -> Usage {
     let mut total = Usage::default();
     for message in messages
         .iter()
@@ -154,7 +159,7 @@ pub enum AgentEvent {
     Thinking(String),
     ToolStart { name: String, summary: String },
     ToolDone { name: String, error: Option<String> },
-    Usage(Usage),
+    Stats(Stats),
     Notice(String),
 }
 
@@ -227,8 +232,20 @@ impl Agent {
         Ok(())
     }
 
-    pub fn usage(&self) -> Usage {
-        total_usage(&self.messages)
+    pub fn stats(&self) -> Stats {
+        let cache_hit_rate = self
+            .messages
+            .iter()
+            .rfind(|message| message["role"] == "assistant")
+            .map(|message| Usage::from_json(&message["usage"]))
+            .and_then(|usage| {
+                let prompt_tokens = usage.input + usage.cache_read + usage.cache_write;
+                (prompt_tokens > 0).then(|| usage.cache_read as f64 / prompt_tokens as f64 * 100.0)
+            });
+        Stats {
+            usage: total_usage(&self.messages),
+            cache_hit_rate,
+        }
     }
 
     fn discard_from(&mut self, index: usize, stop_reason: &str) {
@@ -276,7 +293,7 @@ impl Agent {
             self.messages
                 .push(json!({ "role": "assistant", "content": content, "usage": usage.priced(&self.model).to_json() }));
             self.pending_usage = Usage::default();
-            on_event(AgentEvent::Usage(total_usage(&self.messages)));
+            on_event(AgentEvent::Stats(self.stats()));
             if stop_reason == "max_tokens" {
                 on_event(AgentEvent::Notice(
                     "reply cut off: max_tokens reached".into(),
