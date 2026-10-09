@@ -1,4 +1,4 @@
-use std::{process::Stdio, time::Duration};
+use std::{process::Stdio, sync::OnceLock, time::Duration};
 
 use serde_json::{Value, json};
 
@@ -64,11 +64,36 @@ fn read_lines(content: &str, offset: usize, limit: usize) -> String {
     text
 }
 
+fn on_path(program: &str) -> bool {
+    std::env::var_os("PATH").is_some_and(|paths| {
+        std::env::split_paths(&paths).any(|directory| directory.join(program).is_file())
+    })
+}
+
+fn bash_description(has_ast_grep: bool, has_rg: bool) -> String {
+    let mut hints = Vec::new();
+    if has_ast_grep {
+        hints.push("ast-grep for searching code structure");
+    }
+    if has_rg {
+        hints.push("rg for searching text");
+    }
+    let mut description =
+        String::from("Run a bash command in the current project and return stdout and stderr");
+    if !hints.is_empty() {
+        description.push_str(&format!(". Prefer {}", hints.join(" and ")));
+    }
+    description
+}
+
 pub fn definitions() -> Value {
+    static BASH_DESCRIPTION: OnceLock<String> = OnceLock::new();
+    let bash_description =
+        BASH_DESCRIPTION.get_or_init(|| bash_description(on_path("ast-grep"), on_path("rg")));
     json!([
         {
             "name": "bash",
-            "description": "Run a bash command in the current project and return stdout and stderr. Prefer ast-grep for searching code structure and rg for searching text",
+            "description": bash_description,
             "input_schema": {
                 "type": "object",
                 "properties": {
@@ -270,7 +295,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, call, diff, read_lines};
+    use super::{MAX_OUTPUT, bash_description, call, diff, read_lines};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -472,5 +497,25 @@ mod tests {
         let input = json!({ "path": "a", "old_text": "a\nb\n", "new_text": "a\nc\n" });
         assert_eq!(diff("edit", &input), Some(" a\n-b\n+c".into()));
         assert_eq!(diff("write", &input), None);
+    }
+
+    #[test]
+    fn suggests_only_installed_search_tools() {
+        let base = "Run a bash command in the current project and return stdout and stderr";
+        assert_eq!(bash_description(false, false), base);
+        assert_eq!(
+            bash_description(true, false),
+            format!("{base}. Prefer ast-grep for searching code structure")
+        );
+        assert_eq!(
+            bash_description(false, true),
+            format!("{base}. Prefer rg for searching text")
+        );
+        assert_eq!(
+            bash_description(true, true),
+            format!(
+                "{base}. Prefer ast-grep for searching code structure and rg for searching text"
+            )
+        );
     }
 }
