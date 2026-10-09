@@ -30,12 +30,16 @@ impl Agent {
             "model": self.model,
             "max_tokens": models::max_output(&self.model),
             "stream": true,
-            "thinking": { "type": "adaptive", "display": "summarized" },
-            "output_config": { "effort": self.thinking_level },
             "system": system,
             "tools": tool_definitions(&self.mcp),
             "messages": messages,
         });
+        if let (Some(object), Value::Object(settings)) = (
+            body.as_object_mut(),
+            models::thinking_settings(&self.model, self.thinking_level),
+        ) {
+            object.extend(settings);
+        }
         if let Some(tool_choice) = tool_choice {
             body["tool_choice"] = tool_choice.clone();
         }
