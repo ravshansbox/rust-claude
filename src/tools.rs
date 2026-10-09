@@ -1,9 +1,14 @@
-use std::{process::Stdio, time::Duration};
+use std::{
+    process::Stdio,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use serde_json::{Value, json};
 use tokio::io::AsyncReadExt;
 
 const MAX_OUTPUT: usize = 20_000;
+const OUTPUT_GRACE: Duration = Duration::from_millis(100);
 
 struct ProcessGroup(Option<u32>);
 
@@ -30,17 +35,23 @@ fn truncate(mut text: String) -> String {
     text
 }
 
-async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin) -> std::io::Result<Vec<u8>> {
-    let mut output = Vec::new();
+async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin, output: Arc<Mutex<Vec<u8>>>) {
     let mut chunk = [0; 8192];
-    loop {
-        let count = reader.read(&mut chunk).await?;
-        if count == 0 {
-            return Ok(output);
+    while let Ok(count) = reader.read(&mut chunk).await
+        && count > 0
+    {
+        if let Ok(mut output) = output.lock() {
+            let room = (MAX_OUTPUT + 1).saturating_sub(output.len());
+            output.extend_from_slice(&chunk[..count.min(room)]);
         }
-        let room = (MAX_OUTPUT + 1).saturating_sub(output.len());
-        output.extend_from_slice(&chunk[..count.min(room)]);
     }
+}
+
+fn snapshot(output: &Mutex<Vec<u8>>) -> Vec<u8> {
+    output
+        .lock()
+        .map(|output| output.clone())
+        .unwrap_or_default()
 }
 
 fn count_matches(content: &str, pattern: &str) -> usize {
@@ -258,12 +269,14 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
                 return Err("failed to capture command output".into());
             };
-            let run = async {
-                let (stdout, stderr, status) =
-                    tokio::join!(read_capped(stdout), read_capped(stderr), child.wait());
-                Ok::<_, std::io::Error>((stdout?, stderr?, status?))
-            };
-            let (stdout, stderr, status) = match timeout {
+            let stdout_output = Arc::new(Mutex::new(Vec::new()));
+            let stderr_output = Arc::new(Mutex::new(Vec::new()));
+            let readers = [
+                tokio::spawn(read_capped(stdout, stdout_output.clone())),
+                tokio::spawn(read_capped(stderr, stderr_output.clone())),
+            ];
+            let run = child.wait();
+            let status = match timeout {
                 Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
                     .await
                     .map_err(|_| format!("command timed out after {seconds}s"))?,
@@ -271,9 +284,10 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             }
             .map_err(|error| format!("failed to run command: {error}"))?;
             process_group.0 = None;
+            let _ = tokio::time::timeout(OUTPUT_GRACE, futures::future::join_all(readers)).await;
 
-            let mut text = String::from_utf8_lossy(&stdout).into_owned();
-            let stderr = String::from_utf8_lossy(&stderr);
+            let mut text = String::from_utf8_lossy(&snapshot(&stdout_output)).into_owned();
+            let stderr = String::from_utf8_lossy(&snapshot(&stderr_output)).into_owned();
             if !stderr.is_empty() {
                 text.push_str("\nstderr:\n");
                 text.push_str(&stderr);
@@ -484,6 +498,20 @@ mod tests {
             call("bash", &input).await,
             Ok("hi\n\nexit status: 2".into())
         );
+    }
+
+    #[tokio::test]
+    async fn returns_when_background_process_keeps_output_open() {
+        let input = json!({ "command": "sleep 30 & echo $!", "timeout": 10 });
+        let started = std::time::Instant::now();
+        let text = call("bash", &input).await.unwrap();
+        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        let killed = std::process::Command::new("kill")
+            .arg(text.trim())
+            .status()
+            .unwrap()
+            .success();
+        assert!(killed);
     }
 
     #[tokio::test]
