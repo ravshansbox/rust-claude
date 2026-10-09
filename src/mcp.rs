@@ -88,7 +88,11 @@ fn read_config(
             ));
             continue;
         }
-        match serde_json::from_value(entry.clone()) {
+        match serde_json::from_value::<ServerConfig>(entry.clone()) {
+            Ok(server) if server.timeout == Some(0) => {
+                servers.remove(name);
+                diagnostics.push(format!("MCP server {name}: timeout must be at least 1"));
+            }
             Ok(server) => {
                 servers.insert(name.clone(), (scope, server));
             }
@@ -723,6 +727,22 @@ mod tests {
         assert_eq!(servers["docs"].0, Scope::Project);
         assert_eq!(servers["docs"].1.command.as_deref(), Some("c"));
         assert_eq!(diagnostics.len(), 1);
+    }
+
+    #[test]
+    fn rejects_a_zero_timeout() {
+        let path = std::env::temp_dir().join(format!("mcp-timeout-{}.json", std::process::id()));
+        std::fs::write(
+            &path,
+            r#"{ "mcpServers": { "docs": { "command": "a", "timeout": 0 } } }"#,
+        )
+        .unwrap();
+        let mut servers = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        std::fs::remove_file(&path).unwrap();
+        assert!(servers.is_empty());
+        assert_eq!(diagnostics, ["MCP server docs: timeout must be at least 1"]);
     }
 
     fn echo_server() -> ServerConfig {
