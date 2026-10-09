@@ -820,12 +820,27 @@ fn draw(frame: &mut Frame, app: &mut App) {
             Line::raw(input_characters[start..end].iter().collect::<String>())
         })
         .collect();
+    let footer_paragraph = Paragraph::new(Line::from(vec![
+        Span::raw(format!("{} · ", app.workspace)),
+        Span::raw(format!(
+            "{}:{}",
+            display_model(&app.model),
+            app.thinking_level
+        )),
+        Span::raw(format!(" · {} ", format_stats(&app.stats))),
+        context_span(&app.stats),
+        Span::raw(format_quota(&app.stats)),
+    ]))
+    .wrap(Wrap { trim: false });
+    let footer_height = footer_paragraph
+        .line_count(frame.area().width)
+        .min(u16::MAX as usize) as u16;
     let [chat, input, footer] = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Min(1),
             Constraint::Length(input_lines.len().min(u16::MAX as usize - 2) as u16 + 2),
-            Constraint::Length(1),
+            Constraint::Length(footer_height),
         ])
         .areas(frame.area());
 
@@ -901,20 +916,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
         input.y + cursor_row as u16 - input_scroll + 1,
     ));
 
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::raw(format!("{} · ", app.workspace)),
-            Span::raw(format!(
-                "{}:{}",
-                display_model(&app.model),
-                app.thinking_level
-            )),
-            Span::raw(format!(" · {} ", format_stats(&app.stats))),
-            context_span(&app.stats),
-            Span::raw(format_quota(&app.stats)),
-        ])),
-        footer,
-    );
+    frame.render_widget(footer_paragraph, footer);
 }
 
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
