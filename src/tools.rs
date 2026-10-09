@@ -161,7 +161,18 @@ pub fn summary(name: &str, input: &Value) -> String {
         "read" | "write" | "edit" => "path",
         _ => return input.to_string(),
     };
-    input[key].as_str().unwrap_or_default().to_string()
+    let value = input[key].as_str().unwrap_or_default().to_string();
+    if name != "read" {
+        return value;
+    }
+    let offset = input["offset"].as_u64();
+    let limit = input["limit"].as_u64();
+    let start = offset.unwrap_or(1).max(1);
+    match (offset, limit) {
+        (None, None) => value,
+        (_, Some(limit)) => format!("{value}:{start}-{}", start + limit.max(1) - 1),
+        (Some(_), None) => format!("{value}:{start}-"),
+    }
 }
 
 pub fn note(name: &str, result: &str) -> Option<String> {
@@ -422,7 +433,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, call, diff, note, read_lines};
+    use super::{MAX_OUTPUT, call, diff, note, read_lines, summary};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -671,6 +682,22 @@ mod tests {
                 .unwrap_err()
                 .contains("not found")
         );
+    }
+
+    #[test]
+    fn shows_read_range_in_summary() {
+        let cases = [
+            (json!({ "path": "a.rs" }), "a.rs"),
+            (
+                json!({ "path": "a.rs", "offset": 325, "limit": 30 }),
+                "a.rs:325-354",
+            ),
+            (json!({ "path": "a.rs", "offset": 325 }), "a.rs:325-"),
+            (json!({ "path": "a.rs", "limit": 30 }), "a.rs:1-30"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(summary("read", &input), expected);
+        }
     }
 
     #[test]
