@@ -12,11 +12,21 @@ use anyhow::{Result, bail};
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let arguments: Vec<String> = std::env::args().skip(1).collect();
+    let mut arguments: Vec<String> = std::env::args().skip(1).collect();
+    let hide_tools = match arguments
+        .iter()
+        .position(|argument| argument == "--hide-tools")
+    {
+        Some(index) => {
+            arguments.remove(index);
+            true
+        }
+        None => false,
+    };
     let print_prompt = match arguments.as_slice() {
-        [] => None,
+        [] if !hide_tools => None,
         [flag, prompt] if flag == "-p" || flag == "--print" => Some(prompt.clone()),
-        _ => bail!("usage: rust-claude [-p|--print <prompt>]"),
+        _ => bail!("usage: rust-claude [-p|--print <prompt> [--hide-tools]]"),
     };
 
     let http = reqwest::Client::new();
@@ -43,6 +53,7 @@ async fn main() -> Result<()> {
     let mut stdout = std::io::stdout();
     let mut printed = false;
     let mut separate = false;
+    let mut line_open = false;
     agent
         .prompt(&prompt, |event| match event {
             agent::AgentEvent::Text(text) => {
@@ -53,8 +64,28 @@ async fn main() -> Result<()> {
                 let _ = write!(stdout, "{text}");
                 let _ = stdout.flush();
                 printed = true;
+                line_open = !text.ends_with('\n');
             }
-            agent::AgentEvent::ToolStart { .. } => separate = printed,
+            agent::AgentEvent::ToolStart { name, summary } => {
+                separate = printed;
+                if !hide_tools {
+                    if line_open {
+                        eprintln!();
+                        line_open = false;
+                    }
+                    eprintln!("{name} {summary}");
+                }
+            }
+            agent::AgentEvent::ToolDone {
+                name,
+                error: Some(error),
+            } if !hide_tools => {
+                if line_open {
+                    eprintln!();
+                    line_open = false;
+                }
+                eprintln!("{name} failed: {error}");
+            }
             agent::AgentEvent::Notice(text) => eprintln!("\n{text}"),
             _ => {}
         })
