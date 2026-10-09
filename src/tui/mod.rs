@@ -1,3 +1,4 @@
+mod files;
 mod input;
 mod render;
 mod status;
@@ -16,6 +17,7 @@ use crossterm::{
     },
     execute,
 };
+use files::{file_matches, file_query, list_files};
 use futures::StreamExt;
 use input::{input_cursor, input_rows, next_word_end, previous_word_start};
 use ratatui::{
@@ -56,6 +58,13 @@ fn command_matches(input: &str) -> Vec<(&'static str, &'static str)> {
         .filter(|(name, _)| name.starts_with(input))
         .copied()
         .collect()
+}
+
+struct Suggestions {
+    start: usize,
+    end: usize,
+    items: Vec<(String, String)>,
+    files: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -107,6 +116,7 @@ struct App {
     picker: Option<Picker>,
     command_selected: usize,
     commands_dismissed: bool,
+    files: Option<Vec<String>>,
     prompt_history: Vec<String>,
     history_index: Option<usize>,
     reads: tools::ReadGroup,
@@ -145,6 +155,7 @@ impl App {
             picker: None,
             command_selected: 0,
             commands_dismissed: false,
+            files: None,
             prompt_history: Vec::new(),
             history_index: None,
             reads: tools::ReadGroup::default(),
@@ -228,11 +239,48 @@ impl App {
         self.cursor = self.input.len();
     }
 
-    fn visible_commands(&self) -> Vec<(&'static str, &'static str)> {
+    fn visible_suggestions(&self) -> Option<Suggestions> {
         if self.commands_dismissed {
-            return Vec::new();
+            return None;
         }
-        command_matches(&self.input)
+        let commands = command_matches(&self.input);
+        if !commands.is_empty() {
+            return Some(Suggestions {
+                start: 0,
+                end: self.input.len(),
+                items: commands
+                    .into_iter()
+                    .map(|(name, description)| (name.to_string(), description.to_string()))
+                    .collect(),
+                files: false,
+            });
+        }
+        let (start, query) = file_query(&self.input, self.cursor)?;
+        let items: Vec<(String, String)> = file_matches(self.files.as_deref()?, query)
+            .into_iter()
+            .map(|path| (path, String::new()))
+            .collect();
+        if items.is_empty() {
+            return None;
+        }
+        Some(Suggestions {
+            start,
+            end: self.cursor,
+            items,
+            files: true,
+        })
+    }
+
+    fn accept_suggestion(&mut self, suggestions: &Suggestions) {
+        let name = &suggestions.items[self.command_selected].0;
+        let replacement = if suggestions.files {
+            format!("@{name} ")
+        } else {
+            name.clone()
+        };
+        self.input
+            .replace_range(suggestions.start..suggestions.end, &replacement);
+        self.cursor = suggestions.start + replacement.len();
     }
 
     fn cycle_thinking_level(&mut self) {
@@ -247,6 +295,9 @@ impl App {
         self.history_index = None;
         self.command_selected = 0;
         self.commands_dismissed = false;
+        if self.files.is_none() && file_query(&self.input, self.cursor).is_some() {
+            self.files = Some(list_files());
+        }
     }
 
     fn start(&mut self, status: &str) {
@@ -590,26 +641,30 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         return false;
     }
 
-    let matches = app.visible_commands();
-    if !matches.is_empty() {
-        app.command_selected = app.command_selected.min(matches.len() - 1);
+    if let Some(suggestions) = app.visible_suggestions() {
+        let count = suggestions.items.len();
+        app.command_selected = app.command_selected.min(count - 1);
         match key.code {
             KeyCode::Up => {
                 app.command_selected = app.command_selected.saturating_sub(1);
                 return false;
             }
             KeyCode::Down => {
-                app.command_selected = (app.command_selected + 1).min(matches.len() - 1);
+                app.command_selected = (app.command_selected + 1).min(count - 1);
                 return false;
             }
-            KeyCode::Enter if !app.busy => {
-                app.input = matches[app.command_selected].0.to_string();
-                app.cursor = app.input.len();
+            KeyCode::Enter if suggestions.files => {
+                app.accept_suggestion(&suggestions);
+                app.input_changed();
+                return false;
             }
+            KeyCode::Enter if !app.busy => app.accept_suggestion(&suggestions),
             KeyCode::Tab => {
-                app.input = matches[app.command_selected].0.to_string();
-                app.cursor = app.input.len();
+                app.accept_suggestion(&suggestions);
                 app.command_selected = 0;
+                if suggestions.files {
+                    app.input_changed();
+                }
                 return false;
             }
             KeyCode::Esc => {
@@ -650,6 +705,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
             app.cursor = 0;
+            app.files = None;
             app.history_index = None;
             if prompt.starts_with('/') {
                 let (command, argument) = prompt
@@ -938,8 +994,8 @@ fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_widget(conversation.scroll((scroll, 0)), chat);
     }
 
-    let matches = app.visible_commands();
-    if !matches.is_empty() {
+    if let Some(suggestions) = app.visible_suggestions() {
+        let matches = suggestions.items;
         let height = (matches.len() as u16).min(chat.height);
         let selected = app.command_selected.min(matches.len() - 1);
         let texts: Vec<String> = matches
@@ -1053,7 +1109,10 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, App, Role, handle_input, held_scroll_from_bottom, replay_messages};
+    use super::{
+        Action, App, Role, file_matches, file_query, handle_input, held_scroll_from_bottom,
+        replay_messages,
+    };
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use serde_json::json;
@@ -1228,6 +1287,51 @@ mod tests {
         assert_eq!(app.cursor, 0);
         handle_input(control('e'), &mut app, |_| {});
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn finds_file_query_at_cursor() {
+        assert_eq!(file_query("read @src/ma", 12), Some((5, "src/ma")));
+        assert_eq!(file_query("@", 1), Some((0, "")));
+        assert_eq!(file_query("mail@host", 9), None);
+        assert_eq!(file_query("@src now", 8), None);
+    }
+
+    #[test]
+    fn matches_files_ignoring_case() {
+        let files = vec!["README.md".to_string(), "src/main.rs".to_string()];
+        assert_eq!(file_matches(&files, "readme"), vec!["README.md"]);
+        assert_eq!(file_matches(&files, "").len(), 2);
+    }
+
+    #[test]
+    fn picks_file_after_at_sign() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        app.files = Some(vec!["src/agent.rs".into(), "src/main.rs".into()]);
+        for character in "read @src".chars() {
+            handle_input(
+                Event::Key(KeyEvent::from(KeyCode::Char(character))),
+                &mut app,
+                |_| {},
+            );
+        }
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Down)), &mut app, |_| {});
+        let mut submitted = false;
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {
+            submitted = true
+        });
+        assert!(!submitted);
+        assert_eq!(app.input, "read @src/main.rs ");
+        assert_eq!(app.cursor, app.input.len());
+        assert!(app.visible_suggestions().is_none());
     }
 
     #[test]
