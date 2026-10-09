@@ -32,7 +32,7 @@ use question::QuestionPrompt;
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::Stylize,
+    style::{Style, Stylize},
     text::{Line, Span, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
@@ -1452,8 +1452,29 @@ fn draw(frame: &mut Frame, app: &mut App) {
         }
     }
 
+    let panel_height =
+        |content: usize| (content.min(u16::MAX as usize - 1) as u16 + 1).min(chat.height);
+    let panel = if let Some(question) = &app.question {
+        let view = question.view();
+        let height = panel_height(view.line_count(chat.width));
+        Some((view, height))
+    } else if let Some(search) = &app.history_search {
+        let height = panel_height(search.matches().len() + 2);
+        Some((history_view(search, height.saturating_sub(1)), height))
+    } else if let Some(picker) = &app.picker {
+        let height = panel_height(picker.items.len() + 1);
+        Some((picker_view(picker, height.saturating_sub(1)), height))
+    } else {
+        None
+    };
+    let panel_height = panel.as_ref().map_or(0, |(_, height)| *height);
+    let conversation_area = Rect {
+        height: chat.height - panel_height,
+        ..chat
+    };
+
     let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
-    let viewport_height = chat.height;
+    let viewport_height = conversation_area.height;
     let wrapped_line_count = conversation.line_count(chat.width);
     let max_scroll = wrapped_line_count
         .saturating_sub(viewport_height as usize)
@@ -1463,14 +1484,18 @@ fn draw(frame: &mut Frame, app: &mut App) {
     app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    if let Some(question) = &app.question {
-        frame.render_widget(question.view(), chat);
-    } else if let Some(search) = &app.history_search {
-        frame.render_widget(history_view(search, chat.height), chat);
-    } else if let Some(picker) = &app.picker {
-        frame.render_widget(picker_view(picker, chat.height), chat);
-    } else {
-        frame.render_widget(conversation.scroll((scroll, 0)), chat);
+    frame.render_widget(conversation.scroll((scroll, 0)), conversation_area);
+    if let Some((view, height)) = panel {
+        let area = Rect {
+            y: chat.y + chat.height - height,
+            height,
+            ..chat
+        };
+        let border = Block::default()
+            .borders(Borders::TOP)
+            .border_style(Style::new().dark_gray());
+        frame.render_widget(Clear, area);
+        frame.render_widget(view.block(border), area);
     }
 
     if let Some(suggestions) = app
@@ -1647,6 +1672,7 @@ mod tests {
     };
     use crate::agent::{AgentEvent, Quota, Stats, Usage};
     use crate::ask;
+    use crate::session::SessionSummary;
     use crate::skills::{Scope, Skill};
     use crate::tools;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -2398,5 +2424,67 @@ mod tests {
         assert_eq!(answers.try_recv(), Err(TryRecvError::Closed));
         assert!(!screen(&mut app).contains("Which output?"));
         assert!(app.busy);
+    }
+
+    fn app_with_reply() -> App {
+        let mut app = new_app();
+        app.push(Role::Assistant, "Earlier reply");
+        app
+    }
+
+    #[test]
+    fn keeps_the_conversation_visible_while_asking() {
+        let mut app = app_with_reply();
+        ask(&mut app, output_question(false));
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("Which output?"), "{shown}");
+    }
+
+    #[test]
+    fn keeps_the_conversation_visible_while_picking_a_thinking_level() {
+        let mut app = app_with_reply();
+        handle_input(Event::Paste("/thinking".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("Select thinking level"), "{shown}");
+    }
+
+    #[test]
+    fn keeps_the_conversation_visible_while_picking_a_model() {
+        let mut app = app_with_reply();
+        handle_agent_event(UiEvent::Models(Ok(vec!["other-model".into()])), &mut app);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("Select model"), "{shown}");
+    }
+
+    #[test]
+    fn keeps_the_conversation_visible_while_picking_a_session() {
+        let mut app = app_with_reply();
+        let session = SessionSummary {
+            id: "1".into(),
+            modified: std::time::SystemTime::now(),
+            preview: "old prompt".into(),
+        };
+        handle_agent_event(UiEvent::Sessions(Ok(vec![session])), &mut app);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("Resume session"), "{shown}");
+        assert!(shown.contains("old prompt"), "{shown}");
+    }
+
+    #[test]
+    fn keeps_the_conversation_visible_while_searching_history() {
+        let mut app = app_with_reply();
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            &mut app,
+            |_| {},
+        );
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("Prompt history"), "{shown}");
     }
 }

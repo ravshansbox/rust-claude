@@ -190,13 +190,15 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/skill:name [request]` | Run a skill, with an optional request |
 | `/quit` | Quit |
 
+The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box is as tall as its list, up to the height of the chat area, and the conversation stays visible above it.
+
 ## Files
 
 Type `@` to pick a file. The list shows up to 10 project files whose path contains the text after `@`, ignoring case. Use Up / Down to select, and Tab or Enter to insert `@path` into the prompt. Esc closes the list. In a Git repository the list holds tracked files and untracked files that `.gitignore` does not exclude. Otherwise it holds all files, except hidden ones and those in `target`.
 
 ## Prompt history
 
-Press Ctrl+R to search earlier prompts. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
+Press Ctrl+R to search earlier prompts. The search opens in a box above the input, with the conversation still visible above it. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
 
 rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The **All** tab reads this file. Prompts sent before this file existed are not in it.
 
@@ -336,7 +338,7 @@ The agent can use these tools:
 
 The agent can also use tools from [MCP servers](#mcp-servers).
 
-`ask_user_question` takes a `questions` list. Each question has `question`, a short `header`, 2 to 4 `options` and an optional `multi_select`. Each option has a `label`, a `description` and an optional `recommended` flag, which shows as `(recommended)`. An `Other` option is always added so you can type your own answer. The interface shows one question at a time in place of the conversation:
+`ask_user_question` takes a `questions` list. Each question has `question`, a short `header`, 2 to 4 `options` and an optional `multi_select`. Each option has a `label`, a `description` and an optional `recommended` flag, which shows as `(recommended)`. An `Other` option is always added so you can type your own answer. The interface shows one question at a time in a box above the input:
 
 - Up and Down move between options
 - Space ticks or unticks an option when `multi_select` is true
