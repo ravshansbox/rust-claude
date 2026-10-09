@@ -90,7 +90,7 @@ fn format_tokens(count: u64) -> String {
     let count = count as f64;
     if count < 1_000.0 {
         count.to_string()
-    } else if count < 1_000_000.0 {
+    } else if (count / 1_000.0).round() < 1_000.0 {
         format!("{}k", (count / 1_000.0).round())
     } else {
         format!("{}M", (count / 1_000_000.0).round())
@@ -119,7 +119,8 @@ mod tests {
         assert_eq!(format_tokens(1_000), "1k");
         assert_eq!(format_tokens(2_500), "3k");
         assert_eq!(format_tokens(12_345), "12k");
-        assert_eq!(format_tokens(999_999), "1000k");
+        assert_eq!(format_tokens(999_499), "999k");
+        assert_eq!(format_tokens(999_500), "1M");
         assert_eq!(format_tokens(1_500_000), "2M");
         assert_eq!(format_tokens(12_345_678), "12M");
     }
