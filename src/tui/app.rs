@@ -161,6 +161,10 @@ impl App {
         }
     }
 
+    pub(super) fn greet(&mut self) {
+        self.push(Role::Event, "What would you like to do?");
+    }
+
     pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
         self.reads.clear();
         self.messages.push(ChatMessage {
@@ -472,7 +476,16 @@ pub(super) fn image_marker(number: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::Role;
-    use crate::tui::test_support::new_app;
+    use crate::tui::test_support::{new_app, screen};
+
+    #[test]
+    fn greets_with_open_question() {
+        let mut app = new_app();
+        app.greet();
+        let shown = screen(&mut app);
+        assert!(shown.contains("What would you like to do?"), "{shown}");
+        assert!(!shown.contains("this project"), "{shown}");
+    }
 
     #[test]
     fn merges_consecutive_reads() {
