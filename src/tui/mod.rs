@@ -9,7 +9,7 @@ use crate::{
     images::{self, Image},
     session::SessionSummary,
     settings::Settings,
-    skills::{self, Skill},
+    skills::{self, Scope, Skill},
     tools,
 };
 use anyhow::Result;
@@ -64,11 +64,15 @@ fn command_matches(input: &str, skills: &[Skill]) -> Vec<(String, String)> {
     let skill_commands = skills.iter().map(|skill| {
         (
             format!("/skill:{}", skill.name),
-            skill
-                .description
-                .split_whitespace()
-                .collect::<Vec<_>>()
-                .join(" "),
+            format!(
+                "[{}] {}",
+                skill.scope,
+                skill
+                    .description
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ),
         )
     });
     commands
@@ -542,14 +546,20 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
     }
-    if !agent.skills.skills.is_empty() {
+    for scope in [Scope::Global, Scope::Project] {
         let names: Vec<&str> = agent
             .skills
             .skills
             .iter()
+            .filter(|skill| skill.scope == scope)
             .map(|skill| skill.name.as_str())
             .collect();
-        app.push(Role::Event, format!("loaded skills: {}", names.join(", ")));
+        if !names.is_empty() {
+            app.push(
+                Role::Event,
+                format!("loaded {scope} skills: {}", names.join(", ")),
+            );
+        }
     }
     for diagnostic in &agent.skills.diagnostics {
         app.push(Role::Event, diagnostic.to_string());
@@ -1292,7 +1302,7 @@ mod tests {
         handle_input, held_scroll_from_bottom, replay_messages,
     };
     use crate::agent::{AgentEvent, Quota, Stats, Usage};
-    use crate::skills::Skill;
+    use crate::skills::{Scope, Skill};
     use crate::tools;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use serde_json::json;
@@ -1768,11 +1778,15 @@ mod tests {
             path: "/skills/demo/SKILL.md".into(),
             base_dir: "/skills/demo".into(),
             disable_model_invocation: false,
+            scope: Scope::Global,
         }];
         handle_input(Event::Paste("/sk".into()), &mut live, |_| {});
         assert_eq!(
             live.visible_suggestions().unwrap().items,
-            [("/skill:demo".to_string(), "Run the demo.".to_string())]
+            [(
+                "/skill:demo".to_string(),
+                "[global] Run the demo.".to_string()
+            )]
         );
         live.input = "/skill:demo fix it".into();
         let mut submitted = None;
