@@ -1,5 +1,4 @@
 use std::{
-    fs::OpenOptions,
     io::Write,
     path::{Path, PathBuf},
 };
@@ -17,13 +16,13 @@ pub fn history_path() -> Option<PathBuf> {
 }
 
 pub fn append(path: &Path, prompt: &str) -> Result<()> {
-    std::fs::create_dir_all(path.parent().context("invalid history path")?)?;
+    crate::config::create_private_dir(path.parent().context("invalid history path")?)?;
     let folder = std::env::current_dir()
         .map(|folder| folder.display().to_string())
         .unwrap_or_default();
     let mut line = serde_json::to_string(&json!({ "prompt": prompt, "cwd": folder }))?;
     line.push('\n');
-    OpenOptions::new()
+    crate::config::private_file()
         .create(true)
         .append(true)
         .open(path)?
@@ -92,5 +91,20 @@ mod tests {
         assert_eq!(prompts, ["three", "one", "two"]);
         let folder = std::env::current_dir().unwrap().display().to_string();
         assert!(entries.iter().all(|entry| entry.folder == folder));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn saves_history_only_the_user_can_read() {
+        use crate::config::permissions;
+        let directory = std::env::temp_dir().join(format!(
+            "rust-claude-private-history-{}/config",
+            std::process::id()
+        ));
+        let path = directory.join("history.jsonl");
+        append(&path, "secret").unwrap();
+        let found = (permissions(&directory), permissions(&path));
+        std::fs::remove_dir_all(directory.parent().unwrap()).unwrap();
+        assert_eq!(found, (Some(0o700), Some(0o600)));
     }
 }
