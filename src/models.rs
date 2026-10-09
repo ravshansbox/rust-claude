@@ -7,6 +7,7 @@ struct Rates {
 
 struct Model {
     id: &'static str,
+    context_window: u64,
     rates: Rates,
     tier: Option<(u64, Rates)>,
 }
@@ -23,93 +24,118 @@ const fn rates(input: f64, output: f64, cache_read: f64, cache_write: f64) -> Ra
 const MODELS: &[Model] = &[
     Model {
         id: "claude-fable-5",
+        context_window: 1_000_000,
         rates: rates(10.0, 50.0, 1.0, 12.5),
         tier: None,
     },
     Model {
         id: "claude-fable-5-1",
+        context_window: 1_000_000,
         rates: rates(10.0, 50.0, 0.25, 12.5),
         tier: None,
     },
     Model {
         id: "claude-haiku-4-5",
+        context_window: 200_000,
         rates: rates(1.0, 5.0, 0.1, 1.25),
         tier: None,
     },
     Model {
         id: "claude-haiku-4-5-20251001",
+        context_window: 200_000,
         rates: rates(1.0, 5.0, 0.1, 1.25),
         tier: None,
     },
     Model {
         id: "claude-haiku-5-5",
+        context_window: 1_000_000,
         rates: rates(0.1, 0.5, 0.01, 0.125),
         tier: Some((100_000, rates(0.5, 2.5, 0.05, 0.625))),
     },
     Model {
         id: "claude-opus-4-5",
+        context_window: 200_000,
         rates: rates(5.0, 25.0, 0.5, 6.25),
         tier: None,
     },
     Model {
         id: "claude-opus-4-5-20251101",
+        context_window: 200_000,
         rates: rates(5.0, 25.0, 0.5, 6.25),
         tier: None,
     },
     Model {
         id: "claude-opus-4-6",
+        context_window: 1_000_000,
         rates: rates(5.0, 25.0, 0.5, 6.25),
         tier: None,
     },
     Model {
         id: "claude-opus-4-7",
+        context_window: 1_000_000,
         rates: rates(5.0, 25.0, 0.5, 6.25),
         tier: None,
     },
     Model {
         id: "claude-opus-4-8",
+        context_window: 1_000_000,
         rates: rates(5.0, 25.0, 0.5, 6.25),
         tier: None,
     },
     Model {
         id: "claude-opus-5",
+        context_window: 1_000_000,
         rates: rates(5.0, 25.0, 0.5, 6.25),
         tier: None,
     },
     Model {
         id: "claude-opus-5-5",
+        context_window: 1_000_000,
         rates: rates(4.0, 20.0, 0.2, 5.0),
         tier: None,
     },
     Model {
         id: "claude-sonnet-4-5",
+        context_window: 1_000_000,
         rates: rates(3.0, 15.0, 0.3, 3.75),
         tier: None,
     },
     Model {
         id: "claude-sonnet-4-5-20250929",
+        context_window: 1_000_000,
         rates: rates(3.0, 15.0, 0.3, 3.75),
         tier: None,
     },
     Model {
         id: "claude-sonnet-4-6",
+        context_window: 1_000_000,
         rates: rates(3.0, 15.0, 0.3, 3.75),
         tier: None,
     },
     Model {
         id: "claude-sonnet-5",
+        context_window: 1_000_000,
         rates: rates(2.0, 10.0, 0.2, 2.5),
         tier: None,
     },
     Model {
         id: "claude-sonnet-5-5",
+        context_window: 1_000_000,
         rates: rates(2.0, 10.0, 0.2, 2.5),
         tier: None,
     },
 ];
 
+fn find(model: &str) -> Option<&'static Model> {
+    MODELS.iter().find(|candidate| candidate.id == model)
+}
+
+pub fn context_window(model: &str) -> u64 {
+    find(model).map_or(0, |model| model.context_window)
+}
+
 pub fn cost(model: &str, input: u64, output: u64, cache_read: u64, cache_write: u64) -> f64 {
-    let Some(model) = MODELS.iter().find(|candidate| candidate.id == model) else {
+    let Some(model) = find(model) else {
         return 0.0;
     };
     let rates = match &model.tier {

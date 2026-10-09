@@ -128,7 +128,7 @@ struct App {
     thinking_level: &'static str,
     status: String,
     spinner_frame: usize,
-    usage: String,
+    stats: Stats,
     scroll_from_bottom: u16,
     max_scroll: u16,
     page_size: u16,
@@ -153,7 +153,7 @@ struct Picker {
 }
 
 impl App {
-    fn new(model: &str, thinking_level: &'static str) -> Self {
+    fn new(model: &str, thinking_level: &'static str, stats: Stats) -> Self {
         let mut app = Self {
             input: String::new(),
             messages: Vec::new(),
@@ -161,7 +161,7 @@ impl App {
             thinking_level,
             status: String::new(),
             spinner_frame: 0,
-            usage: String::new(),
+            stats,
             scroll_from_bottom: 0,
             max_scroll: 0,
             page_size: 1,
@@ -274,10 +274,12 @@ async fn agent_task(
             }
             Request::SetModel(model) => {
                 agent.model = model;
+                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
             Request::NewSession => {
                 let _ = events.send(UiEvent::NewSession(agent.new_session()));
+                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
             Request::ListModels => {
@@ -309,7 +311,7 @@ async fn agent_task(
 }
 
 async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
-    let mut app = App::new(&agent.model, agent.thinking_level);
+    let mut app = App::new(&agent.model, agent.thinking_level, agent.stats());
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
     }
@@ -585,7 +587,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
-        UiEvent::Agent(AgentEvent::Stats(stats)) => app.usage = format_stats(&stats),
+        UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {
             if let Err(error) = result {
                 app.push(Role::Event, format!("error: {error}"));
@@ -627,7 +629,6 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             match result {
                 Ok(()) => {
                     app.messages.clear();
-                    app.usage.clear();
                     app.push(Role::Event, "new session");
                 }
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
@@ -723,6 +724,22 @@ fn format_stats(stats: &Stats) -> String {
     }
     parts.push(format!("${:.3} (sub)", usage.cost));
     parts.join(" ")
+}
+
+fn context_span(stats: &Stats) -> Span<'static> {
+    let percent = if stats.context_window > 0 {
+        stats.context_tokens as f64 / stats.context_window as f64 * 100.0
+    } else {
+        0.0
+    };
+    let text = format!("{percent:.1}%/{}", format_tokens(stats.context_window));
+    if percent > 90.0 {
+        Span::styled(text, Style::default().fg(Color::Red))
+    } else if percent > 70.0 {
+        Span::styled(text, Style::default().fg(Color::Yellow))
+    } else {
+        Span::raw(text)
+    }
 }
 
 fn format_tokens(count: u64) -> String {
@@ -837,11 +854,8 @@ fn draw(frame: &mut Frame, app: &mut App) {
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::raw(format!(" {}:{}", app.model, app.thinking_level)),
-            Span::raw(if app.usage.is_empty() {
-                "".into()
-            } else {
-                format!(" · {}", app.usage)
-            }),
+            Span::raw(format!(" · {} ", format_stats(&app.stats))),
+            context_span(&app.stats),
         ])),
         footer,
     );
