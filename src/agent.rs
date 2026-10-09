@@ -58,6 +58,22 @@ fn same_path(a: &Path, b: &Path) -> bool {
     }
 }
 
+fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
+    let mut messages = messages.to_vec();
+    if let Some(last) = messages.last_mut() {
+        if let Some(text) = last["content"].as_str().map(str::to_owned) {
+            last["content"] = json!([{ "type": "text", "text": text }]);
+        }
+        if let Some(block) = last["content"]
+            .as_array_mut()
+            .and_then(|blocks| blocks.last_mut())
+        {
+            block["cache_control"] = json!({ "type": "ephemeral" });
+        }
+    }
+    messages
+}
+
 pub enum AgentEvent {
     Text(String),
     ToolStart { name: String, summary: String },
@@ -166,6 +182,9 @@ impl Agent {
                 "text": format!("# Instructions from {}\n\n{}", instructions.label, instructions.text),
             }));
         }
+        if let Some(last) = system.last_mut() {
+            last["cache_control"] = json!({ "type": "ephemeral" });
+        }
         let body = json!({
             "model": self.model,
             "max_tokens": 8192,
@@ -174,7 +193,7 @@ impl Agent {
             "output_config": { "effort": self.thinking_level },
             "system": system,
             "tools": tools::definitions(),
-            "messages": self.messages,
+            "messages": with_cache_breakpoint(&self.messages),
         });
         let response = self
             .http
