@@ -44,6 +44,7 @@ const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦
 
 const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
+    ("/compact", "summarise the conversation to free context"),
     ("/resume", "resume a previous session"),
     ("/model", "select model"),
     ("/thinking", "select thinking level"),
@@ -385,6 +386,7 @@ enum UiEvent {
 
 enum Request {
     Prompt(String, &'static str),
+    Compact(&'static str),
     ListSessions,
     Resume(String),
     SetModel(String),
@@ -423,7 +425,8 @@ async fn agent_task(
         };
         let Some(request) = request else { break };
         let (prompt, thinking_level) = match request {
-            Request::Prompt(prompt, thinking_level) => (prompt, thinking_level),
+            Request::Prompt(prompt, thinking_level) => (Some(prompt), thinking_level),
+            Request::Compact(thinking_level) => (None, thinking_level),
             Request::ListSessions => {
                 let _ = events.send(UiEvent::Sessions(agent.list_sessions()));
                 continue;
@@ -468,9 +471,15 @@ async fn agent_task(
 
         let checkpoint = agent.history_len();
         let cancelled = {
-            let run = agent.prompt(&prompt, |event| {
+            let on_event = |event| {
                 let _ = events.send(UiEvent::Agent(event));
-            });
+            };
+            let run = async {
+                match &prompt {
+                    Some(prompt) => agent.prompt(prompt, on_event).await,
+                    None => agent.compact(on_event).await,
+                }
+            };
             tokio::select! {
                 result = run => {
                     let _ = events.send(UiEvent::Done(result));
@@ -524,6 +533,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                 let quit = handle_input(event, &mut app, |action| match action {
                     Action::Submit(prompt, thinking_level) => {
                         let _ = request_tx.send(Request::Prompt(prompt, thinking_level));
+                    }
+                    Action::Compact(thinking_level) => {
+                        let _ = request_tx.send(Request::Compact(thinking_level));
                     }
                     Action::ListSessions => {
                         let _ = request_tx.send(Request::ListSessions);
@@ -593,6 +605,7 @@ fn save_changed_settings(
 
 enum Action {
     Submit(String, &'static str),
+    Compact(&'static str),
     ListSessions,
     Resume(String),
     SetModel(String),
@@ -705,7 +718,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
-            if app.status == "working" {
+            if app.status == "working" || app.status == "compacting" {
                 app.status = "cancelling".into();
                 act(Action::Cancel);
             }
@@ -747,6 +760,10 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                     "/new" => {
                         app.start("starting new session");
                         act(Action::NewSession);
+                    }
+                    "/compact" => {
+                        app.start("compacting");
+                        act(Action::Compact(app.thinking_level));
                     }
                     "/thinking" if argument.is_empty() => {
                         app.picker = Some(Picker {
@@ -925,6 +942,10 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
         })
         .collect();
     for message in messages {
+        if message["stop_reason"] == "compacted" {
+            app.push(Role::Event, "compacted conversation");
+            continue;
+        }
         let role = message["role"].as_str().unwrap_or_default();
         if let Some(text) = message["content"].as_str() {
             app.push(Role::User, text);
@@ -1540,6 +1561,31 @@ mod tests {
             texts,
             ["read a.rs, b.rs", "read failed: missing", "read c.rs"]
         );
+    }
+
+    #[test]
+    fn replays_compaction_as_event() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        replay_messages(
+            &mut app,
+            &[
+                json!({ "role": "user", "content": "hello" }),
+                json!({ "role": "assistant", "stop_reason": "compacted", "content": [], "summary": "greeted" }),
+            ],
+        );
+        let texts: Vec<&str> = app.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(texts, ["hello", "compacted conversation"]);
     }
 
     #[test]

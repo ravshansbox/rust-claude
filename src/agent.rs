@@ -24,6 +24,9 @@ Put questions to the user in bold."#;
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
+const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
+const SUMMARY_INTRODUCTION: &str =
+    "This conversation was compacted. Summary of the earlier conversation:";
 const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
 
@@ -118,6 +121,33 @@ fn same_path(a: &Path, b: &Path) -> bool {
         (Ok(a), Ok(b)) => a == b,
         _ => a == b,
     }
+}
+
+fn is_compaction(message: &Value) -> bool {
+    message["stop_reason"] == "compacted"
+}
+
+fn active_messages(messages: &[Value]) -> Vec<Value> {
+    let Some(index) = messages.iter().rposition(is_compaction) else {
+        return messages.to_vec();
+    };
+    let summary = messages[index]["summary"].as_str().unwrap_or_default();
+    let mut active = vec![json!({
+        "role": "user",
+        "content": format!("{SUMMARY_INTRODUCTION}\n\n{summary}"),
+    })];
+    active.extend_from_slice(&messages[index + 1..]);
+    active
+}
+
+fn has_uncompacted(messages: &[Value]) -> bool {
+    let start = messages
+        .iter()
+        .rposition(is_compaction)
+        .map_or(0, |index| index + 1);
+    messages[start..]
+        .iter()
+        .any(|message| message.get("stop_reason").is_none())
 }
 
 fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
@@ -508,7 +538,7 @@ impl Agent {
             cache_hit_rate: cache_hit_rate(&self.messages),
             tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(
-                &self.messages,
+                &active_messages(&self.messages),
                 estimate_prompt_tokens(&self.system_prompt(), &tools::definitions()),
             ),
             context_window: models::context_window(&self.model),
@@ -561,29 +591,94 @@ impl Agent {
         self.session.save(&self.messages)
     }
 
+    pub async fn compact(&mut self, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
+        let end = self.messages.len();
+        let result = self.compact_history(end, &mut on_event).await;
+        if result.is_err() {
+            self.discard_from(self.messages.len(), "error", false);
+        }
+        self.session.save(&self.messages)?;
+        result
+    }
+
+    async fn compact_history(
+        &mut self,
+        end: usize,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<()> {
+        if !has_uncompacted(&self.messages[..end]) {
+            bail!("nothing to compact");
+        }
+        on_event(AgentEvent::Notice("compacting conversation".into()));
+        let mut messages = with_cache_breakpoint(&active_messages(&self.messages[..end]));
+        messages.push(json!({ "role": "user", "content": COMPACT_PROMPT }));
+        let (content, _, usage) = self
+            .request(messages, Some(json!({ "type": "none" })), &mut |event| {
+                if let AgentEvent::Notice(_) = event {
+                    on_event(event);
+                }
+            })
+            .await?;
+        let summary: String = content
+            .iter()
+            .filter(|block| block["type"] == "text")
+            .filter_map(|block| block["text"].as_str())
+            .collect();
+        if summary.trim().is_empty() {
+            bail!("compaction returned no summary");
+        }
+        self.messages.insert(
+            end,
+            json!({
+                "role": "assistant",
+                "stop_reason": "compacted",
+                "content": [],
+                "summary": summary,
+                "usage": usage.to_json(),
+            }),
+        );
+        self.pending_usage = Usage::default();
+        on_event(AgentEvent::Notice("compacted conversation".into()));
+        on_event(AgentEvent::Stats(self.stats()));
+        Ok(())
+    }
+
+    async fn request(
+        &mut self,
+        messages: Vec<Value>,
+        tool_choice: Option<Value>,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<(Vec<Value>, String, Usage)> {
+        let mut attempt = 0;
+        loop {
+            match self
+                .stream_message(&messages, tool_choice.as_ref(), on_event)
+                .await
+            {
+                Ok(reply) => return Ok(reply),
+                Err(error) => {
+                    let Some(delay) = retry_delay(&error, attempt) else {
+                        return Err(error);
+                    };
+                    attempt += 1;
+                    on_event(AgentEvent::Notice(format!(
+                        "{error}; retrying in {}s ({attempt}/{MAX_RETRIES})",
+                        delay.as_secs()
+                    )));
+                    tokio::time::sleep(delay).await;
+                }
+            }
+        }
+    }
+
     async fn run(&mut self, prompt: &str, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
         self.messages
             .push(json!({ "role": "user", "content": prompt }));
         on_event(AgentEvent::Stats(self.stats()));
 
         loop {
-            let mut attempt = 0;
-            let (content, stop_reason, usage) = loop {
-                match self.stream_message(&mut on_event).await {
-                    Ok(reply) => break reply,
-                    Err(error) => {
-                        let Some(delay) = retry_delay(&error, attempt) else {
-                            return Err(error);
-                        };
-                        attempt += 1;
-                        on_event(AgentEvent::Notice(format!(
-                            "{error}; retrying in {}s ({attempt}/{MAX_RETRIES})",
-                            delay.as_secs()
-                        )));
-                        tokio::time::sleep(delay).await;
-                    }
-                }
-            };
+            let messages = with_cache_breakpoint(&active_messages(&self.messages));
+            let (content, stop_reason, usage) = self.request(messages, None, &mut on_event).await?;
             self.messages
                 .push(json!({ "role": "assistant", "content": content, "usage": usage.to_json() }));
             self.pending_usage = Usage::default();
@@ -628,6 +723,8 @@ impl Agent {
 
     async fn stream_message(
         &mut self,
+        messages: &[Value],
+        tool_choice: Option<&Value>,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<(Vec<Value>, String, Usage)> {
         let token = self.credentials.access_token(&self.http).await?;
@@ -638,7 +735,7 @@ impl Agent {
         if let Some(last) = system.last_mut() {
             last["cache_control"] = json!({ "type": "ephemeral" });
         }
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "max_tokens": models::max_output(&self.model),
             "stream": true,
@@ -646,8 +743,11 @@ impl Agent {
             "output_config": { "effort": self.thinking_level },
             "system": system,
             "tools": tools::definitions(),
-            "messages": with_cache_breakpoint(&self.messages),
+            "messages": messages,
         });
+        if let Some(tool_choice) = tool_choice {
+            body["tool_choice"] = tool_choice.clone();
+        }
         let response = self
             .http
             .post(API_URL)
@@ -790,8 +890,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Quota, cache_hit_rate, cancel_point, context_tokens, parse_timestamp, retry_after,
-        retry_delay, retryable, tokens_per_second, with_cache_breakpoint,
+        Quota, active_messages, cache_hit_rate, cancel_point, context_tokens, has_uncompacted,
+        parse_timestamp, retry_after, retry_delay, retryable, tokens_per_second,
+        with_cache_breakpoint,
     };
     use std::time::Duration;
 
@@ -835,6 +936,26 @@ mod tests {
             ),
             3
         );
+    }
+
+    #[test]
+    fn replaces_compacted_messages_with_summary() {
+        let prompt = json!({ "role": "user", "content": "hello" });
+        let reply = json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] });
+        let compaction = json!({
+            "role": "assistant",
+            "stop_reason": "compacted",
+            "content": [],
+            "summary": "greeted",
+        });
+        let messages = vec![prompt.clone(), reply, compaction.clone(), prompt.clone()];
+        let active = active_messages(&messages);
+        assert_eq!(active.len(), 2);
+        assert!(active[0]["content"].as_str().unwrap().ends_with("greeted"));
+        assert_eq!(active[1], prompt);
+        assert!(has_uncompacted(&messages));
+        assert!(!has_uncompacted(&messages[..3]));
+        assert!(!has_uncompacted(&[]));
     }
 
     #[test]
