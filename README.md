@@ -138,7 +138,7 @@ rm -r ~/.rust-claude                     # optional: sign-in, settings, sessions
 
 ## Sign in
 
-On first run, rust-claude prints a sign-in link for your Claude Pro or Max account to standard error and asks for the code. It saves the sign-in to `~/.rust-claude/auth.json` and renews it when it expires. It writes a temporary file and then replaces `auth.json` with it, so other running copies never read a half-written file and a crash keeps the previous sign-in. Before renewing, it checks `auth.json` for a sign-in another running rust-claude has already renewed, and uses that one, so several running copies stay signed in. If renewing fails, it checks `auth.json` again before asking you to sign in.
+On first run, rust-claude prints a sign-in link for your Claude Pro or Max account to standard error and asks for the code. Paste the whole code the page shows, including the part after `#`; rust-claude checks that part against the sign-in link and stops with an error if it is missing or does not match. It saves the sign-in to `~/.rust-claude/auth.json` and renews it when it expires. It writes a temporary file and then replaces `auth.json` with it, so other running copies never read a half-written file and a crash keeps the previous sign-in. Before renewing, it checks `auth.json` for a sign-in another running rust-claude has already renewed, and uses that one, so several running copies stay signed in. If renewing fails, it checks `auth.json` again before asking you to sign in.
 
 ## Usage
 
