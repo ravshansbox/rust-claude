@@ -19,10 +19,11 @@ impl Drop for ProcessGroup {
 
 fn truncate(mut text: String) -> String {
     if text.len() > MAX_OUTPUT {
-        text.truncate(MAX_OUTPUT);
-        while !text.is_char_boundary(text.len()) {
-            text.pop();
+        let mut end = MAX_OUTPUT;
+        while !text.is_char_boundary(end) {
+            end -= 1;
         }
+        text.truncate(end);
         text.push_str("\n… output truncated");
     }
     text
@@ -250,6 +251,13 @@ mod tests {
         assert!(text.ends_with(&format!(
             "… output truncated, continue with offset {next_line}"
         )));
+    }
+
+    #[test]
+    fn truncates_inside_multibyte_character() {
+        let text = super::truncate(format!("a{}", "é".repeat(MAX_OUTPUT)));
+        assert!(text.ends_with("\n… output truncated"));
+        assert_eq!(text.len(), MAX_OUTPUT - 1 + "\n… output truncated".len());
     }
 
     #[test]
