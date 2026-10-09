@@ -191,6 +191,13 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         }
         "write" => {
             let path = argument(input, "path")?;
+            if let Some(parent) = std::path::Path::new(path).parent()
+                && !parent.as_os_str().is_empty()
+            {
+                tokio::fs::create_dir_all(parent)
+                    .await
+                    .map_err(|error| format!("failed to write {path}: {error}"))?;
+            }
             tokio::fs::write(path, argument(input, "content")?)
                 .await
                 .map(|_| format!("wrote {path}"))
@@ -241,6 +248,18 @@ mod tests {
         let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
         let text = call("bash", &input).await.unwrap();
         assert!(text.ends_with("exit status: 3"));
+    }
+
+    #[tokio::test]
+    async fn writes_file_in_new_directory() {
+        let directory = std::env::temp_dir().join(format!("rust-claude-{}", std::process::id()));
+        let path = directory.join("nested").join("file.txt");
+        let input = json!({ "path": path.to_str().unwrap(), "content": "hello" });
+        let result = call("write", &input).await;
+        let content = std::fs::read_to_string(&path);
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert!(result.is_ok());
+        assert_eq!(content.unwrap(), "hello");
     }
 
     #[tokio::test]
