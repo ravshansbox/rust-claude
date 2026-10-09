@@ -170,8 +170,15 @@ impl Agent {
         Ok(())
     }
 
-    pub fn rollback(&mut self, len: usize) {
-        self.messages.truncate(len);
+    pub fn cancel(&mut self, checkpoint: usize) -> Result<()> {
+        let finished = self.messages[checkpoint..]
+            .iter()
+            .rposition(|message| message["role"] == "user" && message["content"].is_array());
+        match finished {
+            Some(index) => self.messages.truncate(checkpoint + index + 1),
+            None => self.messages.truncate(checkpoint),
+        }
+        self.session.save(&self.messages)
     }
 
     pub async fn prompt(&mut self, prompt: &str, on_event: impl FnMut(AgentEvent)) -> Result<()> {
