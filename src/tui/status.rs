@@ -19,6 +19,9 @@ pub(super) fn format_stats(stats: &Stats) -> String {
     {
         parts.push(format!("CH{rate:.1}%"));
     }
+    if let Some(rate) = stats.tokens_per_second {
+        parts.push(format!("{rate:.0} tps"));
+    }
     parts.join(" ")
 }
 
