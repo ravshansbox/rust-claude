@@ -350,6 +350,52 @@ impl App {
             .map_or(0, |index| (index + 1) % THINKING_LEVELS.len());
         self.thinking_level = THINKING_LEVELS[index];
     }
+
+    fn input_changed(&mut self) {
+        self.history_index = None;
+        self.command_selected = 0;
+        self.commands_dismissed = false;
+    }
+
+    fn start(&mut self, status: &str) {
+        self.status = status.into();
+        self.busy = true;
+    }
+
+    fn set_thinking_level(&mut self, name: &str) {
+        match THINKING_LEVELS.iter().find(|level| **level == name) {
+            Some(level) => {
+                self.thinking_level = level;
+                self.push(Role::Event, format!("thinking: {level}"));
+            }
+            None => self.push(
+                Role::Event,
+                format!(
+                    "unknown thinking level: {name} (options: {})",
+                    THINKING_LEVELS.join(", ")
+                ),
+            ),
+        }
+    }
+
+    fn set_model(&mut self, model: &str) {
+        self.model = model.into();
+        self.push(Role::Event, format!("model: {}", display_model(model)));
+    }
+
+    fn clear_session(&mut self) {
+        self.messages.clear();
+        self.prompt_history.clear();
+        self.history_index = None;
+    }
+
+    fn finish<T>(&mut self, result: Result<T>, on_success: impl FnOnce(&mut Self, T)) {
+        match result {
+            Ok(value) => on_success(self, value),
+            Err(error) => self.push(Role::Event, format!("error: {error}")),
+        }
+        self.busy = false;
+    }
 }
 
 pub async fn run(agent: Agent) -> Result<()> {
@@ -571,9 +617,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             let text = text.replace("\r\n", "\n").replace('\r', "\n");
             app.input.insert_str(app.cursor, &text);
             app.cursor += text.len();
-            app.history_index = None;
-            app.command_selected = 0;
-            app.commands_dismissed = false;
+            app.input_changed();
         }
         return false;
     }
@@ -592,19 +636,12 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                 app.picker = None;
                 match kind {
                     PickerKind::Session => {
-                        app.status = "resuming".into();
-                        app.busy = true;
+                        app.start("resuming");
                         act(Action::Resume(value));
                     }
-                    PickerKind::Thinking => {
-                        if let Some(level) = THINKING_LEVELS.iter().find(|level| **level == value) {
-                            app.thinking_level = level;
-                            app.push(Role::Event, format!("thinking: {level}"));
-                        }
-                    }
+                    PickerKind::Thinking => app.set_thinking_level(&value),
                     PickerKind::Model => {
-                        app.model = value.clone();
-                        app.push(Role::Event, format!("model: {}", display_model(&value)));
+                        app.set_model(&value);
                         act(Action::SetModel(value));
                     }
                 }
@@ -650,9 +687,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Char('c'), KeyModifiers::CONTROL) if !app.input.is_empty() => {
             app.input.clear();
             app.cursor = 0;
-            app.history_index = None;
-            app.command_selected = 0;
-            app.commands_dismissed = false;
+            app.input_changed();
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
@@ -689,8 +724,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                 match command {
                     "/quit" => return true,
                     "/new" => {
-                        app.status = "starting new session".into();
-                        app.busy = true;
+                        app.start("starting new session");
                         act(Action::NewSession);
                     }
                     "/thinking" if argument.is_empty() => {
@@ -707,32 +741,17 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                                 .unwrap_or_default(),
                         });
                     }
-                    "/thinking" => match THINKING_LEVELS.iter().find(|level| **level == argument) {
-                        Some(level) => {
-                            app.thinking_level = level;
-                            app.push(Role::Event, format!("thinking: {level}"));
-                        }
-                        None => app.push(
-                            Role::Event,
-                            format!(
-                                "unknown thinking level: {argument} (options: {})",
-                                THINKING_LEVELS.join(", ")
-                            ),
-                        ),
-                    },
+                    "/thinking" => app.set_thinking_level(argument),
                     "/model" if argument.is_empty() => {
-                        app.status = "loading models".into();
-                        app.busy = true;
+                        app.start("loading models");
                         act(Action::ListModels);
                     }
                     "/model" => {
-                        app.model = argument.to_string();
-                        app.push(Role::Event, format!("model: {}", display_model(argument)));
+                        app.set_model(argument);
                         act(Action::SetModel(argument.to_string()));
                     }
                     "/resume" => {
-                        app.status = "loading sessions".into();
-                        app.busy = true;
+                        app.start("loading sessions");
                         act(Action::ListSessions);
                     }
                     command => app.push(Role::Event, format!("unknown command: {command}")),
@@ -741,8 +760,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             }
             app.push(Role::User, prompt.clone());
             app.prompt_history.push(prompt.clone());
-            app.status = "working".into();
-            app.busy = true;
+            app.start("working");
             act(Action::Submit(prompt, app.thinking_level));
         }
         (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
@@ -767,25 +785,19 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             let start = previous_word_start(&app.input, app.cursor);
             app.input.replace_range(start..app.cursor, "");
             app.cursor = start;
-            app.history_index = None;
-            app.command_selected = 0;
-            app.commands_dismissed = false;
+            app.input_changed();
         }
         (KeyCode::Backspace, _) => {
             if let Some(character) = app.input[..app.cursor].chars().next_back() {
                 app.cursor -= character.len_utf8();
                 app.input.remove(app.cursor);
             }
-            app.history_index = None;
-            app.command_selected = 0;
-            app.commands_dismissed = false;
+            app.input_changed();
         }
         (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
             app.input.insert(app.cursor, character);
             app.cursor += character.len_utf8();
-            app.history_index = None;
-            app.command_selected = 0;
-            app.commands_dismissed = false;
+            app.input_changed();
         }
         _ => {}
     }
@@ -812,90 +824,58 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
-        UiEvent::Done(result) => {
-            if let Err(error) = result {
-                app.push(Role::Event, format!("error: {error}"));
-            }
-            app.busy = false;
-        }
+        UiEvent::Done(result) => app.finish(result, |_, ()| {}),
         UiEvent::Cancelled(result) => {
             app.push(Role::Event, "cancelled");
-            if let Err(error) = result {
-                app.push(Role::Event, format!("error: {error}"));
-            }
-            app.busy = false;
+            app.finish(result, |_, ()| {});
         }
-        UiEvent::Sessions(result) => {
-            match result {
-                Ok(sessions) if sessions.is_empty() => {
-                    app.push(Role::Event, "no session to resume");
-                }
-                Ok(sessions) => {
-                    app.picker = Some(Picker {
-                        kind: PickerKind::Session,
-                        title: "Resume session",
-                        items: sessions
-                            .into_iter()
-                            .map(|session| {
-                                let preview = session.preview.lines().next().unwrap_or_default();
-                                let label = format!("{:>8}  {preview}", time_ago(session.modified));
-                                (session.id, label)
-                            })
-                            .collect(),
-                        selected: 0,
-                    });
-                }
-                Err(error) => app.push(Role::Event, format!("error: {error}")),
+        UiEvent::Sessions(result) => app.finish(result, |app, sessions| {
+            if sessions.is_empty() {
+                app.push(Role::Event, "no session to resume");
+                return;
             }
-            app.busy = false;
-        }
-        UiEvent::NewSession(result) => {
-            match result {
-                Ok(()) => {
-                    app.messages.clear();
-                    app.prompt_history.clear();
-                    app.history_index = None;
-                    app.push(Role::Event, "new session");
-                }
-                Err(error) => app.push(Role::Event, format!("error: {error}")),
+            app.picker = Some(Picker {
+                kind: PickerKind::Session,
+                title: "Resume session",
+                items: sessions
+                    .into_iter()
+                    .map(|session| {
+                        let preview = session.preview.lines().next().unwrap_or_default();
+                        let label = format!("{:>8}  {preview}", time_ago(session.modified));
+                        (session.id, label)
+                    })
+                    .collect(),
+                selected: 0,
+            });
+        }),
+        UiEvent::NewSession(result) => app.finish(result, |app, ()| {
+            app.clear_session();
+            app.push(Role::Event, "new session");
+        }),
+        UiEvent::Models(result) => app.finish(result, |app, models| {
+            if models.is_empty() {
+                app.push(Role::Event, "no models available");
+                return;
             }
-            app.busy = false;
-        }
-        UiEvent::Models(result) => {
-            match result {
-                Ok(models) if models.is_empty() => app.push(Role::Event, "no models available"),
-                Ok(models) => {
-                    let selected = models
-                        .iter()
-                        .position(|model| *model == app.model)
-                        .unwrap_or_default();
-                    app.picker = Some(Picker {
-                        kind: PickerKind::Model,
-                        title: "Select model",
-                        items: models
-                            .into_iter()
-                            .map(|model| (model.clone(), display_model(&model).to_string()))
-                            .collect(),
-                        selected,
-                    });
-                }
-                Err(error) => app.push(Role::Event, format!("error: {error}")),
-            }
-            app.busy = false;
-        }
-        UiEvent::Resumed(result) => {
-            match result {
-                Ok(messages) => {
-                    app.messages.clear();
-                    app.prompt_history.clear();
-                    app.history_index = None;
-                    replay_messages(app, &messages);
-                    app.push(Role::Event, "resumed session");
-                }
-                Err(error) => app.push(Role::Event, format!("error: {error}")),
-            }
-            app.busy = false;
-        }
+            let selected = models
+                .iter()
+                .position(|model| *model == app.model)
+                .unwrap_or_default();
+            app.picker = Some(Picker {
+                kind: PickerKind::Model,
+                title: "Select model",
+                items: models
+                    .into_iter()
+                    .map(|model| (model.clone(), display_model(&model).to_string()))
+                    .collect(),
+                selected,
+            });
+        }),
+        UiEvent::Resumed(result) => app.finish(result, |app, messages| {
+            app.clear_session();
+            replay_messages(app, &messages);
+            app.push(Role::Event, "resumed session");
+        }),
     }
 }
 
