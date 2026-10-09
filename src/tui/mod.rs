@@ -31,6 +31,10 @@ use status::{context_span, format_quota, format_stats};
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
+pub fn dark_theme() -> bool {
+    matches!(Theme::detect(), Theme::Dark)
+}
+
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
