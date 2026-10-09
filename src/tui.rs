@@ -90,11 +90,32 @@ fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
             .lines()
             .map(|line| Line::from(line.to_string().dark_gray().italic()))
             .collect(),
-        Role::Tool | Role::Event => text
+        Role::Tool => tool_message_lines(text),
+        Role::Event => text
             .lines()
             .map(|line| Line::raw(line.to_string()))
             .collect(),
     }
+}
+
+fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
+    let mut lines: Vec<Line<'static>> = text
+        .lines()
+        .map(|line| Line::raw(line.to_string()))
+        .collect();
+    if let Some(first) = text.lines().next() {
+        let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
+        lines[0] = Line::from(vec![
+            Span::styled(
+                format!(" {name} "),
+                Style::new()
+                    .fg(Color::Rgb(59, 63, 65))
+                    .bg(Color::Rgb(223, 231, 236)),
+            ),
+            Span::raw(format!(" {rest}")),
+        ]);
+    }
+    lines
 }
 
 fn owned_line(line: Line<'_>) -> Line<'static> {
