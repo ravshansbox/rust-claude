@@ -73,3 +73,23 @@ pub(super) fn file_matches(files: &[String], query: &str) -> Vec<String> {
         .cloned()
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{file_matches, file_query};
+
+    #[test]
+    fn finds_file_query_at_cursor() {
+        assert_eq!(file_query("read @src/ma", 12), Some((5, "src/ma")));
+        assert_eq!(file_query("@", 1), Some((0, "")));
+        assert_eq!(file_query("mail@host", 9), None);
+        assert_eq!(file_query("@src now", 8), None);
+    }
+
+    #[test]
+    fn matches_files_ignoring_case() {
+        let files = vec!["README.md".to_string(), "src/main.rs".to_string()];
+        assert_eq!(file_matches(&files, "readme"), vec!["README.md"]);
+        assert_eq!(file_matches(&files, "").len(), 2);
+    }
+}
