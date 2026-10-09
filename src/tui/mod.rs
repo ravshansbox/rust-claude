@@ -28,7 +28,10 @@ use keys::{Action, handle_input};
 use ratatui::DefaultTerminal;
 use render::{THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
-use std::time::{Duration, SystemTime};
+use std::{
+    io::Write,
+    time::{Duration, SystemTime},
+};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 use worker::{Request, UiEvent, agent_task, quit};
 
@@ -39,31 +42,50 @@ pub fn dark_theme() -> bool {
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 
+/// Mouse capture, bracketed paste and keyboard flags, turned off when dropped
+/// so a panic does not leave them on in the user's shell.
+struct InputModes<W: Write> {
+    output: W,
+    keyboard_enhanced: bool,
+}
+
+impl<W: Write> InputModes<W> {
+    fn enable(mut output: W) -> std::io::Result<Self> {
+        execute!(output, EnableMouseCapture, EnableBracketedPaste)?;
+        let keyboard_enhanced = execute!(
+            output,
+            PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
+        )
+        .is_ok();
+        Ok(Self {
+            output,
+            keyboard_enhanced,
+        })
+    }
+}
+
+impl<W: Write> Drop for InputModes<W> {
+    fn drop(&mut self) {
+        if self.keyboard_enhanced {
+            let _ = execute!(self.output, PopKeyboardEnhancementFlags);
+        }
+        let _ = execute!(self.output, DisableMouseCapture, DisableBracketedPaste);
+    }
+}
+
 pub async fn run(agent: Agent) -> Result<()> {
     THEME.get_or_init(Theme::detect);
     let mut terminal = ratatui::init();
-    if let Err(error) = execute!(std::io::stdout(), EnableMouseCapture, EnableBracketedPaste) {
-        ratatui::restore();
-        return Err(error.into());
-    }
-    let keyboard_enhanced = execute!(
-        std::io::stdout(),
-        PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
-    )
-    .is_ok();
-
+    let modes = match InputModes::enable(std::io::stdout()) {
+        Ok(modes) => modes,
+        Err(error) => {
+            ratatui::restore();
+            return Err(error.into());
+        }
+    };
     let result = run_loop(&mut terminal, agent).await;
-    if keyboard_enhanced {
-        let _ = execute!(std::io::stdout(), PopKeyboardEnhancementFlags);
-    }
-    let mouse_result = execute!(
-        std::io::stdout(),
-        DisableMouseCapture,
-        DisableBracketedPaste
-    );
+    drop(modes);
     ratatui::restore();
-
-    mouse_result?;
     result
 }
 
@@ -271,4 +293,30 @@ fn workspace_label() -> String {
 
 fn display_model(model: &str) -> &str {
     model.strip_prefix("claude-").unwrap_or(model)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::InputModes;
+
+    #[test]
+    fn turns_input_modes_off_after_a_panic() {
+        let mut output = Vec::new();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _modes = InputModes::enable(&mut output).unwrap();
+            panic!("drawing failed");
+        }));
+        assert!(result.is_err());
+        let written = String::from_utf8_lossy(&output);
+        let (enabled, disabled) = written.split_at(written.find("\x1b[<1u").unwrap());
+        assert!(enabled.contains("\x1b[?1000h") && enabled.contains("\x1b[?2004h"));
+        assert!(
+            disabled.contains("\x1b[?1000l"),
+            "mouse capture still on: {written:?}"
+        );
+        assert!(
+            disabled.contains("\x1b[?2004l"),
+            "bracketed paste still on: {written:?}"
+        );
+    }
 }
