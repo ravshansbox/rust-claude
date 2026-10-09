@@ -5,7 +5,8 @@ mod status;
 
 use crate::{
     agent::{
-        Agent, AgentEvent, Queue, Queued, Stats, THINKING_LEVELS, parse_shell_message, take_queued,
+        Agent, AgentEvent, ContextUse, Queue, Queued, Stats, THINKING_LEVELS, parse_shell_message,
+        take_queued,
     },
     clipboard,
     images::{self, Image},
@@ -35,7 +36,7 @@ use ratatui::{
 };
 use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
 use serde_json::Value;
-use status::{format_context, format_quota, format_stats};
+use status::{format_context, format_context_use, format_quota, format_stats};
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
@@ -50,6 +51,7 @@ const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦
 const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
     ("/compact", "summarise the conversation to free context"),
+    ("/context", "show what fills the context"),
     ("/resume", "resume a previous session"),
     ("/model", "select model"),
     ("/thinking", "select thinking level"),
@@ -504,6 +506,7 @@ enum UiEvent {
     ModelChecked(Result<String>),
     ImagePasted(Result<Option<Image>>),
     Shell(String, Result<String>),
+    Context(ContextUse),
 }
 
 enum Request {
@@ -516,6 +519,7 @@ enum Request {
     CheckModel(String),
     NewSession,
     ListModels,
+    Context,
 }
 
 fn notify_renewed(agent: &mut Agent, events: &mpsc::UnboundedSender<UiEvent>) {
@@ -566,6 +570,10 @@ async fn agent_task(
             }
             Request::Compact(thinking_level) => (None, thinking_level),
             Request::Shell(_) => continue,
+            Request::Context => {
+                let _ = events.send(UiEvent::Context(agent.context_use()));
+                continue;
+            }
             Request::ListSessions => {
                 let _ = events.send(UiEvent::Sessions(agent.list_sessions()));
                 continue;
@@ -718,6 +726,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::Compact(thinking_level) => {
                         let _ = request_tx.send(Request::Compact(thinking_level));
                     }
+                    Action::Context => {
+                        let _ = request_tx.send(Request::Context);
+                    }
                     Action::ListSessions => {
                         let _ = request_tx.send(Request::ListSessions);
                     }
@@ -800,6 +811,7 @@ enum Action {
     CheckModel(String),
     NewSession,
     ListModels,
+    Context,
     Cancel,
 }
 
@@ -992,6 +1004,10 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         app.start("checking model");
                         act(Action::CheckModel(argument.to_string()));
                     }
+                    "/context" => {
+                        app.start("measuring context");
+                        act(Action::Context);
+                    }
                     "/resume" => {
                         app.start("loading sessions");
                         act(Action::ListSessions);
@@ -1147,6 +1163,10 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 selected,
             });
         }),
+        UiEvent::Context(context) => {
+            app.push(Role::Event, format_context_use(&context));
+            app.busy = false;
+        }
         UiEvent::Shell(command, result) => {
             app.finish(result, |app, output| app.push_shell(&command, &output));
         }
@@ -1532,6 +1552,34 @@ mod tests {
         assert_eq!(app.input, "first\n\ndraft");
         assert!(app.queued_prompts().is_empty());
         assert!(app.send_queued().is_none());
+    }
+
+    #[test]
+    fn shows_context_use() {
+        let mut app = new_app();
+        handle_input(Event::Paste("/context".into()), &mut app, |_| {});
+        let mut requested = false;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| requested |= matches!(action, Action::Context),
+        );
+        assert!(requested);
+        assert!(app.busy);
+        let context = crate::agent::ContextUse {
+            parts: vec![("messages", 10)],
+            total: 10,
+            window: 0,
+        };
+        handle_agent_event(UiEvent::Context(context), &mut app);
+        assert!(!app.busy);
+        assert!(
+            app.messages
+                .last()
+                .unwrap()
+                .text
+                .starts_with("context: 10 of unknown\n")
+        );
     }
 
     #[test]

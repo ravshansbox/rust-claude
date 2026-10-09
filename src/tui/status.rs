@@ -1,4 +1,4 @@
-use crate::agent::Stats;
+use crate::agent::{ContextUse, Stats};
 use std::time::SystemTime;
 
 pub(super) fn format_stats(stats: &Stats) -> String {
@@ -74,6 +74,47 @@ pub(super) fn format_context(stats: &Stats) -> String {
     format!("{percent:.0}%/{}", format_tokens(stats.context_window))
 }
 
+pub(super) fn format_context_use(context: &ContextUse) -> String {
+    let percent = |tokens: u64| {
+        if context.window > 0 {
+            format!("{:.0}%", tokens as f64 / context.window as f64 * 100.0)
+        } else {
+            String::new()
+        }
+    };
+    let mut rows: Vec<(&str, u64)> = context.parts.clone();
+    if context.window > 0 {
+        rows.push(("free", context.window.saturating_sub(context.total)));
+    }
+    let window = if context.window > 0 {
+        format_tokens(context.window)
+    } else {
+        "unknown".into()
+    };
+    let mut lines = vec![
+        format!(
+            "context: {} of {window} {}",
+            format_tokens(context.total),
+            percent(context.total)
+        )
+        .trim_end()
+        .to_string(),
+    ];
+    for (name, tokens) in rows {
+        lines.push(
+            format!(
+                "  {name:<16}{:>6}  {:>4}",
+                format_tokens(tokens),
+                percent(tokens)
+            )
+            .trim_end()
+            .to_string(),
+        );
+    }
+    lines.push("Estimated, and scaled to the token count of the last reply.".into());
+    lines.join("\n")
+}
+
 fn format_tokens(count: u64) -> String {
     let count = count as f64;
     if count < 1_000.0 {
@@ -98,6 +139,23 @@ mod tests {
         assert_eq!(format_duration(2 * 3_600 + 13 * 60), "2h13m");
         assert_eq!(format_duration(3 * 86_400), "3d");
         assert_eq!(format_duration(3 * 86_400 + 4 * 3_600 + 5 * 60), "3d4h");
+    }
+
+    #[test]
+    fn formats_context_use() {
+        let context = ContextUse {
+            parts: vec![("system prompt", 2_000), ("messages", 48_000)],
+            total: 50_000,
+            window: 200_000,
+        };
+        assert_eq!(
+            format_context_use(&context),
+            "context: 50k of 200k 25%
+  system prompt       2k    1%
+  messages           48k   24%
+  free              150k   75%
+Estimated, and scaled to the token count of the last reply."
+        );
     }
 
     #[test]
