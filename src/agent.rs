@@ -64,6 +64,11 @@ fn same_path(a: &Path, b: &Path) -> bool {
 
 fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
     let mut messages = messages.to_vec();
+    for message in &mut messages {
+        if let Some(object) = message.as_object_mut() {
+            object.remove("usage");
+        }
+    }
     if let Some(last) = messages.last_mut() {
         if let Some(text) = last["content"].as_str().map(str::to_owned) {
             last["content"] = json!([{ "type": "text", "text": text }]);
@@ -93,6 +98,35 @@ impl Usage {
         self.cache_write += other.cache_write;
         self.output += other.output;
     }
+
+    fn to_json(self) -> Value {
+        json!({
+            "input": self.input,
+            "output": self.output,
+            "cache_read": self.cache_read,
+            "cache_write": self.cache_write,
+        })
+    }
+
+    fn from_json(value: &Value) -> Self {
+        Self {
+            input: value["input"].as_u64().unwrap_or(0),
+            output: value["output"].as_u64().unwrap_or(0),
+            cache_read: value["cache_read"].as_u64().unwrap_or(0),
+            cache_write: value["cache_write"].as_u64().unwrap_or(0),
+        }
+    }
+}
+
+pub fn total_usage(messages: &[Value]) -> Usage {
+    let mut total = Usage::default();
+    for message in messages
+        .iter()
+        .filter(|message| message["role"] == "assistant")
+    {
+        total.add(Usage::from_json(&message["usage"]));
+    }
+    total
 }
 
 pub enum AgentEvent {
@@ -195,14 +229,12 @@ impl Agent {
     async fn run(&mut self, prompt: &str, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
         self.messages
             .push(json!({ "role": "user", "content": prompt }));
-        let mut total_usage = Usage::default();
 
         loop {
             let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
-            total_usage.add(usage);
-            on_event(AgentEvent::Usage(total_usage));
             self.messages
-                .push(json!({ "role": "assistant", "content": content }));
+                .push(json!({ "role": "assistant", "content": content, "usage": usage.to_json() }));
+            on_event(AgentEvent::Usage(total_usage(&self.messages)));
             if stop_reason == "max_tokens" {
                 on_event(AgentEvent::Notice(
                     "reply cut off: max_tokens reached".into(),
