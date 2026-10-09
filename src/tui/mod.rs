@@ -1282,7 +1282,7 @@ fn workspace_label() -> String {
         .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
         .filter(|branch| !branch.is_empty());
     match branch {
-        Some(branch) => format!("{folder} ({branch})"),
+        Some(branch) => format!("{folder} · {branch}"),
         None => folder,
     }
 }
