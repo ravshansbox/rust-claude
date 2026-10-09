@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-A project can list MCP servers in `.rust-claude/mcp.json`. Stdio servers are commands, so opening a project with this file runs them. pi only reads a project `mcp.json` after the user trusts the project.
+A project can list MCP servers in `.rust-claude/mcp.json`. Stdio servers are commands, so opening a project with this file runs them.
 
 ## Decision
 

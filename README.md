@@ -269,7 +269,7 @@ It also tells the model to prefer `edit` and `write` over `bash` for changing fi
 
 ## Skills
 
-rust-claude supports [Agent Skills](https://agentskills.io/specification) in the same way as pi. A skill is a folder with a `SKILL.md` file that starts with YAML frontmatter:
+rust-claude supports [Agent Skills](https://agentskills.io/specification). A skill is a folder with a `SKILL.md` file that starts with YAML frontmatter:
 
 ```markdown
 ---
@@ -340,7 +340,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 ## MCP servers
 
-rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format is the same as pi's and other MCP clients':
+rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format is the same as other MCP clients':
 
 ```json
 {
