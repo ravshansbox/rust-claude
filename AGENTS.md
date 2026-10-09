@@ -3,4 +3,5 @@
 - Ask questions as numbered lists with lettered options, mark the recommended one.
 - Keep README.md up to date with every change.
 - Write the test first, watch it fail, then write the code.
+- Test in a user-observable way.
 - Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` before commit.
