@@ -142,6 +142,7 @@ async fn main() -> Result<()> {
             agent::AgentEvent::ToolDone {
                 name,
                 error: Some(error),
+                ..
             } if !hide_tools => {
                 flush_reads(&mut reads);
                 if line_open {
@@ -149,6 +150,14 @@ async fn main() -> Result<()> {
                     line_open = false;
                 }
                 eprintln!("{name} failed: {error}");
+            }
+            agent::AgentEvent::ToolDone {
+                name,
+                note: Some(note),
+                ..
+            } if !hide_tools => {
+                flush_reads(&mut reads);
+                eprintln!("{name}: {note}");
             }
             agent::AgentEvent::Notice(text) => {
                 flush_reads(&mut reads);

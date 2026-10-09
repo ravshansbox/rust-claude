@@ -842,9 +842,12 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
         }) => {
             app.push_tool(&name, summary, diff);
         }
-        UiEvent::Agent(AgentEvent::ToolDone { name, error }) => {
+        UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
             if let Some(error) = error {
                 app.push(Role::Event, format!("{name} failed: {error}"));
+            }
+            if let Some(note) = note {
+                app.push(Role::Event, format!("{name}: {note}"));
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
@@ -906,15 +909,18 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
 }
 
 fn replay_messages(app: &mut App, messages: &[Value]) {
-    let errors: std::collections::HashMap<&str, &str> = messages
+    let results: std::collections::HashMap<&str, (&str, bool)> = messages
         .iter()
         .filter(|message| message["role"] == "user")
         .flat_map(|message| message["content"].as_array().into_iter().flatten())
-        .filter(|block| block["type"] == "tool_result" && block["is_error"] == true)
+        .filter(|block| block["type"] == "tool_result")
         .filter_map(|block| {
             Some((
                 block["tool_use_id"].as_str()?,
-                block["content"].as_str().unwrap_or_default(),
+                (
+                    block["content"].as_str().unwrap_or_default(),
+                    block["is_error"] == true,
+                ),
             ))
         })
         .collect();
@@ -943,8 +949,16 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
                         tools::summary(name, &block["input"]),
                         tools::diff(name, &block["input"]),
                     );
-                    if let Some(error) = block["id"].as_str().and_then(|id| errors.get(id)) {
-                        app.push(Role::Event, format!("{name} failed: {error}"));
+                    match block["id"].as_str().and_then(|id| results.get(id)) {
+                        Some((error, true)) => {
+                            app.push(Role::Event, format!("{name} failed: {error}"));
+                        }
+                        Some((result, false)) => {
+                            if let Some(note) = tools::note(name, result) {
+                                app.push(Role::Event, format!("{name}: {note}"));
+                            }
+                        }
+                        None => {}
                     }
                 }
                 ("user", "text") => {
@@ -1139,10 +1153,11 @@ fn display_model(model: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{
-        Action, App, Role, file_matches, file_query, handle_input, held_scroll_from_bottom,
-        replay_messages,
+        Action, App, Role, UiEvent, file_matches, file_query, handle_agent_event, handle_input,
+        held_scroll_from_bottom, replay_messages,
     };
-    use crate::agent::{Quota, Stats, Usage};
+    use crate::agent::{AgentEvent, Quota, Stats, Usage};
+    use crate::tools;
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use serde_json::json;
 
@@ -1525,5 +1540,52 @@ mod tests {
             texts,
             ["read a.rs, b.rs", "read failed: missing", "read c.rs"]
         );
+    }
+
+    #[test]
+    fn shows_replacement_count_live_and_replayed() {
+        let stats = || Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let input =
+            json!({ "path": "a.rs", "old_text": "a", "new_text": "b", "replace_all": true });
+        let mut live = App::new("model", "medium", stats());
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::ToolStart {
+                name: "edit".into(),
+                summary: tools::summary("edit", &input),
+                diff: tools::diff("edit", &input),
+            }),
+            &mut live,
+        );
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::ToolDone {
+                name: "edit".into(),
+                error: None,
+                note: Some("3 replacements".into()),
+            }),
+            &mut live,
+        );
+        let mut replayed = App::new("model", "medium", stats());
+        replay_messages(
+            &mut replayed,
+            &[
+                json!({ "role": "assistant", "content": [{ "type": "tool_use", "id": "1", "name": "edit", "input": input }] }),
+                json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "1", "content": "edited a.rs (3 replacements)", "is_error": false }] }),
+            ],
+        );
+        let texts = |app: &App| -> Vec<String> {
+            app.messages[1..]
+                .iter()
+                .map(|message| message.text.clone())
+                .collect()
+        };
+        assert_eq!(texts(&live), ["edit a.rs\n-a\n+b", "edit: 3 replacements"]);
+        assert_eq!(texts(&replayed), texts(&live));
     }
 }
