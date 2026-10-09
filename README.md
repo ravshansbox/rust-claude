@@ -20,7 +20,7 @@ Start the interactive interface:
 rust-claude
 ```
 
-Run one prompt and print the answer:
+Run one prompt and print the answer with `-p` or `--print`:
 
 ```sh
 rust-claude -p "explain src/main.rs"
