@@ -7,6 +7,7 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 
 use crate::{
+    ask::{self, Question},
     auth::Credentials,
     images::Image,
     mcp::Mcp,
@@ -468,6 +469,37 @@ pub enum AgentEvent {
     Stats(Stats),
     Notice(String),
     Queued(String),
+    Question {
+        questions: Vec<Question>,
+        reply: tokio::sync::oneshot::Sender<Vec<Vec<String>>>,
+    },
+}
+
+pub fn tool_definitions(mcp: &Mcp, ask_user: bool) -> Value {
+    let mut definitions = tools::definitions();
+    if let Value::Array(list) = &mut definitions {
+        if ask_user {
+            list.push(ask::definition());
+        }
+        list.extend(mcp.definitions());
+    }
+    definitions
+}
+
+pub async fn ask_user(
+    input: &Value,
+    on_event: &mut impl FnMut(AgentEvent),
+) -> Result<String, String> {
+    let questions = ask::parse(input)?;
+    let (reply, answers) = tokio::sync::oneshot::channel();
+    on_event(AgentEvent::Question {
+        questions: questions.clone(),
+        reply,
+    });
+    Ok(match answers.await {
+        Ok(answers) => ask::format_answers(&questions, &answers),
+        Err(_) => ask::DECLINED.into(),
+    })
 }
 
 pub fn shell_message(command: &str, output: &str) -> String {
@@ -506,6 +538,7 @@ pub struct Agent {
     pub instructions: Vec<Instructions>,
     pub skills: Skills,
     pub mcp: Mcp,
+    pub ask_user: bool,
     pub session: Session,
     pub queue: Queue,
 }
@@ -523,6 +556,7 @@ impl Agent {
             instructions: load_instructions(),
             skills: skills::load(),
             mcp: Mcp::default(),
+            ask_user: false,
             session: Session::new()?,
             queue: Queue::default(),
         })
@@ -603,7 +637,10 @@ impl Agent {
             tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(
                 &active_messages(&self.messages),
-                estimate_prompt_tokens(&self.system_prompt(), &self.tool_definitions()),
+                estimate_prompt_tokens(
+                    &self.system_prompt(),
+                    &tool_definitions(&self.mcp, self.ask_user),
+                ),
             ),
             context_window: models::context_window(&self.model),
             quota: self.quota,
@@ -647,14 +684,6 @@ impl Agent {
             total: stats.context_tokens,
             window: stats.context_window,
         }
-    }
-
-    fn tool_definitions(&self) -> Value {
-        let mut definitions = tools::definitions();
-        if let Value::Array(list) = &mut definitions {
-            list.extend(self.mcp.definitions());
-        }
-        definitions
     }
 
     fn system_prompt(&self) -> Vec<Value> {
@@ -868,9 +897,13 @@ impl Agent {
                     summary: tools::summary(name, &block["input"]),
                     diff: tools::diff(name, &block["input"]),
                 });
-                let result = match self.mcp.call(name, &block["input"]).await {
-                    Some(result) => result,
-                    None => tools::call(name, &block["input"]).await,
+                let result = if name == ask::NAME && self.ask_user {
+                    ask_user(&block["input"], &mut on_event).await
+                } else {
+                    match self.mcp.call(name, &block["input"]).await {
+                        Some(result) => result,
+                        None => tools::call(name, &block["input"]).await,
+                    }
                 };
                 let (text, is_error) = match result {
                     Ok(text) => (text, false),
@@ -923,7 +956,7 @@ impl Agent {
             "thinking": { "type": "adaptive", "display": "summarized" },
             "output_config": { "effort": self.thinking_level },
             "system": system,
-            "tools": self.tool_definitions(),
+            "tools": tool_definitions(&self.mcp, self.ask_user),
             "messages": messages,
         });
         if let Some(tool_choice) = tool_choice {
@@ -1070,12 +1103,64 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
+    use super::{AgentEvent, ask_user, tool_definitions};
     use super::{
         Quota, active_messages, cache_hit_rate, cancel_point, context_tokens, has_uncompacted,
         parse_shell_message, parse_timestamp, retry_after, retry_delay, retryable, scale_parts,
         shell_message, tokens_per_second, with_cache_breakpoint,
     };
+    use crate::{ask, mcp::Mcp};
     use std::time::Duration;
+
+    fn tool_names(definitions: serde_json::Value) -> Vec<String> {
+        definitions
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|definition| definition["name"].as_str().unwrap().to_string())
+            .collect()
+    }
+
+    #[test]
+    fn offers_the_question_tool_only_when_someone_can_answer() {
+        let mcp = Mcp::default();
+        assert!(!tool_names(tool_definitions(&mcp, false)).contains(&ask::NAME.to_string()));
+        assert!(tool_names(tool_definitions(&mcp, true)).contains(&ask::NAME.to_string()));
+    }
+
+    fn question_input() -> serde_json::Value {
+        json!({ "questions": [{
+            "question": "Which output?",
+            "header": "Output",
+            "options": [{ "label": "JSON", "description": "" }, { "label": "Text", "description": "" }]
+        }] })
+    }
+
+    #[tokio::test]
+    async fn returns_the_answers_from_the_user() {
+        let mut asked = Vec::new();
+        let result = ask_user(&question_input(), &mut |event| {
+            if let AgentEvent::Question { questions, reply } = event {
+                asked = questions;
+                let _ = reply.send(vec![vec!["Text".to_string()]]);
+            }
+        })
+        .await;
+        assert_eq!(result, Ok("Which output? → Text".to_string()));
+        assert_eq!(asked[0].header, "Output");
+    }
+
+    #[tokio::test]
+    async fn reports_when_the_user_declines() {
+        let result = ask_user(&question_input(), &mut |_| {}).await;
+        assert_eq!(result, Ok(ask::DECLINED.to_string()));
+    }
+
+    #[tokio::test]
+    async fn rejects_invalid_questions() {
+        let result = ask_user(&json!({ "questions": [] }), &mut |_| {}).await;
+        assert_eq!(result, Err("ask between 1 and 4 questions".to_string()));
+    }
 
     #[test]
     fn scales_context_parts_to_total() {

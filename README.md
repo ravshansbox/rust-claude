@@ -332,7 +332,19 @@ The agent can use these tools:
 - `write`: create or replace a file
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings and keeps the file's line endings
 
+- `ask_user_question`: ask you 1 to 4 multiple-choice questions and wait for the answers. It is only offered in the interface, not in print mode
+
 The agent can also use tools from [MCP servers](#mcp-servers).
+
+`ask_user_question` takes a `questions` list. Each question has `question`, a short `header`, 2 to 4 `options` and an optional `multi_select`. Each option has a `label`, a `description` and an optional `recommended` flag, which shows as `(recommended)`. An `Other` option is always added so you can type your own answer. The interface shows one question at a time in place of the conversation:
+
+- Up and Down move between options
+- Space ticks or unticks an option when `multi_select` is true
+- Typing on `Other` writes your own answer
+- Enter confirms the answer and moves to the next question
+- Esc declines all the questions, and the agent carries on without the answers
+
+The agent gets the answers as plain text, one line per question, for example `Which output? → Text, Other: YAML please`. The same text shows in the conversation, for example `ask_user_question: Which output? → Text`. The tool call line shows the question headers, for example `ask_user_question Output, Colour`.
 
 `bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice.
 
