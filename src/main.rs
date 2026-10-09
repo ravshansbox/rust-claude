@@ -1,6 +1,7 @@
 mod agent;
 mod auth;
 mod highlight;
+mod images;
 mod mcp;
 mod models;
 mod session;
@@ -11,17 +12,19 @@ mod tui;
 
 use std::io::{IsTerminal, Write};
 
-use anyhow::{Result, bail};
+use anyhow::{Context, Result, bail};
 
-const USAGE: &str = "usage: rust-claude [-h|--help] [-p|--print <prompt> [--hide-tools]]";
+const USAGE: &str =
+    "usage: rust-claude [-h|--help] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [-p|--print <prompt> [--hide-tools]]
+usage: rust-claude [-h|--help] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
 
 Options:
   -p, --print <prompt>  Run one prompt and print the answer
       --hide-tools      Hide tool calls in print mode
+      --image <path>    Send an image with the prompt in print mode. Repeat for more images
   -h, --help            Show this help
 
 Environment variables:
@@ -32,7 +35,11 @@ Environment variables:
 enum Command {
     Help,
     Interactive,
-    Print { prompt: String, hide_tools: bool },
+    Print {
+        prompt: String,
+        hide_tools: bool,
+        images: Vec<String>,
+    },
 }
 
 fn parse_arguments(mut arguments: Vec<String>) -> Result<Command> {
@@ -46,12 +53,22 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<Command> {
         }
         None => false,
     };
+    let mut images = Vec::new();
+    while let Some(index) = arguments.iter().position(|argument| argument == "--image") {
+        if index + 1 >= arguments.len() {
+            bail!(USAGE);
+        }
+        images.push(arguments.remove(index + 1));
+        arguments.remove(index);
+    }
+    let print_options = hide_tools || !images.is_empty();
     match arguments.as_slice() {
-        [flag] if !hide_tools && (flag == "-h" || flag == "--help") => Ok(Command::Help),
-        [] if !hide_tools => Ok(Command::Interactive),
+        [flag] if !print_options && (flag == "-h" || flag == "--help") => Ok(Command::Help),
+        [] if !print_options => Ok(Command::Interactive),
         [flag, prompt] if flag == "-p" || flag == "--print" => Ok(Command::Print {
             prompt: prompt.clone(),
             hide_tools,
+            images,
         }),
         _ => bail!(USAGE),
     }
@@ -59,14 +76,28 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<Command> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let (print_prompt, hide_tools) = match parse_arguments(std::env::args().skip(1).collect())? {
-        Command::Help => {
-            println!("{HELP}");
-            return Ok(());
-        }
-        Command::Interactive => (None, false),
-        Command::Print { prompt, hide_tools } => (Some(prompt), hide_tools),
-    };
+    let (print_prompt, hide_tools, image_paths) =
+        match parse_arguments(std::env::args().skip(1).collect())? {
+            Command::Help => {
+                println!("{HELP}");
+                return Ok(());
+            }
+            Command::Interactive => (None, false, Vec::new()),
+            Command::Print {
+                prompt,
+                hide_tools,
+                images,
+            } => (Some(prompt), hide_tools, images),
+        };
+    let images = image_paths
+        .iter()
+        .map(|path| {
+            std::fs::read(path)
+                .map_err(anyhow::Error::from)
+                .and_then(images::prepare)
+                .with_context(|| format!("failed to load image {path}"))
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     let http = reqwest::Client::new();
     let credentials = auth::Credentials::load_or_login(&http).await?;
@@ -105,7 +136,7 @@ async fn main() -> Result<()> {
     let dark = colour && tui::dark_theme();
     let mut reads = tools::ReadGroup::default();
     let result = agent
-        .prompt(&prompt, |event| match event {
+        .prompt(&prompt, &images, |event| match event {
             agent::AgentEvent::Text(text) => {
                 flush_reads(&mut reads);
                 if separate {
@@ -209,6 +240,8 @@ mod tests {
     fn rejects_help_with_other_arguments() {
         assert_eq!(parse(&["--help", "--hide-tools"]), None);
         assert_eq!(parse(&["-h", "extra"]), None);
+        assert_eq!(parse(&["--image", "a.png"]), None);
+        assert_eq!(parse(&["-p", "hello", "--image"]), None);
     }
 
     #[test]
@@ -219,6 +252,15 @@ mod tests {
             Some(Command::Print {
                 prompt: "hello".into(),
                 hide_tools: true,
+                images: Vec::new(),
+            })
+        );
+        assert_eq!(
+            parse(&["--image", "a.png", "-p", "hello", "--image", "b.png"]),
+            Some(Command::Print {
+                prompt: "hello".into(),
+                hide_tools: false,
+                images: vec!["a.png".into(), "b.png".into()],
             })
         );
     }
