@@ -1,4 +1,4 @@
-use crate::agent::{Agent, AgentEvent};
+use crate::agent::{Agent, AgentEvent, THINKING_LEVELS};
 use anyhow::Result;
 use crossterm::{
     event::{
@@ -34,6 +34,7 @@ struct App {
     input: String,
     messages: Vec<ChatMessage>,
     model: String,
+    thinking_level: &'static str,
     status: String,
     usage: String,
     scroll_from_bottom: u16,
@@ -43,7 +44,7 @@ struct App {
 }
 
 impl App {
-    fn new(model: &str) -> Self {
+    fn new(model: &str, thinking_level: &'static str) -> Self {
         Self {
             input: String::new(),
             messages: vec![ChatMessage {
@@ -51,6 +52,7 @@ impl App {
                 text: "Ask me to inspect, explain, or edit this project.".into(),
             }],
             model: model.into(),
+            thinking_level,
             status: String::new(),
             usage: String::new(),
             scroll_from_bottom: 0,
@@ -85,6 +87,14 @@ impl App {
     fn scroll_to_bottom(&mut self) {
         self.scroll_from_bottom = 0;
     }
+
+    fn cycle_thinking_level(&mut self) {
+        let index = THINKING_LEVELS
+            .iter()
+            .position(|level| *level == self.thinking_level)
+            .map_or(0, |index| (index + 1) % THINKING_LEVELS.len());
+        self.thinking_level = THINKING_LEVELS[index];
+    }
 }
 
 pub async fn run(agent: Agent) -> Result<()> {
@@ -110,11 +120,12 @@ enum UiEvent {
 
 async fn agent_task(
     mut agent: Agent,
-    mut prompts: mpsc::UnboundedReceiver<String>,
+    mut prompts: mpsc::UnboundedReceiver<(String, &'static str)>,
     mut cancel: mpsc::UnboundedReceiver<()>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
-    while let Some(prompt) = prompts.recv().await {
+    while let Some((prompt, thinking_level)) = prompts.recv().await {
+        agent.thinking_level = thinking_level;
         while cancel.try_recv().is_ok() {}
 
         let checkpoint = agent.history_len();
@@ -138,7 +149,7 @@ async fn agent_task(
 }
 
 async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
-    let mut app = App::new(&agent.model);
+    let mut app = App::new(&agent.model, agent.thinking_level);
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
     }
@@ -159,8 +170,8 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     None => break Ok(()),
                 };
                 let quit = handle_input(event, &mut app, |action| match action {
-                    Action::Submit(prompt) => {
-                        let _ = prompt_tx.send(prompt);
+                    Action::Submit(prompt, thinking_level) => {
+                        let _ = prompt_tx.send((prompt, thinking_level));
                     }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
@@ -184,7 +195,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
 }
 
 enum Action {
-    Submit(String),
+    Submit(String, &'static str),
     Cancel,
 }
 
@@ -210,6 +221,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         }
         (KeyCode::Esc, _) => return true,
         (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => return true,
+        (KeyCode::BackTab, _) => app.cycle_thinking_level(),
         (KeyCode::Up, _) => app.scroll_up(1),
         (KeyCode::Down, _) => app.scroll_down(1),
         (KeyCode::PageUp, _) => app.scroll_up(app.page_size),
@@ -222,7 +234,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.push(Role::User, prompt.clone());
             app.status = "thinking".into();
             app.busy = true;
-            act(Action::Submit(prompt));
+            act(Action::Submit(prompt, app.thinking_level));
         }
         (KeyCode::Backspace, _) => {
             app.input.pop();
@@ -340,7 +352,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::raw(format!(" {}", app.model)),
+            Span::raw(format!(" {} • {}", app.model, app.thinking_level)),
             Span::raw(if app.usage.is_empty() {
                 "".into()
             } else {
