@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{Result, bail};
+use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
 mod context;
@@ -371,10 +371,9 @@ impl Agent {
         let prompt = skills::expand_command(prompt, &self.skills.skills)?;
         let checkpoint = self.messages.len();
         let result = self.run(&prompt, images, on_event).await;
-        if result.is_err() {
+        if let Err(error) = result {
             self.discard_from(cancel_point(&self.messages, checkpoint), "error", false);
-            self.session.save(&self.messages)?;
-            return result;
+            return Err(self.save_after_failure(error));
         }
         self.session.save(&self.messages)
     }
@@ -394,11 +393,20 @@ impl Agent {
     pub async fn compact(&mut self, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
         let end = self.messages.len();
         let result = self.compact_history(end, &mut on_event).await;
-        if result.is_err() {
+        if let Err(error) = result {
             self.discard_from(self.messages.len(), "error", false);
+            return Err(self.save_after_failure(error));
         }
-        self.session.save(&self.messages)?;
-        result
+        self.session.save(&self.messages)
+    }
+
+    /// Saves the session after `error` stopped a prompt or compaction. A save
+    /// that also fails is reported after `error`, which stays visible.
+    fn save_after_failure(&mut self, error: anyhow::Error) -> anyhow::Error {
+        match self.session.save(&self.messages) {
+            Ok(()) => error,
+            Err(save_error) => anyhow!("{error:#}; failed to save session: {save_error:#}"),
+        }
     }
 
     fn context_full(&self) -> bool {
@@ -649,6 +657,18 @@ mod tests {
         assert_eq!(text, "hello");
         assert_eq!(api.requests().await.len(), 2);
         assert!(notices.iter().any(|notice| notice.contains("retrying in")));
+    }
+
+    #[tokio::test]
+    async fn reports_why_a_prompt_failed_when_saving_the_session_also_fails() {
+        let api = MockApi::start(vec![Reply::BadRequest("prompt is too long".into())]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        // A session file in a folder that does not exist cannot be written.
+        agent.session.id = format!("{}/missing", agent.session.id);
+        let error = agent.prompt("hi", &[], |_| {}).await.unwrap_err();
+        let message = error.to_string();
+        assert!(message.contains("prompt is too long"), "{message}");
+        assert!(message.contains("failed to save session"), "{message}");
     }
 
     #[tokio::test]
