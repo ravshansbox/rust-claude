@@ -1,2 +1,3 @@
-- Commit after every self-contained small fix
+- Commit after every self-contained small fix.
+- See staged files before commit.
 - Ask questions as numbered lists with lettered options, mark the recommended one.
