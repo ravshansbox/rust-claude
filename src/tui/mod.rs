@@ -484,7 +484,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
             }
         }
     };
-    worker.abort();
+    drop(request_tx);
+    let _ = cancel_tx.send(());
+    let _ = worker.await;
     result
 }
 
