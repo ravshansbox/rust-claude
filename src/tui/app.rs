@@ -225,9 +225,7 @@ impl App {
     }
 
     pub(super) fn load_history(&mut self, path: Option<PathBuf>) {
-        let folder = std::env::current_dir()
-            .map(|folder| folder.display().to_string())
-            .unwrap_or_default();
+        let folder = crate::session::current_folder();
         self.prompt_history = path
             .as_deref()
             .map(|path| history::load_folder(path, &folder))
