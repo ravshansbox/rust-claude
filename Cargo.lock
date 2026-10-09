@@ -2263,6 +2263,7 @@ dependencies = [
  "terminal-colorsaurus",
  "tokio",
  "tui-markdown",
+ "unicode-segmentation",
  "unicode-width",
  "yaml_serde",
 ]
