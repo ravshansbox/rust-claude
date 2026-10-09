@@ -77,6 +77,8 @@ Environment variables take priority over the settings file.
 
 rust-claude adds `AGENTS.md` from your home folder and from the current directory to the system prompt.
 
+The system prompt tells the model to put questions to the user in bold.
+
 ## Sessions
 
 Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
