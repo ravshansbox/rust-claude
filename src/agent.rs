@@ -19,6 +19,7 @@ const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude
 const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running in a terminal.
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
+Prefer edit and write over bash for changing files.
 Put questions to the user in bold."#;
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
