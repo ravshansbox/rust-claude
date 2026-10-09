@@ -11,6 +11,7 @@ use crate::{
 };
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
+const MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=1000";
 const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running in a terminal.
 Use your tools to inspect and change the project in the current working directory.
@@ -139,6 +140,29 @@ impl Agent {
         self.session = session;
         self.messages = messages.clone();
         Ok(messages)
+    }
+
+    pub async fn list_models(&mut self) -> Result<Vec<String>> {
+        let token = self.credentials.access_token(&self.http).await?;
+        let response = self
+            .http
+            .get(MODELS_URL)
+            .bearer_auth(token)
+            .header("anthropic-version", "2023-06-01")
+            .header("anthropic-beta", "oauth-2025-04-20")
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            bail!("{status}: {}", response.text().await?);
+        }
+        let body: Value = response.json().await?;
+        Ok(body["data"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|model| model["id"].as_str().map(str::to_string))
+            .collect())
     }
 
     pub fn new_session(&mut self) -> Result<()> {
