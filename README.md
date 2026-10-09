@@ -90,6 +90,7 @@ Changing the model or thinking level in the interface saves only the setting you
 rust-claude adds `AGENTS.md` from your home folder and from the current directory to the system prompt.
 
 The system prompt tells the model to put questions to the user in bold.
+It also tells the model to prefer `edit` and `write` over `bash` for changing files.
 
 ## Sessions
 
