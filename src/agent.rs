@@ -119,6 +119,20 @@ impl Usage {
         })
     }
 
+    fn update_from_response(&mut self, value: &Value) {
+        let fields = [
+            (&mut self.input, "input_tokens"),
+            (&mut self.output, "output_tokens"),
+            (&mut self.cache_read, "cache_read_input_tokens"),
+            (&mut self.cache_write, "cache_creation_input_tokens"),
+        ];
+        for (field, key) in fields {
+            if let Some(count) = value[key].as_u64() {
+                *field = count;
+            }
+        }
+    }
+
     fn from_json(value: &Value) -> Self {
         Self {
             input: value["input"].as_u64().unwrap_or(0),
@@ -551,15 +565,7 @@ impl Agent {
                 let event: Value = serde_json::from_str(data)?;
                 match event["type"].as_str().unwrap_or_default() {
                     "message_start" => {
-                        let message_usage = &event["message"]["usage"];
-                        usage.input = message_usage["input_tokens"].as_u64().unwrap_or(0);
-                        usage.output = message_usage["output_tokens"].as_u64().unwrap_or(0);
-                        usage.cache_read = message_usage["cache_read_input_tokens"]
-                            .as_u64()
-                            .unwrap_or(0);
-                        usage.cache_write = message_usage["cache_creation_input_tokens"]
-                            .as_u64()
-                            .unwrap_or(0);
+                        usage.update_from_response(&event["message"]["usage"]);
                         self.pending_usage = usage;
                     }
                     "content_block_start" => {
@@ -572,28 +578,23 @@ impl Agent {
                         let Some(block) = content.last_mut() else {
                             continue;
                         };
-                        match delta["type"].as_str().unwrap_or_default() {
-                            "text_delta" => {
-                                let text = delta["text"].as_str().unwrap_or_default();
-                                let previous = block["text"].as_str().unwrap_or_default();
-                                block["text"] = json!(format!("{previous}{text}"));
-                                on_event(AgentEvent::Text(text.into()));
-                            }
-                            "thinking_delta" => {
-                                let thinking = delta["thinking"].as_str().unwrap_or_default();
-                                let previous = block["thinking"].as_str().unwrap_or_default();
-                                block["thinking"] = json!(format!("{previous}{thinking}"));
-                                on_event(AgentEvent::Thinking(thinking.into()));
-                            }
-                            "signature_delta" => {
-                                let signature = delta["signature"].as_str().unwrap_or_default();
-                                let previous = block["signature"].as_str().unwrap_or_default();
-                                block["signature"] = json!(format!("{previous}{signature}"));
-                            }
+                        let key = match delta["type"].as_str().unwrap_or_default() {
+                            "text_delta" => "text",
+                            "thinking_delta" => "thinking",
+                            "signature_delta" => "signature",
                             "input_json_delta" => {
                                 partial_json
                                     .push_str(delta["partial_json"].as_str().unwrap_or_default());
+                                continue;
                             }
+                            _ => continue,
+                        };
+                        let addition = delta[key].as_str().unwrap_or_default();
+                        let previous = block[key].as_str().unwrap_or_default();
+                        block[key] = json!(format!("{previous}{addition}"));
+                        match key {
+                            "text" => on_event(AgentEvent::Text(addition.into())),
+                            "thinking" => on_event(AgentEvent::Thinking(addition.into())),
                             _ => {}
                         }
                     }
@@ -613,21 +614,7 @@ impl Agent {
                             .as_str()
                             .unwrap_or_default()
                             .into();
-                        let delta_usage = &event["usage"];
-                        if let Some(input) = delta_usage["input_tokens"].as_u64() {
-                            usage.input = input;
-                        }
-                        if let Some(output) = delta_usage["output_tokens"].as_u64() {
-                            usage.output = output;
-                        }
-                        if let Some(cache_read) = delta_usage["cache_read_input_tokens"].as_u64() {
-                            usage.cache_read = cache_read;
-                        }
-                        if let Some(cache_write) =
-                            delta_usage["cache_creation_input_tokens"].as_u64()
-                        {
-                            usage.cache_write = cache_write;
-                        }
+                        usage.update_from_response(&event["usage"]);
                         self.pending_usage = usage;
                     }
                     "error" => bail!("{}", event["error"]),
