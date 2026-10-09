@@ -298,6 +298,10 @@ impl Agent {
         self.messages.len()
     }
 
+    pub fn take_renewed(&mut self) -> bool {
+        self.credentials.take_renewed()
+    }
+
     pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
         self.session.list_others()
     }
@@ -310,7 +314,7 @@ impl Agent {
     }
 
     pub async fn list_models(&mut self) -> Result<Vec<String>> {
-        let (token, _) = self.credentials.access_token(&self.http).await?;
+        let token = self.credentials.access_token(&self.http).await?;
         let response = self
             .http
             .get(MODELS_URL)
@@ -333,7 +337,7 @@ impl Agent {
     }
 
     pub async fn load_quota(&mut self) -> Result<()> {
-        let (token, _) = self.credentials.access_token(&self.http).await?;
+        let token = self.credentials.access_token(&self.http).await?;
         let response = self
             .http
             .get(USAGE_URL)
@@ -490,8 +494,8 @@ impl Agent {
         &mut self,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<(Vec<Value>, String, Usage)> {
-        let (token, renewed) = self.credentials.access_token(&self.http).await?;
-        if renewed {
+        let token = self.credentials.access_token(&self.http).await?;
+        if self.credentials.take_renewed() {
             on_event(AgentEvent::Notice("renewed sign-in token".into()));
         }
         let mut system = self.system_prompt();
