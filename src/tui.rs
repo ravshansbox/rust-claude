@@ -117,6 +117,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
 
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Esc, _) => break,
+            (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => break,
             (KeyCode::Up, _) => app.scroll_up(1),
             (KeyCode::Down, _) => app.scroll_down(1),
             (KeyCode::PageUp, _) => app.scroll_up(app.page_size),
