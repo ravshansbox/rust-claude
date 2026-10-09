@@ -259,11 +259,13 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 app.push(Role::Event, format!("{name} failed: {error}"));
             }
         }
-        UiEvent::Agent(AgentEvent::Usage { input, output }) => {
+        UiEvent::Agent(AgentEvent::Usage(usage)) => {
             app.usage = format!(
-                "{} in · {} out",
-                format_tokens(input),
-                format_tokens(output)
+                "{} in · {} cache read · {} cache write · {} out",
+                format_tokens(usage.input),
+                format_tokens(usage.cache_read),
+                format_tokens(usage.cache_write),
+                format_tokens(usage.output)
             );
         }
         UiEvent::Done(result) => {
