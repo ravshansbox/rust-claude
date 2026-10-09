@@ -200,7 +200,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 
 Press Ctrl+R to search earlier prompts. The search opens in a box above the input, with the conversation still visible above it. The box shows up to 10 prompts, with a scrollbar when there are more. Type to filter the list, ignoring case. The list has two tabs: **Folder** holds prompts sent from the current folder, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
 
-rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The **All** tab reads this file. At start-up, rust-claude loads the prompts sent from the current folder, so Up / Down and the **Folder** tab keep them after a restart or `/new`. Prompts sent before this file existed are not in it.
+In the interface, rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The **All** tab reads this file. At start-up, rust-claude loads the prompts sent from the current folder, so Up / Down and the **Folder** tab keep them after a restart or `/new`. Resuming a session, with `/resume` or `--continue`, also adds its prompts to Up / Down and the **Folder** tab for that run. Prompts sent in print mode or before this file existed are not in it.
 
 ## Keys
 
