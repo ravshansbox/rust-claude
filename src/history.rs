@@ -36,7 +36,26 @@ pub fn append(path: &Path, prompt: &str) -> Result<()> {
     Ok(())
 }
 
+pub fn load_folder(path: &Path, folder: &str) -> Vec<String> {
+    let mut prompts: Vec<String> = load_all(path)
+        .into_iter()
+        .filter(|entry| entry.folder == folder)
+        .map(|entry| entry.prompt)
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    prompts.retain(|prompt| seen.insert(prompt.clone()));
+    prompts.reverse();
+    prompts
+}
+
 pub fn load(path: &Path) -> Vec<Entry> {
+    let mut entries = load_all(path);
+    let mut seen = std::collections::HashSet::new();
+    entries.retain(|entry| seen.insert(entry.prompt.clone()));
+    entries
+}
+
+fn load_all(path: &Path) -> Vec<Entry> {
     let text = std::fs::read_to_string(path).unwrap_or_default();
     let mut entries: Vec<Entry> = Vec::new();
     for line in text.lines().rev() {
@@ -46,9 +65,6 @@ pub fn load(path: &Path) -> Vec<Entry> {
         let Some(prompt) = value["prompt"].as_str() else {
             continue;
         };
-        if entries.iter().any(|entry| entry.prompt == prompt) {
-            continue;
-        }
         entries.push(Entry {
             prompt: prompt.to_string(),
             folder: value["cwd"].as_str().unwrap_or_default().to_string(),

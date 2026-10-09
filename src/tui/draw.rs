@@ -247,7 +247,7 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
     let mut lines = vec![
         Line::from(vec![
             Span::from("Prompt history ").bold(),
-            tab(" Current ", !search.all),
+            tab(" Folder ", !search.all),
             Span::raw(" "),
             tab(" All ", search.all),
             Span::from(" (←→ tab, ↑↓ select, Enter edit, Esc cancel)").bold(),
@@ -396,6 +396,7 @@ mod tests {
         );
         let shown = screen(&mut app);
         assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains(" Folder "), "{shown}");
         assert!(shown.contains("prompt 14"), "{shown}");
         assert!(shown.contains("prompt 05"), "{shown}");
         assert!(!shown.contains("prompt 04"), "{shown}");

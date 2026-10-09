@@ -106,6 +106,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
         Role::Event,
         "Ask me to inspect, explain, or edit this project.",
     );
+    app.load_history(history::history_path());
     if !agent.messages().is_empty() {
         replay_messages(&mut app, agent.messages());
         app.push(Role::Event, "continued session");
@@ -115,7 +116,6 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let image_events = event_tx.clone();
     app.queue = agent.queue.clone();
-    app.history_file = history::history_path();
     let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
