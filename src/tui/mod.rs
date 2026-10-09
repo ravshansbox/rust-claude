@@ -4,7 +4,7 @@ mod render;
 mod status;
 
 use crate::{
-    agent::{Agent, AgentEvent, Stats, THINKING_LEVELS},
+    agent::{Agent, AgentEvent, Queue, Queued, Stats, THINKING_LEVELS, take_queued},
     clipboard,
     images::{self, Image},
     session::SessionSummary,
@@ -145,6 +145,7 @@ struct App {
     skills: Vec<Skill>,
     images: Vec<(usize, Image)>,
     image_count: usize,
+    queue: Queue,
 }
 
 #[derive(Clone, Copy)]
@@ -188,6 +189,7 @@ impl App {
             skills: Vec::new(),
             images: Vec::new(),
             image_count: 0,
+            queue: Queue::default(),
         };
         app.push(
             Role::Event,
@@ -336,11 +338,78 @@ impl App {
     }
 
     fn take_images(&mut self, prompt: &str) -> Vec<Image> {
+        self.take_numbered_images(prompt)
+            .into_iter()
+            .map(|(_, image)| image)
+            .collect()
+    }
+
+    fn take_numbered_images(&mut self, prompt: &str) -> Vec<(usize, Image)> {
         std::mem::take(&mut self.images)
             .into_iter()
             .filter(|(number, _)| prompt.contains(&image_marker(*number)))
-            .map(|(_, image)| image)
             .collect()
+    }
+
+    fn can_queue(&self) -> bool {
+        self.busy && (self.status == "working" || self.status == "compacting")
+    }
+
+    fn queue_prompt(&mut self) {
+        let prompt = std::mem::take(&mut self.input);
+        self.cursor = 0;
+        self.files = None;
+        self.history_index = None;
+        self.prompt_history.push(prompt.clone());
+        let images = self.take_numbered_images(&prompt);
+        if let Ok(mut queue) = self.queue.lock() {
+            queue.push(Queued { prompt, images });
+        }
+    }
+
+    fn queued_prompts(&self) -> Vec<String> {
+        self.queue
+            .lock()
+            .map(|queue| queue.iter().map(|queued| queued.prompt.clone()).collect())
+            .unwrap_or_default()
+    }
+
+    fn send_queued(&mut self) -> Option<(String, Vec<Image>)> {
+        let queued = take_queued(&self.queue);
+        if queued.is_empty() {
+            return None;
+        }
+        let prompt = queued
+            .iter()
+            .map(|queued| queued.prompt.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let images = queued
+            .into_iter()
+            .flat_map(|queued| queued.images)
+            .map(|(_, image)| image)
+            .collect();
+        self.push(Role::User, prompt.clone());
+        self.start("working");
+        Some((prompt, images))
+    }
+
+    fn restore_queued(&mut self) {
+        let queued = take_queued(&self.queue);
+        if queued.is_empty() {
+            return;
+        }
+        let mut parts: Vec<String> = Vec::new();
+        for queued in queued {
+            parts.push(queued.prompt);
+            self.images.extend(queued.images);
+        }
+        if !self.input.is_empty() {
+            parts.push(std::mem::take(&mut self.input));
+        }
+        self.input = parts.join("\n\n");
+        self.cursor = self.input.len();
+        self.input_changed();
     }
 
     fn start(&mut self, status: &str) {
@@ -579,6 +648,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let image_events = event_tx.clone();
+    app.queue = agent.queue.clone();
     let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
@@ -654,6 +724,11 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                 while let Some(event) = next {
                     handle_agent_event(event, &mut app);
                     next = event_rx.try_recv().ok();
+                }
+                if !app.busy
+                    && let Some((prompt, images)) = app.send_queued()
+                {
+                    let _ = request_tx.send(Request::Prompt(prompt, images, app.thinking_level));
                 }
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
             }
@@ -827,6 +902,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::PageDown, _) => app.scroll_down(app.page_size),
         (KeyCode::Home, _) => app.scroll_to_top(),
         (KeyCode::End, _) => app.scroll_to_bottom(),
+        (KeyCode::Enter, _)
+            if app.can_queue() && !app.input.trim().is_empty() && !app.input.starts_with('/') =>
+        {
+            app.queue_prompt();
+        }
         (KeyCode::Enter, _) if !app.busy && !app.input.trim().is_empty() => {
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
@@ -972,10 +1052,17 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
+        UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
-        UiEvent::Done(result) => app.finish(result, |_, ()| {}),
+        UiEvent::Done(result) => {
+            if result.is_err() {
+                app.restore_queued();
+            }
+            app.finish(result, |_, ()| {});
+        }
         UiEvent::Cancelled(result) => {
             app.push(Role::Event, "cancelled");
+            app.restore_queued();
             app.finish(result, |_, ()| {});
         }
         UiEvent::Sessions(result) => app.finish(result, |app, sessions| {
@@ -1157,6 +1244,10 @@ fn draw(frame: &mut Frame, app: &mut App) {
         lines.push(Line::default());
         let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
         lines.push(Line::from(format!("{frame} {}", app.status).dark_gray()));
+        for prompt in app.queued_prompts() {
+            let first_line = prompt.lines().next().unwrap_or_default();
+            lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
+        }
     }
 
     let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
@@ -1336,6 +1427,64 @@ mod tests {
         assert_eq!(checked.as_deref(), Some("other"));
         assert_eq!(app.model, "model");
         assert!(app.busy);
+    }
+
+    fn queue_while_working(app: &mut App, prompt: &str) {
+        app.busy = true;
+        app.status = "working".into();
+        handle_input(Event::Paste(prompt.into()), app, |_| {});
+        let mut submitted = false;
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), app, |action| {
+            submitted |= matches!(action, Action::Submit(..));
+        });
+        assert!(!submitted);
+    }
+
+    #[test]
+    fn queues_prompts_while_working_and_sends_them_when_done() {
+        let mut app = new_app();
+        queue_while_working(&mut app, "first");
+        queue_while_working(&mut app, "second");
+        assert!(app.input.is_empty());
+        assert_eq!(app.queued_prompts(), ["first", "second"]);
+        handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+        let (prompt, images) = app.send_queued().unwrap();
+        assert_eq!(prompt, "first\n\nsecond");
+        assert!(images.is_empty());
+        assert!(app.busy);
+        assert!(app.queued_prompts().is_empty());
+        assert_eq!(app.messages.last().unwrap().text, "first\n\nsecond");
+    }
+
+    #[test]
+    fn does_not_queue_commands() {
+        let mut app = new_app();
+        app.busy = true;
+        app.status = "working".into();
+        handle_input(Event::Paste("/new".into()), &mut app, |_| {});
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        assert_eq!(app.input, "/new");
+        assert!(app.queued_prompts().is_empty());
+    }
+
+    #[test]
+    fn shows_queued_prompt_when_the_agent_adds_it() {
+        let mut app = new_app();
+        handle_agent_event(UiEvent::Agent(AgentEvent::Queued("next".into())), &mut app);
+        let last = app.messages.last().unwrap();
+        assert!(matches!(last.role, Role::User));
+        assert_eq!(last.text, "next");
+    }
+
+    #[test]
+    fn restores_queued_prompts_when_cancelled() {
+        let mut app = new_app();
+        queue_while_working(&mut app, "first");
+        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
+        handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
+        assert_eq!(app.input, "first\n\ndraft");
+        assert!(app.queued_prompts().is_empty());
+        assert!(app.send_queued().is_none());
     }
 
     #[test]

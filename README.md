@@ -70,6 +70,7 @@ Status line:
 Input and editing:
 
 - Multi-line input with Shift+Enter or Alt+Enter
+- Prompts queued while the agent works
 - Prompt history with Up and Down
 - Up and Down move between wrapped input rows
 - Move and delete by word
@@ -193,7 +194,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 
 | Key | Action |
 | --- | --- |
-| Enter | Send prompt |
+| Enter | Send prompt, or queue it while the agent works |
 | Shift+Enter / Alt+Enter | Add a new line |
 | Esc | Cancel the running prompt, or quit when idle |
 | Ctrl+C | Clear input, or quit when input is empty |
@@ -212,6 +213,12 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 While a reply streams, the view follows new text only when it is scrolled to the bottom. If you scroll up, the view stays where it is.
 
 Shift+Enter works in terminals that support the kitty keyboard protocol, such as kitty, WezTerm, Ghostty and iTerm2. Other terminals send it as Enter, so use Alt+Enter there.
+
+## Queued prompts
+
+While the agent works, Enter queues the prompt instead of sending it. Queued prompts show below the spinner. After the next round of tool calls, rust-claude adds them to the conversation, so the model reads them before it carries on. If the reply ends first, they go out together as a new prompt. Commands such as `/new` are not queued.
+
+If you cancel with Esc, or the prompt fails, the queued prompts go back into the input so you can edit or resend them.
 
 ## Status line
 
