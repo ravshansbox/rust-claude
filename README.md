@@ -276,7 +276,7 @@ Options take priority over the settings file and apply to that run only. They wo
 
 An unknown thinking level prints a warning to standard error and uses `medium`.
 
-Changing the model or thinking level in the interface saves only the setting you changed.
+Changing the model or thinking level in the interface saves only the setting you changed. If `settings.json` is not valid JSON, rust-claude uses the defaults, and changing a setting shows an error instead of replacing the file, so fix or delete it first.
 
 ## Instructions
 
