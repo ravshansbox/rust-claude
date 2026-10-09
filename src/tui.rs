@@ -383,17 +383,14 @@ fn draw(frame: &mut Frame, app: &mut App) {
     );
 }
 
-const USER_MESSAGE_FOREGROUND: Color = Color::Rgb(220, 222, 226);
-const USER_MESSAGE_BACKGROUND: Color = Color::Rgb(33, 59, 73);
-
 fn thinking_colour(level: &str) -> Color {
     match level {
-        "low" => Color::Rgb(84, 137, 164),
-        "medium" => Color::Rgb(97, 133, 204),
-        "high" => Color::Rgb(151, 118, 229),
-        "xhigh" => Color::Rgb(222, 84, 193),
-        "max" => Color::Rgb(254, 84, 98),
-        _ => Color::Rgb(118, 129, 134),
+        "low" => Color::Green,
+        "medium" => Color::Cyan,
+        "high" => Color::Blue,
+        "xhigh" => Color::Magenta,
+        "max" => Color::Red,
+        _ => Color::Reset,
     }
 }
 
@@ -413,12 +410,7 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     rows.into_iter()
         .map(|row| {
             let padding = content_width.saturating_sub(row.chars().count()) + 1;
-            Line::from(format!(" {row}{}", " ".repeat(padding)))
-                .style(
-                    Style::new()
-                        .fg(USER_MESSAGE_FOREGROUND)
-                        .bg(USER_MESSAGE_BACKGROUND),
-                )
+            Line::from(format!(" {row}{}", " ".repeat(padding))).style(Style::new().reversed())
         })
         .collect()
 }
