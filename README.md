@@ -162,7 +162,7 @@ rust-claude -p "what is wrong in this screenshot?" --image error.png
 
 In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal.
 
-Press Ctrl+C in print mode to stop. rust-claude stops running commands and MCP servers, saves the session with the prompt marked as cancelled, prints `cancelled` to standard error and exits with status 130.
+Press Ctrl+C in print mode to stop. rust-claude stops running commands and MCP servers, saves the session with the prompt marked as cancelled, prints `cancelled` to standard error and exits with status 130. Closing the terminal (SIGHUP) or `kill` (SIGTERM) stops it the same way, with status 129 or 143. In the interactive mode they quit as if you had pressed Ctrl+D, so running commands and MCP servers are stopped too.
 
 Choose the model and thinking level for one run with `--model <id>` and `--thinking <level>`. See [Settings](#settings).
 

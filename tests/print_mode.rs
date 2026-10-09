@@ -142,6 +142,25 @@ fn ctrl_c_in_print_mode_stops_started_processes() {
 }
 
 #[test]
+fn hangup_and_terminate_in_print_mode_stop_started_processes() {
+    for (name, code) in [("HUP", 129), ("TERM", 143)] {
+        let setup = Setup::new(&format!("signal-{name}"));
+        setup.write_sign_in(&setup.home.join(".rust-claude"));
+        setup.write_hanging_server(&setup.project.join(".rust-claude"));
+
+        let child = setup.run(&["-p", "hello"]);
+        let started = setup.server_started();
+        let output = signal(child, &format!("-{name}"));
+        let server_stopped = stop_server(&setup.server_pid());
+        let _ = std::fs::remove_dir_all(&setup.root);
+
+        assert!(started, "{name}");
+        assert_eq!(output.status.code(), Some(code), "{name}");
+        assert!(server_stopped, "{name}");
+    }
+}
+
+#[test]
 fn reads_sign_in_and_mcp_servers_from_config_dir() {
     let setup = Setup::new("config-dir");
     let config_dir = setup.root.join("config");
