@@ -132,6 +132,7 @@ struct App {
     busy: bool,
     picker: Option<Picker>,
     command_selected: usize,
+    commands_dismissed: bool,
 }
 
 #[derive(Clone, Copy)]
@@ -163,6 +164,7 @@ impl App {
             busy: false,
             picker: None,
             command_selected: 0,
+            commands_dismissed: false,
         };
         app.push(
             Role::Event,
@@ -196,6 +198,13 @@ impl App {
 
     fn scroll_to_bottom(&mut self) {
         self.scroll_from_bottom = 0;
+    }
+
+    fn visible_commands(&self) -> Vec<(&'static str, &'static str)> {
+        if self.commands_dismissed {
+            return Vec::new();
+        }
+        command_matches(&self.input)
     }
 
     fn cycle_thinking_level(&mut self) {
@@ -420,7 +429,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         return false;
     }
 
-    let matches = command_matches(&app.input);
+    let matches = app.visible_commands();
     if !matches.is_empty() {
         app.command_selected = app.command_selected.min(matches.len() - 1);
         match key.code {
@@ -434,6 +443,10 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             }
             KeyCode::Enter if !app.busy => {
                 app.input = matches[app.command_selected].0.to_string();
+            }
+            KeyCode::Esc => {
+                app.commands_dismissed = true;
+                return false;
             }
             _ => {}
         }
@@ -525,10 +538,12 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Backspace, _) => {
             app.input.pop();
             app.command_selected = 0;
+            app.commands_dismissed = false;
         }
         (KeyCode::Char(character), _) => {
             app.input.push(character);
             app.command_selected = 0;
+            app.commands_dismissed = false;
         }
         _ => {}
     }
@@ -737,7 +752,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_widget(conversation.scroll((scroll, 0)), chat);
     }
 
-    let matches = command_matches(&app.input);
+    let matches = app.visible_commands();
     if !matches.is_empty() {
         let height = (matches.len() as u16).min(chat.height);
         let area = Rect {
