@@ -91,7 +91,9 @@ The system prompt tells the model to put questions to the user in bold.
 
 Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
 
-Quitting while a prompt runs cancels it and saves the session first. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
+Quitting while a prompt runs cancels it and saves the session first.
+
+A cancelled prompt stays in the session, so the model sees it in the next request. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
 ## Tools
 

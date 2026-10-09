@@ -307,6 +307,13 @@ fn total_usage(messages: &[Value]) -> Usage {
     total
 }
 
+fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
+    messages[checkpoint..]
+        .iter()
+        .rposition(|message| message["role"] == "user" && message["content"].is_array())
+        .map_or(checkpoint + 1, |index| checkpoint + index + 1)
+}
+
 pub enum AgentEvent {
     Text(String),
     Thinking(String),
@@ -455,11 +462,12 @@ impl Agent {
         system
     }
 
-    fn discard_from(&mut self, index: usize, stop_reason: &str) {
+    fn discard_from(&mut self, index: usize, stop_reason: &str, always_mark: bool) {
+        let index = index.min(self.messages.len());
         let mut lost = total_usage(&self.messages[index..]);
         lost.add(std::mem::take(&mut self.pending_usage));
         self.messages.truncate(index);
-        if lost.input + lost.output + lost.cache_read + lost.cache_write > 0 {
+        if always_mark || lost.input + lost.output + lost.cache_read + lost.cache_write > 0 {
             self.messages.push(json!({
                 "role": "assistant",
                 "stop_reason": stop_reason,
@@ -470,13 +478,7 @@ impl Agent {
     }
 
     pub fn cancel(&mut self, checkpoint: usize) -> Result<()> {
-        let finished = self.messages[checkpoint..]
-            .iter()
-            .rposition(|message| message["role"] == "user" && message["content"].is_array());
-        match finished {
-            Some(index) => self.discard_from(checkpoint + index + 1, "aborted"),
-            None => self.discard_from(checkpoint, "aborted"),
-        }
+        self.discard_from(cancel_point(&self.messages, checkpoint), "aborted", true);
         self.session.save(&self.messages)
     }
 
@@ -484,7 +486,7 @@ impl Agent {
         let checkpoint = self.messages.len();
         let result = self.run(prompt, on_event).await;
         if result.is_err() {
-            self.discard_from(checkpoint, "error");
+            self.discard_from(checkpoint, "error", false);
             self.session.save(&self.messages)?;
             return result;
         }
@@ -674,9 +676,24 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Quota, cache_hit_rate, context_tokens, parse_timestamp, tokens_per_second,
+        Quota, cache_hit_rate, cancel_point, context_tokens, parse_timestamp, tokens_per_second,
         with_cache_breakpoint,
     };
+
+    #[test]
+    fn keeps_prompt_and_finished_tool_rounds_on_cancel() {
+        let prompt = json!({ "role": "user", "content": "hello" });
+        let tool_use = json!({ "role": "assistant", "content": [{ "type": "tool_use" }] });
+        let tool_result = json!({ "role": "user", "content": [{ "type": "tool_result" }] });
+        assert_eq!(cancel_point(std::slice::from_ref(&prompt), 0), 1);
+        assert_eq!(
+            cancel_point(
+                &[prompt.clone(), tool_use.clone(), tool_result, tool_use],
+                0
+            ),
+            3
+        );
+    }
 
     #[test]
     fn drops_empty_assistant_replies_from_requests() {
