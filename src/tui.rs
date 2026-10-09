@@ -117,6 +117,7 @@ struct App {
 #[derive(Clone, Copy)]
 enum PickerKind {
     Session,
+    Model,
 }
 
 struct Picker {
@@ -206,6 +207,7 @@ enum UiEvent {
     Sessions(Result<Vec<SessionSummary>>),
     Resumed(Result<Vec<Value>>),
     NewSession(Result<()>),
+    Models(Result<Vec<String>>),
 }
 
 enum Request {
@@ -214,6 +216,7 @@ enum Request {
     Resume(String),
     SetModel(String),
     NewSession,
+    ListModels,
 }
 
 async fn agent_task(
@@ -239,6 +242,10 @@ async fn agent_task(
             }
             Request::NewSession => {
                 let _ = events.send(UiEvent::NewSession(agent.new_session()));
+                continue;
+            }
+            Request::ListModels => {
+                let _ = events.send(UiEvent::Models(agent.list_models().await));
                 continue;
             }
         };
@@ -308,6 +315,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::NewSession => {
                         let _ = request_tx.send(Request::NewSession);
                     }
+                    Action::ListModels => {
+                        let _ = request_tx.send(Request::ListModels);
+                    }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
                     }
@@ -336,6 +346,7 @@ enum Action {
     Resume(String),
     SetModel(String),
     NewSession,
+    ListModels,
     Cancel,
 }
 
@@ -366,6 +377,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         app.status = "resuming".into();
                         app.busy = true;
                         act(Action::Resume(value));
+                    }
+                    PickerKind::Model => {
+                        app.model = value.clone();
+                        app.push(Role::Event, format!("model: {value}"));
+                        act(Action::SetModel(value));
                     }
                 }
             }
@@ -430,7 +446,9 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                         ),
                     },
                     "/model" if argument.is_empty() => {
-                        app.push(Role::Event, format!("model: {}", app.model));
+                        app.status = "loading models".into();
+                        app.busy = true;
+                        act(Action::ListModels);
                     }
                     "/model" => {
                         app.model = argument.to_string();
@@ -527,6 +545,28 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                     app.messages.clear();
                     app.usage.clear();
                     app.push(Role::Event, "new session");
+                }
+                Err(error) => app.push(Role::Event, format!("error: {error}")),
+            }
+            app.busy = false;
+        }
+        UiEvent::Models(result) => {
+            match result {
+                Ok(models) if models.is_empty() => app.push(Role::Event, "no models available"),
+                Ok(models) => {
+                    let selected = models
+                        .iter()
+                        .position(|model| *model == app.model)
+                        .unwrap_or_default();
+                    app.picker = Some(Picker {
+                        kind: PickerKind::Model,
+                        title: "Select model",
+                        items: models
+                            .into_iter()
+                            .map(|model| (model.clone(), model))
+                            .collect(),
+                        selected,
+                    });
                 }
                 Err(error) => app.push(Role::Event, format!("error: {error}")),
             }
