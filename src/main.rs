@@ -41,12 +41,20 @@ async fn main() -> Result<()> {
         return tui::run(agent).await;
     };
     let mut stdout = std::io::stdout();
+    let mut printed = false;
+    let mut separate = false;
     agent
         .prompt(&prompt, |event| match event {
             agent::AgentEvent::Text(text) => {
+                if separate {
+                    let _ = write!(stdout, "\n\n");
+                    separate = false;
+                }
                 let _ = write!(stdout, "{text}");
                 let _ = stdout.flush();
+                printed = true;
             }
+            agent::AgentEvent::ToolStart { .. } => separate = printed,
             agent::AgentEvent::Notice(text) => eprintln!("\n{text}"),
             _ => {}
         })
