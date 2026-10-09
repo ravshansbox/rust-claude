@@ -24,6 +24,8 @@ use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
+const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
@@ -125,6 +127,7 @@ struct App {
     model: String,
     thinking_level: &'static str,
     status: String,
+    spinner_frame: usize,
     usage: String,
     scroll_from_bottom: u16,
     max_scroll: u16,
@@ -157,6 +160,7 @@ impl App {
             model: model.into(),
             thinking_level,
             status: String::new(),
+            spinner_frame: 0,
             usage: String::new(),
             scroll_from_bottom: 0,
             max_scroll: 0,
@@ -315,6 +319,8 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
     redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut spinner = tokio::time::interval(SPINNER_INTERVAL);
+    spinner.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut dirty = true;
 
     let result = loop {
@@ -322,6 +328,10 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
             _ = redraw.tick(), if dirty => {
                 terminal.draw(|frame| draw(frame, &mut app))?;
                 dirty = false;
+            }
+            _ = spinner.tick(), if app.busy => {
+                app.spinner_frame = app.spinner_frame.wrapping_add(1);
+                dirty = true;
             }
             event = terminal_events.next() => {
                 dirty = true;
@@ -536,7 +546,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                 return false;
             }
             app.push(Role::User, prompt.clone());
-            app.status = "thinking".into();
+            app.status = "working".into();
             app.busy = true;
             act(Action::Submit(prompt, app.thinking_level));
         }
@@ -739,7 +749,8 @@ fn draw(frame: &mut Frame, app: &mut App) {
     }
     if app.busy {
         lines.push(Line::default());
-        lines.push(Line::from(app.status.as_str().dark_gray()));
+        let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
+        lines.push(Line::from(format!("{frame} {}", app.status).dark_gray()));
     }
 
     let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
