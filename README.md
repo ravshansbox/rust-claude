@@ -309,7 +309,7 @@ A folder that holds `SKILL.md` is a skill, and rust-claude does not look inside 
 
 The system prompt lists each skill's name, description and file path. The model reads the full file with `read` when a task matches the description. Set `disable-model-invocation: true` in the frontmatter to leave a skill out of the system prompt.
 
-Type `/skill:name` to run a skill yourself. It sends the skill's instructions to the model, followed by any text after the name. The conversation shows `[skill] name` in place of the instructions. Tab completes skill commands and marks each one as `[global]` or `[project]`.
+Type `/skill:name` to run a skill yourself. It sends the skill's instructions to the model, followed by any text after the name. That text can start on the same line or on the next one. The conversation shows `[skill] name` in place of the instructions. Tab completes skill commands and marks each one as `[global]` or `[project]`.
 
 The skill name comes from `name` in the frontmatter, or from the folder name. Names should use lowercase letters, numbers and single hyphens, up to 64 characters. Descriptions can have up to 1,024 characters. A skill without a description does not load. If two skills share a name, the first one found wins. At start, the interface lists the loaded global skills, then the loaded project skills, and shows a warning for each problem. Global skills come from your home folder (places 3 and 4). Project skills come from the current directory and its parents (places 1 and 2).
 
