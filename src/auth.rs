@@ -153,9 +153,8 @@ impl Credentials {
 }
 
 async fn login(http: &reqwest::Client) -> Result<Credentials> {
-    let mut random = [0u8; 32];
-    getrandom::fill(&mut random).map_err(|error| anyhow::anyhow!("{error}"))?;
-    let verifier = URL_SAFE_NO_PAD.encode(random);
+    let verifier = random_token()?;
+    let state = random_token()?;
     let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
 
     let url = reqwest::Url::parse_with_params(
@@ -168,7 +167,7 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
             ("scope", SCOPES),
             ("code_challenge", challenge.as_str()),
             ("code_challenge_method", "S256"),
-            ("state", verifier.as_str()),
+            ("state", state.as_str()),
         ],
     )?;
 
@@ -178,13 +177,7 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
     let mut input = String::new();
     std::io::stdin().read_line(&mut input)?;
 
-    let (code, state) = match input.trim().split_once('#') {
-        Some((code, state)) => (code.to_string(), state.to_string()),
-        None => (input.trim().to_string(), verifier.clone()),
-    };
-    if state != verifier {
-        bail!("OAuth state mismatch");
-    }
+    let code = parse_pasted_code(&input, &state)?;
 
     request_tokens(
         http,
@@ -198,6 +191,25 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
         }),
     )
     .await
+}
+
+fn random_token() -> Result<String> {
+    let mut random = [0u8; 32];
+    getrandom::fill(&mut random).map_err(|error| anyhow::anyhow!("{error}"))?;
+    Ok(URL_SAFE_NO_PAD.encode(random))
+}
+
+/// Splits the `code#state` text the callback page shows and checks the
+/// state against the one we sent. The page always includes the state, so
+/// text without it was not copied whole.
+fn parse_pasted_code<'a>(input: &'a str, expected_state: &str) -> Result<&'a str> {
+    let Some((code, state)) = input.trim().split_once('#') else {
+        bail!("the pasted code has no #state part; paste the whole code shown after sign-in");
+    };
+    if state != expected_state {
+        bail!("OAuth state mismatch");
+    }
+    Ok(code)
 }
 
 async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentials> {
@@ -227,7 +239,7 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
 
 #[cfg(test)]
 mod tests {
-    use super::{Credentials, credentials_path};
+    use super::{Credentials, credentials_path, parse_pasted_code};
     use serde_json::json;
 
     /// Tests share one auth.json, so they take turns.
@@ -313,5 +325,21 @@ mod tests {
         assert_eq!(mode, 0o600);
         assert_eq!((saved.access.as_str(), saved.expires), ("new", 2));
         assert_eq!(leftovers, 0);
+    }
+
+    #[test]
+    fn accepts_a_pasted_code_with_the_state_we_sent() {
+        assert_eq!(parse_pasted_code(" abc#xyz\n", "xyz").unwrap(), "abc");
+    }
+
+    #[test]
+    fn rejects_a_pasted_code_with_another_state() {
+        assert!(parse_pasted_code("abc#other", "xyz").is_err());
+    }
+
+    #[test]
+    fn rejects_a_pasted_code_without_its_state() {
+        let error = parse_pasted_code("abc\n", "xyz").unwrap_err();
+        assert!(error.to_string().contains("whole code"), "{error}");
     }
 }
