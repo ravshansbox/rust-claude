@@ -24,6 +24,16 @@ pub(crate) fn text_reply(text: &str) -> Reply {
     ])
 }
 
+pub(crate) fn tool_reply(id: &str, name: &str, input: Value) -> Reply {
+    Reply::Events(vec![
+        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": id, "name": name, "input": input } }),
+        json!({ "type": "content_block_stop", "index": 0 }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        json!({ "type": "message_stop" }),
+    ])
+}
+
 /// A local stand-in for the Messages API. It answers each request with the
 /// next scripted reply and records the request bodies it received.
 pub(crate) struct MockApi {
@@ -139,4 +149,11 @@ pub(crate) fn remove_session(agent: &Agent) {
         let _ = std::fs::remove_file(sessions.join(format!("{}.jsonl", agent.session.id)));
         let _ = std::fs::remove_dir_all(sessions.join(&agent.session.id));
     }
+}
+
+pub(crate) fn session_file(agent: &Agent) -> std::path::PathBuf {
+    crate::config::dir()
+        .unwrap()
+        .join("sessions")
+        .join(format!("{}.jsonl", agent.session.id))
 }
