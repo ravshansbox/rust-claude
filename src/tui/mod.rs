@@ -779,6 +779,18 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
 }
 
 fn replay_messages(app: &mut App, messages: &[Value]) {
+    let errors: std::collections::HashMap<&str, &str> = messages
+        .iter()
+        .filter(|message| message["role"] == "user")
+        .flat_map(|message| message["content"].as_array().into_iter().flatten())
+        .filter(|block| block["type"] == "tool_result" && block["is_error"] == true)
+        .filter_map(|block| {
+            Some((
+                block["tool_use_id"].as_str()?,
+                block["content"].as_str().unwrap_or_default(),
+            ))
+        })
+        .collect();
     for message in messages {
         let role = message["role"].as_str().unwrap_or_default();
         if let Some(text) = message["content"].as_str() {
@@ -804,6 +816,9 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
                         tools::summary(name, &block["input"]),
                         tools::diff(name, &block["input"]),
                     );
+                    if let Some(error) = block["id"].as_str().and_then(|id| errors.get(id)) {
+                        app.push(Role::Event, format!("{name} failed: {error}"));
+                    }
                 }
                 ("user", "text") => {
                     let text = block["text"].as_str().unwrap_or_default();
@@ -1001,9 +1016,10 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, App, Role, handle_input, held_scroll_from_bottom};
+    use super::{Action, App, Role, handle_input, held_scroll_from_bottom, replay_messages};
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use serde_json::json;
 
     #[test]
     fn ignores_escape_while_loading_models() {
@@ -1230,6 +1246,36 @@ mod tests {
         assert_eq!(
             texts,
             ["read a.rs (2), b.rs", "read failed: missing", "read c.rs"]
+        );
+    }
+
+    #[test]
+    fn replays_failed_tool_calls() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        let read = |id: &str, path: &str| json!({ "type": "tool_use", "id": id, "name": "read", "input": { "path": path } });
+        let result = |id: &str, is_error: bool| json!({ "type": "tool_result", "tool_use_id": id, "content": "missing", "is_error": is_error });
+        replay_messages(
+            &mut app,
+            &[
+                json!({ "role": "assistant", "content": [read("1", "a.rs"), read("2", "b.rs"), read("3", "c.rs")] }),
+                json!({ "role": "user", "content": [result("1", false), result("2", true), result("3", false)] }),
+            ],
+        );
+        let texts: Vec<&str> = app.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            ["read a.rs, b.rs", "read failed: missing", "read c.rs"]
         );
     }
 }
