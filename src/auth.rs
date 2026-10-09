@@ -26,8 +26,9 @@ pub struct Credentials {
 }
 
 fn credentials_path() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME is not set")?;
-    Ok(PathBuf::from(home).join(".rust-claude").join("auth.json"))
+    Ok(crate::config::dir()
+        .context("HOME is not set")?
+        .join("auth.json"))
 }
 
 fn now_millis() -> u128 {

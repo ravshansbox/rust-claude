@@ -18,6 +18,7 @@ Command line:
 - `--image <path>` to send images in print mode
 - `-c` / `--continue` to continue the latest session in the current folder
 - Syntax-highlighted tool calls on standard error in print mode
+- `--config-dir <path>` to keep sign-in, settings, sessions and other files in another folder
 - Help with `-h` / `--help`
 
 Model and thinking:
@@ -172,6 +173,12 @@ rust-claude -c -p "now add tests"
 ```
 
 If no session in the folder can be continued, rust-claude stops with an error.
+
+Keep sign-in, settings, sessions, prompt history, skills and MCP config in another folder with `--config-dir <path>`. It works in the interface and in print mode. Wherever this README mentions `~/.rust-claude`, it means this folder when the option is given. `~/AGENTS.md` and `~/.agents/skills/` still come from your home folder.
+
+```sh
+rust-claude --config-dir ~/work/.rust-claude
+```
 
 Show help with `-h` or `--help`.
 

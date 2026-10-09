@@ -102,11 +102,8 @@ fn read_config(
 
 fn config_paths() -> Vec<(Scope, PathBuf)> {
     let mut paths = Vec::new();
-    if let Some(home) = std::env::var_os("HOME") {
-        paths.push((
-            Scope::Global,
-            PathBuf::from(home).join(".rust-claude").join("mcp.json"),
-        ));
+    if let Some(config_dir) = crate::config::dir() {
+        paths.push((Scope::Global, config_dir.join("mcp.json")));
     }
     paths.push((
         Scope::Project,

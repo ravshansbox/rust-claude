@@ -10,9 +10,8 @@ pub struct Settings {
 }
 
 fn settings_path() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME is not set")?;
-    Ok(PathBuf::from(home)
-        .join(".rust-claude")
+    Ok(crate::config::dir()
+        .context("HOME is not set")?
         .join("settings.json"))
 }
 
