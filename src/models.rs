@@ -69,12 +69,12 @@ const MODELS: &[Model] = &[
     },
     Model {
         id: "claude-sonnet-4-5",
-        context_window: 1_000_000,
+        context_window: 200_000,
         max_output: 64_000,
     },
     Model {
         id: "claude-sonnet-4-5-20250929",
-        context_window: 1_000_000,
+        context_window: 200_000,
         max_output: 64_000,
     },
     Model {
