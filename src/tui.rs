@@ -111,8 +111,8 @@ fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
             Span::styled(
                 format!(" {name} "),
                 Style::new()
-                    .fg(Color::Rgb(59, 63, 65))
-                    .bg(Color::Rgb(223, 231, 236)),
+                    .fg(Color::Rgb(62, 62, 62))
+                    .bg(Color::Rgb(230, 230, 230)),
             ),
             Span::raw(format!(" {rest}")),
         ]);
@@ -1010,11 +1010,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
         Paragraph::new(input_lines)
-            .block(
-                Block::default()
-                    .borders(Borders::TOP | Borders::BOTTOM)
-                    .border_style(thinking_colour(app.thinking_level)),
-            )
+            .block(Block::default().borders(Borders::TOP | Borders::BOTTOM))
             .scroll((input_scroll, 0)),
         input,
     );
@@ -1080,17 +1076,6 @@ fn time_ago(time: SystemTime) -> String {
     }
 }
 
-fn thinking_colour(level: &str) -> Color {
-    match level {
-        "low" => Color::Green,
-        "medium" => Color::Cyan,
-        "high" => Color::Blue,
-        "xhigh" => Color::Magenta,
-        "max" => Color::Red,
-        _ => Color::Reset,
-    }
-}
-
 fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     let content_width = width.saturating_sub(2).max(1);
     let mut rows = vec![String::new()];
@@ -1107,8 +1092,8 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
             let padding = content_width.saturating_sub(row.width()) + 1;
             Line::from(format!(" {row}{}", " ".repeat(padding))).style(
                 Style::new()
-                    .fg(Color::Rgb(59, 63, 65))
-                    .bg(Color::Rgb(223, 231, 236)),
+                    .fg(Color::Rgb(62, 62, 62))
+                    .bg(Color::Rgb(230, 230, 230)),
             )
         })
         .collect()
