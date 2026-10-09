@@ -98,7 +98,12 @@ impl Session {
             lines.push_str(&serde_json::to_string(&drop_mismatched_thinking_line())?);
             lines.push('\n');
         }
-        file.write_all(lines.as_bytes())?;
+        let length = file.metadata()?.len();
+        if let Err(error) = file.write_all(lines.as_bytes()) {
+            // Remove a partly written line, so the next save starts on a new line.
+            let _ = file.set_len(length);
+            return Err(error.into());
+        }
         self.saved += new_messages.len();
         self.drops_mismatched_thinking_unsaved = false;
         Ok(())
@@ -166,13 +171,18 @@ impl Session {
     }
 
     pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
-        let lines = read_lines(&sessions_directory()?.join(format!("{id}.jsonl")))?;
-        let marker = drop_mismatched_thinking_line();
-        let drops_mismatched_thinking = lines.contains(&marker);
-        let messages: Vec<Value> = lines
-            .into_iter()
-            .filter(|line| !is_header(line) && *line != marker)
-            .collect();
+        let path = sessions_directory()?.join(format!("{id}.jsonl"));
+        let SavedSession {
+            messages,
+            length,
+            drops_mismatched_thinking,
+        } = read_messages(&path)?;
+        // Remove what a crash left after the last whole round, so the next
+        // save starts on a new line.
+        let file = OpenOptions::new().write(true).open(&path)?;
+        if file.metadata()?.len() > length {
+            file.set_len(length)?;
+        }
         let session = Session {
             id: id.to_string(),
             saved: messages.len(),
@@ -294,13 +304,61 @@ fn read_preview(path: &Path) -> Result<String> {
     Ok(String::new())
 }
 
-fn read_lines(path: &Path) -> Result<Vec<Value>> {
-    std::fs::read_to_string(path)?
-        .lines()
-        .filter(|line| !line.trim().is_empty())
-        .map(serde_json::from_str)
-        .collect::<Result<Vec<Value>, _>>()
-        .with_context(|| format!("reading {}", path.display()))
+struct SavedSession {
+    messages: Vec<Value>,
+    /// Length of the file up to the end of the last kept line.
+    length: u64,
+    drops_mismatched_thinking: bool,
+}
+
+/// Reads the messages before the first damaged line, such as a line a crash
+/// cut short.
+fn read_messages(path: &Path) -> Result<SavedSession> {
+    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    let marker = drop_mismatched_thinking_line();
+    let mut messages = Vec::new();
+    let mut starts = Vec::new();
+    let mut marker_at = None;
+    let mut length = 0;
+    let mut damaged = false;
+    for line in bytes.split_inclusive(|byte| *byte == b'\n') {
+        if line.trim_ascii().is_empty() {
+            length += line.len();
+            continue;
+        }
+        match serde_json::from_slice::<Value>(line) {
+            Ok(value) if line.ends_with(b"\n") => {
+                if value == marker {
+                    marker_at.get_or_insert(length);
+                } else if !is_header(&value) {
+                    starts.push(length);
+                    messages.push(value);
+                }
+                length += line.len();
+            }
+            _ => {
+                damaged = true;
+                break;
+            }
+        }
+    }
+    // The API rejects tool calls without results, which a round cut short leaves.
+    if damaged && messages.last().is_some_and(has_tool_calls) {
+        messages.pop();
+        length = starts.pop().unwrap_or_default();
+    }
+    Ok(SavedSession {
+        messages,
+        length: length as u64,
+        drops_mismatched_thinking: marker_at.is_some_and(|at| at < length),
+    })
+}
+
+fn has_tool_calls(message: &Value) -> bool {
+    message["role"] == "assistant"
+        && message["content"]
+            .as_array()
+            .is_some_and(|blocks| blocks.iter().any(|block| block["type"] == "tool_use"))
 }
 
 #[cfg(test)]
@@ -406,6 +464,61 @@ mod tests {
         assert!(!path.starts_with(home.join(".rust-claude")));
         assert_eq!(loaded.unwrap().1, messages);
         assert_eq!(folder.unwrap(), Some(current_folder()));
+    }
+
+    fn append_to_file(path: &std::path::Path, bytes: &[u8]) {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, bytes))
+            .unwrap();
+    }
+
+    #[test]
+    fn resumes_messages_saved_before_a_line_cut_short() {
+        let mut session = Session::new().unwrap();
+        let messages = vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] }),
+        ];
+        session.save(&messages).unwrap();
+        let path = sessions_directory()
+            .unwrap()
+            .join(format!("{}.jsonl", session.id));
+        // A line cut short in the middle of the two bytes of "é".
+        append_to_file(&path, b"{\"role\":\"user\",\"content\":\"caf\xc3");
+        let mut more = messages.clone();
+        more.push(json!({ "role": "user", "content": "again" }));
+        let resumed = Session::load(&session.id).and_then(|(mut resumed, loaded)| {
+            resumed.save(&more)?;
+            Ok(loaded)
+        });
+        let reloaded = Session::load(&session.id);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(resumed.unwrap(), messages);
+        assert_eq!(reloaded.unwrap().1, more);
+    }
+
+    #[test]
+    fn drops_tool_call_whose_results_were_cut_short() {
+        let mut session = Session::new().unwrap();
+        let messages = vec![
+            json!({ "role": "user", "content": "run it" }),
+            json!({ "role": "assistant", "content": [
+                { "type": "tool_use", "id": "t1", "name": "bash", "input": {} },
+            ] }),
+        ];
+        session.save(&messages).unwrap();
+        let path = sessions_directory()
+            .unwrap()
+            .join(format!("{}.jsonl", session.id));
+        append_to_file(
+            &path,
+            b"{\"role\":\"user\",\"content\":[{\"type\":\"tool_res",
+        );
+        let loaded = Session::load(&session.id);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(loaded.unwrap().1, messages[..1]);
     }
 
     #[test]
