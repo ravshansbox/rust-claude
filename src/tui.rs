@@ -1025,18 +1025,16 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     let content_width = width.saturating_sub(2).max(1);
     let mut rows = vec![String::new()];
     for line in text.lines() {
-        let characters: Vec<char> = line.chars().collect();
-        if characters.is_empty() {
-            rows.push(String::new());
+        let mut line_rows = input_rows(line, content_width);
+        if line_rows.len() > 1 && line_rows.last().is_some_and(String::is_empty) {
+            line_rows.pop();
         }
-        for chunk in characters.chunks(content_width) {
-            rows.push(chunk.iter().collect());
-        }
+        rows.extend(line_rows);
     }
     rows.push(String::new());
     rows.into_iter()
         .map(|row| {
-            let padding = content_width.saturating_sub(row.chars().count()) + 1;
+            let padding = content_width.saturating_sub(row.width()) + 1;
             Line::from(format!(" {row}{}", " ".repeat(padding))).style(
                 Style::new()
                     .fg(Color::Rgb(59, 63, 65))
@@ -1048,7 +1046,9 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, App, format_duration, format_tokens, handle_input, input_rows};
+    use super::{
+        Action, App, format_duration, format_tokens, handle_input, input_rows, user_message_lines,
+    };
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -1100,6 +1100,26 @@ mod tests {
             assert!(!quit);
         }
         assert_eq!(app.input, "hello");
+    }
+
+    #[test]
+    fn wraps_user_message_by_display_width() {
+        let rows: Vec<String> = user_message_lines("日本語のテキスト\n\nabcd", 8)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                "        ",
+                " 日本語 ",
+                " のテキ ",
+                " スト   ",
+                "        ",
+                " abcd   ",
+                "        ",
+            ]
+        );
     }
 
     #[test]
