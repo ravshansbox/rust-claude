@@ -868,9 +868,9 @@ fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let first = (picker.selected + 1).saturating_sub(visible);
     for (index, (_, text)) in picker.items.iter().enumerate().skip(first).take(visible) {
         lines.push(if index == picker.selected {
-            Line::from(format!("› {text}").reversed())
+            Line::from(text.as_str().reversed())
         } else {
-            Line::raw(format!("  {text}"))
+            Line::raw(text.as_str())
         });
     }
     Paragraph::new(lines)
