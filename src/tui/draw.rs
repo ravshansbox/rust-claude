@@ -1,7 +1,7 @@
 use super::{
     App, HistorySearch, Picker, display_model,
     input::{input_cursor, input_rows},
-    render::{borrowed_line, theme},
+    render::{borrowed_line, theme, wrapped_height},
     status::{format_context, format_quota, format_stats},
 };
 use ratatui::{
@@ -48,20 +48,14 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     for message in &mut app.messages {
         message.render(chat.width);
     }
-    let mut lines = Vec::new();
-    for message in &app.messages {
-        lines.push(Line::default());
-        if let Some((_, rendered)) = &message.rendered {
-            lines.extend(rendered.iter().map(borrowed_line));
-        }
-    }
+    let mut status_lines = Vec::new();
     if app.busy {
-        lines.push(Line::default());
+        status_lines.push(Line::default());
         let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
-        lines.push(Line::from(format!("{frame} {}", app.status).dark_gray()));
+        status_lines.push(Line::from(format!("{frame} {}", app.status).dark_gray()));
         for prompt in app.queued_prompts() {
             let first_line = prompt.lines().next().unwrap_or_default();
-            lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
+            status_lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
         }
     }
 
@@ -95,15 +89,17 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     };
 
     let wrap = Wrap { trim: false };
-    let heights: Vec<usize> = lines
+    let status_heights: Vec<usize> = status_lines
         .iter()
-        .map(|line| {
-            Paragraph::new(line.clone())
-                .wrap(wrap)
-                .line_count(chat.width)
-        })
+        .map(|line| wrapped_height(line, chat.width))
         .collect();
-    let wrapped_line_count: usize = heights.iter().sum();
+    // Each message starts with a blank line, one row high.
+    let wrapped_line_count: usize = app
+        .messages
+        .iter()
+        .map(|message| 1 + message.height())
+        .sum::<usize>()
+        + status_heights.iter().sum::<usize>();
     let viewport_height = conversation_area.height;
     let max_scroll = wrapped_line_count.saturating_sub(viewport_height as usize);
     app.scroll_from_bottom =
@@ -112,14 +108,41 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     app.page_size = viewport_height.max(1) as usize;
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
     // Paragraph offsets are u16, so drop the lines above the view and scroll
-    // only within the first visible one.
+    // only within the first visible one. Lines below the view are left out.
     let mut skipped = 0;
-    let mut first_visible = 0;
-    while first_visible < heights.len() && skipped + heights[first_visible] <= scroll {
-        skipped += heights[first_visible];
-        first_visible += 1;
+    let mut first_message = 0;
+    while let Some(message) = app.messages.get(first_message)
+        && skipped + 1 + message.height() <= scroll
+    {
+        skipped += 1 + message.height();
+        first_message += 1;
     }
-    lines.drain(..first_visible);
+    let rows = app.messages[first_message..]
+        .iter()
+        .flat_map(|message| {
+            let rendered = message.rendered.iter().flat_map(|rendered| {
+                rendered
+                    .lines
+                    .iter()
+                    .map(borrowed_line)
+                    .zip(rendered.heights.iter().copied())
+            });
+            std::iter::once((Line::default(), 1)).chain(rendered)
+        })
+        .chain(status_lines.into_iter().zip(status_heights));
+    let mut lines = Vec::new();
+    let mut filled = 0;
+    for (line, height) in rows {
+        if lines.is_empty() && skipped + height <= scroll {
+            skipped += height;
+            continue;
+        }
+        if filled >= scroll - skipped + viewport_height as usize {
+            break;
+        }
+        filled += height;
+        lines.push(line);
+    }
     let offset = (scroll - skipped).min(u16::MAX as usize) as u16;
     let conversation = Paragraph::new(Text::from(lines)).wrap(wrap);
     frame.render_widget(conversation.scroll((offset, 0)), conversation_area);
@@ -297,6 +320,7 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
 #[cfg(test)]
 mod tests {
     use super::held_scroll_from_bottom;
+    use crate::agent::AgentEvent;
     use crate::session::SessionSummary;
     use crate::skills::{Scope, Skill};
     use crate::tui::{
@@ -304,6 +328,7 @@ mod tests {
         test_support::{app_with_reply, press, screen},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn keeps_scrolled_view_still_while_content_grows() {
@@ -327,6 +352,43 @@ mod tests {
         press(&mut app, KeyCode::PageDown);
         let shown = screen(&mut app);
         assert!(shown.contains("event 10"), "{shown}");
+    }
+
+    fn screen_of_width(app: &mut App, width: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
+        terminal.draw(|frame| super::draw(frame, app)).unwrap();
+        let buffer = terminal.backend().buffer();
+        buffer
+            .content()
+            .chunks(buffer.area.width as usize)
+            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
+    #[test]
+    fn follows_the_end_after_resizing_and_while_a_reply_grows() {
+        let mut app = app_with_reply();
+        let words: String = (0..100).map(|number| format!("word{number:02} ")).collect();
+        app.push(Role::Event, format!("{words}END"));
+        let shown = screen_of_width(&mut app, 100);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("END"), "{shown}");
+        let shown = screen_of_width(&mut app, 30);
+        assert!(!shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("END"), "{shown}");
+        press(&mut app, KeyCode::Home);
+        let shown = screen_of_width(&mut app, 30);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        press(&mut app, KeyCode::End);
+        handle_agent_event(UiEvent::Agent(AgentEvent::Text("Start".into())), &mut app);
+        let shown = screen_of_width(&mut app, 30);
+        assert!(shown.contains("Start"), "{shown}");
+        let more: String = (0..30).map(|number| format!("\n\nline {number}")).collect();
+        handle_agent_event(UiEvent::Agent(AgentEvent::Text(more)), &mut app);
+        let shown = screen_of_width(&mut app, 30);
+        assert!(shown.contains("line 29"), "{shown}");
+        assert!(!shown.contains("Start"), "{shown}");
     }
 
     #[test]
