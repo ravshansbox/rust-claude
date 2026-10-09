@@ -846,11 +846,13 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let conversation = Paragraph::new(Text::from(lines)).wrap(Wrap { trim: false });
     let viewport_height = chat.height;
     let wrapped_line_count = conversation.line_count(chat.width);
-    app.max_scroll = wrapped_line_count
+    let max_scroll = wrapped_line_count
         .saturating_sub(viewport_height as usize)
         .min(u16::MAX as usize) as u16;
+    app.scroll_from_bottom =
+        held_scroll_from_bottom(app.scroll_from_bottom, app.max_scroll, max_scroll);
+    app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1);
-    app.scroll_from_bottom = app.scroll_from_bottom.min(app.max_scroll);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
     if let Some(picker) = &app.picker {
         frame.render_widget(picker_view(picker, chat.height), chat);
@@ -896,6 +898,14 @@ fn draw(frame: &mut Frame, app: &mut App) {
     ));
 
     frame.render_widget(footer_paragraph, footer);
+}
+
+fn held_scroll_from_bottom(scroll_from_bottom: u16, old_max_scroll: u16, max_scroll: u16) -> u16 {
+    if scroll_from_bottom == 0 {
+        return 0;
+    }
+    let top = old_max_scroll.saturating_sub(scroll_from_bottom);
+    max_scroll.saturating_sub(top)
 }
 
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
@@ -954,7 +964,7 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, App, handle_input};
+    use super::{Action, App, handle_input, held_scroll_from_bottom};
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -1150,5 +1160,13 @@ mod tests {
         assert_eq!(press(&mut app, KeyCode::Down), "");
         app.input = "draft".into();
         assert_eq!(press(&mut app, KeyCode::Up), "draft");
+    }
+
+    #[test]
+    fn keeps_scrolled_view_still_while_content_grows() {
+        assert_eq!(held_scroll_from_bottom(0, 10, 15), 0);
+        assert_eq!(held_scroll_from_bottom(1, 15, 20), 6);
+        assert_eq!(held_scroll_from_bottom(6, 20, 18), 4);
+        assert_eq!(held_scroll_from_bottom(1, 15, 10), 0);
     }
 }
