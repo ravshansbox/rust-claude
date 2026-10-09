@@ -114,8 +114,15 @@ struct App {
     picker: Option<Picker>,
 }
 
+#[derive(Clone, Copy)]
+enum PickerKind {
+    Session,
+}
+
 struct Picker {
-    sessions: Vec<SessionSummary>,
+    kind: PickerKind,
+    title: &'static str,
+    items: Vec<(String, String)>,
     selected: usize,
 }
 
@@ -349,13 +356,18 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     if let Some(picker) = &mut app.picker {
         match key.code {
             KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
-            KeyCode::Down => picker.selected = (picker.selected + 1).min(picker.sessions.len() - 1),
+            KeyCode::Down => picker.selected = (picker.selected + 1).min(picker.items.len() - 1),
             KeyCode::Enter => {
-                let id = picker.sessions[picker.selected].id.clone();
+                let kind = picker.kind;
+                let value = picker.items[picker.selected].0.clone();
                 app.picker = None;
-                app.status = "resuming".into();
-                app.busy = true;
-                act(Action::Resume(id));
+                match kind {
+                    PickerKind::Session => {
+                        app.status = "resuming".into();
+                        app.busy = true;
+                        act(Action::Resume(value));
+                    }
+                }
             }
             KeyCode::Esc => app.picker = None,
             KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => return true,
@@ -492,7 +504,16 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 }
                 Ok(sessions) => {
                     app.picker = Some(Picker {
-                        sessions,
+                        kind: PickerKind::Session,
+                        title: "Resume session",
+                        items: sessions
+                            .into_iter()
+                            .map(|session| {
+                                let preview = session.preview.lines().next().unwrap_or_default();
+                                let label = format!("{:>8}  {preview}", time_ago(session.modified));
+                                (session.id, label)
+                            })
+                            .collect(),
                         selected: 0,
                     });
                 }
@@ -650,13 +671,11 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
 fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let mut lines = vec![Line::from(
-        "Resume session (↑↓ select, Enter resume, Esc cancel)".bold(),
+        format!("{} (↑↓ select, Enter confirm, Esc cancel)", picker.title).bold(),
     )];
     let visible = (height as usize).saturating_sub(1).max(1);
     let first = (picker.selected + 1).saturating_sub(visible);
-    for (index, session) in picker.sessions.iter().enumerate().skip(first).take(visible) {
-        let preview = session.preview.lines().next().unwrap_or_default();
-        let text = format!("{:>8}  {preview}", time_ago(session.modified));
+    for (index, (_, text)) in picker.items.iter().enumerate().skip(first).take(visible) {
         lines.push(if index == picker.selected {
             Line::from(format!("› {text}").reversed())
         } else {
