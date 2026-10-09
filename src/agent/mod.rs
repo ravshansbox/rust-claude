@@ -318,6 +318,15 @@ impl Agent {
         self.session.save(&self.messages)
     }
 
+    /// Saves a prompt that was cancelled before it could be sent, marked as
+    /// cancelled like one stopped while running.
+    pub fn cancel_unsent(&mut self, prompt: &str, images: &[Image]) -> Result<()> {
+        let prompt = skills::expand_command(prompt, &self.skills.skills)?;
+        let checkpoint = self.messages.len();
+        self.push_prompt(&prompt, images)?;
+        self.cancel(checkpoint)
+    }
+
     pub async fn prompt(
         &mut self,
         prompt: &str,
@@ -456,12 +465,7 @@ impl Agent {
         }
     }
 
-    async fn run(
-        &mut self,
-        prompt: &str,
-        images: &[Image],
-        mut on_event: impl FnMut(AgentEvent),
-    ) -> Result<()> {
+    fn push_prompt(&mut self, prompt: &str, images: &[Image]) -> Result<()> {
         let content = if images.is_empty() {
             json!(prompt)
         } else {
@@ -474,6 +478,16 @@ impl Agent {
         };
         self.messages
             .push(json!({ "role": "user", "content": content }));
+        Ok(())
+    }
+
+    async fn run(
+        &mut self,
+        prompt: &str,
+        images: &[Image],
+        mut on_event: impl FnMut(AgentEvent),
+    ) -> Result<()> {
+        self.push_prompt(prompt, images)?;
         on_event(AgentEvent::Stats(self.stats()));
         self.compact_if_full(self.messages.len() - 1, &mut on_event)
             .await?;
