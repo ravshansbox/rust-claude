@@ -365,6 +365,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             let prompt = std::mem::take(&mut app.input);
             if prompt.starts_with('/') {
                 match prompt.trim() {
+                    "/quit" => return true,
                     "/resume" => {
                         app.status = "loading sessions".into();
                         app.busy = true;
