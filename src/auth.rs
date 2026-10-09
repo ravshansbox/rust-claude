@@ -69,14 +69,15 @@ impl Credentials {
         .await
     }
 
-    pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
-        if now_millis() >= self.expires {
+    pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<(String, bool)> {
+        let renewed = now_millis() >= self.expires;
+        if renewed {
             *self = self
                 .refresh(http)
                 .await
                 .context("sign-in expired: restart rust-claude to sign in again")?;
         }
-        Ok(self.access.clone())
+        Ok((self.access.clone(), renewed))
     }
 
     fn save(&self) -> Result<()> {
