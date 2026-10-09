@@ -5,6 +5,7 @@ use anyhow::{Result, bail};
 use futures::StreamExt;
 use serde_json::{Value, json};
 
+mod context;
 mod retry;
 mod system;
 mod usage;
@@ -19,6 +20,11 @@ use crate::{
     skills::{self, Skills},
     tools,
 };
+pub use context::ContextUse;
+use context::{
+    active_messages, context_tokens, estimate_prompt_tokens, estimate_text_tokens, estimate_tokens,
+    has_uncompacted, is_compaction, scale_parts, with_cache_breakpoint,
+};
 use retry::{MAX_RETRIES, is_retryable_status, retry_after, retry_delay, retryable};
 pub use system::Instructions;
 use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
@@ -31,145 +37,7 @@ const MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=1000";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
-const SUMMARY_INTRODUCTION: &str = "The earlier conversation was compacted to save context. You wrote the summary below of everything that happened in it. Treat it as an accurate record and continue from where the conversation stopped.";
 const COMPACT_AT_PERCENT: u64 = 80;
-
-fn is_compaction(message: &Value) -> bool {
-    message["stop_reason"] == "compacted"
-}
-
-fn active_messages(messages: &[Value]) -> Vec<Value> {
-    let Some(index) = messages.iter().rposition(is_compaction) else {
-        return messages.to_vec();
-    };
-    let summary = messages[index]["summary"].as_str().unwrap_or_default();
-    let mut active = vec![json!({
-        "role": "user",
-        "content": format!("{SUMMARY_INTRODUCTION}\n\n{summary}"),
-    })];
-    active.extend_from_slice(&messages[index + 1..]);
-    active
-}
-
-fn has_uncompacted(messages: &[Value]) -> bool {
-    let start = messages
-        .iter()
-        .rposition(is_compaction)
-        .map_or(0, |index| index + 1);
-    messages[start..]
-        .iter()
-        .any(|message| message.get("stop_reason").is_none())
-}
-
-fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
-    let mut messages: Vec<Value> = messages
-        .iter()
-        .filter(|message| {
-            message.get("stop_reason").is_none()
-                && message["content"]
-                    .as_array()
-                    .is_none_or(|blocks| !blocks.is_empty())
-        })
-        .cloned()
-        .collect();
-    for message in &mut messages {
-        if let Some(object) = message.as_object_mut() {
-            object.remove("usage");
-        }
-    }
-    if let Some(last) = messages.last_mut() {
-        if let Some(text) = last["content"].as_str().map(str::to_owned) {
-            last["content"] = json!([{ "type": "text", "text": text }]);
-        }
-        if let Some(block) = last["content"]
-            .as_array_mut()
-            .and_then(|blocks| blocks.last_mut())
-        {
-            block["cache_control"] = json!({ "type": "ephemeral" });
-        }
-    }
-    messages
-}
-
-fn estimate_tokens(message: &Value) -> u64 {
-    let characters: usize = match &message["content"] {
-        Value::String(text) => text.chars().count(),
-        Value::Array(blocks) => blocks
-            .iter()
-            .map(|block| match block["type"].as_str().unwrap_or_default() {
-                "text" => block["text"].as_str().unwrap_or_default().chars().count(),
-                "thinking" => block["thinking"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .chars()
-                    .count(),
-                "tool_use" => {
-                    block["name"].as_str().unwrap_or_default().chars().count()
-                        + block["input"].to_string().chars().count()
-                }
-                "tool_result" => block["content"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .chars()
-                    .count(),
-                _ => 0,
-            })
-            .sum(),
-        _ => 0,
-    };
-    (characters as u64).div_ceil(4)
-}
-
-fn estimate_prompt_tokens(system: &[Value], tools: &Value) -> u64 {
-    let characters: usize = system
-        .iter()
-        .map(|block| block["text"].as_str().unwrap_or_default().chars().count())
-        .sum::<usize>()
-        + tools.to_string().chars().count();
-    (characters as u64).div_ceil(4)
-}
-
-fn estimate_text_tokens(text: &str) -> u64 {
-    (text.chars().count() as u64).div_ceil(4)
-}
-
-fn scale_parts(parts: Vec<(&'static str, u64)>, total: u64) -> Vec<(&'static str, u64)> {
-    let estimated: u64 = parts.iter().map(|(_, tokens)| tokens).sum();
-    if estimated == 0 {
-        return parts;
-    }
-    parts
-        .into_iter()
-        .map(|(name, tokens)| {
-            let scaled = (tokens as f64 * total as f64 / estimated as f64).round();
-            (name, scaled as u64)
-        })
-        .collect()
-}
-
-pub struct ContextUse {
-    pub parts: Vec<(&'static str, u64)>,
-    pub total: u64,
-    pub window: u64,
-}
-
-fn context_tokens(messages: &[Value], system_tokens: u64) -> u64 {
-    let last_usage = messages
-        .iter()
-        .enumerate()
-        .rev()
-        .find_map(|(index, message)| {
-            if message["role"] != "assistant" || message.get("stop_reason").is_some() {
-                return None;
-            }
-            let usage = Usage::from_json(&message["usage"]);
-            let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
-            (tokens > 0).then_some((index, tokens))
-        });
-    let (start, usage_tokens) =
-        last_usage.map_or((0, system_tokens), |(index, tokens)| (index + 1, tokens));
-    usage_tokens + messages[start..].iter().map(estimate_tokens).sum::<u64>()
-}
 
 fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
     messages[checkpoint..]
@@ -832,10 +700,7 @@ mod tests {
     use serde_json::json;
 
     use super::{AgentEvent, ask_user, tool_definitions};
-    use super::{
-        active_messages, cancel_point, context_tokens, has_uncompacted, parse_shell_message,
-        scale_parts, shell_message, with_cache_breakpoint,
-    };
+    use super::{cancel_point, parse_shell_message, shell_message};
     use crate::{ask, mcp::Mcp};
 
     fn tool_names(definitions: serde_json::Value) -> Vec<String> {
@@ -889,15 +754,6 @@ mod tests {
     }
 
     #[test]
-    fn scales_context_parts_to_total() {
-        assert_eq!(
-            scale_parts(vec![("a", 10), ("b", 30)], 80),
-            vec![("a", 20), ("b", 60)]
-        );
-        assert_eq!(scale_parts(vec![("a", 0)], 80), vec![("a", 0)]);
-    }
-
-    #[test]
     fn parses_shell_messages() {
         let text = shell_message("ls -a", "a\nb\n");
         assert_eq!(parse_shell_message(&text), Some(("ls -a", "a\nb\n")));
@@ -926,63 +782,5 @@ mod tests {
             ),
             3
         );
-    }
-
-    #[test]
-    fn replaces_compacted_messages_with_summary() {
-        let prompt = json!({ "role": "user", "content": "hello" });
-        let reply = json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] });
-        let compaction = json!({
-            "role": "assistant",
-            "stop_reason": "compacted",
-            "content": [],
-            "summary": "greeted",
-        });
-        let messages = vec![prompt.clone(), reply, compaction.clone(), prompt.clone()];
-        let active = active_messages(&messages);
-        assert_eq!(active.len(), 2);
-        assert!(active[0]["content"].as_str().unwrap().ends_with("greeted"));
-        assert_eq!(active[1], prompt);
-        assert!(has_uncompacted(&messages));
-        assert!(!has_uncompacted(&messages[..3]));
-        assert!(!has_uncompacted(&[]));
-    }
-
-    #[test]
-    fn drops_empty_assistant_replies_from_requests() {
-        let messages = vec![
-            json!({ "role": "user", "content": "hello" }),
-            json!({ "role": "assistant", "content": [], "usage": { "output": 3 } }),
-            json!({ "role": "user", "content": "again" }),
-        ];
-        let request = with_cache_breakpoint(&messages);
-        assert_eq!(request.len(), 2);
-        assert_eq!(request[1]["content"][0]["text"], "again");
-    }
-
-    #[test]
-    fn counts_context_from_last_usage_and_trailing_messages() {
-        let messages = vec![
-            json!({ "role": "user", "content": "hello" }),
-            json!({
-                "role": "assistant",
-                "content": [{ "type": "text", "text": "hi" }],
-                "usage": { "input": 10, "output": 5, "cache_read": 100, "cache_write": 20 },
-            }),
-            json!({
-                "role": "assistant",
-                "stop_reason": "aborted",
-                "content": [],
-                "usage": { "input": 999 },
-            }),
-            json!({ "role": "user", "content": "12345678" }),
-        ];
-        assert_eq!(context_tokens(&messages, 50), 137);
-    }
-
-    #[test]
-    fn estimates_context_without_usage() {
-        let messages = vec![json!({ "role": "user", "content": "12345" })];
-        assert_eq!(context_tokens(&messages, 50), 52);
     }
 }
