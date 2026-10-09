@@ -33,6 +33,7 @@ struct ChatMessage {
 struct App {
     input: String,
     messages: Vec<ChatMessage>,
+    model: String,
     status: String,
     usage: String,
     scroll_from_bottom: u16,
@@ -49,7 +50,8 @@ impl App {
                 role: Role::Event,
                 text: "Ask me to inspect, explain, or edit this project.".into(),
             }],
-            status: format!("ready · {model}"),
+            model: model.into(),
+            status: String::new(),
             usage: String::new(),
             scroll_from_bottom: 0,
             max_scroll: 0,
@@ -257,12 +259,10 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             if let Err(error) = result {
                 app.push(Role::Event, format!("error: {error}"));
             }
-            app.status = "ready".into();
             app.busy = false;
         }
         UiEvent::Cancelled => {
             app.push(Role::Event, "cancelled");
-            app.status = "ready".into();
             app.busy = false;
         }
     }
@@ -308,6 +308,12 @@ fn draw(frame: &mut Frame, app: &mut App) {
         }
         lines.push(Line::default());
     }
+    if app.busy {
+        lines.push(Line::from(vec![
+            "· ".dark_gray(),
+            app.status.as_str().dark_gray(),
+        ]));
+    }
 
     let transcript = Paragraph::new(Text::from(lines))
         .block(
@@ -335,17 +341,13 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::raw(format!(" {}", app.status)),
+            Span::raw(format!(" {}", app.model)),
             Span::raw(if app.usage.is_empty() {
                 "".into()
             } else {
                 format!(" · {}", app.usage)
             }),
-            if app.busy {
-                "   ↑/↓ scroll · PgUp/PgDn · Esc cancel".dark_gray()
-            } else {
-                "   ↑/↓ scroll · PgUp/PgDn · Esc quit".dark_gray()
-            },
+            "   ↑/↓ scroll · PgUp/PgDn · Esc cancel/quit".dark_gray(),
         ])),
         footer,
     );
