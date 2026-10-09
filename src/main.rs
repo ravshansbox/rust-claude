@@ -93,9 +93,11 @@ async fn main() -> Result<()> {
     let mut line_open = false;
     let colour = !hide_tools && std::io::stderr().is_terminal();
     let dark = colour && tui::dark_theme();
-    agent
+    let mut reads = tools::ReadGroup::default();
+    let result = agent
         .prompt(&prompt, |event| match event {
             agent::AgentEvent::Text(text) => {
+                flush_reads(&mut reads);
                 if separate {
                     let _ = write!(stdout, "\n\n");
                     separate = false;
@@ -116,6 +118,11 @@ async fn main() -> Result<()> {
                         eprintln!();
                         line_open = false;
                     }
+                    if name == "read" && diff.is_none() {
+                        reads.add(summary);
+                        return;
+                    }
+                    flush_reads(&mut reads);
                     eprintln!("{name} {summary}");
                     if let Some(diff) = diff {
                         if colour {
@@ -132,18 +139,31 @@ async fn main() -> Result<()> {
                 name,
                 error: Some(error),
             } if !hide_tools => {
+                flush_reads(&mut reads);
                 if line_open {
                     eprintln!();
                     line_open = false;
                 }
                 eprintln!("{name} failed: {error}");
             }
-            agent::AgentEvent::Notice(text) => eprintln!("\n{text}"),
+            agent::AgentEvent::Notice(text) => {
+                flush_reads(&mut reads);
+                eprintln!("\n{text}");
+            }
             _ => {}
         })
-        .await?;
+        .await;
+    flush_reads(&mut reads);
+    result?;
     writeln!(stdout)?;
     Ok(())
+}
+
+fn flush_reads(reads: &mut tools::ReadGroup) {
+    if !reads.is_empty() {
+        eprintln!("read {}", reads.summary());
+        reads.clear();
+    }
 }
 
 #[cfg(test)]

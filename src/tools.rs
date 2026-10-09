@@ -153,6 +153,43 @@ pub fn summary(name: &str, input: &Value) -> String {
     input[key].as_str().unwrap_or_default().to_string()
 }
 
+#[derive(Default)]
+pub struct ReadGroup {
+    paths: Vec<(String, usize)>,
+}
+
+impl ReadGroup {
+    pub fn add(&mut self, path: String) {
+        match self
+            .paths
+            .iter_mut()
+            .find(|(existing, _)| *existing == path)
+        {
+            Some((_, count)) => *count += 1,
+            None => self.paths.push((path, 1)),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.paths.is_empty()
+    }
+
+    pub fn clear(&mut self) {
+        self.paths.clear();
+    }
+
+    pub fn summary(&self) -> String {
+        self.paths
+            .iter()
+            .map(|(path, count)| match count {
+                1 => path.clone(),
+                _ => format!("{path} ({count})"),
+            })
+            .collect::<Vec<_>>()
+            .join(", ")
+    }
+}
+
 const WRITE_PREVIEW_LINES: usize = 10;
 
 pub fn diff(name: &str, input: &Value) -> Option<String> {
@@ -321,7 +358,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, bash_description, call, diff, read_lines};
+    use super::{MAX_OUTPUT, ReadGroup, bash_description, call, diff, read_lines};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -565,5 +602,14 @@ mod tests {
                 "{base}. Prefer ast-grep for searching code structure and rg for searching text"
             )
         );
+    }
+
+    #[test]
+    fn groups_reads_with_counts() {
+        let mut group = ReadGroup::default();
+        for path in ["a.rs", "b.rs", "a.rs", "a.rs"] {
+            group.add(path.into());
+        }
+        assert_eq!(group.summary(), "a.rs (3), b.rs");
     }
 }
