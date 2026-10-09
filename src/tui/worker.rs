@@ -56,7 +56,16 @@ pub(super) async fn agent_task(
     mut mcp_servers: mpsc::UnboundedReceiver<Started>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
-    let mut quota = agent.quota_request().await.ok().map(tokio::spawn);
+    // Stop renewing the sign-in on quit or Esc. Esc means the user cancelled
+    // the request waiting behind the renewal, so drop it when it comes up.
+    let mut cancelled = false;
+    let mut quota = tokio::select! {
+        result = agent.quota_request() => result.ok().map(tokio::spawn),
+        received = cancel.recv() => {
+            cancelled = received.is_some();
+            None
+        }
+    };
     notify_renewed(&mut agent, &events);
     loop {
         let request = tokio::select! {
@@ -80,6 +89,11 @@ pub(super) async fn agent_task(
         let Some(request) = request else { break };
         if cancel.is_closed() {
             break;
+        }
+        if cancelled && is_cancellable(&request) {
+            cancelled = false;
+            let _ = events.send(UiEvent::Cancelled(Ok(())));
+            continue;
         }
         if let Request::Shell(command) = request {
             while cancel.try_recv().is_ok() {}
@@ -183,6 +197,18 @@ pub(super) async fn agent_task(
     }
 }
 
+/// Requests the interface lets Esc cancel.
+fn is_cancellable(request: &Request) -> bool {
+    matches!(
+        request,
+        Request::Prompt(..)
+            | Request::Shell(_)
+            | Request::Compact(_)
+            | Request::ListModels
+            | Request::CheckModel(_)
+    )
+}
+
 /// Runs `work` unless a cancel arrives or the interface quits first.
 async fn until_cancelled<T>(
     cancel: &mut mpsc::UnboundedReceiver<()>,
@@ -276,6 +302,59 @@ mod tests {
         quit(request_tx, cancel_tx);
         let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
         assert!(stopped.is_ok());
+    }
+
+    /// An agent whose sign-in has expired and whose renewal never answers.
+    async fn agent_renewing_sign_in() -> (Agent, MockApi) {
+        let api = MockApi::start(vec![Reply::Stall]).await;
+        let http = reqwest::Client::builder()
+            .proxy(reqwest::Proxy::all(&api.base).unwrap())
+            .build()
+            .unwrap();
+        let credentials: Credentials = serde_json::from_value(json!({
+            "access": "access",
+            "refresh": "refresh",
+            "expires": 0,
+        }))
+        .unwrap();
+        let agent = Agent::new(http, credentials, "model".into()).unwrap();
+        (agent, api)
+    }
+
+    #[tokio::test]
+    async fn quits_while_renewing_the_sign_in() {
+        let (agent, _api) = agent_renewing_sign_in().await;
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, _event_rx) = mpsc::unbounded_channel();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        quit(request_tx, cancel_tx);
+        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
+        assert!(stopped.is_ok());
+    }
+
+    #[tokio::test]
+    async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
+        let (agent, _api) = agent_renewing_sign_in().await;
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        request_tx
+            .send(Request::Prompt("hello".into(), Vec::new(), "off"))
+            .unwrap();
+        cancel_tx.send(()).unwrap();
+        let cancelled = wait_for_event(&mut event_rx, |event| {
+            matches!(event, UiEvent::Cancelled(_))
+        })
+        .await;
+        quit(request_tx, cancel_tx);
+        worker.abort();
+        assert!(cancelled);
     }
 
     async fn wait_for_event(
