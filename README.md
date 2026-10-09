@@ -42,6 +42,10 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/thinking [level]` | Select a thinking level |
 | `/quit` | Quit |
 
+## Files
+
+Type `@` to pick a file. The list shows up to 10 project files whose path contains the text after `@`, ignoring case. Use Up / Down to select, and Tab or Enter to insert `@path` into the prompt. Esc closes the list. In a Git repository the list holds tracked files and untracked files that `.gitignore` does not exclude. Otherwise it holds all files, except hidden ones and those in `target`.
+
 ## Keys
 
 | Key | Action |
@@ -58,7 +62,7 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | Alt+Left / Alt+B, Alt+Right / Alt+F | Move by word |
 | Ctrl+A / Ctrl+E | Jump to start or end of input |
 | Alt+Backspace / Ctrl+W | Delete previous word |
-| Tab | Complete a command |
+| Tab | Complete a command or file |
 
 While a reply streams, the view follows new text only when it is scrolled to the bottom. If you scroll up, the view stays where it is.
 
