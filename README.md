@@ -128,7 +128,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 ## Development
 
-Running `cargo test` once installs a Git pre-commit hook with [cargo-husky](https://github.com/rhysd/cargo-husky). The hook runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. The hook script is in `.cargo-husky/hooks/pre-commit`.
+Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.
 
 ## Licence
 
