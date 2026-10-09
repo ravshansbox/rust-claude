@@ -141,6 +141,12 @@ impl Agent {
         Ok(messages)
     }
 
+    pub fn new_session(&mut self) -> Result<()> {
+        self.session = Session::new()?;
+        self.messages.clear();
+        Ok(())
+    }
+
     pub fn rollback(&mut self, len: usize) {
         self.messages.truncate(len);
     }
