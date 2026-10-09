@@ -100,10 +100,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     for program in &agent.missing_programs {
         app.push(Role::Event, format!("{program} not found on PATH"));
     }
-    app.push(
-        Role::Event,
-        "Ask me to inspect, explain, or edit this project.",
-    );
+    app.greet();
     app.load_history(history::history_path());
     if !agent.messages().is_empty() {
         replay_messages(&mut app, agent.messages());
