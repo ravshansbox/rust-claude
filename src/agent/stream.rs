@@ -9,13 +9,23 @@ use futures::StreamExt;
 use serde_json::{Value, json};
 use std::time::Instant;
 
+/// A finished reply and the tokens it used.
+pub(super) struct Response {
+    pub content: Vec<Value>,
+    pub stop_reason: String,
+    /// Usage of the attempt that produced this reply.
+    pub usage: Usage,
+    /// Usage of earlier attempts at this request that failed and were retried.
+    pub retried: Usage,
+}
+
 impl Agent {
     pub(super) async fn stream_message(
         &mut self,
         messages: &[Value],
         tool_choice: Option<&Value>,
         on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<(Vec<Value>, String, Usage)> {
+    ) -> Result<Response> {
         let token = self.credentials.access_token(&self.http).await?;
         if self.credentials.take_renewed() {
             on_event(AgentEvent::Notice("renewed sign-in token".into()));
@@ -184,6 +194,11 @@ impl Agent {
         if let Some(error) = input_error {
             return Err(error.into());
         }
-        Ok((content, stop_reason, self.pending_usage))
+        Ok(Response {
+            content,
+            stop_reason,
+            usage,
+            retried,
+        })
     }
 }

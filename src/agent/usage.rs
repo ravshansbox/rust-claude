@@ -29,6 +29,17 @@ impl Usage {
         })
     }
 
+    /// Stores a reply's usage with that of its retried attempts nested
+    /// under `retried`, which only totals count: the context size, cache
+    /// hit rate and speed come from the attempt that produced the reply.
+    pub(super) fn to_json_with_retried(self, retried: Usage) -> Value {
+        let mut value = self.to_json();
+        if retried.input + retried.output + retried.cache_read + retried.cache_write > 0 {
+            value["retried"] = retried.to_json();
+        }
+        value
+    }
+
     pub(super) fn update_from_response(&mut self, value: &Value) {
         let fields = [
             (&mut self.input, "input_tokens"),
@@ -152,6 +163,7 @@ pub(super) fn total_usage(messages: &[Value]) -> Usage {
         .filter(|message| message["role"] == "assistant")
     {
         total.add(Usage::from_json(&message["usage"]));
+        total.add(Usage::from_json(&message["usage"]["retried"]));
     }
     total
 }

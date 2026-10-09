@@ -29,6 +29,7 @@ use context::{
     has_uncompacted, is_compaction, scale_parts, with_cache_breakpoint,
 };
 use retry::{MAX_RETRIES, is_thinking_mismatch, retry_delay};
+use stream::Response;
 pub use system::Instructions;
 use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
 pub use usage::{Quota, Stats, Usage};
@@ -394,14 +395,15 @@ impl Agent {
         on_event(AgentEvent::Notice("compacting conversation".into()));
         let mut messages = with_cache_breakpoint(&active_messages(&self.messages[..end]));
         messages.push(json!({ "role": "user", "content": COMPACT_PROMPT }));
-        let (content, _, usage) = self
+        let response = self
             .request(messages, Some(json!({ "type": "none" })), &mut |event| {
                 if let AgentEvent::Notice(_) = event {
                     on_event(event);
                 }
             })
             .await?;
-        let summary: String = content
+        let summary: String = response
+            .content
             .iter()
             .filter(|block| block["type"] == "text")
             .filter_map(|block| block["text"].as_str())
@@ -416,7 +418,7 @@ impl Agent {
                 "stop_reason": "compacted",
                 "content": [],
                 "summary": summary,
-                "usage": usage.to_json(),
+                "usage": response.usage.to_json_with_retried(response.retried),
             }),
         );
         self.pending_usage = Usage::default();
@@ -430,7 +432,7 @@ impl Agent {
         messages: Vec<Value>,
         tool_choice: Option<Value>,
         on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<(Vec<Value>, String, Usage)> {
+    ) -> Result<Response> {
         let mut messages = messages;
         self.session.inline_images(&mut messages)?;
         let mut attempt = 0;
@@ -494,9 +496,17 @@ impl Agent {
 
         loop {
             let messages = with_cache_breakpoint(&active_messages(&self.messages));
-            let (content, stop_reason, usage) = self.request(messages, None, &mut on_event).await?;
-            self.messages
-                .push(json!({ "role": "assistant", "content": content, "usage": usage.to_json() }));
+            let Response {
+                content,
+                stop_reason,
+                usage,
+                retried,
+            } = self.request(messages, None, &mut on_event).await?;
+            self.messages.push(json!({
+                "role": "assistant",
+                "content": content,
+                "usage": usage.to_json_with_retried(retried),
+            }));
             self.pending_usage = Usage::default();
             on_event(AgentEvent::Stats(self.stats()));
             if stop_reason == "max_tokens" {
@@ -623,6 +633,23 @@ mod tests {
         assert_eq!(api.requests().await.len(), 2);
         let usage = agent.stats().usage;
         assert_eq!((usage.input, usage.output), (501, 2));
+    }
+
+    #[tokio::test]
+    async fn keeps_tokens_of_a_failed_attempt_out_of_the_context_size() {
+        let overloaded = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 500, "cache_read_input_tokens": 500, "output_tokens": 1 } } }),
+            json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
+        ]);
+        let api = MockApi::start(vec![overloaded, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let result = agent.prompt("hi", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        let stats = agent.stats();
+        assert_eq!(stats.context_tokens, 2);
+        assert_eq!(stats.cache_hit_rate, Some(0.0));
+        assert_eq!(stats.usage.cache_read, 500);
     }
 
     #[tokio::test]
