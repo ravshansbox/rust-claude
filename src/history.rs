@@ -50,10 +50,12 @@ pub fn load(path: &Path) -> Vec<Entry> {
 }
 
 fn load_all(path: &Path) -> Vec<Entry> {
-    let text = std::fs::read_to_string(path).unwrap_or_default();
+    // Read bytes, not text, so a line cut short inside a character costs
+    // only that line.
+    let bytes = std::fs::read(path).unwrap_or_default();
     let mut entries: Vec<Entry> = Vec::new();
-    for line in text.lines().rev() {
-        let Ok(value) = serde_json::from_str::<Value>(line) else {
+    for line in bytes.split(|byte| *byte == b'\n').rev() {
+        let Ok(value) = serde_json::from_slice::<Value>(line) else {
             continue;
         };
         let Some(prompt) = value["prompt"].as_str() else {
@@ -91,6 +93,25 @@ mod tests {
         assert_eq!(prompts, ["three", "one", "two"]);
         let folder = std::env::current_dir().unwrap().display().to_string();
         assert!(entries.iter().all(|entry| entry.folder == folder));
+    }
+
+    #[test]
+    fn keeps_history_after_a_line_cut_short_inside_a_character() {
+        let path = std::env::temp_dir().join(format!(
+            "rust-claude-cut-history-{}/history.jsonl",
+            std::process::id()
+        ));
+        append(&path, "one").unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, b"{\"prompt\":\"caf\xc3\n"))
+            .unwrap();
+        append(&path, "two").unwrap();
+        let entries = load(&path);
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        let prompts: Vec<&str> = entries.iter().map(|entry| entry.prompt.as_str()).collect();
+        assert_eq!(prompts, ["two", "one"]);
     }
 
     #[cfg(unix)]
