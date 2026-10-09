@@ -626,6 +626,9 @@ impl Agent {
                 }
             }
         }
+        if stop_reason.is_empty() {
+            bail!("response ended before the reply finished");
+        }
         Ok((content, stop_reason, usage))
     }
 }
