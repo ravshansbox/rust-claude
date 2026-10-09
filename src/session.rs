@@ -24,8 +24,9 @@ pub struct Session {
 }
 
 fn sessions_directory() -> Result<PathBuf> {
-    let home = std::env::var("HOME").context("HOME is not set")?;
-    Ok(PathBuf::from(home).join(".rust-claude").join("sessions"))
+    Ok(crate::config::dir()
+        .context("HOME is not set")?
+        .join("sessions"))
 }
 
 fn new_uuid() -> Result<String> {

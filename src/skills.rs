@@ -83,12 +83,13 @@ enum Mode {
 }
 
 pub fn load() -> Skills {
+    let config_dir = crate::config::dir();
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let cwd = std::env::current_dir().unwrap_or_default();
-    load_from(home.as_deref(), &cwd)
+    load_from(config_dir.as_deref(), home.as_deref(), &cwd)
 }
 
-fn load_from(home: Option<&Path>, cwd: &Path) -> Skills {
+fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skills {
     let with_scope =
         |files: Vec<PathBuf>, scope: Scope| files.into_iter().map(move |path| (path, scope));
     let mut paths: Vec<(PathBuf, Scope)> = with_scope(
@@ -105,9 +106,9 @@ fn load_from(home: Option<&Path>, cwd: &Path) -> Skills {
             ));
         }
     }
-    if let Some(home) = home {
+    if let Some(config_dir) = config_dir {
         paths.extend(with_scope(
-            collect_skill_files(&home.join(".rust-claude").join("skills"), Mode::RustClaude),
+            collect_skill_files(&config_dir.join("skills"), Mode::RustClaude),
             Scope::Global,
         ));
     }
@@ -556,7 +557,7 @@ mod tests {
             "---\ndescription: Outside the repository.\n---\n",
         );
 
-        let loaded = load_from(Some(&home), &cwd);
+        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &cwd);
         let names: Vec<&str> = loaded
             .skills
             .iter()
