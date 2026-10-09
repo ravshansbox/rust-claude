@@ -348,12 +348,15 @@ fn qualified_name(server: &str, tool: &str) -> String {
 
 fn tool_definition(qualified_name: &str, tool: &Value) -> Value {
     let mut schema = match &tool["inputSchema"] {
-        Value::Object(schema) => Value::Object(schema.clone()),
-        _ => json!({}),
+        Value::Object(schema) => schema.clone(),
+        _ => serde_json::Map::new(),
     };
-    schema["type"] = json!("object");
-    if !schema["properties"].is_object() {
-        schema["properties"] = json!({});
+    for key in ["anyOf", "oneOf", "allOf"] {
+        schema.remove(key);
+    }
+    schema.insert("type".into(), json!("object"));
+    if !schema.get("properties").is_some_and(Value::is_object) {
+        schema.insert("properties".into(), json!({}));
     }
     let description = tool["description"]
         .as_str()
@@ -636,6 +639,30 @@ mod tests {
                 "name": "mcp__docs__search",
                 "description": "search",
                 "input_schema": { "type": "object", "properties": {} },
+            })
+        );
+    }
+
+    #[test]
+    fn drops_top_level_schema_combinators() {
+        let definition = tool_definition(
+            "mcp__docs__search",
+            &json!({
+                "name": "search",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": { "a": { "type": "string" }, "b": { "type": "string" } },
+                    "anyOf": [{ "required": ["a"] }, { "required": ["b"] }],
+                    "oneOf": [{ "required": ["a"] }],
+                    "allOf": [{ "required": ["b"] }],
+                },
+            }),
+        );
+        assert_eq!(
+            definition["input_schema"],
+            json!({
+                "type": "object",
+                "properties": { "a": { "type": "string" }, "b": { "type": "string" } },
             })
         );
     }
