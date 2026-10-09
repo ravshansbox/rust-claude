@@ -1,5 +1,4 @@
 mod agent;
-mod ask;
 mod auth;
 mod clipboard;
 mod highlight;

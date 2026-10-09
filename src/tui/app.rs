@@ -2,7 +2,6 @@ use super::{
     commands::command_matches,
     display_model,
     files::{file_matches, file_query, list_files},
-    question::QuestionPrompt,
     render::{render_message, tool_message},
     workspace_label,
 };
@@ -72,7 +71,6 @@ pub(super) struct App {
     pub(super) input_width: usize,
     pub(super) busy: bool,
     pub(super) picker: Option<Picker>,
-    pub(super) question: Option<QuestionPrompt>,
     pub(super) command_selected: usize,
     pub(super) commands_dismissed: bool,
     pub(super) files: Option<Vec<String>>,
@@ -148,7 +146,6 @@ impl App {
             input_width: usize::MAX,
             busy: false,
             picker: None,
-            question: None,
             command_selected: 0,
             commands_dismissed: false,
             files: None,

@@ -67,11 +67,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
 
     let panel_height =
         |content: usize| (content.min(u16::MAX as usize - 1) as u16 + 1).min(chat.height);
-    let panel = if let Some(question) = &app.question {
-        let view = question.view();
-        let height = panel_height(view.line_count(chat.width));
-        Some((view, height, None))
-    } else if let Some(search) = &app.history_search {
+    let panel = if let Some(search) = &app.history_search {
         let count = search.matches().len();
         let height = panel_height(count.min(MAX_LIST_ROWS) + 2);
         let list = (count, 2, search.selected);

@@ -33,7 +33,7 @@ impl Agent {
             "thinking": { "type": "adaptive", "display": "summarized" },
             "output_config": { "effort": self.thinking_level },
             "system": system,
-            "tools": tool_definitions(&self.mcp, self.ask_user),
+            "tools": tool_definitions(&self.mcp),
             "messages": messages,
         });
         if let Some(tool_choice) = tool_choice {

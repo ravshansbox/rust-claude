@@ -30,9 +30,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         return false;
     }
     if let Event::Paste(text) = event {
-        if let Some(question) = &mut app.question {
-            question.paste(&text);
-        } else if let Some(search) = &mut app.history_search {
+        if let Some(search) = &mut app.history_search {
             search.query.push_str(&text.replace(['\r', '\n'], " "));
             search.selected = 0;
         } else if app.picker.is_none() {
@@ -45,16 +43,6 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
     }
     let Event::Key(key) = event else { return false };
     if key.kind != KeyEventKind::Press {
-        return false;
-    }
-
-    if let Some(question) = &mut app.question {
-        if key.code == KeyCode::Char('c') && key.modifiers == KeyModifiers::CONTROL {
-            return true;
-        }
-        if question.key(key) {
-            app.question = None;
-        }
         return false;
     }
 

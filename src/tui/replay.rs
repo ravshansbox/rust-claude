@@ -1,6 +1,6 @@
 use super::{
-    App, Picker, PickerKind, Role, display_model, question::QuestionPrompt,
-    status::format_context_use, time_ago, worker::UiEvent,
+    App, Picker, PickerKind, Role, display_model, status::format_context_use, time_ago,
+    worker::UiEvent,
 };
 use crate::{
     agent::{AgentEvent, parse_shell_message},
@@ -36,18 +36,13 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
-        UiEvent::Agent(AgentEvent::Question { questions, reply }) => {
-            app.question = Some(QuestionPrompt::new(questions, reply));
-        }
         UiEvent::Done(result) => {
-            app.question = None;
             if result.is_err() {
                 app.restore_queued();
             }
             app.finish(result, |_, ()| {});
         }
         UiEvent::Cancelled(result) => {
-            app.question = None;
             app.push(Role::Event, "cancelled");
             app.restore_queued();
             app.finish(result, |_, ()| {});
