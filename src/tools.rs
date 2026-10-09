@@ -61,6 +61,15 @@ pub fn definitions() -> Value {
     ])
 }
 
+pub fn summary(name: &str, input: &Value) -> String {
+    let key = match name {
+        "bash" => "command",
+        "read" | "write" | "edit" => "path",
+        _ => return input.to_string(),
+    };
+    input[key].as_str().unwrap_or_default().to_string()
+}
+
 fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
     input[key]
         .as_str()

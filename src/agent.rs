@@ -14,7 +14,8 @@ const MAX_TURNS: usize = 20;
 pub enum AgentEvent {
     Text(String),
     ToolCall(String),
-    ToolDone(String),
+    ToolStart { name: String, summary: String },
+    ToolDone { name: String, error: Option<String> },
     Usage { input: u64, output: u64 },
 }
 
@@ -67,11 +68,18 @@ impl Agent {
             let mut results = Vec::new();
             for block in content.iter().filter(|block| block["type"] == "tool_use") {
                 let name = block["name"].as_str().unwrap_or_default();
+                on_event(AgentEvent::ToolStart {
+                    name: name.into(),
+                    summary: tools::summary(name, &block["input"]),
+                });
                 let (text, is_error) = match tools::call(name, &block["input"]).await {
                     Ok(text) => (text, false),
                     Err(text) => (text, true),
                 };
-                on_event(AgentEvent::ToolDone(name.into()));
+                on_event(AgentEvent::ToolDone {
+                    name: name.into(),
+                    error: is_error.then(|| text.clone()),
+                });
                 results.push(json!({
                     "type": "tool_result",
                     "tool_use_id": block["id"],
