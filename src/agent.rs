@@ -289,8 +289,15 @@ fn total_usage(messages: &[Value]) -> Usage {
 pub enum AgentEvent {
     Text(String),
     Thinking(String),
-    ToolStart { name: String, summary: String },
-    ToolDone { name: String, error: Option<String> },
+    ToolStart {
+        name: String,
+        summary: String,
+        diff: Option<String>,
+    },
+    ToolDone {
+        name: String,
+        error: Option<String>,
+    },
     Stats(Stats),
     Notice(String),
 }
@@ -488,6 +495,7 @@ impl Agent {
                 on_event(AgentEvent::ToolStart {
                     name: name.into(),
                     summary: tools::summary(name, &block["input"]),
+                    diff: tools::diff(name, &block["input"]),
                 });
                 let (text, is_error) = match tools::call(name, &block["input"]).await {
                     Ok(text) => (text, false),

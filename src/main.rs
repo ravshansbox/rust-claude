@@ -102,7 +102,7 @@ async fn main() -> Result<()> {
                 printed = true;
                 line_open = !text.ends_with('\n');
             }
-            agent::AgentEvent::ToolStart { name, summary } => {
+            agent::AgentEvent::ToolStart { name, summary, .. } => {
                 separate = printed;
                 if !hide_tools {
                     if line_open {
