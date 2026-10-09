@@ -386,7 +386,7 @@ Architecture decision records are in [docs/adr](docs/adr):
 
 ## Development
 
-Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`.
+Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Tests keep sign-in, sessions and other files in a temporary folder, not in `~/.rust-claude`.
 
 ## Licence
 
