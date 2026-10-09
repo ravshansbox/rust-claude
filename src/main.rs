@@ -27,11 +27,13 @@ async fn main() -> Result<()> {
     };
     let mut stdout = std::io::stdout();
     agent
-        .prompt(&prompt, |event| {
-            if let agent::AgentEvent::Text(text) = event {
+        .prompt(&prompt, |event| match event {
+            agent::AgentEvent::Text(text) => {
                 let _ = write!(stdout, "{text}");
                 let _ = stdout.flush();
             }
+            agent::AgentEvent::Notice(text) => eprintln!("\n{text}"),
+            _ => {}
         })
         .await?;
     writeln!(stdout)?;
