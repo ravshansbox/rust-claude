@@ -963,6 +963,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
@@ -988,6 +989,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
@@ -1013,6 +1015,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
@@ -1036,6 +1039,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
@@ -1063,6 +1067,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
@@ -1103,6 +1108,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
@@ -1122,6 +1128,7 @@ mod tests {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
+            tokens_per_second: None,
             context_tokens: 0,
             context_window: 0,
             quota: Quota::default(),
