@@ -14,7 +14,6 @@ Core:
 Command line:
 
 - Print mode (`-p` / `--print`) to run one prompt and print the answer
-- `--hide-tools` to hide tool calls in print mode
 - `--image <path>` to send images in print mode
 - `-c` / `--continue` to continue the latest session in the current folder
 - Syntax-highlighted tool calls on standard error in print mode
@@ -159,7 +158,7 @@ Send images with the prompt with `--image <path>`. Repeat it for more images:
 rust-claude -p "what is wrong in this screenshot?" --image error.png
 ```
 
-In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal. Add `--hide-tools` to hide them.
+In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal.
 
 Press Ctrl+C in print mode to stop. rust-claude stops running commands and MCP servers, saves the session with the prompt marked as cancelled, prints `cancelled` to standard error and exits with status 130.
 
