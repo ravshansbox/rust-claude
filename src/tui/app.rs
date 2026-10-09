@@ -198,8 +198,24 @@ impl App {
         self.push(Role::Tool, tool_message("!", command.to_string(), diff));
     }
 
+    pub(super) fn load_history(&mut self, path: Option<PathBuf>) {
+        let folder = std::env::current_dir()
+            .map(|folder| folder.display().to_string())
+            .unwrap_or_default();
+        self.prompt_history = path
+            .as_deref()
+            .map(|path| history::load_folder(path, &folder))
+            .unwrap_or_default();
+        self.history_file = path;
+    }
+
+    pub(super) fn add_prompt(&mut self, prompt: String) {
+        self.prompt_history.retain(|existing| *existing != prompt);
+        self.prompt_history.push(prompt);
+    }
+
     pub(super) fn remember(&mut self, prompt: &str) {
-        self.prompt_history.push(prompt.to_string());
+        self.add_prompt(prompt.to_string());
         let Some(path) = &self.history_file else {
             return;
         };
@@ -212,12 +228,7 @@ impl App {
     }
 
     pub(super) fn open_history_search(&mut self) {
-        let mut current: Vec<String> = Vec::new();
-        for prompt in self.prompt_history.iter().rev() {
-            if !current.contains(prompt) {
-                current.push(prompt.clone());
-            }
-        }
+        let current = self.prompt_history.iter().rev().cloned().collect();
         self.history_search = Some(HistorySearch {
             all: false,
             query: String::new(),
@@ -445,7 +456,6 @@ impl App {
 
     pub(super) fn clear_session(&mut self) {
         self.messages.clear();
-        self.prompt_history.clear();
         self.history_index = None;
     }
 

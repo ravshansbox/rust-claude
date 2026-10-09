@@ -181,7 +181,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
 fn replay_prompt(app: &mut App, text: &str) {
     if let Some((command, output)) = parse_shell_message(text) {
         app.push_shell(command, output);
-        app.prompt_history.push(format!("!{command}"));
+        app.add_prompt(format!("!{command}"));
         return;
     }
     match skills::parse_block(text) {
@@ -192,11 +192,11 @@ fn replay_prompt(app: &mut App, text: &str) {
                 app.push(Role::User, user_message);
                 command = format!("{command} {user_message}");
             }
-            app.prompt_history.push(command);
+            app.add_prompt(command);
         }
         None => {
             app.push(Role::User, text);
-            app.prompt_history.push(text.to_string());
+            app.add_prompt(text.to_string());
         }
     }
 }
