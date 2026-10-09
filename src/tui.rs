@@ -828,14 +828,7 @@ fn context_span(stats: &Stats) -> Span<'static> {
     } else {
         0.0
     };
-    let text = format!("{percent:.1}%/{}", format_tokens(stats.context_window));
-    if percent > 90.0 {
-        Span::styled(text, Style::default().fg(Color::Red))
-    } else if percent > 70.0 {
-        Span::styled(text, Style::default().fg(Color::Yellow))
-    } else {
-        Span::raw(text)
-    }
+    Span::raw(format!("{percent:.1}%/{}", format_tokens(stats.context_window)))
 }
 
 fn format_tokens(count: u64) -> String {
