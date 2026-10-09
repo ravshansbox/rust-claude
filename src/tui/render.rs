@@ -77,7 +77,9 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
         Role::User => user_message_lines(text, width as usize),
         Role::Assistant => tui_markdown::from_str_with_options(
             &hard_line_breaks(text),
-            &tui_markdown::Options::new(MarkdownStyleSheet).code_theme(theme().code_theme()),
+            &tui_markdown::Options::new(MarkdownStyleSheet)
+                .code_theme(theme().code_theme())
+                .table_width(width),
         )
         .lines
         .into_iter()
@@ -232,5 +234,13 @@ mod tests {
                 "        ",
             ]
         );
+    }
+
+    #[test]
+    fn fits_assistant_table_to_width() {
+        let text = "| Name | Description |\n| --- | --- |\n| alpha | a fairly long description that needs wrapping |";
+        let lines = render_message(Role::Assistant, text, 30);
+        assert!(lines.iter().any(|line| line.to_string().contains('│')));
+        assert!(lines.iter().all(|line| line.width() <= 30));
     }
 }
