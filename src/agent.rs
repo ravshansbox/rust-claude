@@ -274,13 +274,14 @@ impl Agent {
         let mut partial_json = String::new();
         let mut stop_reason = String::new();
         let mut usage = Usage::default();
-        let mut buffer = String::new();
+        let mut buffer: Vec<u8> = Vec::new();
         let mut stream = response.bytes_stream();
 
         while let Some(chunk) = stream.next().await {
-            buffer.push_str(&String::from_utf8_lossy(&chunk?));
-            while let Some(end) = buffer.find("\n\n") {
-                let frame: String = buffer.drain(..end + 2).collect();
+            buffer.extend_from_slice(&chunk?);
+            while let Some(end) = buffer.windows(2).position(|window| window == b"\n\n") {
+                let frame_bytes: Vec<u8> = buffer.drain(..end + 2).collect();
+                let frame = String::from_utf8_lossy(&frame_bytes);
                 let Some(data) = frame.lines().find_map(|line| line.strip_prefix("data: ")) else {
                     continue;
                 };
