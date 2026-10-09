@@ -143,7 +143,11 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
                             AgentEvent::ToolCall(name) => app.status = format!("calling {name}"),
                             AgentEvent::ToolDone(name) => app.status = format!("used {name}"),
                             AgentEvent::Usage { input, output } => {
-                                app.usage = format!("{input} in · {output} out");
+                                app.usage = format!(
+                                    "{} in · {} out",
+                                    format_tokens(input),
+                                    format_tokens(output)
+                                );
                             }
                         }
                         let _ = terminal.draw(|frame| draw(frame, &mut app));
@@ -162,6 +166,29 @@ async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()
         }
     }
     Ok(())
+}
+
+fn format_tokens(count: u64) -> String {
+    match count {
+        0..1_000 => count.to_string(),
+        1_000..999_950 => format!("{:.1}k", count as f64 / 1_000.0),
+        _ => format!("{:.1}M", count as f64 / 1_000_000.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::format_tokens;
+
+    #[test]
+    fn formats_tokens() {
+        assert_eq!(format_tokens(0), "0");
+        assert_eq!(format_tokens(999), "999");
+        assert_eq!(format_tokens(1_000), "1.0k");
+        assert_eq!(format_tokens(12_345), "12.3k");
+        assert_eq!(format_tokens(999_950), "1.0M");
+        assert_eq!(format_tokens(1_234_567), "1.2M");
+    }
 }
 
 fn draw(frame: &mut Frame, app: &mut App) {
