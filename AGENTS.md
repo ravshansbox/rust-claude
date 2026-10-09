@@ -2,3 +2,4 @@
 - See staged files before commit.
 - Ask questions as numbered lists with lettered options, mark the recommended one.
 - Keep README.md up to date with every change.
+- Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` before commit.
