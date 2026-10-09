@@ -6,7 +6,8 @@ const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
 Prefer edit and write over bash for changing files.
-Put questions to the user in bold."#;
+Put questions to the user in bold.
+Ask questions as numbered lists with lettered options, and mark the recommended one."#;
 
 const SEARCH_PROGRAMS: [&str; 2] = ["ast-grep", "rg"];
 
@@ -89,6 +90,13 @@ mod tests {
     fn tells_the_model_to_prefer_ast_grep_for_code_search() {
         assert!(system_text(&[]).contains(
             "Search code with ast-grep. Fall back to ripgrep for plain text, comments, strings and files ast-grep cannot parse."
+        ));
+    }
+
+    #[test]
+    fn tells_the_model_how_to_format_questions() {
+        assert!(system_text(&[]).contains(
+            "Ask questions as numbered lists with lettered options, and mark the recommended one."
         ));
     }
 
