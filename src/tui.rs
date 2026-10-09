@@ -137,6 +137,9 @@ async fn agent_task(
 
 async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let mut app = App::new(&agent.model);
+    for instructions in &agent.instructions {
+        app.push(Role::Event, format!("loaded {}", instructions.label));
+    }
     let (prompt_tx, prompt_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
