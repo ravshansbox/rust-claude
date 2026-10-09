@@ -77,6 +77,8 @@ Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
 Environment variables take priority over the settings file.
 
+Changing the model or thinking level in the interface saves only the setting you changed.
+
 ## Instructions
 
 rust-claude adds `AGENTS.md` from your home folder and from the current directory to the system prompt.
