@@ -185,12 +185,13 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
                 .await
                 .map_err(|error| format!("failed to read {path}: {error}"))?;
             let offset = input["offset"].as_u64().unwrap_or(1).max(1) as usize;
-            let limit = input["limit"]
-                .as_u64()
-                .map_or(usize::MAX, |limit| limit as usize);
-            if limit == 0 {
-                return Err("limit must be at least 1".into());
-            }
+            let limit = match &input["limit"] {
+                Value::Null => usize::MAX,
+                value => match value.as_u64() {
+                    Some(limit) if limit > 0 => limit as usize,
+                    _ => return Err("limit must be at least 1".into()),
+                },
+            };
             let line_count = content.split_inclusive('\n').count();
             if offset > line_count.max(1) {
                 return Err(format!(
@@ -282,6 +283,15 @@ mod tests {
     #[tokio::test]
     async fn rejects_zero_limit() {
         let input = json!({ "path": "Cargo.toml", "limit": 0 });
+        assert_eq!(
+            call("read", &input).await,
+            Err("limit must be at least 1".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_negative_limit() {
+        let input = json!({ "path": "Cargo.toml", "limit": -1 });
         assert_eq!(
             call("read", &input).await,
             Err("limit must be at least 1".into())
