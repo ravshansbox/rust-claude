@@ -2,6 +2,7 @@ mod agent;
 mod auth;
 mod clipboard;
 mod highlight;
+mod history;
 mod images;
 mod mcp;
 mod models;
