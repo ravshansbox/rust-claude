@@ -356,7 +356,21 @@ impl Agent {
                             .as_str()
                             .unwrap_or_default()
                             .into();
-                        usage.output = event["usage"]["output_tokens"].as_u64().unwrap_or(0);
+                        let delta_usage = &event["usage"];
+                        if let Some(input) = delta_usage["input_tokens"].as_u64() {
+                            usage.input = input;
+                        }
+                        if let Some(output) = delta_usage["output_tokens"].as_u64() {
+                            usage.output = output;
+                        }
+                        if let Some(cache_read) = delta_usage["cache_read_input_tokens"].as_u64() {
+                            usage.cache_read = cache_read;
+                        }
+                        if let Some(cache_write) =
+                            delta_usage["cache_creation_input_tokens"].as_u64()
+                        {
+                            usage.cache_write = cache_write;
+                        }
                     }
                     "error" => bail!("{}", event["error"]),
                     _ => {}
