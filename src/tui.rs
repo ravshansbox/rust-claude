@@ -14,16 +14,35 @@ use crossterm::{
 use futures::StreamExt;
 use ratatui::{
     DefaultTerminal, Frame,
-    layout::{Constraint, Direction, Layout, Margin},
+    layout::{Constraint, Direction, Layout, Margin, Rect},
     style::{Color, Style, Stylize},
     text::{Line, Span, Text},
-    widgets::{Block, Borders, Paragraph, Wrap},
+    widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use serde_json::Value;
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
+
+const COMMANDS: &[(&str, &str)] = &[
+    ("/new", "start a new session"),
+    ("/resume", "resume a previous session"),
+    ("/model", "select model"),
+    ("/thinking", "select thinking level"),
+    ("/quit", "quit"),
+];
+
+fn command_matches(input: &str) -> Vec<(&'static str, &'static str)> {
+    if !input.starts_with('/') || input.contains(char::is_whitespace) {
+        return Vec::new();
+    }
+    COMMANDS
+        .iter()
+        .filter(|(name, _)| name.starts_with(input))
+        .copied()
+        .collect()
+}
 
 #[derive(Clone, Copy)]
 enum Role {
@@ -112,6 +131,7 @@ struct App {
     page_size: u16,
     busy: bool,
     picker: Option<Picker>,
+    command_selected: usize,
 }
 
 #[derive(Clone, Copy)]
@@ -142,6 +162,7 @@ impl App {
             page_size: 1,
             busy: false,
             picker: None,
+            command_selected: 0,
         };
         app.push(
             Role::Event,
@@ -399,6 +420,25 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         return false;
     }
 
+    let matches = command_matches(&app.input);
+    if !matches.is_empty() {
+        app.command_selected = app.command_selected.min(matches.len() - 1);
+        match key.code {
+            KeyCode::Up => {
+                app.command_selected = app.command_selected.saturating_sub(1);
+                return false;
+            }
+            KeyCode::Down => {
+                app.command_selected = (app.command_selected + 1).min(matches.len() - 1);
+                return false;
+            }
+            KeyCode::Enter if !app.busy => {
+                app.input = matches[app.command_selected].0.to_string();
+            }
+            _ => {}
+        }
+    }
+
     match (key.code, key.modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
@@ -484,8 +524,12 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         }
         (KeyCode::Backspace, _) => {
             app.input.pop();
+            app.command_selected = 0;
         }
-        (KeyCode::Char(character), _) => app.input.push(character),
+        (KeyCode::Char(character), _) => {
+            app.input.push(character);
+            app.command_selected = 0;
+        }
         _ => {}
     }
     false
@@ -691,6 +735,31 @@ fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_widget(picker_view(picker, chat.height), chat);
     } else {
         frame.render_widget(conversation.scroll((scroll, 0)), chat);
+    }
+
+    let matches = command_matches(&app.input);
+    if !matches.is_empty() {
+        let height = (matches.len() as u16).min(chat.height);
+        let area = Rect {
+            y: chat.y + chat.height - height,
+            height,
+            ..chat
+        };
+        let selected = app.command_selected.min(matches.len() - 1);
+        let lines: Vec<Line> = matches
+            .iter()
+            .enumerate()
+            .map(|(index, (name, description))| {
+                let text = format!("{name:<12}{description}");
+                if index == selected {
+                    Line::from(format!("› {text}").reversed())
+                } else {
+                    Line::raw(format!("  {text}"))
+                }
+            })
+            .collect();
+        frame.render_widget(Clear, area);
+        frame.render_widget(Paragraph::new(lines), area);
     }
 
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
