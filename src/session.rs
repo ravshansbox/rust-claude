@@ -331,6 +331,8 @@ mod tests {
             .join(format!("{}.jsonl", session.id));
         let first_line = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_file(&path).unwrap();
+        let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+        assert!(!path.starts_with(home.join(".rust-claude")));
         assert_eq!(latest.unwrap(), Some(session.id.clone()));
         assert_eq!(loaded.unwrap().1, messages);
         assert!(first_line.starts_with("{\"cwd\":"));

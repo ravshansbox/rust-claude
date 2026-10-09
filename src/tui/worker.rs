@@ -194,10 +194,8 @@ mod tests {
         agent_task(agent, request_rx, cancel_rx, event_tx).await;
         let ran = marker.exists();
         let _ = std::fs::remove_file(&marker);
-        if let Some(home) = std::env::var_os("HOME") {
-            let sessions = std::path::Path::new(&home)
-                .join(".rust-claude")
-                .join("sessions");
+        if let Some(config_dir) = crate::config::dir() {
+            let sessions = config_dir.join("sessions");
             let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
         }
         assert!(!ran);
@@ -215,10 +213,8 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         quit(request_tx, cancel_tx);
         let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
-        if let Some(home) = std::env::var_os("HOME") {
-            let sessions = std::path::Path::new(&home)
-                .join(".rust-claude")
-                .join("sessions");
+        if let Some(config_dir) = crate::config::dir() {
+            let sessions = config_dir.join("sessions");
             let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
         }
         assert!(stopped.is_ok());
