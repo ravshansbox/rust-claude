@@ -42,6 +42,13 @@ impl Theme {
         }
     }
 
+    fn subtle_style(self) -> Style {
+        match self {
+            Self::Light => Style::new().bg(Color::Rgb(245, 245, 245)),
+            Self::Dark => Style::new().bg(Color::Rgb(35, 35, 35)),
+        }
+    }
+
     fn code_theme(self) -> tui_markdown::BuiltinCodeTheme {
         match self {
             Self::Light => tui_markdown::BuiltinCodeTheme::Base16OceanLight,
@@ -127,7 +134,8 @@ fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
         let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
         lines[0] = Line::from(vec![
             Span::styled(format!(" {name} "), theme().highlight_style()),
-            Span::raw(format!(" {rest}")),
+            Span::raw(" "),
+            Span::styled(format!(" {rest} "), theme().subtle_style()),
         ]);
     }
     lines
