@@ -51,6 +51,9 @@ impl Credentials {
 
     async fn load_and_refresh(text: &str, http: &reqwest::Client) -> Result<Self> {
         let credentials: Self = serde_json::from_str(text)?;
+        if now_millis() < credentials.expires {
+            return Ok(credentials);
+        }
         credentials.refresh(http).await
     }
 
