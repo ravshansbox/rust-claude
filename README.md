@@ -75,6 +75,8 @@ The status line shows token use for the session: input (↑), output (↓), cach
 
 Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
+Each reply may use up to the model's full output limit (64,000 or 128,000 tokens). Models that rust-claude doesn't know get 8,192 tokens.
+
 Environment variables take priority over the settings file.
 
 Changing the model or thinking level in the interface saves only the setting you changed.
