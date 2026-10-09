@@ -94,10 +94,24 @@ impl Setup {
 }
 
 fn interrupt(child: Child) -> std::process::Output {
+    signal(child, "-INT")
+}
+
+/// Sends `signal` and waits up to the usual 10 s for the binary to exit,
+/// killing it and failing the test if it does not.
+fn signal(child: Child, signal: &str) -> std::process::Output {
     Command::new("kill")
-        .args(["-INT", &child.id().to_string()])
+        .args([signal, &child.id().to_string()])
         .status()
         .unwrap();
+    let child = std::cell::RefCell::new(child);
+    let exited = wait_for(|| child.borrow_mut().try_wait().unwrap().is_some());
+    let mut child = child.into_inner();
+    if !exited {
+        let _ = child.kill();
+        let _ = child.wait();
+        panic!("rust-claude did not exit after {signal}");
+    }
     child.wait_with_output().unwrap()
 }
 
