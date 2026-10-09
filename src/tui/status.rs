@@ -82,11 +82,10 @@ fn format_duration(seconds: u64) -> String {
 }
 
 pub(super) fn format_context(stats: &Stats) -> String {
-    let percent = if stats.context_window > 0 {
-        stats.context_tokens as f64 / stats.context_window as f64 * 100.0
-    } else {
-        0.0
-    };
+    if stats.context_window == 0 {
+        return format_tokens(stats.context_tokens);
+    }
+    let percent = stats.context_tokens as f64 / stats.context_window as f64 * 100.0;
     format!("{percent:.0}%/{}", format_tokens(stats.context_window))
 }
 
@@ -204,6 +203,15 @@ mod tests {
   free              150k   75%
 Estimated, and scaled to the token count of the last reply."
         );
+    }
+
+    #[test]
+    fn shows_context_tokens_without_a_percentage_for_an_unknown_window() {
+        let mut stats = stats_with(Quota::default());
+        stats.context_tokens = 12_000;
+        assert_eq!(format_context(&stats), "12k");
+        stats.context_window = 200_000;
+        assert_eq!(format_context(&stats), "6%/200k");
     }
 
     #[test]
