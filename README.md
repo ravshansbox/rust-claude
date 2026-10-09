@@ -202,6 +202,8 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/skill:name [request]` | Run a skill, with an optional request |
 | `/quit` | Quit |
 
+Typing `/` lists the commands and skill commands that start with the input. The list shows up to 10 at a time, and a longer list scrolls as you move through it, with a scrollbar on the right.
+
 The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right.
 
 ## Files

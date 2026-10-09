@@ -135,7 +135,12 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         frame.render_widget(Clear, area);
         frame.render_widget(view.block(border), area);
         if let Some((count, header, selected)) = list {
-            render_list_scrollbar(frame, area, count, header, selected);
+            let list_area = Rect {
+                y: area.y + 1 + header,
+                height: area.height.saturating_sub(1 + header),
+                ..area
+            };
+            render_list_scrollbar(frame, list_area, count, selected);
         }
     }
 
@@ -144,8 +149,9 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         .filter(|_| app.history_search.is_none())
     {
         let matches = suggestions.items;
-        let height = (matches.len() as u16).min(chat.height);
+        let height = (matches.len().min(MAX_LIST_ROWS) as u16).min(chat.height);
         let selected = app.command_selected.min(matches.len() - 1);
+        let first = (selected + 1).saturating_sub(height as usize);
         let name_width = matches
             .iter()
             .map(|(name, _)| name.chars().count() + 1)
@@ -164,6 +170,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         let lines: Vec<Line> = texts
             .into_iter()
             .enumerate()
+            .skip(first)
+            .take(height as usize)
             .map(|(index, text)| {
                 let text = format!("{text:<width$}");
                 if index == selected {
@@ -182,6 +190,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         };
         frame.render_widget(Clear, area);
         frame.render_widget(Paragraph::new(lines).style(theme().subtle_style()), area);
+        render_list_scrollbar(frame, area, matches.len(), selected);
     }
 
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
@@ -211,23 +220,11 @@ fn held_scroll_from_bottom(
     max_scroll.saturating_sub(top)
 }
 
-fn render_list_scrollbar(
-    frame: &mut Frame,
-    area: Rect,
-    count: usize,
-    header: u16,
-    selected: usize,
-) {
-    let rows = area.height.saturating_sub(1 + header);
-    let visible = rows as usize;
+fn render_list_scrollbar(frame: &mut Frame, list_area: Rect, count: usize, selected: usize) {
+    let visible = list_area.height as usize;
     if visible == 0 || count <= visible {
         return;
     }
-    let list_area = Rect {
-        y: area.y + 1 + header,
-        height: rows,
-        ..area
-    };
     let mut state = ScrollbarState::new(count - visible + 1)
         .viewport_content_length(visible)
         .position((selected + 1).saturating_sub(visible));
@@ -301,6 +298,7 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
 mod tests {
     use super::held_scroll_from_bottom;
     use crate::session::SessionSummary;
+    use crate::skills::{Scope, Skill};
     use crate::tui::{
         App, Role, UiEvent, handle_agent_event, handle_input,
         test_support::{app_with_reply, press, screen},
@@ -434,5 +432,33 @@ mod tests {
         assert!(shown.contains("prompt 05"), "{shown}");
         assert!(!shown.contains("prompt 04"), "{shown}");
         assert!(shown.contains('█'), "{shown}");
+    }
+
+    #[test]
+    fn keeps_the_selected_command_visible_in_a_long_list() {
+        let mut app = app_with_reply();
+        app.skills = (0..30)
+            .map(|index| Skill {
+                name: format!("skill{index:02}"),
+                description: format!("skill number {index}"),
+                path: "/skills/SKILL.md".into(),
+                base_dir: "/skills".into(),
+                disable_model_invocation: false,
+                scope: Scope::Global,
+            })
+            .collect();
+        handle_input(Event::Paste("/".into()), &mut app, |_| {});
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        assert!(shown.contains("/new"), "{shown}");
+        assert!(!shown.contains("/skill:skill03"), "{shown}");
+        assert!(shown.contains('█'), "{shown}");
+        for _ in 0..36 {
+            press(&mut app, KeyCode::Down);
+        }
+        let shown = screen(&mut app);
+        assert!(shown.contains("/skill:skill29"), "{shown}");
+        assert!(shown.contains("/skill:skill20"), "{shown}");
+        assert!(!shown.contains("/skill:skill19"), "{shown}");
     }
 }
