@@ -190,7 +190,7 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/skill:name [request]` | Run a skill, with an optional request |
 | `/quit` | Quit |
 
-The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box is as tall as its list, up to the height of the chat area, and the conversation stays visible above it.
+The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right.
 
 ## Files
 
@@ -198,7 +198,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 
 ## Prompt history
 
-Press Ctrl+R to search earlier prompts. The search opens in a box above the input, with the conversation still visible above it. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
+Press Ctrl+R to search earlier prompts. The search opens in a box above the input, with the conversation still visible above it. The box shows up to 10 prompts, with a scrollbar when there are more. Type to filter the list, ignoring case. The list has two tabs: **Current** holds prompts from this session, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
 
 rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The **All** tab reads this file. Prompts sent before this file existed are not in it.
 
