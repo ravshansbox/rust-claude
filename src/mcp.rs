@@ -309,10 +309,10 @@ impl Connection {
         .await
         .map_err(|error| self.with_stderr(error))?;
         match tokio::time::timeout(self.timeout, receiver).await {
-            Err(_) => Err(format!(
+            Err(_) => Err(self.with_stderr(format!(
                 "{method} timed out after {} seconds",
                 self.timeout.as_secs()
-            )),
+            ))),
             Ok(Err(_)) => Err(self.with_stderr("server closed the connection".into())),
             Ok(Ok(result)) => result,
         }
@@ -711,26 +711,47 @@ mod tests {
     }
 
     fn echo_server() -> ServerConfig {
+        server_answering_calls_with(
+            r#"printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
+        )
+    }
+
+    fn server_answering_calls_with(call: &str) -> ServerConfig {
         let script = r#"
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
   case "$line" in
     *'"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"t","version":"1"}}}\n' "$id" ;;
     *'"tools/list"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"echo","inputSchema":{"type":"object"}}]}}\n' "$id" ;;
-    *'"tools/call"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id" ;;
+    *'"tools/call"'*) CALL ;;
   esac
 done
-"#;
+"#
+        .replace("CALL", call);
         ServerConfig {
             kind: None,
             command: Some("bash".into()),
-            args: vec!["-c".into(), script.into()],
+            args: vec!["-c".into(), script],
             env: HashMap::new(),
             cwd: None,
             url: None,
             enabled: None,
             timeout: Some(5),
         }
+    }
+
+    #[tokio::test]
+    async fn shows_server_errors_when_a_call_times_out() {
+        let mut config = server_answering_calls_with("echo stuck >&2");
+        config.timeout = Some(1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        assert_eq!(
+            mcp.call("mcp__test__echo", &json!({})).await,
+            Some(Err(
+                "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
+            ))
+        );
     }
 
     #[tokio::test]
