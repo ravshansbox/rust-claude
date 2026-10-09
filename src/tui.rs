@@ -346,7 +346,6 @@ fn draw(frame: &mut Frame, app: &mut App) {
             } else {
                 format!(" · {}", app.usage)
             }),
-            "   ↑/↓ scroll · PgUp/PgDn · Esc cancel/quit".dark_gray(),
         ])),
         footer,
     );
