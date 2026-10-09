@@ -1,3 +1,4 @@
+use crate::agent::{Agent, AgentEvent};
 use anyhow::Result;
 use crossterm::{
     event::{
@@ -6,18 +7,12 @@ use crossterm::{
     },
     execute,
 };
-use futures::StreamExt;
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout},
     style::Stylize,
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
-};
-use rig::{
-    agent::MultiTurnStreamItem,
-    message::Message,
-    streaming::{StreamedAssistantContent, StreamingPrompt},
 };
 
 #[derive(Clone, Copy)]
@@ -85,14 +80,14 @@ impl App {
     }
 }
 
-pub async fn run(agent: rig::agent::Agent, model: &str) -> Result<()> {
+pub async fn run(agent: Agent) -> Result<()> {
     let mut terminal = ratatui::init();
     if let Err(error) = execute!(std::io::stdout(), EnableMouseCapture) {
         ratatui::restore();
         return Err(error.into());
     }
 
-    let result = run_loop(&mut terminal, agent, model).await;
+    let result = run_loop(&mut terminal, agent).await;
     let mouse_result = execute!(std::io::stdout(), DisableMouseCapture);
     ratatui::restore();
 
@@ -100,13 +95,8 @@ pub async fn run(agent: rig::agent::Agent, model: &str) -> Result<()> {
     result
 }
 
-async fn run_loop(
-    terminal: &mut DefaultTerminal,
-    agent: rig::agent::Agent,
-    model: &str,
-) -> Result<()> {
-    let mut app = App::new(model);
-    let mut history: Vec<Message> = Vec::new();
+async fn run_loop(terminal: &mut DefaultTerminal, mut agent: Agent) -> Result<()> {
+    let mut app = App::new(&agent.model);
 
     loop {
         terminal.draw(|frame| draw(frame, &mut app))?;
@@ -140,55 +130,25 @@ async fn run_loop(
                 app.push(Role::Assistant, String::new());
                 app.status = "thinking".into();
 
-                // TODO: Rig - Manual conversation history supplied to each prompt.
-                let mut stream = agent
-                    .stream_prompt(prompt.as_str())
-                    .history(history.clone())
-                    // TODO: Rig - Automatic multi-turn tool execution, limited to 20 turns.
-                    .max_turns(20)
-                    .await;
-                let mut response = String::new();
-                let mut final_messages = None;
-
-                while let Some(item) = stream.next().await {
-                    match item {
-                        Ok(MultiTurnStreamItem::StreamAssistantItem(
-                            StreamedAssistantContent::Text(text),
-                        )) => {
-                            response.push_str(&text.text);
-                            if let Some(last) = app.messages.last_mut() {
-                                last.text = response.clone();
+                let result = agent
+                    .prompt(&prompt, |event| {
+                        match event {
+                            AgentEvent::Text(text) => {
+                                if let Some(last) = app.messages.last_mut() {
+                                    last.text.push_str(&text);
+                                }
+                            }
+                            AgentEvent::ToolCall(name) => app.status = format!("calling {name}"),
+                            AgentEvent::ToolDone(name) => app.status = format!("used {name}"),
+                            AgentEvent::Usage { input, output } => {
+                                app.usage = format!("{input} in · {output} out");
                             }
                         }
-                        Ok(MultiTurnStreamItem::StreamAssistantItem(
-                            StreamedAssistantContent::ToolCall { tool_call, .. },
-                        )) => app.status = format!("calling {}", tool_call.function.name),
-                        // TODO: Rig - Streaming event emitted after tool execution is committed.
-                        Ok(MultiTurnStreamItem::ToolExecutionCommitted { tool_call, .. }) => {
-                            app.status = format!("used {}", tool_call.function.name);
-                        }
-                        Ok(MultiTurnStreamItem::FinalResponse(final_response)) => {
-                            // TODO: Rig - Final response provides token usage and generated messages.
-                            let usage = final_response.usage();
-                            app.usage =
-                                format!("{} in · {} out", usage.input_tokens, usage.output_tokens);
-                            final_messages = final_response.messages().map(|m| m.to_vec());
-                        }
-                        Err(error) => {
-                            app.push(Role::Event, format!("error: {error}"));
-                            break;
-                        }
-                        _ => {}
-                    }
-                    terminal.draw(|frame| draw(frame, &mut app))?;
-                }
-
-                if let Some(messages) = final_messages {
-                    // TODO: Rig - Persist Rig-generated messages for the next prompt.
-                    history.extend(messages);
-                } else {
-                    history.push(Message::user(prompt));
-                    history.push(Message::assistant(response));
+                        let _ = terminal.draw(|frame| draw(frame, &mut app));
+                    })
+                    .await;
+                if let Err(error) = result {
+                    app.push(Role::Event, format!("error: {error}"));
                 }
                 app.status = "ready".into();
             }
@@ -224,7 +184,11 @@ fn draw(frame: &mut Frame, app: &mut App) {
     }
 
     let transcript = Paragraph::new(Text::from(lines))
-        .block(Block::default().title(" Ratcode ").borders(Borders::ALL))
+        .block(
+            Block::default()
+                .title(" rust-claude ")
+                .borders(Borders::ALL),
+        )
         .wrap(Wrap { trim: false });
     let viewport_height = chat.height.saturating_sub(2);
     let wrapped_line_count = transcript.line_count(chat.width);

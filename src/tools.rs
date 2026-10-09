@@ -1,12 +1,6 @@
-use rig::tool::{Tool, ToolContext};
-use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 
 const MAX_OUTPUT: usize = 20_000;
-
-#[derive(Debug, thiserror::Error)]
-#[error("{0}")]
-pub struct ToolFailure(String);
 
 fn truncate(mut text: String) -> String {
     if text.len() > MAX_OUTPUT {
@@ -19,134 +13,113 @@ fn truncate(mut text: String) -> String {
     text
 }
 
-#[derive(Deserialize, Serialize)]
-pub struct ReadFile;
-
-#[derive(Deserialize)]
-pub struct ReadFileArgs {
-    path: String,
-}
-
-// TODO: Rig - Tool trait with typed arguments, output, error, and JSON schema.
-impl Tool for ReadFile {
-    const NAME: &'static str = "read_file";
-    type Error = ToolFailure;
-    type Args = ReadFileArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Read a UTF-8 file from the current project".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "path": { "type": "string" } },
-            "required": ["path"]
-        })
-    }
-
-    async fn call(
-        &self,
-        // TODO: Rig - ToolContext is provided to every tool invocation.
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<String, ToolFailure> {
-        tokio::fs::read_to_string(&args.path)
-            .await
-            .map(truncate)
-            .map_err(|error| ToolFailure(format!("failed to read {}: {error}", args.path)))
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct WriteFile;
-
-#[derive(Deserialize)]
-pub struct WriteFileArgs {
-    path: String,
-    content: String,
-}
-
-impl Tool for WriteFile {
-    const NAME: &'static str = "write_file";
-    type Error = ToolFailure;
-    type Args = WriteFileArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Create or replace a UTF-8 file in the current project".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": {
-                "path": { "type": "string" },
-                "content": { "type": "string" }
-            },
-            "required": ["path", "content"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<String, ToolFailure> {
-        tokio::fs::write(&args.path, args.content)
-            .await
-            .map(|_| format!("wrote {}", args.path))
-            .map_err(|error| ToolFailure(format!("failed to write {}: {error}", args.path)))
-    }
-}
-
-#[derive(Deserialize, Serialize)]
-pub struct RunShell;
-
-#[derive(Deserialize)]
-pub struct RunShellArgs {
-    command: String,
-}
-
-impl Tool for RunShell {
-    const NAME: &'static str = "run_shell";
-    type Error = ToolFailure;
-    type Args = RunShellArgs;
-    type Output = String;
-
-    fn description(&self) -> String {
-        "Run a shell command in the current project and return stdout and stderr".into()
-    }
-
-    fn parameters(&self) -> serde_json::Value {
-        json!({
-            "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"]
-        })
-    }
-
-    async fn call(
-        &self,
-        _context: &mut ToolContext,
-        args: Self::Args,
-    ) -> Result<String, ToolFailure> {
-        let output = tokio::process::Command::new("bash")
-            .args(["-lc", &args.command])
-            .output()
-            .await
-            .map_err(|error| ToolFailure(format!("failed to run command: {error}")))?;
-
-        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        if !stderr.is_empty() {
-            text.push_str("\nstderr:\n");
-            text.push_str(&stderr);
+pub fn definitions() -> Value {
+    json!([
+        {
+            "name": "bash",
+            "description": "Run a bash command in the current project and return stdout and stderr",
+            "input_schema": {
+                "type": "object",
+                "properties": { "command": { "type": "string" } },
+                "required": ["command"]
+            }
+        },
+        {
+            "name": "read",
+            "description": "Read a UTF-8 file from the current project",
+            "input_schema": {
+                "type": "object",
+                "properties": { "path": { "type": "string" } },
+                "required": ["path"]
+            }
+        },
+        {
+            "name": "write",
+            "description": "Create or replace a UTF-8 file in the current project",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" },
+                    "content": { "type": "string" }
+                },
+                "required": ["path", "content"]
+            }
+        },
+        {
+            "name": "edit",
+            "description": "Replace text in a UTF-8 file. old_text must match exactly once",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "path": { "type": "string" },
+                    "old_text": { "type": "string" },
+                    "new_text": { "type": "string" }
+                },
+                "required": ["path", "old_text", "new_text"]
+            }
         }
-        if !output.status.success() {
-            text.push_str(&format!("\nexit status: {}", output.status));
+    ])
+}
+
+fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
+    input[key]
+        .as_str()
+        .ok_or_else(|| format!("missing argument: {key}"))
+}
+
+pub async fn call(name: &str, input: &Value) -> Result<String, String> {
+    match name {
+        "bash" => {
+            let output = tokio::process::Command::new("bash")
+                .args(["-lc", argument(input, "command")?])
+                .output()
+                .await
+                .map_err(|error| format!("failed to run command: {error}"))?;
+
+            let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            if !stderr.is_empty() {
+                text.push_str("\nstderr:\n");
+                text.push_str(&stderr);
+            }
+            if !output.status.success() {
+                text.push_str(&format!("\nexit status: {}", output.status));
+            }
+            Ok(truncate(text))
         }
-        Ok(truncate(text))
+        "read" => {
+            let path = argument(input, "path")?;
+            tokio::fs::read_to_string(path)
+                .await
+                .map(truncate)
+                .map_err(|error| format!("failed to read {path}: {error}"))
+        }
+        "write" => {
+            let path = argument(input, "path")?;
+            tokio::fs::write(path, argument(input, "content")?)
+                .await
+                .map(|_| format!("wrote {path}"))
+                .map_err(|error| format!("failed to write {path}: {error}"))
+        }
+        "edit" => {
+            let path = argument(input, "path")?;
+            let old_text = argument(input, "old_text")?;
+            let content = tokio::fs::read_to_string(path)
+                .await
+                .map_err(|error| format!("failed to read {path}: {error}"))?;
+            match content.matches(old_text).count() {
+                1 => {}
+                0 => return Err(format!("old_text not found in {path}")),
+                count => return Err(format!("old_text matches {count} times in {path}")),
+            }
+            tokio::fs::write(
+                path,
+                content.replacen(old_text, argument(input, "new_text")?, 1),
+            )
+            .await
+            .map(|_| format!("edited {path}"))
+            .map_err(|error| format!("failed to write {path}: {error}"))
+        }
+        _ => Err(format!("unknown tool: {name}")),
     }
 }
