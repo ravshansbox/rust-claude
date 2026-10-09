@@ -331,6 +331,8 @@ Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. The first 
 
 While a prompt runs, the session is saved after each finished round of tool calls, so a crash or a closed terminal loses at most the round in progress. If a crash or a full disk cuts a save short, resuming the session keeps the messages before the cut, leaves out tool calls whose results were cut off, and removes the rest from the file.
 
+A session is open in one rust-claude at a time, so two copies never write to the same file. Resuming a session that another running rust-claude has open, with `/resume` or `--continue`, shows an error instead.
+
 Quitting while a prompt runs cancels it and saves the session first. Quitting while `/model` loads the model list stops that request. Requests still waiting when you quit, such as a prompt sent just before, are not started.
 
 A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request.

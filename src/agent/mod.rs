@@ -633,10 +633,13 @@ mod tests {
             })
             .await;
         let third = agent.prompt("three", &[], |_| {}).await;
+        // Close the session, as quitting does, so that it can be resumed.
+        let id = agent.session.id.clone();
+        drop(agent);
         let mut restarted = test_support::agent(&api, reqwest::Client::new());
-        let resumed = restarted.resume(&agent.session.id);
+        let resumed = restarted.resume(&id);
         let after_restart = restarted.prompt("four", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        test_support::remove_session(&restarted);
         first.unwrap();
         second.unwrap();
         third.unwrap();
