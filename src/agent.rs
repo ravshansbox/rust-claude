@@ -1,3 +1,5 @@
+use std::path::{Path, PathBuf};
+
 use anyhow::{Result, bail};
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -10,6 +12,49 @@ const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely."#;
 const MAX_TURNS: usize = 20;
+const INSTRUCTIONS_FILE: &str = "AGENTS.md";
+
+pub struct Instructions {
+    pub label: String,
+    text: String,
+}
+
+fn load_instructions() -> Vec<Instructions> {
+    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let cwd = std::env::current_dir().ok();
+    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+    if let Some(home) = &home {
+        candidates.push((
+            format!("~/{INSTRUCTIONS_FILE}"),
+            home.join(INSTRUCTIONS_FILE),
+        ));
+    }
+    let same_dir = match (&home, &cwd) {
+        (Some(home), Some(cwd)) => same_path(home, cwd),
+        _ => false,
+    };
+    if !same_dir {
+        candidates.push((
+            format!("./{INSTRUCTIONS_FILE}"),
+            PathBuf::from(INSTRUCTIONS_FILE),
+        ));
+    }
+
+    candidates
+        .into_iter()
+        .filter_map(|(label, path)| {
+            let text = std::fs::read_to_string(path).ok()?;
+            (!text.trim().is_empty()).then_some(Instructions { label, text })
+        })
+        .collect()
+}
+
+fn same_path(a: &Path, b: &Path) -> bool {
+    match (a.canonicalize(), b.canonicalize()) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
 
 pub enum AgentEvent {
     Text(String),
@@ -24,6 +69,7 @@ pub struct Agent {
     credentials: Credentials,
     pub model: String,
     messages: Vec<Value>,
+    pub instructions: Vec<Instructions>,
 }
 
 impl Agent {
@@ -33,6 +79,7 @@ impl Agent {
             credentials,
             model,
             messages: Vec::new(),
+            instructions: load_instructions(),
         }
     }
 
@@ -98,14 +145,21 @@ impl Agent {
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<(Vec<Value>, String, (u64, u64))> {
         let token = self.credentials.access_token(&self.http).await?;
+        let mut system = vec![
+            json!({ "type": "text", "text": IDENTITY }),
+            json!({ "type": "text", "text": SYSTEM_PROMPT }),
+        ];
+        for instructions in &self.instructions {
+            system.push(json!({
+                "type": "text",
+                "text": format!("# Instructions from {}\n\n{}", instructions.label, instructions.text),
+            }));
+        }
         let body = json!({
             "model": self.model,
             "max_tokens": 8192,
             "stream": true,
-            "system": [
-                { "type": "text", "text": IDENTITY },
-                { "type": "text", "text": SYSTEM_PROMPT },
-            ],
+            "system": system,
             "tools": tools::definitions(),
             "messages": self.messages,
         });
