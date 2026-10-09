@@ -500,7 +500,7 @@ impl Agent {
         let checkpoint = self.messages.len();
         let result = self.run(prompt, on_event).await;
         if result.is_err() {
-            self.discard_from(checkpoint, "error", false);
+            self.discard_from(cancel_point(&self.messages, checkpoint), "error", false);
             self.session.save(&self.messages)?;
             return result;
         }
