@@ -340,7 +340,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 ## MCP servers
 
-rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format is the same as other MCP clients':
+rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format uses the standard `mcpServers` shape:
 
 ```json
 {
