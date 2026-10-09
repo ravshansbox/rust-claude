@@ -863,11 +863,11 @@ fn draw(frame: &mut Frame, app: &mut App) {
             app.thinking_level
         )),
         Line::from(vec![
+            context_span(&app.stats),
             Span::raw(match format_stats(&app.stats) {
                 stats if stats.is_empty() => stats,
-                stats => format!("{stats} "),
+                stats => format!(" {stats}"),
             }),
-            context_span(&app.stats),
         ]),
     ];
     let quota = format_quota(&app.stats);
