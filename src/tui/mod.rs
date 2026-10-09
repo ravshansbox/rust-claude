@@ -806,7 +806,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
             context_span(&app.stats),
             Span::raw(match format_stats(&app.stats) {
                 stats if stats.is_empty() => stats,
-                stats => format!(" {stats}"),
+                stats => format!(" · {stats}"),
             }),
         ]),
     ];

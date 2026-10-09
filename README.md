@@ -60,7 +60,7 @@ Show help with `-h` or `--help`.
 
 ## Status line
 
-The status line shows token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps).
+The status line shows token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps). A `·` separates context use, token counts and speed.
 
 ## Settings
 

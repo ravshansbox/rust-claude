@@ -19,10 +19,12 @@ pub(super) fn format_stats(stats: &Stats) -> String {
     {
         parts.push(format!("CH{rate:.1}%"));
     }
+    let mut sections = vec![parts.join(" ")];
     if let Some(rate) = stats.tokens_per_second {
-        parts.push(format!("{rate:.0} tps"));
+        sections.push(format!("{rate:.0} tps"));
     }
-    parts.join(" ")
+    sections.retain(|section| !section.is_empty());
+    sections.join(" · ")
 }
 
 pub(super) fn format_quota(stats: &Stats) -> String {
