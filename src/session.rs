@@ -1,6 +1,6 @@
 use std::{
-    fs::OpenOptions,
-    io::Write,
+    fs::{File, OpenOptions, TryLockError},
+    io::{Read, Write},
     path::{Path, PathBuf},
     time::SystemTime,
 };
@@ -26,6 +26,8 @@ pub struct Session {
     drops_mismatched_thinking: bool,
     /// Whether that choice still needs writing to the session file.
     drops_mismatched_thinking_unsaved: bool,
+    /// The session file, locked so that no other rust-claude writes to it.
+    file: Option<File>,
 }
 
 fn sessions_directory() -> Result<PathBuf> {
@@ -57,6 +59,7 @@ impl Session {
             saved: 0,
             drops_mismatched_thinking: false,
             drops_mismatched_thinking_unsaved: false,
+            file: None,
         })
     }
 
@@ -79,12 +82,15 @@ impl Session {
         if new_messages.is_empty() && !self.drops_mismatched_thinking_unsaved {
             return Ok(());
         }
-        let directory = sessions_directory()?;
-        std::fs::create_dir_all(&directory)?;
-        let mut file = OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(directory.join(format!("{}.jsonl", self.id)))?;
+        let file = match &mut self.file {
+            Some(file) => file,
+            None => {
+                let directory = sessions_directory()?;
+                std::fs::create_dir_all(&directory)?;
+                let path = directory.join(format!("{}.jsonl", self.id));
+                self.file.insert(open_locked(&path, true)?)
+            }
+        };
         let mut lines = String::new();
         if self.saved == 0 {
             lines.push_str(&serde_json::to_string(&header())?);
@@ -172,14 +178,17 @@ impl Session {
 
     pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
         let path = sessions_directory()?.join(format!("{id}.jsonl"));
+        let mut file = open_locked(&path, false)?;
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)
+            .with_context(|| format!("reading {}", path.display()))?;
         let SavedSession {
             messages,
             length,
             drops_mismatched_thinking,
-        } = read_messages(&path)?;
+        } = read_messages(&bytes);
         // Remove what a crash left after the last whole round, so the next
         // save starts on a new line.
-        let file = OpenOptions::new().write(true).open(&path)?;
         if file.metadata()?.len() > length {
             file.set_len(length)?;
         }
@@ -188,8 +197,34 @@ impl Session {
             saved: messages.len(),
             drops_mismatched_thinking,
             drops_mismatched_thinking_unsaved: false,
+            file: Some(file),
         };
         Ok((session, messages))
+    }
+}
+
+/// Opens a session file for appending, locked until it is closed.
+fn open_locked(path: &Path, create: bool) -> Result<File> {
+    let file = OpenOptions::new()
+        .create(create)
+        .read(true)
+        .append(true)
+        .open(path)?;
+    // A command started while the file was open shares the lock until the
+    // command takes over, so a lock just released can look held for a moment.
+    let mut attempts = 0;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(TryLockError::WouldBlock) if attempts < 20 => {
+                attempts += 1;
+                std::thread::sleep(std::time::Duration::from_millis(10));
+            }
+            Err(TryLockError::WouldBlock) => {
+                anyhow::bail!("this session is open in another rust-claude")
+            }
+            Err(TryLockError::Error(error)) => return Err(error.into()),
+        }
     }
 }
 
@@ -313,8 +348,7 @@ struct SavedSession {
 
 /// Reads the messages before the first damaged line, such as a line a crash
 /// cut short.
-fn read_messages(path: &Path) -> Result<SavedSession> {
-    let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+fn read_messages(bytes: &[u8]) -> SavedSession {
     let marker = drop_mismatched_thinking_line();
     let mut messages = Vec::new();
     let mut starts = Vec::new();
@@ -347,11 +381,11 @@ fn read_messages(path: &Path) -> Result<SavedSession> {
         messages.pop();
         length = starts.pop().unwrap_or_default();
     }
-    Ok(SavedSession {
+    SavedSession {
         messages,
         length: length as u64,
         drops_mismatched_thinking: marker_at.is_some_and(|at| at < length),
-    })
+    }
 }
 
 fn has_tool_calls(message: &Value) -> bool {
@@ -449,21 +483,50 @@ mod tests {
         assert_eq!(latest.unwrap().as_deref(), Some("new"));
     }
 
-    #[test]
-    fn saves_session_folder_and_messages() {
+    /// Saves the messages to a new session and closes it, returning its id
+    /// and file.
+    fn save_new(messages: &[serde_json::Value]) -> (String, std::path::PathBuf) {
         let mut session = Session::new().unwrap();
-        let messages = vec![json!({ "role": "user", "content": "hello" })];
-        session.save(&messages).unwrap();
-        let loaded = Session::load(&session.id);
+        session.save(messages).unwrap();
         let path = sessions_directory()
             .unwrap()
             .join(format!("{}.jsonl", session.id));
+        (session.id.clone(), path)
+    }
+
+    #[test]
+    fn saves_session_folder_and_messages() {
+        let messages = vec![json!({ "role": "user", "content": "hello" })];
+        let (id, path) = save_new(&messages);
+        let loaded = Session::load(&id);
         let folder = read_folder(&path);
         std::fs::remove_file(&path).unwrap();
         let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
         assert!(!path.starts_with(home.join(".rust-claude")));
         assert_eq!(loaded.unwrap().1, messages);
         assert_eq!(folder.unwrap(), Some(current_folder()));
+    }
+
+    #[test]
+    fn refuses_a_session_open_elsewhere() {
+        let messages = vec![json!({ "role": "user", "content": "hello" })];
+        let mut session = Session::new().unwrap();
+        session.save(&messages).unwrap();
+        let while_saving = Session::load(&session.id).map(|_| ());
+        let id = session.id.clone();
+        drop(session);
+        let first = Session::load(&id);
+        let second = Session::load(&id).map(|_| ());
+        drop(first);
+        let after_closing = Session::load(&id).map(|(_, loaded)| loaded);
+        std::fs::remove_file(sessions_directory().unwrap().join(format!("{id}.jsonl"))).unwrap();
+        for refused in [while_saving, second] {
+            assert_eq!(
+                refused.unwrap_err().to_string(),
+                "this session is open in another rust-claude"
+            );
+        }
+        assert_eq!(after_closing.unwrap(), messages);
     }
 
     fn append_to_file(path: &std::path::Path, bytes: &[u8]) {
@@ -476,24 +539,20 @@ mod tests {
 
     #[test]
     fn resumes_messages_saved_before_a_line_cut_short() {
-        let mut session = Session::new().unwrap();
         let messages = vec![
             json!({ "role": "user", "content": "hello" }),
             json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] }),
         ];
-        session.save(&messages).unwrap();
-        let path = sessions_directory()
-            .unwrap()
-            .join(format!("{}.jsonl", session.id));
+        let (id, path) = save_new(&messages);
         // A line cut short in the middle of the two bytes of "é".
         append_to_file(&path, b"{\"role\":\"user\",\"content\":\"caf\xc3");
         let mut more = messages.clone();
         more.push(json!({ "role": "user", "content": "again" }));
-        let resumed = Session::load(&session.id).and_then(|(mut resumed, loaded)| {
+        let resumed = Session::load(&id).and_then(|(mut resumed, loaded)| {
             resumed.save(&more)?;
             Ok(loaded)
         });
-        let reloaded = Session::load(&session.id);
+        let reloaded = Session::load(&id);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(resumed.unwrap(), messages);
         assert_eq!(reloaded.unwrap().1, more);
@@ -501,22 +560,18 @@ mod tests {
 
     #[test]
     fn drops_tool_call_whose_results_were_cut_short() {
-        let mut session = Session::new().unwrap();
         let messages = vec![
             json!({ "role": "user", "content": "run it" }),
             json!({ "role": "assistant", "content": [
                 { "type": "tool_use", "id": "t1", "name": "bash", "input": {} },
             ] }),
         ];
-        session.save(&messages).unwrap();
-        let path = sessions_directory()
-            .unwrap()
-            .join(format!("{}.jsonl", session.id));
+        let (id, path) = save_new(&messages);
         append_to_file(
             &path,
             b"{\"role\":\"user\",\"content\":[{\"type\":\"tool_res",
         );
-        let loaded = Session::load(&session.id);
+        let loaded = Session::load(&id);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(loaded.unwrap().1, messages[..1]);
     }
