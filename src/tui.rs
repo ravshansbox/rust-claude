@@ -784,10 +784,11 @@ fn format_quota(stats: &Stats) -> String {
             let reset = reset
                 .map(|reset| format!(" {}", time_until(reset)))
                 .unwrap_or_default();
-            format!(" · {label} {remaining:.0}%{reset}")
+            format!("{label} {remaining:.0}%{reset}")
         })
     })
-    .collect()
+    .collect::<Vec<_>>()
+    .join(" · ")
 }
 
 fn time_until(reset: u64) -> String {
@@ -854,18 +855,26 @@ fn draw(frame: &mut Frame, app: &mut App) {
             Line::raw(input_characters[start..end].iter().collect::<String>())
         })
         .collect();
-    let footer_paragraph = Paragraph::new(Line::from(vec![
-        Span::raw(format!("{} · ", app.workspace)),
-        Span::raw(format!(
-            "{}:{}",
+    let mut footer_lines = vec![
+        Line::raw(format!(
+            "{} · {}:{}",
+            app.workspace,
             display_model(&app.model),
             app.thinking_level
         )),
-        Span::raw(format!(" · {} ", format_stats(&app.stats))),
-        context_span(&app.stats),
-        Span::raw(format_quota(&app.stats)),
-    ]))
-    .wrap(Wrap { trim: false });
+        Line::from(vec![
+            Span::raw(match format_stats(&app.stats) {
+                stats if stats.is_empty() => stats,
+                stats => format!("{stats} "),
+            }),
+            context_span(&app.stats),
+        ]),
+    ];
+    let quota = format_quota(&app.stats);
+    if !quota.is_empty() {
+        footer_lines.push(Line::raw(quota));
+    }
+    let footer_paragraph = Paragraph::new(footer_lines).wrap(Wrap { trim: false });
     let footer_height = footer_paragraph
         .line_count(frame.area().width)
         .min(u16::MAX as usize) as u16;
