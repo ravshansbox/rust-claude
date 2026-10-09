@@ -237,13 +237,11 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             Some(last) if matches!(last.role, Role::Assistant) => last.text.push_str(&text),
             _ => app.push(Role::Assistant, text),
         },
-        UiEvent::Agent(AgentEvent::ToolCall(name)) => app.status = format!("calling {name}"),
+        UiEvent::Agent(AgentEvent::ToolCall(_)) => {}
         UiEvent::Agent(AgentEvent::ToolStart { name, summary }) => {
-            app.status = format!("running {name}");
             app.push(Role::Tool, format!("{name} {summary}"));
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error }) => {
-            app.status = format!("used {name}");
             if let Some(error) = error {
                 app.push(Role::Event, format!("{name} failed: {error}"));
             }
