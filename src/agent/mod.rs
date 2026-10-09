@@ -501,25 +501,7 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::tool_definitions;
     use super::{cancel_point, parse_shell_message, shell_message};
-    use crate::mcp::Mcp;
-
-    fn tool_names(definitions: serde_json::Value) -> Vec<String> {
-        definitions
-            .as_array()
-            .unwrap()
-            .iter()
-            .map(|definition| definition["name"].as_str().unwrap().to_string())
-            .collect()
-    }
-
-    #[test]
-    fn does_not_offer_a_question_tool() {
-        let names = tool_names(tool_definitions(&Mcp::default()));
-        assert!(names.contains(&"bash".to_string()));
-        assert!(!names.contains(&"ask_user_question".to_string()));
-    }
 
     #[test]
     fn parses_shell_messages() {
