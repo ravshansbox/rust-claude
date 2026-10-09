@@ -758,7 +758,7 @@ fn format_quota(stats: &Stats) -> String {
     ]
     .into_iter()
     .filter_map(|(label, remaining)| {
-        remaining.map(|remaining| format!(" · {label}:{remaining:.0}%"))
+        remaining.map(|remaining| format!(" · {label} {remaining:.0}%"))
     })
     .collect()
 }
