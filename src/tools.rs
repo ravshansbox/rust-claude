@@ -366,18 +366,24 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let content = tokio::fs::read_to_string(path)
                 .await
                 .map_err(|error| format!("failed to read {path}: {error}"))?;
-            match count_matches(&content, old_text) {
+            let mut old_text = old_text.to_string();
+            let mut new_text = argument(input, "new_text")?.to_string();
+            if count_matches(&content, &old_text) == 0
+                && content.contains("\r\n")
+                && !old_text.contains('\r')
+            {
+                old_text = old_text.replace('\n', "\r\n");
+                new_text = new_text.replace("\r\n", "\n").replace('\n', "\r\n");
+            }
+            match count_matches(&content, &old_text) {
                 1 => {}
                 0 => return Err(format!("old_text not found in {path}")),
                 count => return Err(format!("old_text matches {count} times in {path}")),
             }
-            tokio::fs::write(
-                path,
-                content.replacen(old_text, argument(input, "new_text")?, 1),
-            )
-            .await
-            .map(|_| format!("edited {path}"))
-            .map_err(|error| format!("failed to write {path}: {error}"))
+            tokio::fs::write(path, content.replacen(&old_text, &new_text, 1))
+                .await
+                .map(|_| format!("edited {path}"))
+                .map_err(|error| format!("failed to write {path}: {error}"))
         }
         _ => Err(format!("unknown tool: {name}")),
     }
@@ -614,6 +620,18 @@ mod tests {
                 .contains("matches 2 times")
         );
         assert_eq!(file.content(), "aaa");
+    }
+
+    #[tokio::test]
+    async fn edits_file_with_crlf_line_endings() {
+        let file = TemporaryFile::new("crlf", "one\r\ntwo\r\nthree\r\n");
+        let input =
+            json!({ "path": file.path(), "old_text": "one\ntwo", "new_text": "one\nnew\ntwo" });
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {}", file.path().display()))
+        );
+        assert_eq!(file.content(), "one\r\nnew\r\ntwo\r\nthree\r\n");
     }
 
     #[test]
