@@ -17,11 +17,11 @@ use std::io::{IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
 
-const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
+const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
+usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--image <path>]...]
 
 Options:
   -c, --continue           Continue the latest session in the current folder
@@ -29,7 +29,6 @@ Options:
       --model <id>         Model to use
       --thinking <level>   Thinking level: low, medium, high, xhigh, max
   -p, --print <prompt>     Run one prompt and print the answer
-      --hide-tools         Hide tool calls in print mode
       --image <path>       Send an image with the prompt in print mode. Repeat for more images
   -h, --help               Show this help";
 
@@ -37,11 +36,7 @@ Options:
 enum Command {
     Help,
     Interactive,
-    Print {
-        prompt: String,
-        hide_tools: bool,
-        images: Vec<String>,
-    },
+    Print { prompt: String, images: Vec<String> },
 }
 
 #[derive(Debug, Default, PartialEq)]
@@ -78,7 +73,6 @@ fn take_value(arguments: &mut Vec<String>, flag: &str) -> Result<Option<String>>
 }
 
 fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
-    let hide_tools = take_flag(&mut arguments, &["--hide-tools"]);
     let mut images = Vec::new();
     while let Some(image) = take_value(&mut arguments, "--image")? {
         images.push(image);
@@ -89,7 +83,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
         continue_session: take_flag(&mut arguments, &["-c", "--continue"]),
         config_dir: take_value(&mut arguments, "--config-dir")?,
     };
-    let print_options = hide_tools || !images.is_empty();
+    let print_options = !images.is_empty();
     let command = match arguments.as_slice() {
         [flag]
             if !print_options
@@ -101,7 +95,6 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
         [] if !print_options => Command::Interactive,
         [flag, prompt] if flag == "-p" || flag == "--print" => Command::Print {
             prompt: prompt.clone(),
-            hide_tools,
             images,
         },
         _ => bail!(USAGE),
@@ -115,17 +108,13 @@ async fn main() -> Result<()> {
     if let Some(config_dir) = &options.config_dir {
         config::set_dir(config_dir.into());
     }
-    let (print_prompt, hide_tools, image_paths) = match command {
+    let (print_prompt, image_paths) = match command {
         Command::Help => {
             println!("{HELP}");
             return Ok(());
         }
-        Command::Interactive => (None, false, Vec::new()),
-        Command::Print {
-            prompt,
-            hide_tools,
-            images,
-        } => (Some(prompt), hide_tools, images),
+        Command::Interactive => (None, Vec::new()),
+        Command::Print { prompt, images } => (Some(prompt), images),
     };
     let images = image_paths
         .iter()
@@ -182,7 +171,7 @@ async fn main() -> Result<()> {
     let mut printed = false;
     let mut separate = false;
     let mut line_open = false;
-    let colour = !hide_tools && std::io::stderr().is_terminal();
+    let colour = std::io::stderr().is_terminal();
     let dark = colour && tui::dark_theme();
     let mut reads = tools::ReadGroup::default();
     let checkpoint = agent.history_len();
@@ -204,25 +193,23 @@ async fn main() -> Result<()> {
             diff,
         } => {
             separate = printed;
-            if !hide_tools {
-                if line_open {
-                    eprintln!();
-                    line_open = false;
-                }
-                if name == "read" && diff.is_none() {
-                    reads.add(summary);
-                    return;
-                }
-                flush_reads(&mut reads);
-                eprintln!("{name} {summary}");
-                if let Some(diff) = diff {
-                    if colour {
-                        for line in highlight::highlight_body(&summary, &diff, dark) {
-                            eprintln!("{}", highlight::ansi_line(&line, dark));
-                        }
-                    } else {
-                        eprintln!("{diff}");
+            if line_open {
+                eprintln!();
+                line_open = false;
+            }
+            if name == "read" && diff.is_none() {
+                reads.add(summary);
+                return;
+            }
+            flush_reads(&mut reads);
+            eprintln!("{name} {summary}");
+            if let Some(diff) = diff {
+                if colour {
+                    for line in highlight::highlight_body(&summary, &diff, dark) {
+                        eprintln!("{}", highlight::ansi_line(&line, dark));
                     }
+                } else {
+                    eprintln!("{diff}");
                 }
             }
         }
@@ -230,7 +217,7 @@ async fn main() -> Result<()> {
             name,
             error: Some(error),
             ..
-        } if !hide_tools => {
+        } => {
             flush_reads(&mut reads);
             if line_open {
                 eprintln!();
@@ -242,7 +229,7 @@ async fn main() -> Result<()> {
             name,
             note: Some(note),
             ..
-        } if !hide_tools => {
+        } => {
             flush_reads(&mut reads);
             eprintln!("{name}: {note}");
         }
@@ -308,7 +295,6 @@ mod tests {
 
     #[test]
     fn rejects_help_with_other_arguments() {
-        assert_eq!(parse(&["--help", "--hide-tools"]), None);
         assert_eq!(parse(&["-h", "extra"]), None);
         assert_eq!(parse(&["--image", "a.png"]), None);
         assert_eq!(parse(&["-p", "hello", "--image"]), None);
@@ -319,19 +305,11 @@ mod tests {
     #[test]
     fn parses_print_and_interactive() {
         assert_eq!(parse(&[]), Some(Command::Interactive));
-        assert_eq!(
-            parse(&["--print", "hello", "--hide-tools"]),
-            Some(Command::Print {
-                prompt: "hello".into(),
-                hide_tools: true,
-                images: Vec::new(),
-            })
-        );
+        assert_eq!(parse(&["--print", "hello", "--hide-tools"]), None);
         assert_eq!(
             parse(&["--image", "a.png", "-p", "hello", "--image", "b.png"]),
             Some(Command::Print {
                 prompt: "hello".into(),
-                hide_tools: false,
                 images: vec!["a.png".into(), "b.png".into()],
             })
         );
@@ -388,7 +366,6 @@ mod tests {
             Some((
                 Command::Print {
                     prompt: "hello".into(),
-                    hide_tools: false,
                     images: Vec::new(),
                 },
                 Options {
