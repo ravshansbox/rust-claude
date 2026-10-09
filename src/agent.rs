@@ -529,6 +529,7 @@ impl Agent {
 
         let mut content: Vec<Value> = Vec::new();
         let mut partial_json = String::new();
+        let mut input_error = None;
         let mut stop_reason = String::new();
         let mut usage = Usage::default();
         let mut buffer: Vec<u8> = Vec::new();
@@ -596,7 +597,10 @@ impl Agent {
                             && block["type"] == "tool_use"
                             && !partial_json.is_empty()
                         {
-                            block["input"] = serde_json::from_str(&partial_json)?;
+                            match serde_json::from_str(&partial_json) {
+                                Ok(input) => block["input"] = input,
+                                Err(error) => input_error = Some(error),
+                            }
                         }
                     }
                     "message_delta" => {
@@ -631,6 +635,9 @@ impl Agent {
         }
         if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use") {
             bail!("reply stopped ({stop_reason}) before its tool call finished");
+        }
+        if let Some(error) = input_error {
+            return Err(error.into());
         }
         Ok((content, stop_reason, usage))
     }
