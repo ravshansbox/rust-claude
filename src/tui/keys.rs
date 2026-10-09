@@ -211,7 +211,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
             app.cursor = 0;
-            app.files = None;
+            app.forget_files();
             app.history_index = None;
             if let Some(command) = prompt.strip_prefix('!') {
                 let command = command.trim().to_string();
