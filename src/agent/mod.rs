@@ -521,6 +521,7 @@ impl Agent {
             }
             self.messages
                 .push(json!({ "role": "user", "content": results }));
+            self.session.save(&self.messages)?;
             self.compact_if_full(self.messages.len(), &mut on_event)
                 .await?;
         }
@@ -534,7 +535,7 @@ mod tests {
 
     use super::{
         AgentEvent, cancel_point, http_client_with, parse_shell_message, shell_message,
-        test_support::{self, MockApi, Reply, text_reply},
+        test_support::{self, MockApi, Reply, text_reply, tool_reply},
     };
 
     #[tokio::test]
@@ -558,6 +559,39 @@ mod tests {
         assert_eq!(text, "hello");
         assert_eq!(api.requests().await.len(), 2);
         assert!(notices.iter().any(|notice| notice.contains("retrying in")));
+    }
+
+    #[tokio::test]
+    async fn saves_finished_tool_rounds_while_the_prompt_runs() {
+        let api = MockApi::start(vec![
+            tool_reply("call-1", "bash", json!({ "command": "echo round-one" })),
+            Reply::Stall,
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let session_file = test_support::session_file(&agent);
+        let mut prompt = Box::pin(agent.prompt("run it", &[], |_| {}));
+        let second_request_sent = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    _ = &mut prompt => return false,
+                    _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                        if api.requests().await.len() == 2 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        })
+        .await;
+        let saved = std::fs::read_to_string(&session_file).unwrap_or_default();
+        drop(prompt);
+        test_support::remove_session(&agent);
+        assert_eq!(second_request_sent, Ok(true));
+        assert!(
+            saved.contains("tool_result") && saved.contains("round-one"),
+            "{saved}"
+        );
     }
 
     #[test]
