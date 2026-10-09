@@ -29,6 +29,17 @@ fn truncate(mut text: String) -> String {
     text
 }
 
+fn count_matches(content: &str, pattern: &str) -> usize {
+    let step = pattern.chars().next().map_or(1, char::len_utf8);
+    let mut count = 0;
+    let mut start = 0;
+    while let Some(index) = content[start..].find(pattern) {
+        count += 1;
+        start += index + step;
+    }
+    count
+}
+
 fn read_lines(content: &str, offset: usize, limit: usize) -> String {
     let mut text = String::new();
     let lines = content
@@ -187,7 +198,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
             let content = tokio::fs::read_to_string(path)
                 .await
                 .map_err(|error| format!("failed to read {path}: {error}"))?;
-            match content.matches(old_text).count() {
+            match count_matches(&content, old_text) {
                 1 => {}
                 0 => return Err(format!("old_text not found in {path}")),
                 count => return Err(format!("old_text matches {count} times in {path}")),
@@ -273,6 +284,18 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert_eq!(result, Err("old_text must not be empty".into()));
         assert_eq!(content, "");
+    }
+
+    #[tokio::test]
+    async fn rejects_overlapping_old_text() {
+        let path = std::env::temp_dir().join(format!("rust-claude-overlap-{}", std::process::id()));
+        std::fs::write(&path, "aaa").unwrap();
+        let input = json!({ "path": path, "old_text": "aa", "new_text": "b" });
+        let result = call("edit", &input).await;
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(result.unwrap_err().contains("matches 2 times"));
+        assert_eq!(content, "aaa");
     }
 
     #[test]
