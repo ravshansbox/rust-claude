@@ -181,6 +181,9 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         "edit" => {
             let path = argument(input, "path")?;
             let old_text = argument(input, "old_text")?;
+            if old_text.is_empty() {
+                return Err("old_text must not be empty".into());
+            }
             let content = tokio::fs::read_to_string(path)
                 .await
                 .map_err(|error| format!("failed to read {path}: {error}"))?;
@@ -258,6 +261,18 @@ mod tests {
         let text = super::truncate(format!("a{}", "é".repeat(MAX_OUTPUT)));
         assert!(text.ends_with("\n… output truncated"));
         assert_eq!(text.len(), MAX_OUTPUT - 1 + "\n… output truncated".len());
+    }
+
+    #[tokio::test]
+    async fn rejects_empty_old_text() {
+        let path = std::env::temp_dir().join(format!("rust-claude-edit-{}", std::process::id()));
+        std::fs::write(&path, "").unwrap();
+        let input = json!({ "path": path, "old_text": "", "new_text": "added" });
+        let result = call("edit", &input).await;
+        let content = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(result, Err("old_text must not be empty".into()));
+        assert_eq!(content, "");
     }
 
     #[test]
