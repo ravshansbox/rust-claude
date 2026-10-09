@@ -28,24 +28,16 @@ pub(super) fn format_stats(stats: &Stats) -> String {
 
 pub(super) fn format_quota(stats: &Stats) -> String {
     [
-        (
-            "5h",
-            stats.quota.five_hour_remaining,
-            stats.quota.five_hour_reset,
-        ),
-        (
-            "7d",
-            stats.quota.seven_day_remaining,
-            stats.quota.seven_day_reset,
-        ),
+        (stats.quota.five_hour_remaining, stats.quota.five_hour_reset),
+        (stats.quota.seven_day_remaining, stats.quota.seven_day_reset),
     ]
     .into_iter()
-    .filter_map(|(label, remaining, reset)| {
+    .filter_map(|(remaining, reset)| {
         remaining.map(|remaining| {
             let reset = reset
                 .map(|reset| format!(" {}", time_until(reset)))
                 .unwrap_or_default();
-            format!("{label} {remaining:.0}%{reset}")
+            format!("{remaining:.0}%{reset}")
         })
     })
     .collect::<Vec<_>>()
