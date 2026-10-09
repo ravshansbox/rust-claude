@@ -3,25 +3,36 @@ use std::{path::Path, process::Command};
 const MAX_MATCHES: usize = 10;
 
 pub(super) fn list_files() -> Vec<String> {
-    git_files().unwrap_or_else(|| {
+    files_in(Path::new("."))
+}
+
+fn files_in(directory: &Path) -> Vec<String> {
+    git_files(directory).unwrap_or_else(|| {
         let mut files = Vec::new();
-        walk(Path::new("."), &mut files);
+        walk(directory, directory, &mut files);
         files.sort();
         files
     })
 }
 
-fn git_files() -> Option<Vec<String>> {
+fn git_files(directory: &Path) -> Option<Vec<String>> {
     let output = Command::new("git")
-        .args(["ls-files", "--cached", "--others", "--exclude-standard"])
+        .args([
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+        ])
+        .current_dir(directory)
         .output()
         .ok()?;
     if !output.status.success() {
         return None;
     }
     let mut files: Vec<String> = String::from_utf8_lossy(&output.stdout)
-        .lines()
-        .filter(|path| Path::new(path).is_file())
+        .split('\0')
+        .filter(|path| !path.is_empty() && directory.join(path).is_file())
         .map(String::from)
         .collect();
     files.sort();
@@ -29,7 +40,7 @@ fn git_files() -> Option<Vec<String>> {
     Some(files)
 }
 
-fn walk(directory: &Path, files: &mut Vec<String>) {
+fn walk(root: &Path, directory: &Path, files: &mut Vec<String>) {
     let Ok(entries) = std::fs::read_dir(directory) else {
         return;
     };
@@ -44,9 +55,9 @@ fn walk(directory: &Path, files: &mut Vec<String>) {
             continue;
         };
         if file_type.is_dir() {
-            walk(&path, files);
+            walk(root, &path, files);
         } else if file_type.is_file() {
-            let path = path.strip_prefix(".").unwrap_or(&path);
+            let path = path.strip_prefix(root).unwrap_or(&path);
             files.push(path.to_string_lossy().into_owned());
         }
     }
@@ -76,7 +87,27 @@ pub(super) fn file_matches(files: &[String], query: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_matches, file_query};
+    use super::{file_matches, file_query, files_in};
+    use std::process::Command;
+
+    #[test]
+    fn lists_git_files_with_non_ascii_names() {
+        let root = std::env::temp_dir().join(format!("rust-claude-files-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        std::fs::write(root.join("src/café.rs"), "").unwrap();
+        std::fs::write(root.join("plain.rs"), "").unwrap();
+        let initialised = Command::new("git")
+            .args(["init", "-q"])
+            .current_dir(&root)
+            .status()
+            .unwrap()
+            .success();
+        let files = files_in(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert!(initialised);
+        assert_eq!(files, ["plain.rs", "src/café.rs"]);
+    }
 
     #[test]
     fn finds_file_query_at_cursor() {
