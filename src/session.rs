@@ -62,7 +62,10 @@ impl Session {
         let mut latest = None;
         for entry in std::fs::read_dir(&directory)? {
             let path = entry?.path();
-            if path.extension().is_none_or(|extension| extension != "jsonl") {
+            if path
+                .extension()
+                .is_none_or(|extension| extension != "jsonl")
+            {
                 continue;
             }
             let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
