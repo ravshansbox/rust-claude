@@ -109,6 +109,7 @@ struct App {
     commands_dismissed: bool,
     prompt_history: Vec<String>,
     history_index: Option<usize>,
+    reads: tools::ReadGroup,
 }
 
 #[derive(Clone, Copy)]
@@ -146,6 +147,7 @@ impl App {
             commands_dismissed: false,
             prompt_history: Vec::new(),
             history_index: None,
+            reads: tools::ReadGroup::default(),
         };
         app.push(
             Role::Event,
@@ -155,11 +157,31 @@ impl App {
     }
 
     fn push(&mut self, role: Role, text: impl Into<String>) {
+        self.reads.clear();
         self.messages.push(ChatMessage {
             role,
             text: text.into(),
             rendered: None,
         });
+    }
+
+    fn push_tool(&mut self, name: &str, summary: String, diff: Option<String>) {
+        if name != "read" || diff.is_some() {
+            self.push(Role::Tool, tool_message(name, summary, diff));
+            return;
+        }
+        let merge = !self.reads.is_empty();
+        let mut reads = std::mem::take(&mut self.reads);
+        reads.add(summary);
+        let text = tool_message(name, reads.summary(), None);
+        match self.messages.last_mut() {
+            Some(last) if merge => {
+                last.text = text;
+                last.rendered = None;
+            }
+            _ => self.push(Role::Tool, text),
+        }
+        self.reads = reads;
     }
 
     fn scroll_up(&mut self, amount: u16) {
@@ -692,7 +714,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             summary,
             diff,
         }) => {
-            app.push(Role::Tool, tool_message(&name, summary, diff));
+            app.push_tool(&name, summary, diff);
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error }) => {
             if let Some(error) = error {
@@ -777,13 +799,10 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
                 }
                 ("assistant", "tool_use") => {
                     let name = block["name"].as_str().unwrap_or_default();
-                    app.push(
-                        Role::Tool,
-                        tool_message(
-                            name,
-                            tools::summary(name, &block["input"]),
-                            tools::diff(name, &block["input"]),
-                        ),
+                    app.push_tool(
+                        name,
+                        tools::summary(name, &block["input"]),
+                        tools::diff(name, &block["input"]),
                     );
                 }
                 ("user", "text") => {
@@ -982,7 +1001,7 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, App, handle_input, held_scroll_from_bottom};
+    use super::{Action, App, Role, handle_input, held_scroll_from_bottom};
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
@@ -1186,5 +1205,31 @@ mod tests {
         assert_eq!(held_scroll_from_bottom(1, 15, 20), 6);
         assert_eq!(held_scroll_from_bottom(6, 20, 18), 4);
         assert_eq!(held_scroll_from_bottom(1, 15, 10), 0);
+    }
+
+    #[test]
+    fn merges_consecutive_reads() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        app.push_tool("read", "a.rs".into(), None);
+        app.push_tool("read", "b.rs".into(), None);
+        app.push_tool("read", "a.rs".into(), None);
+        app.push(Role::Event, "read failed: missing");
+        app.push_tool("read", "c.rs".into(), None);
+        let texts: Vec<&str> = app.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            ["read a.rs (2), b.rs", "read failed: missing", "read c.rs"]
+        );
     }
 }

@@ -100,6 +100,8 @@ The agent can use these tools:
 - `write`: create or replace a file
 - `edit`: replace text in a file
 
+Consecutive `read` calls show as one line with the paths separated by commas, for example `read src/main.rs (2), README.md`. A number in brackets shows how many times a file was read. A failed read starts a new line. In print mode, the line is printed when the next tool, text or notice arrives.
+
 ## Development
 
 Running `cargo test` once installs a Git pre-commit hook with [cargo-husky](https://github.com/rhysd/cargo-husky). The hook runs `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. The hook script is in `.cargo-husky/hooks/pre-commit`.
