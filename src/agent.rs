@@ -16,7 +16,6 @@ const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude
 const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running in a terminal.
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely."#;
-const MAX_TURNS: usize = 20;
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
@@ -190,7 +189,7 @@ impl Agent {
             .push(json!({ "role": "user", "content": prompt }));
         let mut total_usage = Usage::default();
 
-        for _ in 0..MAX_TURNS {
+        loop {
             let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
             total_usage.add(usage);
             on_event(AgentEvent::Usage(total_usage));
@@ -225,7 +224,6 @@ impl Agent {
             self.messages
                 .push(json!({ "role": "user", "content": results }));
         }
-        bail!("stopped after {MAX_TURNS} turns")
     }
 
     async fn stream_message(
