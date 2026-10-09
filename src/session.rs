@@ -124,13 +124,12 @@ impl Session {
             .collect();
         let file = format!("{hash}.{}", image.extension());
         let path = directory.join(&file);
-        if !path.exists() {
-            crate::config::private_file()
-                .write(true)
-                .create(true)
-                .truncate(true)
-                .open(&path)?
-                .write_all(&image.data)?;
+        // Images are written whole through a temporary file, so a file of
+        // another length is what an older version left cut short.
+        let saved = std::fs::metadata(&path)
+            .is_ok_and(|metadata| metadata.len() == image.data.len() as u64);
+        if !saved {
+            crate::config::write_private_file(&path, &image.data)?;
         }
         Ok(json!({ "type": "image", "file": file, "media_type": image.media_type }))
     }
@@ -606,6 +605,26 @@ mod tests {
         std::fs::remove_file(&file).unwrap();
         std::fs::remove_dir_all(&images).unwrap();
         assert_eq!(found, (Some(0o600), Some(0o700), Some(0o600)));
+    }
+
+    #[test]
+    fn replaces_an_image_a_failed_save_cut_short() {
+        let session = Session::new().unwrap();
+        let image = crate::images::Image {
+            media_type: "image/png",
+            data: b"png".to_vec(),
+        };
+        let block = session.save_image(&image).unwrap();
+        let images = sessions_directory().unwrap().join(&session.id);
+        std::fs::write(images.join(block["file"].as_str().unwrap()), b"pn").unwrap();
+        let mut messages = vec![json!({
+            "role": "user",
+            "content": [session.save_image(&image).unwrap()],
+        })];
+        let result = session.inline_images(&mut messages);
+        std::fs::remove_dir_all(&images).unwrap();
+        result.unwrap();
+        assert_eq!(messages[0]["content"][0]["source"]["data"], "cG5n");
     }
 
     #[test]
