@@ -1,7 +1,10 @@
 use std::io::Cursor;
 
 use anyhow::{Context, Result, bail};
-use image::{DynamicImage, ImageFormat, codecs::jpeg::JpegEncoder, imageops::FilterType};
+use image::{
+    DynamicImage, ImageDecoder, ImageFormat, ImageReader, codecs::jpeg::JpegEncoder,
+    imageops::FilterType, metadata::Orientation,
+};
 
 const MAX_EDGE: u32 = 2000;
 const MAX_ENCODED_BYTES: usize = 10_000_000;
@@ -60,10 +63,18 @@ fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Image> {
 
 pub fn prepare(data: Vec<u8>) -> Result<Image> {
     let format = image::guess_format(&data).context("unsupported image format")?;
-    let decoded =
-        image::load_from_memory_with_format(&data, format).context("failed to decode image")?;
+    let mut decoder = ImageReader::with_format(Cursor::new(&data), format)
+        .into_decoder()
+        .context("failed to decode image")?;
+    let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    let mut decoded = DynamicImage::from_decoder(decoder).context("failed to decode image")?;
+    // Photos are often stored sideways with an Exif note saying how to turn
+    // them. Turn them upright, since the re-encoded image has no Exif data.
+    let upright = matches!(orientation, Orientation::NoTransforms);
+    decoded.apply_orientation(orientation);
     let long_edge = decoded.width().max(decoded.height());
-    if let Some(media_type) = media_type(format)
+    if upright
+        && let Some(media_type) = media_type(format)
         && long_edge <= MAX_EDGE
         && fits(&data)
     {
@@ -99,7 +110,10 @@ pub fn prepare(data: Vec<u8>) -> Result<Image> {
 #[cfg(test)]
 mod tests {
     use super::{MAX_EDGE, prepare};
-    use image::{DynamicImage, GenericImageView, ImageFormat, RgbaImage};
+    use image::{
+        DynamicImage, GenericImageView, ImageEncoder, ImageFormat, RgbImage, RgbaImage,
+        codecs::jpeg::JpegEncoder,
+    };
     use std::io::Cursor;
 
     fn encoded(width: u32, height: u32, format: ImageFormat) -> Vec<u8> {
@@ -130,6 +144,24 @@ mod tests {
         let image = prepare(encoded(MAX_EDGE * 2, 100, ImageFormat::Png)).unwrap();
         let decoded = image::load_from_memory(&image.data).unwrap();
         assert_eq!(decoded.dimensions(), (MAX_EDGE, 50));
+    }
+
+    #[test]
+    fn turns_photos_upright_using_their_exif_orientation() {
+        // Exif block with one entry: orientation 6, "rotate 90° clockwise".
+        let exif = vec![
+            0x49, 0x49, 0x2a, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x12, 0x01, 0x03, 0x00,
+            0x01, 0x00, 0x00, 0x00, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        ];
+        let mut data = Vec::new();
+        let mut encoder = JpegEncoder::new(&mut data);
+        encoder.set_exif_metadata(exif).unwrap();
+        DynamicImage::ImageRgb8(RgbImage::new(10, 20))
+            .write_with_encoder(encoder)
+            .unwrap();
+        let image = prepare(data).unwrap();
+        let decoded = image::load_from_memory(&image.data).unwrap();
+        assert_eq!(decoded.dimensions(), (20, 10));
     }
 
     #[test]
