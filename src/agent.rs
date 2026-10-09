@@ -1,5 +1,5 @@
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use anyhow::{Result, bail};
 use futures::StreamExt;
@@ -24,6 +24,59 @@ Put questions to the user in bold."#;
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
+const MAX_RETRIES: u32 = 3;
+const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
+
+#[derive(Debug)]
+struct Retryable {
+    message: String,
+    retry_after: Option<Duration>,
+}
+
+impl std::fmt::Display for Retryable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for Retryable {}
+
+fn retryable(message: impl ToString, retry_after: Option<Duration>) -> anyhow::Error {
+    Retryable {
+        message: message.to_string(),
+        retry_after,
+    }
+    .into()
+}
+
+fn retry_delay(error: &anyhow::Error, attempt: u32) -> Option<Duration> {
+    let error = error.downcast_ref::<Retryable>()?;
+    if attempt >= MAX_RETRIES {
+        return None;
+    }
+    match error.retry_after {
+        Some(delay) if delay > MAX_RETRY_AFTER => None,
+        Some(delay) => Some(delay),
+        None => Some(Duration::from_secs(1 << attempt)),
+    }
+}
+
+fn is_retryable_status(status: reqwest::StatusCode) -> bool {
+    status == reqwest::StatusCode::TOO_MANY_REQUESTS
+        || status.as_u16() == 529
+        || status.is_server_error()
+}
+
+fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
+    headers
+        .get(reqwest::header::RETRY_AFTER)?
+        .to_str()
+        .ok()?
+        .trim()
+        .parse()
+        .ok()
+        .map(Duration::from_secs)
+}
 
 pub struct Instructions {
     pub label: String,
@@ -513,7 +566,23 @@ impl Agent {
         on_event(AgentEvent::Stats(self.stats()));
 
         loop {
-            let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
+            let mut attempt = 0;
+            let (content, stop_reason, usage) = loop {
+                match self.stream_message(&mut on_event).await {
+                    Ok(reply) => break reply,
+                    Err(error) => {
+                        let Some(delay) = retry_delay(&error, attempt) else {
+                            return Err(error);
+                        };
+                        attempt += 1;
+                        on_event(AgentEvent::Notice(format!(
+                            "{error}; retrying in {}s ({attempt}/{MAX_RETRIES})",
+                            delay.as_secs()
+                        )));
+                        tokio::time::sleep(delay).await;
+                    }
+                }
+            };
             self.messages
                 .push(json!({ "role": "assistant", "content": content, "usage": usage.to_json() }));
             self.pending_usage = Usage::default();
@@ -585,11 +654,23 @@ impl Agent {
             .header("anthropic-beta", "oauth-2025-04-20")
             .json(&body)
             .send()
-            .await?;
+            .await
+            .map_err(|error| {
+                if error.is_connect() || error.is_timeout() || error.is_request() {
+                    retryable(error, None)
+                } else {
+                    error.into()
+                }
+            })?;
         self.quota.update_from_headers(response.headers());
         if !response.status().is_success() {
             let status = response.status();
-            bail!("{status}: {}", response.text().await?);
+            let delay = retry_after(response.headers());
+            let message = format!("{status}: {}", response.text().await?);
+            if is_retryable_status(status) {
+                return Err(retryable(message, delay));
+            }
+            bail!(message);
         }
 
         let mut content: Vec<Value> = Vec::new();
@@ -602,7 +683,12 @@ impl Agent {
         let mut stream = response.bytes_stream();
 
         while let Some(chunk) = stream.next().await {
-            buffer.extend_from_slice(&chunk?);
+            let chunk = match chunk {
+                Ok(chunk) => chunk,
+                Err(error) if content.is_empty() => return Err(retryable(error, None)),
+                Err(error) => return Err(error.into()),
+            };
+            buffer.extend_from_slice(&chunk);
             while let Some(end) = buffer.windows(2).position(|window| window == b"\n\n") {
                 let frame_bytes: Vec<u8> = buffer.drain(..end + 2).collect();
                 let frame = String::from_utf8_lossy(&frame_bytes);
@@ -669,7 +755,17 @@ impl Agent {
                             first_token.map_or(0, |start| start.elapsed().as_millis() as u64);
                         self.pending_usage = usage;
                     }
-                    "error" => bail!("{}", event["error"]),
+                    "error" => {
+                        let message = event["error"].to_string();
+                        let retry = matches!(
+                            event["error"]["type"].as_str(),
+                            Some("overloaded_error" | "api_error" | "rate_limit_error")
+                        );
+                        if retry && content.is_empty() {
+                            return Err(retryable(message, None));
+                        }
+                        bail!(message);
+                    }
                     _ => {}
                 }
             }
@@ -692,9 +788,37 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Quota, cache_hit_rate, cancel_point, context_tokens, parse_timestamp, tokens_per_second,
-        with_cache_breakpoint,
+        Quota, cache_hit_rate, cancel_point, context_tokens, parse_timestamp, retry_after,
+        retry_delay, retryable, tokens_per_second, with_cache_breakpoint,
     };
+    use std::time::Duration;
+
+    #[test]
+    fn backs_off_on_retryable_errors() {
+        let error = retryable("overloaded", None);
+        let delays: Vec<_> = (0..4).map(|attempt| retry_delay(&error, attempt)).collect();
+        assert_eq!(
+            delays,
+            [
+                Some(Duration::from_secs(1)),
+                Some(Duration::from_secs(2)),
+                Some(Duration::from_secs(4)),
+                None
+            ]
+        );
+        assert_eq!(retry_delay(&anyhow::anyhow!("bad request"), 0), None);
+    }
+
+    #[test]
+    fn follows_short_retry_after() {
+        let short = retryable("rate limited", Some(Duration::from_secs(10)));
+        assert_eq!(retry_delay(&short, 0), Some(Duration::from_secs(10)));
+        let long = retryable("rate limited", Some(Duration::from_secs(3600)));
+        assert_eq!(retry_delay(&long, 0), None);
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(reqwest::header::RETRY_AFTER, "7".parse().unwrap());
+        assert_eq!(retry_after(&headers), Some(Duration::from_secs(7)));
+    }
 
     #[test]
     fn keeps_prompt_and_finished_tool_rounds_on_cancel() {
