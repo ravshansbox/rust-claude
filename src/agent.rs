@@ -74,11 +74,28 @@ fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
     messages
 }
 
+#[derive(Default, Clone, Copy)]
+pub struct Usage {
+    pub input: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub output: u64,
+}
+
+impl Usage {
+    fn add(&mut self, other: Usage) {
+        self.input += other.input;
+        self.cache_read += other.cache_read;
+        self.cache_write += other.cache_write;
+        self.output += other.output;
+    }
+}
+
 pub enum AgentEvent {
     Text(String),
     ToolStart { name: String, summary: String },
     ToolDone { name: String, error: Option<String> },
-    Usage { input: u64, output: u64 },
+    Usage(Usage),
 }
 
 pub struct Agent {
@@ -122,17 +139,12 @@ impl Agent {
     async fn run(&mut self, prompt: &str, mut on_event: impl FnMut(AgentEvent)) -> Result<()> {
         self.messages
             .push(json!({ "role": "user", "content": prompt }));
-        let mut input_tokens = 0;
-        let mut output_tokens = 0;
+        let mut total_usage = Usage::default();
 
         for _ in 0..MAX_TURNS {
             let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
-            input_tokens += usage.0;
-            output_tokens += usage.1;
-            on_event(AgentEvent::Usage {
-                input: input_tokens,
-                output: output_tokens,
-            });
+            total_usage.add(usage);
+            on_event(AgentEvent::Usage(total_usage));
             self.messages
                 .push(json!({ "role": "assistant", "content": content }));
             if stop_reason != "tool_use" {
@@ -170,7 +182,7 @@ impl Agent {
     async fn stream_message(
         &mut self,
         on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<(Vec<Value>, String, (u64, u64))> {
+    ) -> Result<(Vec<Value>, String, Usage)> {
         let token = self.credentials.access_token(&self.http).await?;
         let mut system = vec![
             json!({ "type": "text", "text": IDENTITY }),
@@ -212,7 +224,7 @@ impl Agent {
         let mut content: Vec<Value> = Vec::new();
         let mut partial_json = String::new();
         let mut stop_reason = String::new();
-        let mut usage = (0, 0);
+        let mut usage = Usage::default();
         let mut buffer = String::new();
         let mut stream = response.bytes_stream();
 
@@ -226,7 +238,12 @@ impl Agent {
                 let event: Value = serde_json::from_str(data)?;
                 match event["type"].as_str().unwrap_or_default() {
                     "message_start" => {
-                        usage.0 = event["message"]["usage"]["input_tokens"]
+                        let message_usage = &event["message"]["usage"];
+                        usage.input = message_usage["input_tokens"].as_u64().unwrap_or(0);
+                        usage.cache_read = message_usage["cache_read_input_tokens"]
+                            .as_u64()
+                            .unwrap_or(0);
+                        usage.cache_write = message_usage["cache_creation_input_tokens"]
                             .as_u64()
                             .unwrap_or(0);
                     }
@@ -277,7 +294,7 @@ impl Agent {
                             .as_str()
                             .unwrap_or_default()
                             .into();
-                        usage.1 = event["usage"]["output_tokens"].as_u64().unwrap_or(0);
+                        usage.output = event["usage"]["output_tokens"].as_u64().unwrap_or(0);
                     }
                     "error" => bail!("{}", event["error"]),
                     _ => {}
