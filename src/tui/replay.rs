@@ -1,6 +1,6 @@
 use super::{
     App, Picker, PickerKind, Role, display_model, status::format_context_use, time_ago,
-    worker::UiEvent,
+    worker::UiEvent, workspace_label,
 };
 use crate::{
     agent::{AgentEvent, parse_shell_message},
@@ -26,6 +26,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push_tool(&name, summary, diff);
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
+            app.workspace = workspace_label();
             if let Some(error) = error {
                 app.push(Role::Event, format!("{name} failed: {error}"));
             }
@@ -95,6 +96,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.busy = false;
         }
         UiEvent::Shell(command, result) => {
+            app.workspace = workspace_label();
             app.finish(result, |app, output| app.push_shell(&command, &output));
         }
         UiEvent::ImagePasted(Ok(Some(image))) => app.attach_image(image),
@@ -202,7 +204,11 @@ mod tests {
     use crate::agent::AgentEvent;
     use crate::skills::{Scope, Skill};
     use crate::tools;
-    use crate::tui::{Action, App, Role, UiEvent, handle_input, test_support::new_app};
+    use crate::tui::{
+        Action, App, Role, UiEvent, handle_input,
+        test_support::{new_app, screen},
+        workspace_label,
+    };
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use serde_json::json;
 
@@ -352,5 +358,25 @@ mod tests {
         };
         assert_eq!(texts(&live), ["edit a.rs\n-a\n+b", "edit: 3 replacements"]);
         assert_eq!(texts(&replayed), texts(&live));
+    }
+
+    #[test]
+    fn updates_branch_in_status_line_after_commands() {
+        let finished_tool = || {
+            UiEvent::Agent(AgentEvent::ToolDone {
+                name: "bash".into(),
+                error: None,
+                note: None,
+            })
+        };
+        let finished_shell = || UiEvent::Shell("git switch other".into(), Ok(String::new()));
+        for event in [finished_tool(), finished_shell()] {
+            let mut app = new_app();
+            app.workspace = "stale-folder · stale-branch".into();
+            handle_agent_event(event, &mut app);
+            let screen = screen(&mut app);
+            assert!(!screen.contains("stale-branch"));
+            assert!(screen.contains(&workspace_label()));
+        }
     }
 }
