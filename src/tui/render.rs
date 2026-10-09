@@ -121,24 +121,51 @@ pub(super) fn tool_message(name: &str, summary: String, diff: Option<String>) ->
 }
 
 fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
-    let is_edit = text.starts_with("edit ");
-    let mut lines: Vec<Line<'static>> = text
-        .lines()
-        .map(|line| match line.chars().next() {
-            Some('-') if is_edit => Line::from(line.to_string().red()),
-            Some('+') if is_edit => Line::from(line.to_string().green()),
-            _ => Line::raw(line.to_string()),
-        })
-        .collect();
-    if let Some(first) = text.lines().next() {
-        let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
-        lines[0] = Line::from(vec![
-            Span::styled(format!(" {name} "), theme().highlight_style()),
-            Span::raw(" "),
-            Span::styled(format!(" {rest} "), theme().subtle_style()),
-        ]);
+    let Some((first, body)) = text.split_once('\n') else {
+        return vec![tool_header(text)];
+    };
+    let (name, path) = first.split_once(' ').unwrap_or((first, ""));
+    let mut lines = vec![tool_header(first)];
+    if name == "edit" || name == "write" {
+        let dark = matches!(theme(), Theme::Dark);
+        lines.extend(
+            crate::highlight::highlight_body(path, body, dark)
+                .into_iter()
+                .map(|line| highlighted_line(line, dark)),
+        );
+    } else {
+        lines.extend(body.lines().map(|line| Line::raw(line.to_string())));
     }
     lines
+}
+
+fn tool_header(first: &str) -> Line<'static> {
+    let (name, rest) = first.split_once(' ').unwrap_or((first, ""));
+    Line::from(vec![
+        Span::styled(format!(" {name} "), theme().highlight_style()),
+        Span::raw(" "),
+        Span::styled(format!(" {rest} "), theme().subtle_style()),
+    ])
+}
+
+fn highlighted_line(line: crate::highlight::HighlightedLine, dark: bool) -> Line<'static> {
+    let background = line.background(dark);
+    let spans: Vec<Span<'static>> = line
+        .segments
+        .into_iter()
+        .map(|segment| {
+            let style = match segment.foreground {
+                Some((red, green, blue)) => Style::new().fg(Color::Rgb(red, green, blue)),
+                None => Style::new(),
+            };
+            Span::styled(segment.text, style)
+        })
+        .collect();
+    let line = Line::from(spans);
+    match background {
+        Some((red, green, blue)) => line.style(Style::new().bg(Color::Rgb(red, green, blue))),
+        None => line,
+    }
 }
 
 fn owned_line(line: Line<'_>) -> Line<'static> {

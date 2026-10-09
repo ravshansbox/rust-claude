@@ -30,6 +30,8 @@ In print mode, tool calls go to standard error. Add `--hide-tools` to hide them.
 
 Show help with `-h` or `--help`.
 
+Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background.
+
 ## Commands
 
 | Command | Action |
