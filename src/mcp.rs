@@ -308,20 +308,25 @@ impl Connection {
         if self.pending.closed.load(Ordering::SeqCst) {
             return Err(self.with_stderr("server closed the connection".into()));
         }
-        write_message(
-            &self.stdin,
-            &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
-        )
-        .await
-        .map_err(|error| self.with_stderr(error))?;
-        match tokio::time::timeout(self.timeout, receiver).await {
-            Err(_) => Err(self.with_stderr(format!(
-                "{method} timed out after {} seconds",
-                self.timeout.as_secs()
-            ))),
-            Ok(Err(_)) => Err(self.with_stderr("server closed the connection".into())),
-            Ok(Ok(result)) => result,
-        }
+        let exchange = async {
+            write_message(
+                &self.stdin,
+                &json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }),
+            )
+            .await
+            .map_err(|error| self.with_stderr(error))?;
+            receiver
+                .await
+                .unwrap_or_else(|_| Err(self.with_stderr("server closed the connection".into())))
+        };
+        tokio::time::timeout(self.timeout, exchange)
+            .await
+            .unwrap_or_else(|_| {
+                Err(self.with_stderr(format!(
+                    "{method} timed out after {} seconds",
+                    self.timeout.as_secs()
+                )))
+            })
     }
 }
 
@@ -758,6 +763,20 @@ done
                 "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
             ))
         );
+    }
+
+    #[tokio::test]
+    async fn times_out_when_the_server_stops_reading() {
+        let mut config = server_answering_calls_with("sleep 30");
+        config.timeout = Some(1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        let timed_out = Some(Err("tools/call timed out after 1 seconds".into()));
+        assert_eq!(mcp.call("mcp__test__echo", &json!({})).await, timed_out);
+        let large = json!({ "text": "a".repeat(1_000_000) });
+        let call =
+            tokio::time::timeout(Duration::from_secs(10), mcp.call("mcp__test__echo", &large));
+        assert_eq!(call.await.ok(), Some(timed_out));
     }
 
     #[tokio::test]
