@@ -1,24 +1,24 @@
+mod app;
 mod commands;
 mod files;
 mod input;
 mod question;
 mod render;
 mod status;
+#[cfg(test)]
+mod test_support;
 
 use crate::{
-    agent::{
-        Agent, AgentEvent, ContextUse, Queue, Queued, Stats, THINKING_LEVELS, parse_shell_message,
-        take_queued,
-    },
+    agent::{Agent, AgentEvent, ContextUse, THINKING_LEVELS, parse_shell_message},
     clipboard, history,
     images::{self, Image},
     session::SessionSummary,
     settings::Settings,
-    skills::{self, Scope, Skill},
+    skills::{self, Scope},
     tools,
 };
 use anyhow::Result;
-use commands::command_matches;
+use app::{App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
     event::{
         DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
@@ -27,7 +27,6 @@ use crossterm::{
     },
     execute,
 };
-use files::{file_matches, file_query, list_files};
 use futures::StreamExt;
 use input::{input_cursor, input_rows, next_word_end, previous_word_start, row_above, row_below};
 use question::QuestionPrompt;
@@ -40,13 +39,10 @@ use ratatui::{
         Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
-use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
+use render::{THEME, Theme, borrowed_line, theme};
 use serde_json::Value;
 use status::{format_context, format_context_use, format_quota, format_stats};
-use std::{
-    path::PathBuf,
-    time::{Duration, SystemTime},
-};
+use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
 pub fn dark_theme() -> bool {
@@ -57,451 +53,6 @@ const MAX_LIST_ROWS: usize = 10;
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-struct Suggestions {
-    start: usize,
-    end: usize,
-    items: Vec<(String, String)>,
-    files: bool,
-}
-
-#[derive(Clone, Copy)]
-enum Role {
-    User,
-    Assistant,
-    Thinking,
-    Tool,
-    Event,
-}
-
-struct ChatMessage {
-    role: Role,
-    text: String,
-    rendered: Option<(u16, Vec<Line<'static>>)>,
-}
-
-impl ChatMessage {
-    fn append(&mut self, text: &str) {
-        self.text.push_str(text);
-        self.rendered = None;
-    }
-
-    fn render(&mut self, width: u16) {
-        if self
-            .rendered
-            .as_ref()
-            .is_none_or(|(rendered_width, _)| *rendered_width != width)
-        {
-            self.rendered = Some((width, render_message(self.role, &self.text, width)));
-        }
-    }
-}
-
-struct App {
-    input: String,
-    cursor: usize,
-    messages: Vec<ChatMessage>,
-    workspace: String,
-    model: String,
-    thinking_level: &'static str,
-    status: String,
-    spinner_frame: usize,
-    stats: Stats,
-    scroll_from_bottom: u16,
-    max_scroll: u16,
-    page_size: u16,
-    input_width: usize,
-    busy: bool,
-    picker: Option<Picker>,
-    question: Option<QuestionPrompt>,
-    command_selected: usize,
-    commands_dismissed: bool,
-    files: Option<Vec<String>>,
-    prompt_history: Vec<String>,
-    history_index: Option<usize>,
-    reads: tools::ReadGroup,
-    skills: Vec<Skill>,
-    images: Vec<(usize, Image)>,
-    image_count: usize,
-    queue: Queue,
-    history_file: Option<PathBuf>,
-    history_search: Option<HistorySearch>,
-}
-
-struct HistorySearch {
-    all: bool,
-    query: String,
-    current: Vec<String>,
-    everywhere: Vec<history::Entry>,
-    selected: usize,
-}
-
-impl HistorySearch {
-    fn matches(&self) -> Vec<(&str, Option<&str>)> {
-        let query = self.query.to_lowercase();
-        let entries: Vec<(&str, Option<&str>)> = if self.all {
-            self.everywhere
-                .iter()
-                .map(|entry| (entry.prompt.as_str(), Some(entry.folder.as_str())))
-                .collect()
-        } else {
-            self.current
-                .iter()
-                .map(|prompt| (prompt.as_str(), None))
-                .collect()
-        };
-        entries
-            .into_iter()
-            .filter(|(prompt, _)| prompt.to_lowercase().contains(&query))
-            .collect()
-    }
-}
-
-#[derive(Clone, Copy)]
-enum PickerKind {
-    Session,
-    Model,
-    Thinking,
-}
-
-struct Picker {
-    kind: PickerKind,
-    title: &'static str,
-    items: Vec<(String, String)>,
-    selected: usize,
-}
-
-impl App {
-    fn new(model: &str, thinking_level: &'static str, stats: Stats) -> Self {
-        Self {
-            input: String::new(),
-            cursor: 0,
-            messages: Vec::new(),
-            workspace: workspace_label(),
-            model: model.into(),
-            thinking_level,
-            status: String::new(),
-            spinner_frame: 0,
-            stats,
-            scroll_from_bottom: 0,
-            max_scroll: 0,
-            page_size: 1,
-            input_width: usize::MAX,
-            busy: false,
-            picker: None,
-            question: None,
-            command_selected: 0,
-            commands_dismissed: false,
-            files: None,
-            prompt_history: Vec::new(),
-            history_index: None,
-            reads: tools::ReadGroup::default(),
-            skills: Vec::new(),
-            images: Vec::new(),
-            image_count: 0,
-            queue: Queue::default(),
-            history_file: None,
-            history_search: None,
-        }
-    }
-
-    fn push(&mut self, role: Role, text: impl Into<String>) {
-        self.reads.clear();
-        self.messages.push(ChatMessage {
-            role,
-            text: text.into(),
-            rendered: None,
-        });
-    }
-
-    fn push_tool(&mut self, name: &str, summary: String, diff: Option<String>) {
-        if name != "read" || diff.is_some() {
-            self.push(Role::Tool, tool_message(name, summary, diff));
-            return;
-        }
-        let merge = !self.reads.is_empty();
-        let mut reads = std::mem::take(&mut self.reads);
-        reads.add(summary);
-        let text = tool_message(name, reads.summary(), None);
-        match self.messages.last_mut() {
-            Some(last) if merge => {
-                last.text = text;
-                last.rendered = None;
-            }
-            _ => self.push(Role::Tool, text),
-        }
-        self.reads = reads;
-    }
-
-    fn push_shell(&mut self, command: &str, output: &str) {
-        let output = output.trim_end();
-        let diff = (!output.is_empty()).then(|| output.to_string());
-        self.push(Role::Tool, tool_message("!", command.to_string(), diff));
-    }
-
-    fn remember(&mut self, prompt: &str) {
-        self.prompt_history.push(prompt.to_string());
-        let Some(path) = &self.history_file else {
-            return;
-        };
-        if let Err(error) = history::append(path, prompt) {
-            self.push(
-                Role::Event,
-                format!("failed to save prompt history: {error}"),
-            );
-        }
-    }
-
-    fn open_history_search(&mut self) {
-        let mut current: Vec<String> = Vec::new();
-        for prompt in self.prompt_history.iter().rev() {
-            if !current.contains(prompt) {
-                current.push(prompt.clone());
-            }
-        }
-        self.history_search = Some(HistorySearch {
-            all: false,
-            query: String::new(),
-            current,
-            everywhere: self
-                .history_file
-                .as_deref()
-                .map(history::load)
-                .unwrap_or_default(),
-            selected: 0,
-        });
-    }
-
-    fn scroll_up(&mut self, amount: u16) {
-        self.scroll_from_bottom = self
-            .scroll_from_bottom
-            .saturating_add(amount)
-            .min(self.max_scroll);
-    }
-
-    fn scroll_down(&mut self, amount: u16) {
-        self.scroll_from_bottom = self.scroll_from_bottom.saturating_sub(amount);
-    }
-
-    fn scroll_to_top(&mut self) {
-        self.scroll_from_bottom = self.max_scroll;
-    }
-
-    fn scroll_to_bottom(&mut self) {
-        self.scroll_from_bottom = 0;
-    }
-
-    fn previous_prompt(&mut self) {
-        let index = match self.history_index {
-            Some(index) => index.saturating_sub(1),
-            None if self.prompt_history.is_empty() => return,
-            None => self.prompt_history.len() - 1,
-        };
-        self.history_index = Some(index);
-        self.input = self.prompt_history[index].clone();
-        self.cursor = self.input.len();
-    }
-
-    fn next_prompt(&mut self) {
-        let Some(index) = self.history_index else {
-            return;
-        };
-        if index + 1 < self.prompt_history.len() {
-            self.history_index = Some(index + 1);
-            self.input = self.prompt_history[index + 1].clone();
-        } else {
-            self.history_index = None;
-            self.input.clear();
-        }
-        self.cursor = self.input.len();
-    }
-
-    fn visible_suggestions(&self) -> Option<Suggestions> {
-        if self.commands_dismissed {
-            return None;
-        }
-        let commands = command_matches(&self.input, &self.skills);
-        if !commands.is_empty() {
-            return Some(Suggestions {
-                start: 0,
-                end: self.input.len(),
-                items: commands,
-                files: false,
-            });
-        }
-        let (start, query) = file_query(&self.input, self.cursor)?;
-        let items: Vec<(String, String)> = file_matches(self.files.as_deref()?, query)
-            .into_iter()
-            .map(|path| (path, String::new()))
-            .collect();
-        if items.is_empty() {
-            return None;
-        }
-        Some(Suggestions {
-            start,
-            end: self.cursor,
-            items,
-            files: true,
-        })
-    }
-
-    fn accept_suggestion(&mut self, suggestions: &Suggestions) {
-        let name = &suggestions.items[self.command_selected].0;
-        let replacement = if suggestions.files {
-            format!("@{name} ")
-        } else {
-            name.clone()
-        };
-        self.input
-            .replace_range(suggestions.start..suggestions.end, &replacement);
-        self.cursor = suggestions.start + replacement.len();
-    }
-
-    fn cycle_thinking_level(&mut self) {
-        let index = THINKING_LEVELS
-            .iter()
-            .position(|level| *level == self.thinking_level)
-            .map_or(0, |index| (index + 1) % THINKING_LEVELS.len());
-        self.thinking_level = THINKING_LEVELS[index];
-    }
-
-    fn input_changed(&mut self) {
-        self.history_index = None;
-        self.command_selected = 0;
-        self.commands_dismissed = false;
-        if self.files.is_none() && file_query(&self.input, self.cursor).is_some() {
-            self.files = Some(list_files());
-        }
-    }
-
-    fn attach_image(&mut self, image: Image) {
-        self.image_count += 1;
-        let marker = image_marker(self.image_count);
-        self.input.insert_str(self.cursor, &marker);
-        self.cursor += marker.len();
-        self.images.push((self.image_count, image));
-        self.input_changed();
-    }
-
-    fn take_images(&mut self, prompt: &str) -> Vec<Image> {
-        self.take_numbered_images(prompt)
-            .into_iter()
-            .map(|(_, image)| image)
-            .collect()
-    }
-
-    fn take_numbered_images(&mut self, prompt: &str) -> Vec<(usize, Image)> {
-        std::mem::take(&mut self.images)
-            .into_iter()
-            .filter(|(number, _)| prompt.contains(&image_marker(*number)))
-            .collect()
-    }
-
-    fn can_queue(&self) -> bool {
-        self.busy && (self.status == "working" || self.status == "compacting")
-    }
-
-    fn queue_prompt(&mut self) {
-        let prompt = std::mem::take(&mut self.input);
-        self.cursor = 0;
-        self.files = None;
-        self.history_index = None;
-        self.remember(&prompt);
-        let images = self.take_numbered_images(&prompt);
-        if let Ok(mut queue) = self.queue.lock() {
-            queue.push(Queued { prompt, images });
-        }
-    }
-
-    fn queued_prompts(&self) -> Vec<String> {
-        self.queue
-            .lock()
-            .map(|queue| queue.iter().map(|queued| queued.prompt.clone()).collect())
-            .unwrap_or_default()
-    }
-
-    fn send_queued(&mut self) -> Option<(String, Vec<Image>)> {
-        let queued = take_queued(&self.queue);
-        if queued.is_empty() {
-            return None;
-        }
-        let prompt = queued
-            .iter()
-            .map(|queued| queued.prompt.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let images = queued
-            .into_iter()
-            .flat_map(|queued| queued.images)
-            .map(|(_, image)| image)
-            .collect();
-        self.push(Role::User, prompt.clone());
-        self.start("working");
-        Some((prompt, images))
-    }
-
-    fn restore_queued(&mut self) {
-        let queued = take_queued(&self.queue);
-        if queued.is_empty() {
-            return;
-        }
-        let mut parts: Vec<String> = Vec::new();
-        for queued in queued {
-            parts.push(queued.prompt);
-            self.images.extend(queued.images);
-        }
-        if !self.input.is_empty() {
-            parts.push(std::mem::take(&mut self.input));
-        }
-        self.input = parts.join("\n\n");
-        self.cursor = self.input.len();
-        self.input_changed();
-    }
-
-    fn start(&mut self, status: &str) {
-        self.status = status.into();
-        self.busy = true;
-    }
-
-    fn set_thinking_level(&mut self, name: &str) {
-        match THINKING_LEVELS.iter().find(|level| **level == name) {
-            Some(level) => {
-                self.thinking_level = level;
-                self.push(Role::Event, format!("thinking: {level}"));
-            }
-            None => self.push(
-                Role::Event,
-                format!(
-                    "unknown thinking level: {name} (options: {})",
-                    THINKING_LEVELS.join(", ")
-                ),
-            ),
-        }
-    }
-
-    fn set_model(&mut self, model: &str) {
-        self.model = model.into();
-        self.push(Role::Event, format!("model: {}", display_model(model)));
-    }
-
-    fn clear_session(&mut self) {
-        self.messages.clear();
-        self.prompt_history.clear();
-        self.history_index = None;
-    }
-
-    fn finish<T>(&mut self, result: Result<T>, on_success: impl FnOnce(&mut Self, T)) {
-        match result {
-            Ok(value) => on_success(self, value),
-            Err(error) => self.push(Role::Event, format!("error: {error}")),
-        }
-        self.busy = false;
-    }
-}
-
-fn image_marker(number: usize) -> String {
-    format!("[image {number}]")
-}
 
 pub async fn run(agent: Agent) -> Result<()> {
     THEME.get_or_init(Theme::detect);
@@ -1678,31 +1229,21 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
+    use super::test_support::new_app;
     use super::{
-        Action, App, Image, Role, UiEvent, draw, file_matches, file_query, handle_agent_event,
-        handle_input, held_scroll_from_bottom, replay_messages,
+        Action, App, Image, Role, UiEvent, draw, handle_agent_event, handle_input,
+        held_scroll_from_bottom, replay_messages,
     };
-    use crate::agent::{AgentEvent, Quota, Stats, Usage};
+    use crate::agent::AgentEvent;
     use crate::ask;
     use crate::session::SessionSummary;
     use crate::skills::{Scope, Skill};
     use crate::tools;
+    use crate::tui::files::{file_matches, file_query};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend};
     use serde_json::json;
     use tokio::sync::oneshot::{self, error::TryRecvError};
-
-    fn new_app() -> App {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        App::new("model", "medium", stats)
-    }
 
     #[test]
     fn checks_model_before_selecting_it() {
@@ -2154,24 +1695,6 @@ mod tests {
         assert_eq!(held_scroll_from_bottom(1, 15, 20), 6);
         assert_eq!(held_scroll_from_bottom(6, 20, 18), 4);
         assert_eq!(held_scroll_from_bottom(1, 15, 10), 0);
-    }
-
-    #[test]
-    fn merges_consecutive_reads() {
-        let mut app = new_app();
-        app.push_tool("read", "a.rs".into(), None);
-        app.push_tool("read", "b.rs".into(), None);
-        app.push_tool("read", "a.rs".into(), None);
-        app.push(Role::Event, "read failed: missing");
-        app.push_tool("read", "c.rs".into(), None);
-        let texts: Vec<&str> = app.messages[..]
-            .iter()
-            .map(|message| message.text.as_str())
-            .collect();
-        assert_eq!(
-            texts,
-            ["read a.rs (2), b.rs", "read failed: missing", "read c.rs"]
-        );
     }
 
     #[test]
