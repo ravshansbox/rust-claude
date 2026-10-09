@@ -133,12 +133,24 @@ fn ctrl_c_in_print_mode_stops_started_processes() {
     let started = setup.server_started();
     let output = interrupt(child);
     let server_stopped = stop_server(&setup.server_pid());
+    let sessions: Vec<String> = std::fs::read_dir(setup.home.join(".rust-claude/sessions"))
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path()).ok())
+        .collect();
     let _ = std::fs::remove_dir_all(&setup.root);
 
     assert!(started);
     assert_eq!(output.status.code(), Some(130));
     assert!(String::from_utf8_lossy(&output.stderr).contains("cancelled"));
     assert!(server_stopped);
+    assert!(
+        sessions
+            .iter()
+            .any(|session| session.contains(r#""content":"hello""#)
+                && session.contains(r#""stop_reason":"aborted""#)),
+        "prompt not saved as cancelled: {sessions:?}"
+    );
 }
 
 #[test]

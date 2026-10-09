@@ -148,7 +148,12 @@ async fn main() -> Result<()> {
     tokio::pin!(stopped);
     tokio::select! {
         mcp = mcp::Mcp::load() => agent.mcp = mcp,
-        status = &mut stopped => return interrupted(agent, status),
+        status = &mut stopped => {
+            if let Err(error) = agent.cancel_unsent(&prompt, &images) {
+                eprintln!("failed to save session: {error}");
+            }
+            return interrupted(agent, status);
+        }
     }
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{diagnostic}");
