@@ -1307,8 +1307,7 @@ mod tests {
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use serde_json::json;
 
-    #[test]
-    fn checks_model_before_selecting_it() {
+    fn new_app() -> App {
         let stats = Stats {
             usage: Usage::default(),
             cache_hit_rate: None,
@@ -1317,7 +1316,12 @@ mod tests {
             context_window: 0,
             quota: Quota::default(),
         };
-        let mut app = App::new("model", "medium", stats);
+        App::new("model", "medium", stats)
+    }
+
+    #[test]
+    fn checks_model_before_selecting_it() {
+        let mut app = new_app();
         handle_input(Event::Paste("/model other".into()), &mut app, |_| {});
         let mut checked = None;
         handle_input(
@@ -1336,15 +1340,7 @@ mod tests {
 
     #[test]
     fn ignores_escape_while_loading_models() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         app.busy = true;
         app.status = "loading models".into();
         let mut cancelled = false;
@@ -1362,15 +1358,7 @@ mod tests {
 
     #[test]
     fn ignores_unbound_control_keys() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         app.input = "hello".into();
         for character in ['g', 'd'] {
             let quit = handle_input(
@@ -1388,15 +1376,7 @@ mod tests {
 
     #[test]
     fn moves_by_word_with_alt() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         handle_input(Event::Paste("one two".into()), &mut app, |_| {});
         let alt = |code| Event::Key(KeyEvent::new(code, KeyModifiers::ALT));
         handle_input(alt(KeyCode::Left), &mut app, |_| {});
@@ -1412,15 +1392,7 @@ mod tests {
 
     #[test]
     fn deletes_previous_word() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         handle_input(Event::Paste("one two three".into()), &mut app, |_| {});
         handle_input(Event::Key(KeyEvent::from(KeyCode::Left)), &mut app, |_| {});
         handle_input(
@@ -1440,15 +1412,7 @@ mod tests {
 
     #[test]
     fn edits_input_at_cursor() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         handle_input(Event::Paste("héllo".into()), &mut app, |_| {});
         for code in [KeyCode::Left, KeyCode::Left, KeyCode::Left, KeyCode::Left] {
             handle_input(Event::Key(KeyEvent::from(code)), &mut app, |_| {});
@@ -1481,15 +1445,7 @@ mod tests {
 
     #[test]
     fn adds_newline_with_shift_or_alt_enter() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         let mut submitted = false;
         for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
             handle_input(Event::Paste("a".into()), &mut app, |_| {});
@@ -1506,15 +1462,7 @@ mod tests {
 
     #[test]
     fn moves_between_input_lines_with_up_and_down() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         app.prompt_history.push("earlier".into());
         handle_input(Event::Paste("one\ntwo".into()), &mut app, |_| {});
         let key = |code| Event::Key(KeyEvent::from(code));
@@ -1547,15 +1495,7 @@ mod tests {
 
     #[test]
     fn picks_file_after_at_sign() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         app.files = Some(vec!["src/agent.rs".into(), "src/main.rs".into()]);
         for character in "read @src".chars() {
             handle_input(
@@ -1577,15 +1517,7 @@ mod tests {
 
     #[test]
     fn pastes_multiple_lines_without_submitting() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         let mut submitted = false;
         let quit = handle_input(Event::Paste("first\r\nsecond".into()), &mut app, |action| {
             submitted |= matches!(action, Action::Submit(..));
@@ -1597,15 +1529,7 @@ mod tests {
 
     #[test]
     fn walks_through_prompt_history() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         for prompt in ["first", "second"] {
             handle_input(Event::Paste(prompt.into()), &mut app, |_| {});
             handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
@@ -1626,15 +1550,7 @@ mod tests {
 
     #[test]
     fn sends_pasted_images_whose_markers_remain() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         let mut pasting = false;
         handle_input(
             Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
@@ -1682,15 +1598,7 @@ mod tests {
 
     #[test]
     fn merges_consecutive_reads() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         app.push_tool("read", "a.rs".into(), None);
         app.push_tool("read", "b.rs".into(), None);
         app.push_tool("read", "a.rs".into(), None);
@@ -1708,15 +1616,7 @@ mod tests {
 
     #[test]
     fn replays_failed_tool_calls() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         let read = |id: &str, path: &str| json!({ "type": "tool_use", "id": id, "name": "read", "input": { "path": path } });
         let result = |id: &str, is_error: bool| json!({ "type": "tool_result", "tool_use_id": id, "content": "missing", "is_error": is_error });
         replay_messages(
@@ -1738,15 +1638,7 @@ mod tests {
 
     #[test]
     fn replays_compaction_as_event() {
-        let stats = Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut app = App::new("model", "medium", stats);
+        let mut app = new_app();
         replay_messages(
             &mut app,
             &[
@@ -1763,15 +1655,7 @@ mod tests {
 
     #[test]
     fn shows_skill_commands_live_and_replayed() {
-        let stats = || Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
-        let mut live = App::new("model", "medium", stats());
+        let mut live = new_app();
         live.skills = vec![Skill {
             name: "demo".into(),
             description: "Run\nthe demo.".into(),
@@ -1800,7 +1684,7 @@ mod tests {
             },
         );
         assert_eq!(submitted.as_deref(), Some("/skill:demo fix it"));
-        let mut replayed = App::new("model", "medium", stats());
+        let mut replayed = new_app();
         replay_messages(
             &mut replayed,
             &[
@@ -1820,17 +1704,9 @@ mod tests {
 
     #[test]
     fn shows_replacement_count_live_and_replayed() {
-        let stats = || Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: 0,
-            context_window: 0,
-            quota: Quota::default(),
-        };
         let input =
             json!({ "path": "a.rs", "old_text": "a", "new_text": "b", "replace_all": true });
-        let mut live = App::new("model", "medium", stats());
+        let mut live = new_app();
         handle_agent_event(
             UiEvent::Agent(AgentEvent::ToolStart {
                 name: "edit".into(),
@@ -1847,7 +1723,7 @@ mod tests {
             }),
             &mut live,
         );
-        let mut replayed = App::new("model", "medium", stats());
+        let mut replayed = new_app();
         replay_messages(
             &mut replayed,
             &[
