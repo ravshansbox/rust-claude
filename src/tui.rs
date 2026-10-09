@@ -328,7 +328,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
         ]));
     }
 
-    let transcript = Paragraph::new(Text::from(lines))
+    let conversation = Paragraph::new(Text::from(lines))
         .block(
             Block::default()
                 .title(" Conversation ")
@@ -336,14 +336,14 @@ fn draw(frame: &mut Frame, app: &mut App) {
         )
         .wrap(Wrap { trim: false });
     let viewport_height = chat.height.saturating_sub(2);
-    let wrapped_line_count = transcript.line_count(chat.width);
+    let wrapped_line_count = conversation.line_count(chat.width);
     app.max_scroll = wrapped_line_count
         .saturating_sub(viewport_height as usize)
         .min(u16::MAX as usize) as u16;
     app.page_size = viewport_height.max(1);
     app.scroll_from_bottom = app.scroll_from_bottom.min(app.max_scroll);
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    frame.render_widget(transcript.scroll((scroll, 0)), chat);
+    frame.render_widget(conversation.scroll((scroll, 0)), chat);
 
     frame.render_widget(
         Paragraph::new(app.input.as_str())
