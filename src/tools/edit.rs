@@ -33,12 +33,11 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         .map_err(|error| format!("failed to read {path}: {error}"))?;
     let mut old_text = old_text.to_string();
     let mut new_text = argument(input, "new_text")?.to_string();
-    if count_matches(&content, &old_text) == 0
-        && content.contains("\r\n")
-        && !old_text.contains('\r')
-    {
-        old_text = old_text.replace('\n', "\r\n");
-        new_text = new_text.replace("\r\n", "\n").replace('\n', "\r\n");
+    if uses_crlf(&content) {
+        new_text = to_crlf(&new_text);
+        if count_matches(&content, &old_text) == 0 && !old_text.contains('\r') {
+            old_text = to_crlf(&old_text);
+        }
     }
     match count_matches(&content, &old_text) {
         0 => return Err(format!("old_text not found in {path}")),
@@ -67,6 +66,17 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         .await
         .map(|_| message)
         .map_err(|error| format!("failed to write {path}: {error}"))
+}
+
+/// A file uses Windows line endings when its first line ends with CRLF.
+fn uses_crlf(content: &str) -> bool {
+    content
+        .find('\n')
+        .is_some_and(|index| content[..index].ends_with('\r'))
+}
+
+fn to_crlf(text: &str) -> String {
+    text.replace("\r\n", "\n").replace('\n', "\r\n")
 }
 
 fn count_matches(content: &str, pattern: &str) -> usize {
@@ -163,5 +173,16 @@ mod tests {
             Ok(format!("edited {}", file.path().display()))
         );
         assert_eq!(file.content(), "one\r\nnew\r\ntwo\r\nthree\r\n");
+    }
+
+    #[tokio::test]
+    async fn keeps_crlf_when_one_line_becomes_several() {
+        let file = TemporaryFile::new("crlf-one-line", "one\r\ntwo\r\n");
+        let input = json!({ "path": file.path(), "old_text": "one", "new_text": "first\nsecond" });
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {}", file.path().display()))
+        );
+        assert_eq!(file.content(), "first\r\nsecond\r\ntwo\r\n");
     }
 }
