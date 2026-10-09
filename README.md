@@ -117,7 +117,7 @@ The agent can use these tools:
 - `bash`: run a shell command
 - `read`: read a file
 - `write`: create or replace a file
-- `edit`: replace text in a file
+- `edit`: replace text in a file. In a file with Windows line endings (CRLF), it also matches text written with plain line endings and keeps the file's line endings
 
 `bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice.
 
