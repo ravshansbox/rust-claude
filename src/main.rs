@@ -163,6 +163,9 @@ async fn main() -> Result<()> {
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{diagnostic}");
     }
+    for program in &agent.missing_programs {
+        eprintln!("{program} not found on PATH");
+    }
     let mut stdout = std::io::stdout();
     let mut printed = false;
     let mut separate = false;
