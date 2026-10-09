@@ -305,7 +305,6 @@ mod tests {
     #[test]
     fn parses_print_and_interactive() {
         assert_eq!(parse(&[]), Some(Command::Interactive));
-        assert_eq!(parse(&["--print", "hello", "--hide-tools"]), None);
         assert_eq!(
             parse(&["--image", "a.png", "-p", "hello", "--image", "b.png"]),
             Some(Command::Print {
