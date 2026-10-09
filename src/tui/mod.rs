@@ -23,6 +23,7 @@ use crossterm::{
     execute,
 };
 use draw::draw;
+use files::list_files;
 use futures::StreamExt;
 use keys::{Action, handle_input};
 use ratatui::DefaultTerminal;
@@ -129,7 +130,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let image_events = event_tx.clone();
+    let background_events = event_tx.clone();
     app.queue = agent.queue.clone();
     let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
     for server in startup.servers {
@@ -182,7 +183,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                         let _ = request_tx.send(Request::Shell(command));
                     }
                     Action::PasteImage => {
-                        let events = image_events.clone();
+                        let events = background_events.clone();
                         tokio::task::spawn_blocking(move || {
                             let result = clipboard::read_image()
                                 .and_then(|data| data.map(images::prepare).transpose());
@@ -236,6 +237,12 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                 }
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
             }
+        }
+        if app.start_listing_files() {
+            let events = background_events.clone();
+            tokio::task::spawn_blocking(move || {
+                let _ = events.send(UiEvent::Files(list_files()));
+            });
         }
     };
     quit(request_tx, cancel_tx);

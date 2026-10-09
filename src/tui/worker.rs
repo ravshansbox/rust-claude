@@ -20,6 +20,7 @@ pub(super) enum UiEvent {
     ImagePasted(Result<Option<Image>>),
     Shell(String, Result<String>),
     Context(ContextUse),
+    Files(Vec<String>),
 }
 
 pub(super) enum Request {
