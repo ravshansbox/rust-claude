@@ -241,7 +241,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 The status line is a single line below the input. It shows the folder, the model and thinking level, context use, and token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps). A `·` separates each part. It wraps when the terminal is too narrow.
 
-It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-claude loads it in the background at start, so you can send a prompt straight away, and updates it after each reply.
+It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-claude loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 2h16m` or `7d 81% 2d12h`.
 
 ## Settings
 
