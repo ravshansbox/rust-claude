@@ -9,6 +9,18 @@ impl TemporaryFile {
         Self(path)
     }
 
+    /// A named pipe, which only reaches its end once every writer closes it.
+    pub(super) fn fifo(name: &str) -> Self {
+        let path = std::env::temp_dir().join(format!("rust-claude-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_file(&path);
+        let status = std::process::Command::new("mkfifo")
+            .arg(&path)
+            .status()
+            .unwrap();
+        assert!(status.success());
+        Self(path)
+    }
+
     pub(super) fn path(&self) -> &Path {
         &self.0
     }
