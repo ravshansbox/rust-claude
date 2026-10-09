@@ -1,3 +1,4 @@
+mod commands;
 mod files;
 mod input;
 mod question;
@@ -17,6 +18,7 @@ use crate::{
     tools,
 };
 use anyhow::Result;
+use commands::command_matches;
 use crossterm::{
     event::{
         DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
@@ -55,43 +57,6 @@ const MAX_LIST_ROWS: usize = 10;
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
 const SPINNER_INTERVAL: Duration = Duration::from_millis(80);
 const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-
-const COMMANDS: &[(&str, &str)] = &[
-    ("/new", "start a new session"),
-    ("/compact", "summarise the conversation to free context"),
-    ("/context", "show what fills the context"),
-    ("/resume", "resume a previous session"),
-    ("/model", "select model"),
-    ("/thinking", "select thinking level"),
-    ("/quit", "quit"),
-];
-
-fn command_matches(input: &str, skills: &[Skill]) -> Vec<(String, String)> {
-    if !input.starts_with('/') || input.contains(char::is_whitespace) {
-        return Vec::new();
-    }
-    let commands = COMMANDS
-        .iter()
-        .map(|(name, description)| (name.to_string(), description.to_string()));
-    let skill_commands = skills.iter().map(|skill| {
-        (
-            format!("/skill:{}", skill.name),
-            format!(
-                "[{}] {}",
-                skill.scope,
-                skill
-                    .description
-                    .split_whitespace()
-                    .collect::<Vec<_>>()
-                    .join(" ")
-            ),
-        )
-    });
-    commands
-        .chain(skill_commands)
-        .filter(|(name, _)| name.starts_with(input))
-        .collect()
-}
 
 struct Suggestions {
     start: usize,
