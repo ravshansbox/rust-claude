@@ -563,6 +563,12 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
     }
 
     match (key.code, key.modifiers) {
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) if !app.input.is_empty() => {
+            app.input.clear();
+            app.history_index = None;
+            app.command_selected = 0;
+            app.commands_dismissed = false;
+        }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
             if app.status == "working" {
