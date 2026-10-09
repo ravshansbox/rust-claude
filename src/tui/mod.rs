@@ -20,7 +20,7 @@ use crossterm::{
 };
 use files::{file_matches, file_query, list_files};
 use futures::StreamExt;
-use input::{input_cursor, input_rows, line_above, line_below, next_word_end, previous_word_start};
+use input::{input_cursor, input_rows, next_word_end, previous_word_start, row_above, row_below};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -113,6 +113,7 @@ struct App {
     scroll_from_bottom: u16,
     max_scroll: u16,
     page_size: u16,
+    input_width: usize,
     busy: bool,
     picker: Option<Picker>,
     command_selected: usize,
@@ -152,6 +153,7 @@ impl App {
             scroll_from_bottom: 0,
             max_scroll: 0,
             page_size: 1,
+            input_width: usize::MAX,
             busy: false,
             picker: None,
             command_selected: 0,
@@ -715,11 +717,11 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.previous_prompt();
         }
         (KeyCode::Down, _) if app.history_index.is_some() => app.next_prompt(),
-        (KeyCode::Up, _) => match line_above(&app.input, app.cursor) {
+        (KeyCode::Up, _) => match row_above(&app.input, app.cursor, app.input_width) {
             Some(cursor) => app.cursor = cursor,
             None => app.scroll_up(1),
         },
-        (KeyCode::Down, _) => match line_below(&app.input, app.cursor) {
+        (KeyCode::Down, _) => match row_below(&app.input, app.cursor, app.input_width) {
             Some(cursor) => app.cursor = cursor,
             None => app.scroll_down(1),
         },
@@ -958,6 +960,7 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
 
 fn draw(frame: &mut Frame, app: &mut App) {
     let input_width = frame.area().width.max(1) as usize;
+    app.input_width = input_width;
     let input_rows = input_rows(&app.input, input_width);
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
     let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
@@ -1359,6 +1362,11 @@ mod tests {
         handle_input(key(KeyCode::Down), &mut app, |_| {});
         assert_eq!(app.cursor, "one\ntwo".len());
         assert_eq!(app.input, "one\ntwo");
+        app.input = "abcdefg".into();
+        app.cursor = 6;
+        app.input_width = 4;
+        handle_input(key(KeyCode::Up), &mut app, |_| {});
+        assert_eq!(app.cursor, 2);
     }
 
     #[test]
