@@ -329,7 +329,7 @@ rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the l
 
 Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. The first line records the folder the session started in, which `--continue` uses. Sessions saved before this line was added are not found by `--continue`, but `/resume` still lists them. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-claude/sessions/<id>/`, and the session file refers to them by name.
 
-While a prompt runs, the session is saved after each finished round of tool calls, so a crash or a closed terminal loses at most the round in progress.
+While a prompt runs, the session is saved after each finished round of tool calls, so a crash or a closed terminal loses at most the round in progress. If a crash or a full disk cuts a save short, resuming the session keeps the messages before the cut, leaves out tool calls whose results were cut off, and removes the rest from the file.
 
 Quitting while a prompt runs cancels it and saves the session first. Quitting while `/model` loads the model list stops that request. Requests still waiting when you quit, such as a prompt sent just before, are not started.
 
@@ -343,7 +343,7 @@ rust-claude also compacts automatically when the context is 80% full: before sen
 
 `/context` shows how many tokens each part of the context uses: the system prompt, instructions, skills, built-in tools, MCP tools and messages, and how much of the context window is free. Each part is estimated from its length, then scaled so that the parts add up to the context use on the status line. That figure comes from the token count of the last reply, plus an estimate for anything added since. Images are not counted.
 
-`/resume` reads each session only up to its first prompt to build the list. A session that is damaged before its first prompt is left out of the list. Damage later in the file shows an error when you resume it. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
+`/resume` reads each session only up to its first prompt to build the list. A session that is damaged before its first prompt is left out of the list. Resuming a session that is damaged later in the file keeps the messages before the damage, as after a crash. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
 ## Tools
 
