@@ -72,6 +72,9 @@ impl Agent {
         let mut partial_json = String::new();
         let mut input_error = None;
         let mut stop_reason = String::new();
+        // Usage of earlier attempts at this request that failed and were
+        // retried, so their tokens still count.
+        let retried = self.pending_usage;
         let mut usage = Usage::default();
         let mut first_token: Option<Instant> = None;
         let mut buffer: Vec<u8> = Vec::new();
@@ -94,7 +97,8 @@ impl Agent {
                 match event["type"].as_str().unwrap_or_default() {
                     "message_start" => {
                         usage.update_from_response(&event["message"]["usage"]);
-                        self.pending_usage = usage;
+                        self.pending_usage = retried;
+                        self.pending_usage.add(usage);
                     }
                     "content_block_start" => {
                         first_token.get_or_insert_with(Instant::now);
@@ -148,7 +152,8 @@ impl Agent {
                         usage.update_from_response(&event["usage"]);
                         usage.duration_ms =
                             first_token.map_or(0, |start| start.elapsed().as_millis() as u64);
-                        self.pending_usage = usage;
+                        self.pending_usage = retried;
+                        self.pending_usage.add(usage);
                     }
                     "error" => {
                         let message = event["error"].to_string();
@@ -174,6 +179,6 @@ impl Agent {
         if let Some(error) = input_error {
             return Err(error.into());
         }
-        Ok((content, stop_reason, usage))
+        Ok((content, stop_reason, self.pending_usage))
     }
 }
