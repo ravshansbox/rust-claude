@@ -1,10 +1,11 @@
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use anyhow::{Result, bail};
 use futures::StreamExt;
 use serde_json::{Value, json};
 
+mod retry;
 mod system;
 
 use crate::{
@@ -17,6 +18,7 @@ use crate::{
     skills::{self, Skills},
     tools,
 };
+use retry::{MAX_RETRIES, is_retryable_status, retry_after, retry_delay, retryable};
 pub use system::Instructions;
 use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
 
@@ -29,59 +31,6 @@ pub const DEFAULT_THINKING_LEVEL: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
 const SUMMARY_INTRODUCTION: &str = "The earlier conversation was compacted to save context. You wrote the summary below of everything that happened in it. Treat it as an accurate record and continue from where the conversation stopped.";
 const COMPACT_AT_PERCENT: u64 = 80;
-const MAX_RETRIES: u32 = 3;
-const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
-
-#[derive(Debug)]
-struct Retryable {
-    message: String,
-    retry_after: Option<Duration>,
-}
-
-impl std::fmt::Display for Retryable {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str(&self.message)
-    }
-}
-
-impl std::error::Error for Retryable {}
-
-fn retryable(message: impl ToString, retry_after: Option<Duration>) -> anyhow::Error {
-    Retryable {
-        message: message.to_string(),
-        retry_after,
-    }
-    .into()
-}
-
-fn retry_delay(error: &anyhow::Error, attempt: u32) -> Option<Duration> {
-    let error = error.downcast_ref::<Retryable>()?;
-    if attempt >= MAX_RETRIES {
-        return None;
-    }
-    match error.retry_after {
-        Some(delay) if delay > MAX_RETRY_AFTER => None,
-        Some(delay) => Some(delay),
-        None => Some(Duration::from_secs(1 << attempt)),
-    }
-}
-
-fn is_retryable_status(status: reqwest::StatusCode) -> bool {
-    status == reqwest::StatusCode::TOO_MANY_REQUESTS
-        || status.as_u16() == 529
-        || status.is_server_error()
-}
-
-fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
-    headers
-        .get(reqwest::header::RETRY_AFTER)?
-        .to_str()
-        .ok()?
-        .trim()
-        .parse()
-        .ok()
-        .map(Duration::from_secs)
-}
 
 fn is_compaction(message: &Value) -> bool {
     message["stop_reason"] == "compacted"
@@ -1064,11 +1013,10 @@ mod tests {
     use super::{AgentEvent, ask_user, tool_definitions};
     use super::{
         Quota, active_messages, cache_hit_rate, cancel_point, context_tokens, has_uncompacted,
-        parse_shell_message, parse_timestamp, retry_after, retry_delay, retryable, scale_parts,
-        shell_message, tokens_per_second, with_cache_breakpoint,
+        parse_shell_message, parse_timestamp, scale_parts, shell_message, tokens_per_second,
+        with_cache_breakpoint,
     };
     use crate::{ask, mcp::Mcp};
-    use std::time::Duration;
 
     fn tool_names(definitions: serde_json::Value) -> Vec<String> {
         definitions
@@ -1134,33 +1082,6 @@ mod tests {
         let text = shell_message("ls -a", "a\nb\n");
         assert_eq!(parse_shell_message(&text), Some(("ls -a", "a\nb\n")));
         assert_eq!(parse_shell_message("hello"), None);
-    }
-
-    #[test]
-    fn backs_off_on_retryable_errors() {
-        let error = retryable("overloaded", None);
-        let delays: Vec<_> = (0..4).map(|attempt| retry_delay(&error, attempt)).collect();
-        assert_eq!(
-            delays,
-            [
-                Some(Duration::from_secs(1)),
-                Some(Duration::from_secs(2)),
-                Some(Duration::from_secs(4)),
-                None
-            ]
-        );
-        assert_eq!(retry_delay(&anyhow::anyhow!("bad request"), 0), None);
-    }
-
-    #[test]
-    fn follows_short_retry_after() {
-        let short = retryable("rate limited", Some(Duration::from_secs(10)));
-        assert_eq!(retry_delay(&short, 0), Some(Duration::from_secs(10)));
-        let long = retryable("rate limited", Some(Duration::from_secs(3600)));
-        assert_eq!(retry_delay(&long, 0), None);
-        let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert(reqwest::header::RETRY_AFTER, "7".parse().unwrap());
-        assert_eq!(retry_after(&headers), Some(Duration::from_secs(7)));
     }
 
     #[test]
