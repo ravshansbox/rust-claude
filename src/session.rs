@@ -88,8 +88,14 @@ impl Session {
             if id == self.id {
                 continue;
             }
-            let modified = std::fs::metadata(&path)?.modified()?;
-            let preview = read_messages(&path)?
+            let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
+            else {
+                continue;
+            };
+            let Ok(messages) = read_messages(&path) else {
+                continue;
+            };
+            let preview = messages
                 .iter()
                 .find_map(|message| message["content"].as_str().map(str::to_string))
                 .unwrap_or_default();
@@ -142,5 +148,17 @@ mod tests {
             .unwrap()
             .join(format!("{}.jsonl", session.id));
         assert!(!path.exists());
+    }
+
+    #[test]
+    fn skips_unreadable_session_files() {
+        let session = Session::new().unwrap();
+        let directory = sessions_directory().unwrap();
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join(format!("{}.jsonl", new_uuid().unwrap()));
+        std::fs::write(&path, "not json\n").unwrap();
+        let result = session.list_others();
+        std::fs::remove_file(&path).unwrap();
+        assert!(result.is_ok());
     }
 }
