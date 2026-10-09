@@ -668,6 +668,12 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.busy = true;
             act(Action::Submit(prompt, app.thinking_level));
         }
+        (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
+            app.cursor = previous_word_start(&app.input, app.cursor);
+        }
+        (KeyCode::Right | KeyCode::Char('f'), KeyModifiers::ALT) => {
+            app.cursor = next_word_end(&app.input, app.cursor);
+        }
         (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
         (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
         (KeyCode::Left, _) => {
@@ -1072,6 +1078,39 @@ fn input_rows(input: &str, width: usize) -> Vec<String> {
     rows
 }
 
+fn is_word_character(character: char) -> bool {
+    character.is_alphanumeric() || character == '_'
+}
+
+fn previous_word_start(input: &str, cursor: usize) -> usize {
+    let mut characters = input[..cursor].char_indices().rev().peekable();
+    while characters
+        .next_if(|(_, character)| !is_word_character(*character))
+        .is_some()
+    {}
+    let mut start = characters.peek().map_or(0, |(index, _)| *index);
+    while let Some((index, _)) = characters.next_if(|(_, character)| is_word_character(*character))
+    {
+        start = index;
+    }
+    start
+}
+
+fn next_word_end(input: &str, cursor: usize) -> usize {
+    let mut characters = input[cursor..].char_indices().peekable();
+    while characters
+        .next_if(|(_, character)| !is_word_character(*character))
+        .is_some()
+    {}
+    while characters
+        .next_if(|(_, character)| is_word_character(*character))
+        .is_some()
+    {}
+    characters
+        .peek()
+        .map_or(input.len(), |(index, _)| cursor + index)
+}
+
 fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, usize) {
     let mut row = 0;
     let mut row_width = 0;
@@ -1154,7 +1193,7 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 mod tests {
     use super::{
         Action, App, format_duration, format_tokens, handle_input, input_cursor, input_rows,
-        user_message_lines,
+        next_word_end, previous_word_start, user_message_lines,
     };
     use crate::agent::{Quota, Stats, Usage};
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -1246,6 +1285,55 @@ mod tests {
         assert_eq!(input_cursor("ab\ncd", 2, 4), (0, 2));
         assert_eq!(input_cursor("ab\ncd", 3, 4), (1, 0));
         assert_eq!(input_cursor("", 0, 4), (0, 0));
+    }
+
+    #[test]
+    fn finds_word_boundaries() {
+        let input = "fn  snake_case(héllo) ";
+        assert_eq!(
+            previous_word_start(input, input.len()),
+            "fn  snake_case(".len()
+        );
+        assert_eq!(
+            previous_word_start(input, "fn  snake_case(".len()),
+            "fn  ".len()
+        );
+        assert_eq!(previous_word_start(input, "fn  sna".len()), "fn  ".len());
+        assert_eq!(previous_word_start(input, "fn  ".len()), 0);
+        assert_eq!(previous_word_start(input, 0), 0);
+        assert_eq!(next_word_end(input, 0), "fn".len());
+        assert_eq!(next_word_end(input, "fn".len()), "fn  snake_case".len());
+        assert_eq!(
+            next_word_end(input, "fn  snake_case".len()),
+            "fn  snake_case(héllo".len()
+        );
+        assert_eq!(
+            next_word_end(input, "fn  snake_case(héllo".len()),
+            input.len()
+        );
+    }
+
+    #[test]
+    fn moves_by_word_with_alt() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        handle_input(Event::Paste("one two".into()), &mut app, |_| {});
+        let alt = |code| Event::Key(KeyEvent::new(code, KeyModifiers::ALT));
+        handle_input(alt(KeyCode::Left), &mut app, |_| {});
+        assert_eq!(app.cursor, "one ".len());
+        handle_input(alt(KeyCode::Char('b')), &mut app, |_| {});
+        assert_eq!(app.cursor, 0);
+        handle_input(alt(KeyCode::Right), &mut app, |_| {});
+        assert_eq!(app.cursor, "one".len());
+        handle_input(alt(KeyCode::Char('f')), &mut app, |_| {});
+        assert_eq!(app.cursor, "one two".len());
+        assert_eq!(app.input, "one two");
     }
 
     #[test]
