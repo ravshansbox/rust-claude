@@ -4,7 +4,9 @@ mod render;
 mod status;
 
 use crate::{
-    agent::{Agent, AgentEvent, Queue, Queued, Stats, THINKING_LEVELS, take_queued},
+    agent::{
+        Agent, AgentEvent, Queue, Queued, Stats, THINKING_LEVELS, parse_shell_message, take_queued,
+    },
     clipboard,
     images::{self, Image},
     session::SessionSummary,
@@ -224,6 +226,12 @@ impl App {
             _ => self.push(Role::Tool, text),
         }
         self.reads = reads;
+    }
+
+    fn push_shell(&mut self, command: &str, output: &str) {
+        let output = output.trim_end();
+        let diff = (!output.is_empty()).then(|| output.to_string());
+        self.push(Role::Tool, tool_message("!", command.to_string(), diff));
     }
 
     fn scroll_up(&mut self, amount: u16) {
@@ -495,10 +503,12 @@ enum UiEvent {
     Models(Result<Vec<String>>),
     ModelChecked(Result<String>),
     ImagePasted(Result<Option<Image>>),
+    Shell(String, Result<String>),
 }
 
 enum Request {
     Prompt(String, Vec<Image>, &'static str),
+    Shell(String),
     Compact(&'static str),
     ListSessions,
     Resume(String),
@@ -537,11 +547,25 @@ async fn agent_task(
             request = requests.recv() => request,
         };
         let Some(request) = request else { break };
+        if let Request::Shell(command) = request {
+            while cancel.try_recv().is_ok() {}
+            tokio::select! {
+                result = agent.shell(&command) => {
+                    let _ = events.send(UiEvent::Shell(command, result));
+                }
+                _ = cancel.recv() => {
+                    let _ = events.send(UiEvent::Cancelled(Ok(())));
+                }
+            }
+            let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+            continue;
+        }
         let (prompt, thinking_level) = match request {
             Request::Prompt(prompt, images, thinking_level) => {
                 (Some((prompt, images)), thinking_level)
             }
             Request::Compact(thinking_level) => (None, thinking_level),
+            Request::Shell(_) => continue,
             Request::ListSessions => {
                 let _ = events.send(UiEvent::Sessions(agent.list_sessions()));
                 continue;
@@ -680,6 +704,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     Action::Submit(prompt, images, thinking_level) => {
                         let _ = request_tx.send(Request::Prompt(prompt, images, thinking_level));
                     }
+                    Action::Shell(command) => {
+                        let _ = request_tx.send(Request::Shell(command));
+                    }
                     Action::PasteImage => {
                         let events = image_events.clone();
                         tokio::task::spawn_blocking(move || {
@@ -764,6 +791,7 @@ fn save_changed_settings(
 
 enum Action {
     Submit(String, Vec<Image>, &'static str),
+    Shell(String),
     PasteImage,
     Compact(&'static str),
     ListSessions,
@@ -878,7 +906,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy => {
-            if app.status == "working" || app.status == "compacting" {
+            if ["working", "compacting", "running"].contains(&app.status.as_str()) {
                 app.status = "cancelling".into();
                 act(Action::Cancel);
             }
@@ -903,7 +931,9 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Home, _) => app.scroll_to_top(),
         (KeyCode::End, _) => app.scroll_to_bottom(),
         (KeyCode::Enter, _)
-            if app.can_queue() && !app.input.trim().is_empty() && !app.input.starts_with('/') =>
+            if app.can_queue()
+                && !app.input.trim().is_empty()
+                && !app.input.starts_with(['/', '!']) =>
         {
             app.queue_prompt();
         }
@@ -913,6 +943,15 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.cursor = 0;
             app.files = None;
             app.history_index = None;
+            if let Some(command) = prompt.strip_prefix('!') {
+                let command = command.trim().to_string();
+                app.prompt_history.push(prompt.clone());
+                if !command.is_empty() {
+                    app.start("running");
+                    act(Action::Shell(command));
+                }
+                return false;
+            }
             if prompt.starts_with('/') {
                 let (command, argument) = prompt
                     .trim()
@@ -1108,6 +1147,9 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 selected,
             });
         }),
+        UiEvent::Shell(command, result) => {
+            app.finish(result, |app, output| app.push_shell(&command, &output));
+        }
         UiEvent::ImagePasted(Ok(Some(image))) => app.attach_image(image),
         UiEvent::ImagePasted(Ok(None)) => app.push(Role::Event, "no image in the clipboard"),
         UiEvent::ImagePasted(Err(error)) => {
@@ -1185,6 +1227,11 @@ fn replay_messages(app: &mut App, messages: &[Value]) {
 }
 
 fn replay_prompt(app: &mut App, text: &str) {
+    if let Some((command, output)) = parse_shell_message(text) {
+        app.push_shell(command, output);
+        app.prompt_history.push(format!("!{command}"));
+        return;
+    }
     match skills::parse_block(text) {
         Some(block) => {
             app.push(Role::Event, format!("[skill] {}", block.name));
@@ -1485,6 +1532,49 @@ mod tests {
         assert_eq!(app.input, "first\n\ndraft");
         assert!(app.queued_prompts().is_empty());
         assert!(app.send_queued().is_none());
+    }
+
+    #[test]
+    fn runs_shell_commands() {
+        let mut app = new_app();
+        handle_input(Event::Paste("! ls -a".into()), &mut app, |_| {});
+        let mut command = None;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::Shell(text) = action {
+                    command = Some(text);
+                }
+            },
+        );
+        assert_eq!(command.as_deref(), Some("ls -a"));
+        assert_eq!(app.status, "running");
+        let mut cancelled = false;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Esc)),
+            &mut app,
+            |action| cancelled |= matches!(action, Action::Cancel),
+        );
+        assert!(cancelled);
+        handle_agent_event(
+            UiEvent::Shell("ls -a".into(), Ok("a\nb\n".into())),
+            &mut app,
+        );
+        assert!(!app.busy);
+        assert_eq!(app.messages.last().unwrap().text, "! ls -a\na\nb");
+    }
+
+    #[test]
+    fn replays_shell_commands() {
+        let mut app = new_app();
+        replay_messages(
+            &mut app,
+            &[json!({ "role": "user", "content": crate::agent::shell_message("pwd", "/tmp\n") })],
+        );
+        assert!(matches!(app.messages.last().unwrap().role, Role::Tool));
+        assert_eq!(app.messages.last().unwrap().text, "! pwd\n/tmp");
+        assert_eq!(app.prompt_history, ["!pwd"]);
     }
 
     #[test]
