@@ -364,8 +364,35 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
             if prompt.starts_with('/') {
-                match prompt.trim() {
+                let (command, argument) = prompt
+                    .trim()
+                    .split_once(char::is_whitespace)
+                    .map_or((prompt.trim(), ""), |(command, argument)| {
+                        (command, argument.trim())
+                    });
+                match command {
                     "/quit" => return true,
+                    "/thinking" if argument.is_empty() => app.push(
+                        Role::Event,
+                        format!(
+                            "thinking: {} (options: {})",
+                            app.thinking_level,
+                            THINKING_LEVELS.join(", ")
+                        ),
+                    ),
+                    "/thinking" => match THINKING_LEVELS.iter().find(|level| **level == argument) {
+                        Some(level) => {
+                            app.thinking_level = level;
+                            app.push(Role::Event, format!("thinking: {level}"));
+                        }
+                        None => app.push(
+                            Role::Event,
+                            format!(
+                                "unknown thinking level: {argument} (options: {})",
+                                THINKING_LEVELS.join(", ")
+                            ),
+                        ),
+                    },
                     "/resume" => {
                         app.status = "loading sessions".into();
                         app.busy = true;
