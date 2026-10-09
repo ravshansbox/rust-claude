@@ -1,7 +1,18 @@
-use std::{fs::OpenOptions, io::Write, path::PathBuf};
+use std::{
+    fs::OpenOptions,
+    io::Write,
+    path::{Path, PathBuf},
+    time::SystemTime,
+};
 
 use anyhow::{Context, Result};
 use serde_json::Value;
+
+pub struct SessionSummary {
+    pub id: String,
+    pub modified: SystemTime,
+    pub preview: String,
+}
 
 pub struct Session {
     pub id: String,
@@ -54,12 +65,12 @@ impl Session {
         Ok(())
     }
 
-    pub fn latest_other(&self) -> Result<Option<(Session, Vec<Value>)>> {
+    pub fn list_others(&self) -> Result<Vec<SessionSummary>> {
         let directory = sessions_directory()?;
         if !directory.exists() {
-            return Ok(None);
+            return Ok(Vec::new());
         }
-        let mut latest = None;
+        let mut summaries = Vec::new();
         for entry in std::fs::read_dir(&directory)? {
             let path = entry?.path();
             if path
@@ -75,28 +86,37 @@ impl Session {
                 continue;
             }
             let modified = std::fs::metadata(&path)?.modified()?;
-            if latest
-                .as_ref()
-                .is_none_or(|(latest_modified, _, _)| modified > *latest_modified)
-            {
-                latest = Some((modified, id.to_string(), path));
-            }
+            let preview = read_messages(&path)?
+                .iter()
+                .find_map(|message| message["content"].as_str().map(str::to_string))
+                .unwrap_or_default();
+            summaries.push(SessionSummary {
+                id: id.to_string(),
+                modified,
+                preview,
+            });
         }
-        let Some((_, id, path)) = latest else {
-            return Ok(None);
-        };
-        let messages = std::fs::read_to_string(&path)?
-            .lines()
-            .filter(|line| !line.trim().is_empty())
-            .map(serde_json::from_str)
-            .collect::<Result<Vec<Value>, _>>()
-            .with_context(|| format!("reading {}", path.display()))?;
+        summaries.sort_by_key(|summary| std::cmp::Reverse(summary.modified));
+        Ok(summaries)
+    }
+
+    pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
+        let messages = read_messages(&sessions_directory()?.join(format!("{id}.jsonl")))?;
         let session = Session {
-            id,
+            id: id.to_string(),
             saved: messages.len(),
         };
-        Ok(Some((session, messages)))
+        Ok((session, messages))
     }
+}
+
+fn read_messages(path: &Path) -> Result<Vec<Value>> {
+    std::fs::read_to_string(path)?
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .map(serde_json::from_str)
+        .collect::<Result<Vec<Value>, _>>()
+        .with_context(|| format!("reading {}", path.display()))
 }
 
 #[cfg(test)]

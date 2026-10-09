@@ -4,7 +4,11 @@ use anyhow::{Result, bail};
 use futures::StreamExt;
 use serde_json::{Value, json};
 
-use crate::{auth::Credentials, session::Session, tools};
+use crate::{
+    auth::Credentials,
+    session::{Session, SessionSummary},
+    tools,
+};
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
@@ -126,13 +130,15 @@ impl Agent {
         self.messages.len()
     }
 
-    pub fn resume_latest(&mut self) -> Result<Option<Vec<Value>>> {
-        let Some((session, messages)) = self.session.latest_other()? else {
-            return Ok(None);
-        };
+    pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
+        self.session.list_others()
+    }
+
+    pub fn resume(&mut self, id: &str) -> Result<Vec<Value>> {
+        let (session, messages) = Session::load(id)?;
         self.session = session;
         self.messages = messages.clone();
-        Ok(Some(messages))
+        Ok(messages)
     }
 
     pub fn rollback(&mut self, len: usize) {
