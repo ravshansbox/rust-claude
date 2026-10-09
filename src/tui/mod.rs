@@ -33,7 +33,7 @@ use ratatui::{
 };
 use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
 use serde_json::Value;
-use status::{format_quota, format_stats};
+use status::{format_context, format_quota, format_stats};
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
@@ -1120,6 +1120,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
     let mut footer_parts = vec![
         app.workspace.to_string(),
         format!("{}:{}", display_model(&app.model), app.thinking_level),
+        format_context(&app.stats),
         format_stats(&app.stats),
         format_quota(&app.stats),
     ];

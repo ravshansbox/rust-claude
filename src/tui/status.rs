@@ -18,7 +18,7 @@ pub(super) fn format_stats(stats: &Stats) -> String {
     {
         parts.push(format!("CH{rate:.0}%"));
     }
-    let mut sections = vec![parts.join(" "), format_context(stats)];
+    let mut sections = vec![parts.join(" ")];
     if let Some(rate) = stats.tokens_per_second {
         sections.push(format!("{rate:.0} tps"));
     }
@@ -73,7 +73,7 @@ fn format_duration(seconds: u64) -> String {
     }
 }
 
-fn format_context(stats: &Stats) -> String {
+pub(super) fn format_context(stats: &Stats) -> String {
     let percent = if stats.context_window > 0 {
         stats.context_tokens as f64 / stats.context_window as f64 * 100.0
     } else {
