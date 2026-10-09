@@ -383,8 +383,8 @@ rust-claude connects to all servers at start and waits for them before the first
 
 Architecture decision records are in [docs/adr](docs/adr):
 
-- [1. Run tools without approval](docs/adr/0001-run-tools-without-approval.md)
-- [2. Identify as Claude Code](docs/adr/0002-identify-as-claude-code.md)
+- [1. Identify as Claude Code](docs/adr/0001-identify-as-claude-code.md)
+- [2. Run tools without approval](docs/adr/0002-run-tools-without-approval.md)
 - [3. Start project MCP servers without approval](docs/adr/0003-start-project-mcp-servers-without-approval.md)
 
 ## Development
