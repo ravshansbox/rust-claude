@@ -3,7 +3,7 @@ use std::fmt;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
-use ignore::gitignore::GitignoreBuilder;
+use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde_json::Value;
 
 const MAX_NAME_LENGTH: usize = 64;
@@ -176,89 +176,46 @@ fn collect_skill_files(dir: &Path, mode: Mode) -> Vec<PathBuf> {
     files
 }
 
-fn add_ignore_rules(dir: &Path, root: &Path, patterns: &mut Vec<String>) {
-    let prefix = match dir.strip_prefix(root) {
-        Ok(relative) if !relative.as_os_str().is_empty() => {
-            format!("{}/", posix_path(relative))
-        }
-        _ => String::new(),
-    };
+fn ignore_rules(dir: &Path) -> Gitignore {
+    let mut builder = GitignoreBuilder::new(dir);
     for file_name in IGNORE_FILE_NAMES {
-        let Ok(content) = std::fs::read_to_string(dir.join(file_name)) else {
-            continue;
-        };
-        patterns.extend(
-            content
-                .lines()
-                .filter_map(|line| prefix_ignore_pattern(line, &prefix)),
-        );
+        let path = dir.join(file_name);
+        if path.is_file() {
+            let _ = builder.add(path);
+        }
     }
+    builder.build().unwrap_or_else(|_| Gitignore::empty())
 }
 
-fn prefix_ignore_pattern(line: &str, prefix: &str) -> Option<String> {
-    let trimmed = line.trim();
-    if trimmed.is_empty() || (trimmed.starts_with('#') && !trimmed.starts_with("\\#")) {
-        return None;
-    }
-    let (negated, pattern) = match line.strip_prefix('!') {
-        Some(pattern) => (true, pattern),
-        None => (
-            false,
-            line.strip_prefix('\\')
-                .filter(|rest| rest.starts_with('!'))
-                .unwrap_or(line),
-        ),
-    };
-    let pattern = pattern.strip_prefix('/').unwrap_or(pattern);
-    let prefixed = format!("{prefix}{pattern}");
-    Some(if negated {
-        format!("!{prefixed}")
-    } else {
-        prefixed
-    })
-}
-
-fn is_ignored(root: &Path, patterns: &[String], relative: &str, is_dir: bool) -> bool {
-    if patterns.is_empty() {
-        return false;
-    }
-    let mut builder = GitignoreBuilder::new(root);
-    for pattern in patterns {
-        let _ = builder.add_line(None, pattern);
-    }
-    builder
-        .build()
-        .is_ok_and(|matcher| matcher.matched(relative, is_dir).is_ignore())
-}
-
-fn posix_path(path: &Path) -> String {
-    path.components()
-        .map(|component| component.as_os_str().to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+/// Asks the deepest directory's ignore files first, like git does.
+fn is_ignored(rules: &[Gitignore], path: &Path, is_dir: bool) -> bool {
+    rules
+        .iter()
+        .rev()
+        .map(|rules| rules.matched(path, is_dir))
+        .find(|matched| !matched.is_none())
+        .is_some_and(|matched| matched.is_ignore())
 }
 
 fn collect_from(
     dir: &Path,
     root: &Path,
     mode: Mode,
-    patterns: &mut Vec<String>,
+    rules: &mut Vec<Gitignore>,
     files: &mut Vec<PathBuf>,
 ) {
     let Ok(entries) = std::fs::read_dir(dir) else {
         return;
     };
-    add_ignore_rules(dir, root, patterns);
+    rules.push(ignore_rules(dir));
     let mut entries: Vec<_> = entries.flatten().collect();
     entries.sort_by_key(|entry| entry.file_name());
 
     let skill_file = dir.join(SKILL_FILE);
-    if skill_file.is_file() {
-        let relative = posix_path(skill_file.strip_prefix(root).unwrap_or(&skill_file));
-        if !is_ignored(root, patterns, &relative, false) {
-            files.push(skill_file);
-            return;
-        }
+    if skill_file.is_file() && !is_ignored(rules, &skill_file, false) {
+        files.push(skill_file);
+        rules.pop();
+        return;
     }
 
     for entry in entries {
@@ -271,10 +228,9 @@ fn collect_from(
         let Ok(metadata) = std::fs::metadata(&path) else {
             continue;
         };
-        let relative = posix_path(path.strip_prefix(root).unwrap_or(&path));
         let include_markdown = metadata.is_file()
             && name.ends_with(".md")
-            && !is_ignored(root, patterns, &relative, false)
+            && !is_ignored(rules, &path, false)
             && match mode {
                 Mode::RustClaude => dir == root,
                 Mode::Agents => dir != root,
@@ -283,11 +239,12 @@ fn collect_from(
             files.push(path);
             continue;
         }
-        if !metadata.is_dir() || is_ignored(root, patterns, &relative, true) {
+        if !metadata.is_dir() || is_ignored(rules, &path, true) {
             continue;
         }
-        collect_from(&path, root, mode, patterns, files);
+        collect_from(&path, root, mode, rules, files);
     }
+    rules.pop();
 }
 
 fn split_frontmatter(content: &str) -> (Option<String>, String) {
@@ -626,6 +583,39 @@ mod tests {
         assert_eq!(
             files,
             [dir.join("nested/inner.md"), dir.join("outer/SKILL.md")]
+        );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn applies_ignore_files_relative_to_their_own_directory() {
+        let root = temp_dir("nested-ignore");
+        let dir = root.join("skills");
+        for skill in [
+            "old",
+            "scratch",
+            "team/drafts",
+            "team/old",
+            "team/scratch",
+            "team/x/drafts",
+            "team/x/live",
+        ] {
+            write(
+                &dir.join(skill).join("SKILL.md"),
+                "---\ndescription: Skill.\n---\n",
+            );
+        }
+        write(&dir.join(".gitignore"), "/old\nscratch/\n");
+        write(&dir.join("team/.gitignore"), "drafts/\n!scratch/\n");
+
+        let files = collect_skill_files(&dir, Mode::Agents);
+        assert_eq!(
+            files,
+            [
+                dir.join("team/old/SKILL.md"),
+                dir.join("team/scratch/SKILL.md"),
+                dir.join("team/x/live/SKILL.md"),
+            ]
         );
         let _ = std::fs::remove_dir_all(root);
     }
