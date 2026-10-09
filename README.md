@@ -56,7 +56,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 | Ctrl+C | Clear input, or quit when input is empty |
 | Ctrl+D | Quit when input is empty |
 | Shift+Tab | Cycle thinking level |
-| Up / Down | Browse prompt history, or scroll |
+| Up / Down | Browse prompt history, move between input lines, or scroll |
 | Page Up / Page Down | Scroll by a page |
 | Home / End | Scroll to top or bottom |
 | Left / Right | Move cursor |

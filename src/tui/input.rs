@@ -84,6 +84,44 @@ pub(super) fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, 
     }
 }
 
+fn text_width(text: &str) -> usize {
+    text.chars()
+        .map(|character| character.width().unwrap_or(0))
+        .sum()
+}
+
+fn index_at_width(line: &str, column: usize) -> usize {
+    let mut width = 0;
+    for (index, character) in line.char_indices() {
+        let character_width = character.width().unwrap_or(0);
+        if width + character_width > column {
+            return index;
+        }
+        width += character_width;
+    }
+    line.len()
+}
+
+pub(super) fn line_above(input: &str, cursor: usize) -> Option<usize> {
+    let line_start = input[..cursor].rfind('\n')? + 1;
+    let previous_end = line_start - 1;
+    let previous_start = input[..previous_end]
+        .rfind('\n')
+        .map_or(0, |index| index + 1);
+    let column = text_width(&input[line_start..cursor]);
+    Some(previous_start + index_at_width(&input[previous_start..previous_end], column))
+}
+
+pub(super) fn line_below(input: &str, cursor: usize) -> Option<usize> {
+    let line_start = input[..cursor].rfind('\n').map_or(0, |index| index + 1);
+    let next_start = cursor + input[cursor..].find('\n')? + 1;
+    let next_end = input[next_start..]
+        .find('\n')
+        .map_or(input.len(), |index| next_start + index);
+    let column = text_width(&input[line_start..cursor]);
+    Some(next_start + index_at_width(&input[next_start..next_end], column))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,6 +143,20 @@ mod tests {
         assert_eq!(input_cursor("ab\ncd", 2, 4), (0, 2));
         assert_eq!(input_cursor("ab\ncd", 3, 4), (1, 0));
         assert_eq!(input_cursor("", 0, 4), (0, 0));
+    }
+
+    #[test]
+    fn moves_between_lines_by_display_width() {
+        let input = "abcd\n你好\nxy";
+        assert_eq!(line_above(input, 2), None);
+        assert_eq!(line_above(input, "abcd\n你".len()), Some(2));
+        assert_eq!(line_above(input, input.len()), Some("abcd\n你".len()));
+        assert_eq!(line_below(input, 4), Some("abcd\n你好".len()));
+        assert_eq!(
+            line_below(input, "abcd\n你".len()),
+            Some("abcd\n你好\nxy".len())
+        );
+        assert_eq!(line_below(input, input.len()), None);
     }
 
     #[test]

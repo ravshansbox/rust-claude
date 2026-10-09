@@ -20,7 +20,7 @@ use crossterm::{
 };
 use files::{file_matches, file_query, list_files};
 use futures::StreamExt;
-use input::{input_cursor, input_rows, next_word_end, previous_word_start};
+use input::{input_cursor, input_rows, line_above, line_below, next_word_end, previous_word_start};
 use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
@@ -715,8 +715,14 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
             app.previous_prompt();
         }
         (KeyCode::Down, _) if app.history_index.is_some() => app.next_prompt(),
-        (KeyCode::Up, _) => app.scroll_up(1),
-        (KeyCode::Down, _) => app.scroll_down(1),
+        (KeyCode::Up, _) => match line_above(&app.input, app.cursor) {
+            Some(cursor) => app.cursor = cursor,
+            None => app.scroll_up(1),
+        },
+        (KeyCode::Down, _) => match line_below(&app.input, app.cursor) {
+            Some(cursor) => app.cursor = cursor,
+            None => app.scroll_down(1),
+        },
         (KeyCode::PageUp, _) => app.scroll_up(app.page_size),
         (KeyCode::PageDown, _) => app.scroll_down(app.page_size),
         (KeyCode::Home, _) => app.scroll_to_top(),
@@ -1332,6 +1338,27 @@ mod tests {
         assert!(!submitted);
         assert_eq!(app.input, "a\na\n");
         assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
+    fn moves_between_input_lines_with_up_and_down() {
+        let stats = Stats {
+            usage: Usage::default(),
+            cache_hit_rate: None,
+            tokens_per_second: None,
+            context_tokens: 0,
+            context_window: 0,
+            quota: Quota::default(),
+        };
+        let mut app = App::new("model", "medium", stats);
+        app.prompt_history.push("earlier".into());
+        handle_input(Event::Paste("one\ntwo".into()), &mut app, |_| {});
+        let key = |code| Event::Key(KeyEvent::from(code));
+        handle_input(key(KeyCode::Up), &mut app, |_| {});
+        assert_eq!(app.cursor, "one".len());
+        handle_input(key(KeyCode::Down), &mut app, |_| {});
+        assert_eq!(app.cursor, "one\ntwo".len());
+        assert_eq!(app.input, "one\ntwo");
     }
 
     #[test]
