@@ -1228,7 +1228,7 @@ mod tests {
             handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
             app.busy = false;
         }
-        let mut press = |app: &mut App, code| {
+        let press = |app: &mut App, code| {
             handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
             app.input.clone()
         };
