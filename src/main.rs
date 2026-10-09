@@ -2,6 +2,7 @@ mod agent;
 mod auth;
 mod models;
 mod session;
+mod settings;
 mod tools;
 mod tui;
 
@@ -20,8 +21,18 @@ async fn main() -> Result<()> {
 
     let http = reqwest::Client::new();
     let credentials = auth::Credentials::load_or_login(&http).await?;
-    let model = std::env::var("RUST_CLAUDE_MODEL").unwrap_or_else(|_| "claude-opus-5-5".into());
+    let settings = settings::Settings::load();
+    let model = std::env::var("RUST_CLAUDE_MODEL")
+        .ok()
+        .or(settings.model)
+        .unwrap_or_else(|| "claude-opus-5-5".into());
     let mut agent = agent::Agent::new(http, credentials, model)?;
+    if let Some(level) = agent::THINKING_LEVELS
+        .iter()
+        .find(|level| Some(**level) == settings.thinking_level.as_deref())
+    {
+        agent.thinking_level = level;
+    }
 
     let Some(prompt) = print_prompt else {
         return tui::run(agent).await;
