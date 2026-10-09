@@ -15,13 +15,14 @@ use std::io::{IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
 
-const USAGE: &str = "usage: rust-claude [-h|--help] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
+const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
+usage: rust-claude [-h|--help] [-c|--continue] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--hide-tools] [--image <path>]...]
 
 Options:
+  -c, --continue          Continue the latest session in the current folder
       --model <id>        Model to use
       --thinking <level>  Thinking level: low, medium, high, xhigh, max
   -p, --print <prompt>    Run one prompt and print the answer
@@ -44,6 +45,20 @@ enum Command {
 struct Options {
     model: Option<String>,
     thinking_level: Option<String>,
+    continue_session: bool,
+}
+
+fn take_flag(arguments: &mut Vec<String>, flags: &[&str]) -> bool {
+    match arguments
+        .iter()
+        .position(|argument| flags.contains(&argument.as_str()))
+    {
+        Some(index) => {
+            arguments.remove(index);
+            true
+        }
+        None => false,
+    }
 }
 
 fn take_value(arguments: &mut Vec<String>, flag: &str) -> Result<Option<String>> {
@@ -59,16 +74,7 @@ fn take_value(arguments: &mut Vec<String>, flag: &str) -> Result<Option<String>>
 }
 
 fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
-    let hide_tools = match arguments
-        .iter()
-        .position(|argument| argument == "--hide-tools")
-    {
-        Some(index) => {
-            arguments.remove(index);
-            true
-        }
-        None => false,
-    };
+    let hide_tools = take_flag(&mut arguments, &["--hide-tools"]);
     let mut images = Vec::new();
     while let Some(image) = take_value(&mut arguments, "--image")? {
         images.push(image);
@@ -76,6 +82,7 @@ fn parse_arguments(mut arguments: Vec<String>) -> Result<(Command, Options)> {
     let options = Options {
         model: take_value(&mut arguments, "--model")?,
         thinking_level: take_value(&mut arguments, "--thinking")?,
+        continue_session: take_flag(&mut arguments, &["-c", "--continue"]),
     };
     let print_options = hide_tools || !images.is_empty();
     let command = match arguments.as_slice() {
@@ -131,6 +138,11 @@ async fn main() -> Result<()> {
         .unwrap_or_else(|| "claude-opus-5-5".into());
     let thinking_level = options.thinking_level.or(settings.thinking_level);
     let mut agent = agent::Agent::new(http, credentials, model)?;
+    if options.continue_session {
+        let id = session::Session::latest_in_current_folder()?
+            .context("no session to continue in this folder")?;
+        agent.resume(&id)?;
+    }
     agent.mcp = mcp::Mcp::load().await;
     if let Some(name) = thinking_level {
         match agent::THINKING_LEVELS.iter().find(|level| **level == name) {
@@ -293,6 +305,27 @@ mod tests {
     }
 
     #[test]
+    fn parses_continue_option() {
+        for flag in ["-c", "--continue"] {
+            assert_eq!(
+                parse_with_options(&[flag]),
+                Some((
+                    Command::Interactive,
+                    Options {
+                        continue_session: true,
+                        ..Options::default()
+                    }
+                ))
+            );
+        }
+        assert_eq!(
+            parse_with_options(&["-c", "-p", "hello"]).map(|(_, options)| options.continue_session),
+            Some(true)
+        );
+        assert_eq!(parse(&["-c", "--help"]), None);
+    }
+
+    #[test]
     fn parses_model_and_thinking_options() {
         assert_eq!(
             parse_with_options(&["--model", "claude-x", "--thinking", "high"]),
@@ -301,6 +334,7 @@ mod tests {
                 Options {
                     model: Some("claude-x".into()),
                     thinking_level: Some("high".into()),
+                    continue_session: false,
                 }
             ))
         );
@@ -315,6 +349,7 @@ mod tests {
                 Options {
                     model: None,
                     thinking_level: Some("low".into()),
+                    continue_session: false,
                 }
             ))
         );
