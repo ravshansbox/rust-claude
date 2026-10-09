@@ -136,6 +136,8 @@ pub struct Stats {
 pub struct Quota {
     pub five_hour_remaining: Option<f64>,
     pub seven_day_remaining: Option<f64>,
+    pub five_hour_reset: Option<u64>,
+    pub seven_day_reset: Option<u64>,
 }
 
 impl Quota {
@@ -147,11 +149,46 @@ impl Quota {
                 .and_then(|value| value.parse::<f64>().ok())
                 .map(|utilisation| (1.0 - utilisation) * 100.0)
         };
+        let reset = |window: &str| {
+            headers
+                .get(format!("anthropic-ratelimit-unified-{window}-reset"))
+                .and_then(|value| value.to_str().ok())
+                .and_then(|value| value.parse::<u64>().ok())
+        };
         Self {
             five_hour_remaining: remaining("5h"),
             seven_day_remaining: remaining("7d"),
+            five_hour_reset: reset("5h"),
+            seven_day_reset: reset("7d"),
         }
     }
+}
+
+fn parse_timestamp(text: &str) -> Option<u64> {
+    let number = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
+    let year = number(0..4)?;
+    let month = number(5..7)?;
+    let day = number(8..10)?;
+    let hour = number(11..13)?;
+    let minute = number(14..16)?;
+    let second = number(17..19)?;
+    let zone = &text[text.get(19..)?.find(['Z', '+', '-'])? + 19..];
+    let offset = match zone.as_bytes().first()? {
+        b'Z' => 0,
+        sign => {
+            let hours: i64 = zone.get(1..3)?.parse().ok()?;
+            let minutes: i64 = zone.get(4..6)?.parse().ok()?;
+            let offset = hours * 3_600 + minutes * 60;
+            if *sign == b'-' { -offset } else { offset }
+        }
+    };
+    let shifted_year = if month <= 2 { year - 1 } else { year };
+    let era = shifted_year.div_euclid(400);
+    let year_of_era = shifted_year - era * 400;
+    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
+    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
+    let days = era * 146_097 + day_of_era - 719_468;
+    u64::try_from(days * 86_400 + hour * 3_600 + minute * 60 + second - offset).ok()
 }
 
 fn estimate_tokens(message: &Value) -> u64 {
@@ -314,9 +351,12 @@ impl Agent {
                 .as_f64()
                 .map(|utilisation| 100.0 - utilisation)
         };
+        let reset = |window: &str| body[window]["resets_at"].as_str().and_then(parse_timestamp);
         self.quota = Quota {
             five_hour_remaining: remaining("five_hour"),
             seven_day_remaining: remaining("seven_day"),
+            five_hour_reset: reset("five_hour"),
+            seven_day_reset: reset("seven_day"),
         };
         Ok(())
     }
@@ -587,7 +627,21 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::context_tokens;
+    use super::{context_tokens, parse_timestamp};
+
+    #[test]
+    fn parses_timestamps() {
+        assert_eq!(
+            parse_timestamp("2026-10-09T04:39:59.870710+00:00"),
+            Some(1_791_520_799)
+        );
+        assert_eq!(parse_timestamp("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(parse_timestamp("1970-01-01T01:00:00+01:00"), Some(0));
+        assert_eq!(
+            parse_timestamp("2024-02-29T00:00:00-00:30"),
+            Some(1_709_166_600)
+        );
+    }
 
     #[test]
     fn counts_context_from_last_usage_and_trailing_messages() {
