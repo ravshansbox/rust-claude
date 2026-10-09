@@ -260,14 +260,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         app.start("loading sessions");
                         act(Action::ListSessions);
                     }
-                    _ if skills::command_name(&prompt).is_some() => {
-                        let name = skills::command_name(&prompt).unwrap_or_default();
+                    _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
                         if app.skills.iter().any(|skill| skill.name == name) {
                             app.push(Role::Event, format!("[skill] {name}"));
-                            if let Some((_, arguments)) = prompt.split_once(' ')
-                                && !arguments.trim().is_empty()
-                            {
-                                app.push(Role::User, arguments.trim());
+                            if !arguments.is_empty() {
+                                app.push(Role::User, arguments);
                             }
                         } else {
                             app.push(Role::User, prompt.clone());

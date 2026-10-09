@@ -454,21 +454,23 @@ pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
     Some(lines.join("\n"))
 }
 
-pub fn command_name(text: &str) -> Option<&str> {
+/// Splits `/skill:name request` into the skill name and the trimmed request.
+/// The request may follow on the next line.
+pub fn parse_command(text: &str) -> Option<(&str, &str)> {
     let rest = text.strip_prefix(COMMAND_PREFIX)?;
-    Some(rest.split(' ').next().unwrap_or(rest))
+    Some(
+        rest.split_once(char::is_whitespace)
+            .map_or((rest, ""), |(name, arguments)| (name, arguments.trim())),
+    )
 }
 
 pub fn expand_command(text: &str, skills: &[Skill]) -> Result<String> {
-    let Some(name) = command_name(text) else {
+    let Some((name, arguments)) = parse_command(text) else {
         return Ok(text.to_string());
     };
     let Some(skill) = skills.iter().find(|skill| skill.name == name) else {
         return Ok(text.to_string());
     };
-    let arguments = text
-        .split_once(' ')
-        .map_or("", |(_, arguments)| arguments.trim());
     let content = std::fs::read_to_string(&skill.path)
         .with_context(|| format!("failed to read skill {}", skill.path.display()))?;
     let body = strip_frontmatter(&content);
@@ -720,6 +722,17 @@ mod tests {
                 user_message: None,
             })
         );
+        for separated in ["/skill:demo\nfix the bug", "/skill:demo\tfix the bug"] {
+            let expanded = expand_command(separated, &skills).unwrap();
+            assert_eq!(
+                parse_block(&expanded),
+                Some(SkillBlock {
+                    name: "demo",
+                    user_message: Some("fix the bug"),
+                }),
+                "{separated:?}"
+            );
+        }
         assert_eq!(
             expand_command("/skill:other x", &skills).unwrap(),
             "/skill:other x"
