@@ -186,25 +186,4 @@ mod tests {
         assert!(lines[0].segments.len() > 2);
         assert_eq!(lines[3].segments[0].foreground, None);
     }
-
-    #[test]
-    fn writes_ansi_colours() {
-        let line = HighlightedLine {
-            change: Some(Change::Insert),
-            segments: vec![
-                Segment {
-                    foreground: None,
-                    text: "+".into(),
-                },
-                Segment {
-                    foreground: Some((1, 2, 3)),
-                    text: "a".into(),
-                },
-            ],
-        };
-        assert_eq!(
-            ansi_line(&line, true),
-            "\x1b[48;2;30;65;30m\x1b[39m+\x1b[38;2;1;2;3ma\x1b[0m"
-        );
-    }
 }

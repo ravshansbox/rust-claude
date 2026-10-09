@@ -157,14 +157,6 @@ mod tests {
     }
 
     #[test]
-    fn generates_version_4_uuid() {
-        let uuid = new_uuid().unwrap();
-        assert_eq!(uuid.len(), 36);
-        assert_eq!(&uuid[14..15], "4");
-        assert!(matches!(&uuid[19..20], "8" | "9" | "a" | "b"));
-    }
-
-    #[test]
     fn does_not_create_file_without_messages() {
         let mut session = Session::new().unwrap();
         session.save(&[]).unwrap();

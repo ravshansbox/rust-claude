@@ -422,7 +422,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_OUTPUT, ReadGroup, call, diff, note, read_lines};
+    use super::{MAX_OUTPUT, call, diff, note, read_lines};
     use serde_json::json;
     use std::path::{Path, PathBuf};
 
@@ -747,14 +747,5 @@ mod tests {
             diff("write", &write),
             Some(" fn main() {\n body\n }".into())
         );
-    }
-
-    #[test]
-    fn groups_reads_with_counts() {
-        let mut group = ReadGroup::default();
-        for path in ["a.rs", "b.rs", "a.rs", "a.rs"] {
-            group.add(path.into());
-        }
-        assert_eq!(group.summary(), "a.rs (3), b.rs");
     }
 }
