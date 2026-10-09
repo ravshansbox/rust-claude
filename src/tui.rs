@@ -21,6 +21,7 @@ use tokio::sync::mpsc;
 enum Role {
     User,
     Assistant,
+    Thinking,
     Tool,
     Event,
 }
@@ -251,6 +252,10 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
             Some(last) if matches!(last.role, Role::Assistant) => last.text.push_str(&text),
             _ => app.push(Role::Assistant, text),
         },
+        UiEvent::Agent(AgentEvent::Thinking(text)) => match app.messages.last_mut() {
+            Some(last) if matches!(last.role, Role::Thinking) => last.text.push_str(&text),
+            _ => app.push(Role::Thinking, text),
+        },
         UiEvent::Agent(AgentEvent::ToolStart { name, summary }) => {
             app.push(Role::Tool, format!("{name} {summary}"));
         }
@@ -320,6 +325,14 @@ fn draw(frame: &mut Frame, app: &mut App) {
             }
             Role::Assistant => {
                 lines.extend(tui_markdown::from_str(&message.text).lines);
+            }
+            Role::Thinking => {
+                lines.extend(
+                    message
+                        .text
+                        .lines()
+                        .map(|line| Line::from(line.to_string().dark_gray().italic())),
+                );
             }
             Role::Tool | Role::Event => {
                 lines.extend(message.text.lines().map(Line::raw));
