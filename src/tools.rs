@@ -81,6 +81,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         "bash" => {
             let output = tokio::process::Command::new("bash")
                 .args(["-lc", argument(input, "command")?])
+                .kill_on_drop(true)
                 .output()
                 .await
                 .map_err(|error| format!("failed to run command: {error}"))?;
