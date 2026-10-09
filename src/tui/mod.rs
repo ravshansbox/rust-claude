@@ -269,17 +269,21 @@ fn save_changed_settings(
     if app.model == *saved_model && app.thinking_level == *saved_thinking_level {
         return;
     }
-    let mut settings = Settings::load();
-    if app.model != *saved_model {
-        *saved_model = app.model.clone();
-        settings.model = Some(saved_model.clone());
-    }
-    if app.thinking_level != *saved_thinking_level {
-        *saved_thinking_level = app.thinking_level;
-        settings.thinking_level = Some(saved_thinking_level.to_string());
-    }
-    if let Err(error) = settings.save() {
-        app.push(Role::Event, format!("failed to save settings: {error}"));
+    let model = (app.model != *saved_model).then(|| app.model.clone());
+    let thinking_level =
+        (app.thinking_level != *saved_thinking_level).then_some(app.thinking_level);
+    saved_model.clone_from(&app.model);
+    *saved_thinking_level = app.thinking_level;
+    let saved = Settings::update(|settings| {
+        if let Some(model) = model {
+            settings.model = Some(model);
+        }
+        if let Some(thinking_level) = thinking_level {
+            settings.thinking_level = Some(thinking_level.to_string());
+        }
+    });
+    if let Err(error) = saved {
+        app.push(Role::Event, format!("failed to save settings: {error:#}"));
     }
 }
 
