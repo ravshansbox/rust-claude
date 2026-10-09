@@ -63,7 +63,11 @@ fn same_path(a: &Path, b: &Path) -> bool {
 }
 
 fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
-    let mut messages = messages.to_vec();
+    let mut messages: Vec<Value> = messages
+        .iter()
+        .filter(|message| message.get("stop_reason").is_none())
+        .cloned()
+        .collect();
     for message in &mut messages {
         if let Some(object) = message.as_object_mut() {
             object.remove("usage");
@@ -144,6 +148,7 @@ pub struct Agent {
     pub model: String,
     pub thinking_level: &'static str,
     messages: Vec<Value>,
+    pending_usage: Usage,
     pub instructions: Vec<Instructions>,
     pub session: Session,
 }
@@ -156,6 +161,7 @@ impl Agent {
             model,
             thinking_level: DEFAULT_THINKING_LEVEL,
             messages: Vec::new(),
+            pending_usage: Usage::default(),
             instructions: load_instructions(),
             session: Session::new()?,
         })
@@ -205,13 +211,31 @@ impl Agent {
         Ok(())
     }
 
+    pub fn usage(&self) -> Usage {
+        total_usage(&self.messages)
+    }
+
+    fn discard_from(&mut self, index: usize, stop_reason: &str) {
+        let mut lost = total_usage(&self.messages[index..]);
+        lost.add(std::mem::take(&mut self.pending_usage));
+        self.messages.truncate(index);
+        if lost.input + lost.output + lost.cache_read + lost.cache_write > 0 {
+            self.messages.push(json!({
+                "role": "assistant",
+                "stop_reason": stop_reason,
+                "content": [],
+                "usage": lost.to_json(),
+            }));
+        }
+    }
+
     pub fn cancel(&mut self, checkpoint: usize) -> Result<()> {
         let finished = self.messages[checkpoint..]
             .iter()
             .rposition(|message| message["role"] == "user" && message["content"].is_array());
         match finished {
-            Some(index) => self.messages.truncate(checkpoint + index + 1),
-            None => self.messages.truncate(checkpoint),
+            Some(index) => self.discard_from(checkpoint + index + 1, "aborted"),
+            None => self.discard_from(checkpoint, "aborted"),
         }
         self.session.save(&self.messages)
     }
@@ -220,7 +244,8 @@ impl Agent {
         let checkpoint = self.messages.len();
         let result = self.run(prompt, on_event).await;
         if result.is_err() {
-            self.messages.truncate(checkpoint);
+            self.discard_from(checkpoint, "error");
+            self.session.save(&self.messages)?;
             return result;
         }
         self.session.save(&self.messages)
@@ -234,6 +259,7 @@ impl Agent {
             let (content, stop_reason, usage) = self.stream_message(&mut on_event).await?;
             self.messages
                 .push(json!({ "role": "assistant", "content": content, "usage": usage.to_json() }));
+            self.pending_usage = Usage::default();
             on_event(AgentEvent::Usage(total_usage(&self.messages)));
             if stop_reason == "max_tokens" {
                 on_event(AgentEvent::Notice(
@@ -333,12 +359,14 @@ impl Agent {
                     "message_start" => {
                         let message_usage = &event["message"]["usage"];
                         usage.input = message_usage["input_tokens"].as_u64().unwrap_or(0);
+                        usage.output = message_usage["output_tokens"].as_u64().unwrap_or(0);
                         usage.cache_read = message_usage["cache_read_input_tokens"]
                             .as_u64()
                             .unwrap_or(0);
                         usage.cache_write = message_usage["cache_creation_input_tokens"]
                             .as_u64()
                             .unwrap_or(0);
+                        self.pending_usage = usage;
                     }
                     "content_block_start" => {
                         let block = event["content_block"].clone();
@@ -403,6 +431,7 @@ impl Agent {
                         {
                             usage.cache_write = cache_write;
                         }
+                        self.pending_usage = usage;
                     }
                     "error" => bail!("{}", event["error"]),
                     _ => {}
