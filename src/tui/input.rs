@@ -1,31 +1,32 @@
-use unicode_width::UnicodeWidthChar;
+use unicode_segmentation::UnicodeSegmentation;
+use unicode_width::UnicodeWidthStr;
 
-fn starts_new_row(character: char, character_width: usize, row_width: usize, width: usize) -> bool {
-    if character == '\n' {
+fn starts_new_row(grapheme: &str, grapheme_width: usize, row_width: usize, width: usize) -> bool {
+    if grapheme == "\n" {
         row_width >= width
     } else {
-        row_width > 0 && row_width + character_width > width
+        row_width > 0 && row_width + grapheme_width > width
     }
 }
 
 pub(super) fn input_rows(input: &str, width: usize) -> Vec<String> {
     let mut rows = vec![String::new()];
     let mut row_width = 0;
-    for character in input.chars() {
-        let character_width = character.width().unwrap_or(0);
-        if starts_new_row(character, character_width, row_width, width) {
+    for grapheme in input.graphemes(true) {
+        let grapheme_width = grapheme.width();
+        if starts_new_row(grapheme, grapheme_width, row_width, width) {
             rows.push(String::new());
             row_width = 0;
         }
-        if character == '\n' {
+        if grapheme == "\n" {
             rows.push(String::new());
             row_width = 0;
             continue;
         }
         if let Some(row) = rows.last_mut() {
-            row.push(character);
+            row.push_str(grapheme);
         }
-        row_width += character_width;
+        row_width += grapheme_width;
     }
     if row_width >= width {
         rows.push(String::new());
@@ -33,35 +34,51 @@ pub(super) fn input_rows(input: &str, width: usize) -> Vec<String> {
     rows
 }
 
-fn is_word_character(character: char) -> bool {
-    character.is_alphanumeric() || character == '_'
+pub(super) fn previous_grapheme(input: &str, cursor: usize) -> usize {
+    input[..cursor]
+        .grapheme_indices(true)
+        .next_back()
+        .map_or(0, |(index, _)| index)
+}
+
+pub(super) fn next_grapheme(input: &str, cursor: usize) -> usize {
+    input[cursor..]
+        .graphemes(true)
+        .next()
+        .map_or(cursor, |grapheme| cursor + grapheme.len())
+}
+
+fn is_word(grapheme: &str) -> bool {
+    grapheme
+        .chars()
+        .next()
+        .is_some_and(|character| character.is_alphanumeric() || character == '_')
 }
 
 pub(super) fn previous_word_start(input: &str, cursor: usize) -> usize {
-    let mut characters = input[..cursor].char_indices().rev().peekable();
-    while characters
-        .next_if(|(_, character)| !is_word_character(*character))
+    let mut graphemes = input[..cursor].grapheme_indices(true).rev().peekable();
+    while graphemes
+        .next_if(|(_, grapheme)| !is_word(grapheme))
         .is_some()
     {}
-    let mut start = characters.peek().map_or(0, |(index, _)| *index);
-    while let Some((index, _)) = characters.next_if(|(_, character)| is_word_character(*character))
-    {
+    let mut start = graphemes.peek().map_or(0, |(index, _)| *index);
+    while let Some((index, _)) = graphemes.next_if(|(_, grapheme)| is_word(grapheme)) {
         start = index;
     }
     start
 }
 
 pub(super) fn next_word_end(input: &str, cursor: usize) -> usize {
-    let mut characters = input[cursor..].char_indices().peekable();
-    while characters
-        .next_if(|(_, character)| !is_word_character(*character))
+    let mut graphemes = input[cursor..].grapheme_indices(true).peekable();
+    while graphemes
+        .next_if(|(_, grapheme)| !is_word(grapheme))
         .is_some()
     {}
-    while characters
-        .next_if(|(_, character)| is_word_character(*character))
+    while graphemes
+        .next_if(|(_, grapheme)| is_word(grapheme))
         .is_some()
     {}
-    characters
+    graphemes
         .peek()
         .map_or(input.len(), |(index, _)| cursor + index)
 }
@@ -69,20 +86,20 @@ pub(super) fn next_word_end(input: &str, cursor: usize) -> usize {
 pub(super) fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, usize) {
     let mut row = 0;
     let mut row_width = 0;
-    for (index, character) in input.char_indices() {
-        let character_width = character.width().unwrap_or(0);
-        if starts_new_row(character, character_width, row_width, width) {
+    for (index, grapheme) in input.grapheme_indices(true) {
+        let grapheme_width = grapheme.width();
+        if starts_new_row(grapheme, grapheme_width, row_width, width) {
             row += 1;
             row_width = 0;
         }
         if index == cursor {
             return (row, row_width);
         }
-        if character == '\n' {
+        if grapheme == "\n" {
             row += 1;
             row_width = 0;
         } else {
-            row_width += character_width;
+            row_width += grapheme_width;
         }
     }
     if row_width >= width {
@@ -96,23 +113,23 @@ fn index_at(input: &str, target_row: usize, column: usize, width: usize) -> usiz
     let mut row = 0;
     let mut row_width = 0;
     let mut last_index = 0;
-    for (index, character) in input.char_indices() {
-        let character_width = character.width().unwrap_or(0);
-        if starts_new_row(character, character_width, row_width, width) {
+    for (index, grapheme) in input.grapheme_indices(true) {
+        let grapheme_width = grapheme.width();
+        if starts_new_row(grapheme, grapheme_width, row_width, width) {
             if row == target_row {
                 return last_index;
             }
             row += 1;
             row_width = 0;
         }
-        if row == target_row && (character == '\n' || row_width + character_width > column) {
+        if row == target_row && (grapheme == "\n" || row_width + grapheme_width > column) {
             return index;
         }
-        if character == '\n' {
+        if grapheme == "\n" {
             row += 1;
             row_width = 0;
         } else {
-            row_width += character_width;
+            row_width += grapheme_width;
         }
         last_index = index;
     }
@@ -136,6 +153,14 @@ pub(super) fn row_below(input: &str, cursor: usize, width: usize) -> Option<usiz
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn measures_emoji_as_whole_graphemes() {
+        assert_eq!(input_cursor("👍🏽 ok", "👍🏽 ok".len(), 10), (0, 5));
+        assert_eq!(input_cursor("❤️👨‍👩‍👧x", "❤️👨‍👩‍👧".len(), 10), (0, 4));
+        assert_eq!(input_rows("❤️❤️❤️", 4), vec!["❤️❤️", "❤️"]);
+        assert_eq!(row_below("❤️❤️❤️", "❤️".len(), 4), Some("❤️❤️❤️".len()));
+        assert_eq!(row_above("❤️❤️❤️", "❤️❤️❤️".len(), 4), Some("❤️".len()));
+    }
 
     #[test]
     fn wraps_input_by_display_width() {

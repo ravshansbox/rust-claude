@@ -227,7 +227,7 @@ In the interface, rust-claude saves each prompt you send, including `!` commands
 | Up / Down | Browse prompt history, move between input rows, or scroll |
 | Page Up / Page Down | Scroll by a page |
 | Home / End | Scroll to top or bottom |
-| Left / Right | Move cursor |
+| Left / Right | Move cursor by one character, keeping emoji such as 👍🏽 whole |
 | Alt+Left / Alt+B, Alt+Right / Alt+F | Move by word |
 | Ctrl+A / Ctrl+E | Jump to start or end of input |
 | Alt+Backspace / Ctrl+W | Delete previous word |
