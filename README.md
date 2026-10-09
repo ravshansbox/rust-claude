@@ -325,7 +325,7 @@ rust-claude also compacts automatically when the context is 80% full: before sen
 
 `/context` shows how many tokens each part of the context uses: the system prompt, instructions, skills, built-in tools, MCP tools and messages, and how much of the context window is free. Each part is estimated from its length, then scaled so that the parts add up to the context use on the status line. That figure comes from the token count of the last reply, plus an estimate for anything added since. Images are not counted.
 
-`/resume` reads each session only up to its first prompt to build the list. A damaged session shows an error when you resume it. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
+`/resume` reads each session only up to its first prompt to build the list. A session that is damaged before its first prompt is left out of the list. Damage later in the file shows an error when you resume it. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 
 ## Tools
 
