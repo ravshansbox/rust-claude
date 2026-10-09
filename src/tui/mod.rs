@@ -161,7 +161,9 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                 });
             }
             _ = redraw.tick(), if dirty => {
-                terminal.draw(|frame| draw(frame, &mut app))?;
+                if let Err(error) = terminal.draw(|frame| draw(frame, &mut app)) {
+                    break Err(error.into());
+                }
                 dirty = false;
             }
             _ = spinner.tick(), if app.busy => {
