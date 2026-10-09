@@ -44,38 +44,129 @@ pub(super) struct Rendered {
     /// Rows each line takes once wrapped to `width`.
     pub(super) heights: Vec<usize>,
     pub(super) height: usize,
+    /// Bytes of text these lines show.
+    text_len: usize,
+    /// Bytes of text, and lines showing them, that stay the same as a reply
+    /// streams in: everything up to its last closed code block.
+    finished_text: usize,
+    finished_lines: usize,
+}
+
+impl Rendered {
+    fn new(width: u16) -> Self {
+        Self {
+            width,
+            lines: Vec::new(),
+            heights: Vec::new(),
+            height: 0,
+            text_len: 0,
+            finished_text: 0,
+            finished_lines: 0,
+        }
+    }
+
+    /// Adds the lines of the markdown that follows. Separately rendered
+    /// blocks need the blank line that markdown puts between blocks.
+    fn extend(&mut self, lines: Vec<Line<'static>>) {
+        if !lines.is_empty() && !self.lines.is_empty() {
+            self.lines.push(Line::default());
+            self.heights.push(1);
+        }
+        for line in lines {
+            let height = wrapped_height(&line, self.width);
+            self.lines.push(line);
+            self.heights.push(height);
+        }
+        self.height = self.heights.iter().sum();
+    }
 }
 
 impl ChatMessage {
     pub(super) fn append(&mut self, text: &str) {
         self.text.push_str(text);
-        self.rendered = None;
     }
 
+    /// Renders the text if it changed. A streaming reply keeps the lines of
+    /// its closed code blocks and what comes before them, since highlighting
+    /// code is slow, and renders only what follows.
     pub(super) fn render(&mut self, width: u16) {
         if self
             .rendered
             .as_ref()
-            .is_none_or(|rendered| rendered.width != width)
+            .is_some_and(|rendered| rendered.width == width && rendered.text_len == self.text.len())
         {
-            let lines = render_message(self.role, &self.text, width);
-            let heights: Vec<usize> = lines
-                .iter()
-                .map(|line| wrapped_height(line, width))
-                .collect();
-            self.rendered = Some(Rendered {
-                width,
-                height: heights.iter().sum(),
-                lines,
-                heights,
-            });
+            return;
         }
+        let mut rendered = match self.rendered.take() {
+            Some(rendered) if rendered.width == width => rendered,
+            _ => Rendered::new(width),
+        };
+        rendered.lines.truncate(rendered.finished_lines);
+        rendered.heights.truncate(rendered.finished_lines);
+        if matches!(self.role, Role::Assistant) {
+            let start = rendered.finished_text;
+            let finished = start + finished_markdown_len(&self.text[start..]);
+            if finished > start {
+                rendered.extend(render_message(
+                    self.role,
+                    &self.text[start..finished],
+                    width,
+                ));
+                rendered.finished_text = finished;
+                rendered.finished_lines = rendered.lines.len();
+            }
+        }
+        let rest = &self.text[rendered.finished_text..];
+        rendered.extend(render_message(self.role, rest, width));
+        rendered.text_len = self.text.len();
+        self.rendered = Some(rendered);
     }
 
     /// Rows the message takes once rendered and wrapped.
     pub(super) fn height(&self) -> usize {
         self.rendered.as_ref().map_or(0, |rendered| rendered.height)
     }
+}
+
+/// Bytes of markdown up to the end of its last closed code block whose
+/// opening fence starts the line. Nothing after it changes how the text
+/// before it renders.
+fn finished_markdown_len(text: &str) -> usize {
+    let mut finished = 0;
+    // Whether `hard_line_breaks` sees a fence open, by its simpler rule.
+    let mut in_fence = false;
+    // The fence character and length of the open code block that starts the line.
+    let mut open: Option<(char, usize)> = None;
+    let mut end = 0;
+    for line in text.split_inclusive('\n') {
+        end += line.len();
+        let trimmed = line.trim_start();
+        let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
+            continue;
+        };
+        let length = trimmed.chars().take_while(|c| *c == fence).count();
+        if length < 3 {
+            continue;
+        }
+        in_fence = !in_fence;
+        let indent = line.len() - trimmed.len();
+        match open {
+            None if indent == 0 => open = Some((fence, length)),
+            Some((open_fence, open_length))
+                if indent <= 3
+                    && fence == open_fence
+                    && length >= open_length
+                    && trimmed[length..].trim().is_empty() =>
+            {
+                open = None;
+                if !in_fence && line.ends_with('\n') {
+                    finished = end;
+                }
+            }
+            _ => {}
+        }
+    }
+    finished
 }
 
 pub(super) struct App {
@@ -538,7 +629,8 @@ pub(super) fn image_marker(number: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::Role;
+    use super::{App, Role};
+    use crate::agent::AgentEvent;
     use crate::tui::{
         UiEvent, handle_agent_event, handle_input,
         test_support::{new_app, screen},
@@ -609,5 +701,30 @@ mod tests {
             assert!(app.start_listing_files().is_some(), "{status}");
             assert!(!screen(&mut app).contains("old.rs"), "{status}");
         }
+    }
+
+    #[test]
+    fn renders_a_streamed_reply_the_same_as_the_whole_reply() {
+        let reply = "Intro with **bold** text.\n\n```rust\nfn main() {}\n```\n\n\
+            1. Step one\n   ```sh\n   cargo test\n   ```\n2. Step two\n\n\
+            # Heading\n```\nno blank line before or after\n```\nafter\n\
+            | a | b |\n| --- | --- |\n| 1 | 2 |\n\n~~~\ntilde\n~~~\n\n\
+            > quote\n\n```python\nprint('x')\n```\n";
+        let mut streamed = new_app();
+        let characters: Vec<char> = reply.chars().collect();
+        for chunk in characters.chunks(3) {
+            let text: String = chunk.iter().collect();
+            handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut streamed);
+            screen(&mut streamed);
+        }
+        let mut whole = new_app();
+        whole.push(Role::Assistant, reply);
+        let shown = screen(&mut whole);
+        let rendered = |app: &App| {
+            let rendered = app.messages.last().unwrap().rendered.as_ref().unwrap();
+            (rendered.lines.clone(), rendered.heights.clone())
+        };
+        assert_eq!(rendered(&streamed), rendered(&whole));
+        assert_eq!(screen(&mut streamed), shown);
     }
 }
