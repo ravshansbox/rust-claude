@@ -261,11 +261,11 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
         }
         UiEvent::Agent(AgentEvent::Usage(usage)) => {
             app.usage = format!(
-                "↑{} · R{} · W{} · ↓{}",
+                "↑{} ↓{} R{} W{}",
                 format_tokens(usage.input),
+                format_tokens(usage.output),
                 format_tokens(usage.cache_read),
-                format_tokens(usage.cache_write),
-                format_tokens(usage.output)
+                format_tokens(usage.cache_write)
             );
         }
         UiEvent::Done(result) => {
@@ -360,7 +360,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::raw(format!(" {} • {}", app.model, app.thinking_level)),
+            Span::raw(format!(" {}:{}", app.model, app.thinking_level)),
             Span::raw(if app.usage.is_empty() {
                 "".into()
             } else {
