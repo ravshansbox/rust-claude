@@ -64,7 +64,7 @@ While a reply streams, the view follows new text only when it is scrolled to the
 
 ## Status line
 
-The status line shows token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps). A `·` separates context use, token counts and speed.
+The status line shows token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps). A `·` separates token counts, context use and speed.
 
 The next line shows how much of the 5-hour and 7-day quota is left and when each resets. rust-claude loads it in the background at start, so you can send a prompt straight away, and updates it after each reply.
 

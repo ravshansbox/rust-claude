@@ -22,12 +22,12 @@ use ratatui::{
     DefaultTerminal, Frame,
     layout::{Constraint, Direction, Layout, Rect},
     style::Stylize,
-    text::{Line, Span, Text},
+    text::{Line, Text},
     widgets::{Block, Borders, Clear, Paragraph, Wrap},
 };
 use render::{THEME, Theme, borrowed_line, render_message, theme, tool_message};
 use serde_json::Value;
-use status::{context_span, format_quota, format_stats};
+use status::{format_quota, format_stats};
 use std::time::{Duration, SystemTime};
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
@@ -886,13 +886,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
             display_model(&app.model),
             app.thinking_level
         )),
-        Line::from(vec![
-            context_span(&app.stats),
-            Span::raw(match format_stats(&app.stats) {
-                stats if stats.is_empty() => stats,
-                stats => format!(" · {stats}"),
-            }),
-        ]),
+        Line::raw(format_stats(&app.stats)),
     ];
     let quota = format_quota(&app.stats);
     if !quota.is_empty() {
