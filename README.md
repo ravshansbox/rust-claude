@@ -28,6 +28,8 @@ rust-claude -p "explain src/main.rs"
 
 In print mode, tool calls go to standard error. Add `--hide-tools` to hide them.
 
+Show help with `-h` or `--help`.
+
 ## Commands
 
 | Command | Action |
