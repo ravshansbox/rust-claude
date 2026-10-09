@@ -361,7 +361,7 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
 
 Project entries replace global entries with the same name. rust-claude starts project servers without asking (see [ADR 3](docs/adr/0003-start-project-mcp-servers-without-approval.md)).
 
-rust-claude connects to all servers at start and waits for them before the first prompt. Tools are named `mcp__<server>__<tool>`, with other characters replaced by `_` and cut to 64 characters. Text results longer than 20,000 bytes are cut. Images, audio and binary resources show as short placeholders. At start, the interface lists the connected servers and their tool counts, and shows a notice for each invalid entry or server that failed to connect. In print mode, these notices go to standard error. Servers stop when rust-claude quits.
+rust-claude connects to all servers at start and waits for them before the first prompt. Tools are named `mcp__<server>__<tool>`, with other characters replaced by `_` and cut to 64 characters. Text results longer than 20,000 bytes are cut. Images, audio and binary resources show as short placeholders. At start, the interface lists the connected global and project servers on separate lines with their tool counts, and shows a notice for each invalid entry or server that failed to connect. In print mode, these notices go to standard error. Servers stop when rust-claude quits.
 
 ## Decisions
 
