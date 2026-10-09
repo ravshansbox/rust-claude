@@ -92,6 +92,10 @@ rust-claude adds `AGENTS.md` from your home folder and from the current director
 The system prompt tells the model to put questions to the user in bold.
 It also tells the model to prefer `edit` and `write` over `bash` for changing files.
 
+## Retries
+
+If a request fails with a rate limit (429), an overloaded API (529), a server error (5xx) or a connection error before the reply starts, rust-claude tries again up to 3 times. It waits 1, 2 and then 4 seconds, or as long as the `retry-after` header asks. It does not retry when `retry-after` is longer than 60 seconds. A notice shows each retry.
+
 ## Sessions
 
 Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files.
