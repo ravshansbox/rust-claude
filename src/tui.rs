@@ -145,6 +145,7 @@ fn borrowed_line<'a>(line: &'a Line<'static>) -> Line<'a> {
 struct App {
     input: String,
     messages: Vec<ChatMessage>,
+    workspace: String,
     model: String,
     thinking_level: &'static str,
     status: String,
@@ -178,6 +179,7 @@ impl App {
         let mut app = Self {
             input: String::new(),
             messages: Vec::new(),
+            workspace: workspace_label(),
             model: model.into(),
             thinking_level,
             status: String::new(),
@@ -872,6 +874,7 @@ fn draw(frame: &mut Frame, app: &mut App) {
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
+            Span::raw(format!("{} · ", app.workspace)),
             Span::raw(format!("{}:{}", display_model(&app.model), app.thinking_level)),
             Span::raw(format!(" · {} ", format_stats(&app.stats))),
             context_span(&app.stats),
@@ -959,6 +962,24 @@ mod tests {
         assert_eq!(format_tokens(999_999), "1000k");
         assert_eq!(format_tokens(1_234_567), "1.2M");
         assert_eq!(format_tokens(12_345_678), "12M");
+    }
+}
+
+fn workspace_label() -> String {
+    let folder = std::env::current_dir()
+        .ok()
+        .and_then(|path| path.file_name().map(|name| name.to_string_lossy().into_owned()))
+        .unwrap_or_default();
+    let branch = std::process::Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+        .filter(|branch| !branch.is_empty());
+    match branch {
+        Some(branch) => format!("{folder} ({branch})"),
+        None => folder,
     }
 }
 
