@@ -25,8 +25,7 @@ const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
-const SUMMARY_INTRODUCTION: &str =
-    "This conversation was compacted. Summary of the earlier conversation:";
+const SUMMARY_INTRODUCTION: &str = "The earlier conversation was compacted to save context. You wrote the summary below of everything that happened in it. Treat it as an accurate record and continue from where the conversation stopped.";
 const MAX_RETRIES: u32 = 3;
 const MAX_RETRY_AFTER: Duration = Duration::from_secs(60);
 
