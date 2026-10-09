@@ -1,18 +1,15 @@
+use ignore::WalkBuilder;
 use std::{path::Path, process::Command};
 
 const MAX_MATCHES: usize = 10;
+const MAX_FILES: usize = 10_000;
 
 pub(super) fn list_files() -> Vec<String> {
     files_in(Path::new("."))
 }
 
 fn files_in(directory: &Path) -> Vec<String> {
-    git_files(directory).unwrap_or_else(|| {
-        let mut files = Vec::new();
-        walk(directory, directory, &mut files);
-        files.sort();
-        files
-    })
+    git_files(directory).unwrap_or_else(|| walk(directory, MAX_FILES))
 }
 
 fn git_files(directory: &Path) -> Option<Vec<String>> {
@@ -40,27 +37,26 @@ fn git_files(directory: &Path) -> Option<Vec<String>> {
     Some(files)
 }
 
-fn walk(root: &Path, directory: &Path, files: &mut Vec<String>) {
-    let Ok(entries) = std::fs::read_dir(directory) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let name = entry.file_name();
-        let name = name.to_string_lossy();
-        if name.starts_with('.') || name == "target" {
-            continue;
-        }
-        let path = entry.path();
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-        if file_type.is_dir() {
-            walk(root, &path, files);
-        } else if file_type.is_file() {
-            let path = path.strip_prefix(root).unwrap_or(&path);
-            files.push(path.to_string_lossy().into_owned());
-        }
-    }
+fn walk(root: &Path, limit: usize) -> Vec<String> {
+    let mut files: Vec<String> = WalkBuilder::new(root)
+        .require_git(false)
+        .filter_entry(|entry| entry.file_name() != "target")
+        .sort_by_file_name(|a, b| a.cmp(b))
+        .build()
+        .flatten()
+        .filter(|entry| {
+            entry
+                .file_type()
+                .is_some_and(|file_type| file_type.is_file())
+        })
+        .filter_map(|entry| {
+            let path = entry.path().strip_prefix(root).ok()?;
+            Some(path.to_string_lossy().into_owned())
+        })
+        .take(limit)
+        .collect();
+    files.sort();
+    files
 }
 
 pub(super) fn file_query(input: &str, cursor: usize) -> Option<(usize, &str)> {
@@ -87,7 +83,7 @@ pub(super) fn file_matches(files: &[String], query: &str) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{file_matches, file_query, files_in};
+    use super::{file_matches, file_query, files_in, walk};
     use std::process::Command;
 
     #[test]
@@ -107,6 +103,45 @@ mod tests {
         let _ = std::fs::remove_dir_all(&root);
         assert!(initialised);
         assert_eq!(files, ["plain.rs", "src/café.rs"]);
+    }
+
+    #[test]
+    fn skips_ignored_files_outside_git() {
+        let root = std::env::temp_dir().join(format!("rust-claude-walk-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        for folder in ["target", ".hidden", "logs"] {
+            std::fs::create_dir_all(root.join(folder)).unwrap();
+        }
+        for file in [
+            "a.rs",
+            "b.rs",
+            "skip.log",
+            "logs/out.txt",
+            "target/out.rs",
+            ".hidden/x.rs",
+        ] {
+            std::fs::write(root.join(file), "").unwrap();
+        }
+        std::fs::write(root.join(".gitignore"), "*.log\n").unwrap();
+        std::fs::write(root.join(".ignore"), "logs/\n").unwrap();
+        let files = files_in(&root);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(files, ["a.rs", "b.rs"]);
+    }
+
+    #[test]
+    fn stops_walking_at_the_file_limit() {
+        let root = std::env::temp_dir().join(format!("rust-claude-limit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src")).unwrap();
+        for file in ["a.rs", "b.rs", "src/c.rs", "src/d.rs"] {
+            std::fs::write(root.join(file), "").unwrap();
+        }
+        let all = walk(&root, 10);
+        let capped = walk(&root, 3);
+        let _ = std::fs::remove_dir_all(&root);
+        assert_eq!(all, ["a.rs", "b.rs", "src/c.rs", "src/d.rs"]);
+        assert_eq!(capped.len(), 3);
     }
 
     #[test]

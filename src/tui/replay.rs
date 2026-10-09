@@ -104,6 +104,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::ImagePasted(Err(error)) => {
             app.push(Role::Event, format!("failed to paste image: {error}"));
         }
+        UiEvent::Files(files) => app.set_files(files),
         UiEvent::Resumed(result) => app.finish(result, |app, messages| {
             app.clear_session();
             replay_messages(app, &messages);

@@ -1,7 +1,7 @@
 use super::{
     commands::command_matches,
     display_model,
-    files::{file_matches, file_query, list_files},
+    files::{file_matches, file_query},
     render::{render_message, tool_message},
     workspace_label,
 };
@@ -74,6 +74,7 @@ pub(super) struct App {
     pub(super) command_selected: usize,
     pub(super) commands_dismissed: bool,
     pub(super) files: Option<Vec<String>>,
+    pub(super) listing_files: bool,
     pub(super) prompt_history: Vec<String>,
     pub(super) history_index: Option<usize>,
     pub(super) reads: tools::ReadGroup,
@@ -149,6 +150,7 @@ impl App {
             command_selected: 0,
             commands_dismissed: false,
             files: None,
+            listing_files: false,
             prompt_history: Vec::new(),
             history_index: None,
             reads: tools::ReadGroup::default(),
@@ -340,9 +342,24 @@ impl App {
         self.history_index = None;
         self.command_selected = 0;
         self.commands_dismissed = false;
-        if self.files.is_none() && file_query(&self.input, self.cursor).is_some() {
-            self.files = Some(list_files());
+    }
+
+    /// Whether the file list should start loading now, for an `@` the user
+    /// just typed. Returns true once until the list arrives.
+    pub(super) fn start_listing_files(&mut self) -> bool {
+        if self.files.is_some()
+            || self.listing_files
+            || file_query(&self.input, self.cursor).is_none()
+        {
+            return false;
         }
+        self.listing_files = true;
+        true
+    }
+
+    pub(super) fn set_files(&mut self, files: Vec<String>) {
+        self.files = Some(files);
+        self.listing_files = false;
     }
 
     pub(super) fn attach_image(&mut self, image: Image) {
@@ -476,7 +493,11 @@ pub(super) fn image_marker(number: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::Role;
-    use crate::tui::test_support::{new_app, screen};
+    use crate::tui::{
+        UiEvent, handle_agent_event, handle_input,
+        test_support::{new_app, screen},
+    };
+    use crossterm::event::{Event, KeyCode, KeyEvent};
 
     #[test]
     fn greets_with_open_question() {
@@ -503,5 +524,28 @@ mod tests {
             texts,
             ["read a.rs (2), b.rs", "read failed: missing", "read c.rs"]
         );
+    }
+
+    #[test]
+    fn lists_files_once_in_the_background_and_shows_them_when_ready() {
+        let mut app = new_app();
+        assert!(!app.start_listing_files());
+        handle_input(Event::Paste("read @ma".into()), &mut app, |_| {});
+        assert!(app.visible_suggestions().is_none());
+        assert!(app.start_listing_files());
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Char('i'))),
+            &mut app,
+            |_| {},
+        );
+        assert!(!app.start_listing_files());
+        handle_agent_event(
+            UiEvent::Files(vec!["README.md".into(), "src/main.rs".into()]),
+            &mut app,
+        );
+        let suggestions = app.visible_suggestions().unwrap();
+        assert_eq!(suggestions.items, [("src/main.rs".into(), String::new())]);
+        assert!(screen(&mut app).contains("src/main.rs"));
+        assert!(!app.start_listing_files());
     }
 }

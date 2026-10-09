@@ -208,7 +208,7 @@ The `/resume`, `/model` and `/thinking` pickers open in a box above the input. T
 
 ## Files
 
-Type `@` to pick a file. The list shows up to 10 project files whose path contains the text after `@`, ignoring case. Use Up / Down to select, and Tab or Enter to insert `@path` into the prompt. Esc closes the list. In a Git repository the list holds tracked files and untracked files that `.gitignore` does not exclude. Otherwise it holds all files, except hidden ones and those in `target`.
+Type `@` to pick a file. The list shows up to 10 project files whose path contains the text after `@`, ignoring case. Use Up / Down to select, and Tab or Enter to insert `@path` into the prompt. Esc closes the list. In a Git repository the list holds tracked files and untracked files that `.gitignore` does not exclude. Otherwise it holds up to 10,000 files, except hidden ones, those in `target` and those that `.gitignore` or `.ignore` files exclude. rust-claude reads the files in the background when you first type `@` after each prompt, so typing never waits for it.
 
 ## Prompt history
 
