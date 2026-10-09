@@ -74,7 +74,7 @@ Input and editing:
 - Prompts queued while the agent works
 - `!command` to run a shell command and share its output with the model
 - Prompt history with Up and Down
-- Ctrl+R to search prompts from this session or from all folders
+- Ctrl+R to search prompts from this folder or from all folders
 - Up and Down move between wrapped input rows
 - Move and delete by word
 - Ctrl+A and Ctrl+E to jump to the start or end
