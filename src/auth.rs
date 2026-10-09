@@ -54,21 +54,26 @@ impl Credentials {
 
     async fn load_and_refresh(text: &str, http: &reqwest::Client) -> Result<Self> {
         let mut credentials: Self = serde_json::from_str(text)?;
-        if now_millis() < credentials.expires {
-            return Ok(credentials);
+        if now_millis() >= credentials.expires {
+            credentials.renew(http).await?;
         }
-        match credentials.refresh(http).await {
-            Ok(credentials) => Ok(credentials),
+        Ok(credentials)
+    }
+
+    /// Refreshes the tokens, falling back to auth.json when that fails:
+    /// another rust-claude may have renewed the tokens since we read it,
+    /// spending the refresh token we hold.
+    async fn renew(&mut self, http: &reqwest::Client) -> Result<()> {
+        match self.refresh(http).await {
+            Ok(credentials) => *self = credentials,
             Err(error) => {
-                // Another rust-claude may have renewed the tokens since we
-                // read auth.json, spending the refresh token we hold.
-                credentials.adopt_saved();
-                if now_millis() >= credentials.expires {
+                self.adopt_saved();
+                if now_millis() >= self.expires {
                     return Err(error);
                 }
-                Ok(credentials)
             }
         }
+        Ok(())
     }
 
     async fn refresh(&self, http: &reqwest::Client) -> Result<Self> {
@@ -93,17 +98,9 @@ impl Credentials {
         // refresh token replaces ours, so use what it saved.
         self.adopt_saved();
         if now_millis() >= self.expires {
-            match self.refresh(http).await {
-                Ok(credentials) => *self = credentials,
-                Err(error) => {
-                    self.adopt_saved();
-                    if now_millis() >= self.expires {
-                        return Err(
-                            error.context("sign-in expired: restart rust-claude to sign in again")
-                        );
-                    }
-                }
-            }
+            self.renew(http)
+                .await
+                .context("sign-in expired: restart rust-claude to sign in again")?;
         }
         Ok(self.access.clone())
     }
