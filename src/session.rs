@@ -162,38 +162,7 @@ impl Session {
     }
 
     pub fn latest_in_current_folder() -> Result<Option<String>> {
-        let directory = sessions_directory()?;
-        if !directory.exists() {
-            return Ok(None);
-        }
-        let folder = current_folder();
-        let mut latest: Option<(SystemTime, String)> = None;
-        for entry in std::fs::read_dir(&directory)? {
-            let path = entry?.path();
-            if path
-                .extension()
-                .is_none_or(|extension| extension != "jsonl")
-            {
-                continue;
-            }
-            let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
-                continue;
-            };
-            let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified())
-            else {
-                continue;
-            };
-            if latest
-                .as_ref()
-                .is_some_and(|(latest_modified, _)| *latest_modified >= modified)
-            {
-                continue;
-            }
-            if read_folder(&path).ok().flatten().as_deref() == Some(folder.as_str()) {
-                latest = Some((modified, id.to_string()));
-            }
-        }
-        Ok(latest.map(|(_, id)| id))
+        latest_in_folder(&sessions_directory()?, &current_folder())
     }
 
     pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
@@ -212,6 +181,38 @@ impl Session {
         };
         Ok((session, messages))
     }
+}
+
+fn latest_in_folder(directory: &Path, folder: &str) -> Result<Option<String>> {
+    if !directory.exists() {
+        return Ok(None);
+    }
+    let mut latest: Option<(SystemTime, String)> = None;
+    for entry in std::fs::read_dir(directory)? {
+        let path = entry?.path();
+        if path
+            .extension()
+            .is_none_or(|extension| extension != "jsonl")
+        {
+            continue;
+        }
+        let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
+            continue;
+        };
+        let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified()) else {
+            continue;
+        };
+        if latest
+            .as_ref()
+            .is_some_and(|(latest_modified, _)| *latest_modified >= modified)
+        {
+            continue;
+        }
+        if read_folder(&path).ok().flatten().as_deref() == Some(folder) {
+            latest = Some((modified, id.to_string()));
+        }
+    }
+    Ok(latest.map(|(_, id)| id))
 }
 
 fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
@@ -304,7 +305,10 @@ fn read_lines(path: &Path) -> Result<Vec<Value>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Session, inline_images, new_uuid, read_preview, sessions_directory};
+    use super::{
+        Session, current_folder, inline_images, latest_in_folder, new_uuid, read_folder,
+        read_preview, sessions_directory,
+    };
     use serde_json::json;
 
     #[test]
@@ -361,21 +365,47 @@ mod tests {
 
     #[test]
     fn continues_latest_session_in_current_folder() {
+        let directory =
+            std::env::temp_dir().join(format!("rust-claude-latest-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let now = std::time::SystemTime::now();
+        for (id, folder, age) in [
+            ("old", "/project", 60),
+            ("new", "/project", 30),
+            ("other", "/other", 0),
+        ] {
+            let path = directory.join(format!("{id}.jsonl"));
+            std::fs::write(
+                &path,
+                format!("{}\n", json!({ "type": "session", "cwd": folder })),
+            )
+            .unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .and_then(|file| file.set_modified(now - std::time::Duration::from_secs(age)))
+                .unwrap();
+        }
+        let latest = latest_in_folder(&directory, "/project");
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(latest.unwrap().as_deref(), Some("new"));
+    }
+
+    #[test]
+    fn saves_session_folder_and_messages() {
         let mut session = Session::new().unwrap();
         let messages = vec![json!({ "role": "user", "content": "hello" })];
         session.save(&messages).unwrap();
-        let latest = Session::latest_in_current_folder();
         let loaded = Session::load(&session.id);
         let path = sessions_directory()
             .unwrap()
             .join(format!("{}.jsonl", session.id));
-        let first_line = std::fs::read_to_string(&path).unwrap();
+        let folder = read_folder(&path);
         std::fs::remove_file(&path).unwrap();
         let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
         assert!(!path.starts_with(home.join(".rust-claude")));
-        assert_eq!(latest.unwrap(), Some(session.id.clone()));
         assert_eq!(loaded.unwrap().1, messages);
-        assert!(first_line.starts_with("{\"cwd\":"));
+        assert_eq!(folder.unwrap(), Some(current_folder()));
     }
 
     #[test]
