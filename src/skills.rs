@@ -19,6 +19,22 @@ pub struct Skill {
     pub path: PathBuf,
     pub base_dir: PathBuf,
     pub disable_model_invocation: bool,
+    pub scope: Scope,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Scope {
+    Global,
+    Project,
+}
+
+impl fmt::Display for Scope {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        formatter.write_str(match self {
+            Scope::Global => "global",
+            Scope::Project => "project",
+        })
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -73,29 +89,41 @@ pub fn load() -> Skills {
 }
 
 fn load_from(home: Option<&Path>, cwd: &Path) -> Skills {
-    let mut paths = collect_skill_files(&cwd.join(".rust-claude").join("skills"), Mode::RustClaude);
+    let with_scope =
+        |files: Vec<PathBuf>, scope: Scope| files.into_iter().map(move |path| (path, scope));
+    let mut paths: Vec<(PathBuf, Scope)> = with_scope(
+        collect_skill_files(&cwd.join(".rust-claude").join("skills"), Mode::RustClaude),
+        Scope::Project,
+    )
+    .collect();
     let user_agents_dir = home.map(|home| home.join(".agents").join("skills"));
     for dir in ancestor_agents_skill_dirs(cwd) {
         if user_agents_dir.as_ref() != Some(&dir) {
-            paths.extend(collect_skill_files(&dir, Mode::Agents));
+            paths.extend(with_scope(
+                collect_skill_files(&dir, Mode::Agents),
+                Scope::Project,
+            ));
         }
     }
     if let Some(home) = home {
-        paths.extend(collect_skill_files(
-            &home.join(".rust-claude").join("skills"),
-            Mode::RustClaude,
+        paths.extend(with_scope(
+            collect_skill_files(&home.join(".rust-claude").join("skills"), Mode::RustClaude),
+            Scope::Global,
         ));
     }
     if let Some(dir) = &user_agents_dir {
-        paths.extend(collect_skill_files(dir, Mode::Agents));
+        paths.extend(with_scope(
+            collect_skill_files(dir, Mode::Agents),
+            Scope::Global,
+        ));
     }
 
     let mut skills: Vec<Skill> = Vec::new();
     let mut real_paths = HashSet::new();
     let mut diagnostics = Vec::new();
     let mut collisions = Vec::new();
-    for path in paths {
-        let (skill, warnings) = load_skill_file(&path);
+    for (path, scope) in paths {
+        let (skill, warnings) = load_skill_file(&path, scope);
         diagnostics.extend(warnings);
         let Some(skill) = skill else {
             continue;
@@ -335,7 +363,7 @@ fn validate_description(description: Option<&str>) -> Vec<String> {
     }
 }
 
-fn load_skill_file(path: &Path) -> (Option<Skill>, Vec<Diagnostic>) {
+fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>) {
     let warning = |message: String| Diagnostic::Warning {
         path: path.to_path_buf(),
         message,
@@ -380,6 +408,7 @@ fn load_skill_file(path: &Path) -> (Option<Skill>, Vec<Diagnostic>) {
         path: path.to_path_buf(),
         base_dir,
         disable_model_invocation: frontmatter["disable-model-invocation"] == true,
+        scope,
     };
     (Some(skill), diagnostics)
 }
@@ -536,6 +565,8 @@ mod tests {
         assert_eq!(names, ["alpha", "beta", "gamma"]);
         assert_eq!(loaded.skills[0].description, "Project alpha.");
         assert_eq!(loaded.skills[2].description, "Folded text.");
+        let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
+        assert_eq!(scopes, [Scope::Project, Scope::Project, Scope::Global]);
         assert_eq!(
             loaded.diagnostics,
             [Diagnostic::Collision {
@@ -601,7 +632,7 @@ mod tests {
         let root = temp_dir("validation");
         let missing = root.join("missing/SKILL.md");
         write(&missing, "---\nname: missing\n---\n");
-        let (skill, diagnostics) = load_skill_file(&missing);
+        let (skill, diagnostics) = load_skill_file(&missing, Scope::Project);
         assert!(skill.is_none());
         assert_eq!(
             diagnostics,
@@ -616,7 +647,7 @@ mod tests {
             &invalid,
             "---\ndescription: Still loads.\ndisable-model-invocation: true\n---\n",
         );
-        let (skill, diagnostics) = load_skill_file(&invalid);
+        let (skill, diagnostics) = load_skill_file(&invalid, Scope::Project);
         let skill = skill.unwrap();
         assert_eq!(skill.name, "Bad--Name");
         assert!(skill.disable_model_invocation);
@@ -624,7 +655,7 @@ mod tests {
 
         let broken = root.join("broken/SKILL.md");
         write(&broken, "---\ndescription: [unclosed\n---\n");
-        let (skill, diagnostics) = load_skill_file(&broken);
+        let (skill, diagnostics) = load_skill_file(&broken, Scope::Project);
         assert!(skill.is_none());
         assert_eq!(diagnostics.len(), 1);
         let _ = std::fs::remove_dir_all(root);
@@ -637,6 +668,7 @@ mod tests {
             path: path.join("SKILL.md"),
             base_dir: path.to_path_buf(),
             disable_model_invocation,
+            scope: Scope::Global,
         }
     }
 
