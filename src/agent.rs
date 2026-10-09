@@ -141,7 +141,7 @@ pub struct Quota {
 }
 
 impl Quota {
-    fn from_headers(headers: &reqwest::header::HeaderMap) -> Self {
+    fn update_from_headers(&mut self, headers: &reqwest::header::HeaderMap) {
         let remaining = |window: &str| {
             headers
                 .get(format!("anthropic-ratelimit-unified-{window}-utilization"))
@@ -155,12 +155,10 @@ impl Quota {
                 .and_then(|value| value.to_str().ok())
                 .and_then(|value| value.parse::<u64>().ok())
         };
-        Self {
-            five_hour_remaining: remaining("5h"),
-            seven_day_remaining: remaining("7d"),
-            five_hour_reset: reset("5h"),
-            seven_day_reset: reset("7d"),
-        }
+        self.five_hour_remaining = remaining("5h").or(self.five_hour_remaining);
+        self.seven_day_remaining = remaining("7d").or(self.seven_day_remaining);
+        self.five_hour_reset = reset("5h").or(self.five_hour_reset);
+        self.seven_day_reset = reset("7d").or(self.seven_day_reset);
     }
 }
 
@@ -521,7 +519,7 @@ impl Agent {
             .json(&body)
             .send()
             .await?;
-        self.quota = Quota::from_headers(response.headers());
+        self.quota.update_from_headers(response.headers());
         if !response.status().is_success() {
             let status = response.status();
             bail!("{status}: {}", response.text().await?);
@@ -634,7 +632,27 @@ impl Agent {
 mod tests {
     use serde_json::json;
 
-    use super::{context_tokens, parse_timestamp};
+    use super::{Quota, context_tokens, parse_timestamp};
+
+    #[test]
+    fn keeps_quota_when_headers_are_missing() {
+        let mut quota = Quota {
+            five_hour_remaining: Some(40.0),
+            seven_day_remaining: Some(70.0),
+            five_hour_reset: Some(100),
+            seven_day_reset: Some(200),
+        };
+        let mut headers = reqwest::header::HeaderMap::new();
+        headers.insert(
+            "anthropic-ratelimit-unified-5h-utilization",
+            "0.25".parse().unwrap(),
+        );
+        quota.update_from_headers(&headers);
+        assert_eq!(quota.five_hour_remaining, Some(75.0));
+        assert_eq!(quota.seven_day_remaining, Some(70.0));
+        assert_eq!(quota.five_hour_reset, Some(100));
+        assert_eq!(quota.seven_day_reset, Some(200));
+    }
 
     #[test]
     fn parses_timestamps() {
