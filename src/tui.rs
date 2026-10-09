@@ -582,6 +582,7 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
                 app.push(Role::Event, format!("{name} failed: {error}"));
             }
         }
+        UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
         UiEvent::Agent(AgentEvent::Usage(usage)) => {
             app.usage = format!(
                 "↑{} ↓{} R{} W{}",

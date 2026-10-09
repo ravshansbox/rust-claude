@@ -101,6 +101,7 @@ pub enum AgentEvent {
     ToolStart { name: String, summary: String },
     ToolDone { name: String, error: Option<String> },
     Usage(Usage),
+    Notice(String),
 }
 
 pub struct Agent {
@@ -202,6 +203,11 @@ impl Agent {
             on_event(AgentEvent::Usage(total_usage));
             self.messages
                 .push(json!({ "role": "assistant", "content": content }));
+            if stop_reason == "max_tokens" {
+                on_event(AgentEvent::Notice(
+                    "reply cut off: max_tokens reached".into(),
+                ));
+            }
             if stop_reason != "tool_use" {
                 return Ok(());
             }
