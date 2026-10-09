@@ -13,6 +13,7 @@ use crate::{
 
 const API_URL: &str = "https://api.anthropic.com/v1/messages";
 const MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=1000";
+const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running in a terminal.
 Use your tools to inspect and change the project in the current working directory.
@@ -282,6 +283,32 @@ impl Agent {
             .flatten()
             .filter_map(|model| model["id"].as_str().map(str::to_string))
             .collect())
+    }
+
+    pub async fn load_quota(&mut self) -> Result<()> {
+        let token = self.credentials.access_token(&self.http).await?;
+        let response = self
+            .http
+            .get(USAGE_URL)
+            .bearer_auth(token)
+            .header("anthropic-beta", "oauth-2025-04-20")
+            .send()
+            .await?;
+        if !response.status().is_success() {
+            let status = response.status();
+            bail!("{status}: {}", response.text().await?);
+        }
+        let body: Value = response.json().await?;
+        let remaining = |window: &str| {
+            body[window]["utilization"]
+                .as_f64()
+                .map(|utilisation| 100.0 - utilisation)
+        };
+        self.quota = Quota {
+            five_hour_remaining: remaining("five_hour"),
+            seven_day_remaining: remaining("seven_day"),
+        };
+        Ok(())
     }
 
     pub fn new_session(&mut self) -> Result<()> {
