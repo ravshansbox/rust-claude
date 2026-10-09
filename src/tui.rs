@@ -1,4 +1,7 @@
-use crate::agent::{Agent, AgentEvent, THINKING_LEVELS};
+use crate::{
+    agent::{Agent, AgentEvent, THINKING_LEVELS},
+    tools,
+};
 use anyhow::Result;
 use crossterm::{
     event::{
@@ -15,6 +18,7 @@ use ratatui::{
     text::{Line, Span, Text},
     widgets::{Block, Borders, Paragraph, Wrap},
 };
+use serde_json::Value;
 use std::time::Duration;
 use tokio::{sync::mpsc, time::MissedTickBehavior};
 
@@ -184,15 +188,28 @@ enum UiEvent {
     Agent(AgentEvent),
     Done(Result<()>),
     Cancelled,
+    Resumed(Result<Option<Vec<Value>>>),
+}
+
+enum Request {
+    Prompt(String, &'static str),
+    Resume,
 }
 
 async fn agent_task(
     mut agent: Agent,
-    mut prompts: mpsc::UnboundedReceiver<(String, &'static str)>,
+    mut requests: mpsc::UnboundedReceiver<Request>,
     mut cancel: mpsc::UnboundedReceiver<()>,
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
-    while let Some((prompt, thinking_level)) = prompts.recv().await {
+    while let Some(request) = requests.recv().await {
+        let (prompt, thinking_level) = match request {
+            Request::Prompt(prompt, thinking_level) => (prompt, thinking_level),
+            Request::Resume => {
+                let _ = events.send(UiEvent::Resumed(agent.resume_latest()));
+                continue;
+            }
+        };
         agent.thinking_level = thinking_level;
         while cancel.try_recv().is_ok() {}
 
@@ -221,10 +238,10 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
     }
-    let (prompt_tx, prompt_rx) = mpsc::unbounded_channel();
+    let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, prompt_rx, cancel_rx, event_tx));
+    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
     redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
@@ -245,7 +262,10 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                 };
                 let quit = handle_input(event, &mut app, |action| match action {
                     Action::Submit(prompt, thinking_level) => {
-                        let _ = prompt_tx.send((prompt, thinking_level));
+                        let _ = request_tx.send(Request::Prompt(prompt, thinking_level));
+                    }
+                    Action::Resume => {
+                        let _ = request_tx.send(Request::Resume);
                     }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
@@ -271,6 +291,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
 
 enum Action {
     Submit(String, &'static str),
+    Resume,
     Cancel,
 }
 
@@ -306,6 +327,17 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         (KeyCode::Enter, _) if !app.busy && !app.input.trim().is_empty() => {
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
+            if prompt.starts_with('/') {
+                match prompt.trim() {
+                    "/resume" => {
+                        app.status = "resuming".into();
+                        app.busy = true;
+                        act(Action::Resume);
+                    }
+                    command => app.push(Role::Event, format!("unknown command: {command}")),
+                }
+                return false;
+            }
             app.push(Role::User, prompt.clone());
             app.status = "thinking".into();
             app.busy = true;
@@ -356,6 +388,52 @@ fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Cancelled => {
             app.push(Role::Event, "cancelled");
             app.busy = false;
+        }
+        UiEvent::Resumed(result) => {
+            match result {
+                Ok(Some(messages)) => {
+                    app.messages.clear();
+                    replay_messages(app, &messages);
+                    app.push(Role::Event, "resumed latest session");
+                }
+                Ok(None) => app.push(Role::Event, "no session to resume"),
+                Err(error) => app.push(Role::Event, format!("error: {error}")),
+            }
+            app.busy = false;
+        }
+    }
+}
+
+fn replay_messages(app: &mut App, messages: &[Value]) {
+    for message in messages {
+        let role = message["role"].as_str().unwrap_or_default();
+        if let Some(text) = message["content"].as_str() {
+            app.push(Role::User, text);
+            continue;
+        }
+        for block in message["content"].as_array().into_iter().flatten() {
+            match (role, block["type"].as_str().unwrap_or_default()) {
+                ("assistant", "text") => {
+                    app.push(Role::Assistant, block["text"].as_str().unwrap_or_default());
+                }
+                ("assistant", "thinking") => {
+                    app.push(
+                        Role::Thinking,
+                        block["thinking"].as_str().unwrap_or_default(),
+                    );
+                }
+                ("assistant", "tool_use") => {
+                    let name = block["name"].as_str().unwrap_or_default();
+                    app.push(
+                        Role::Tool,
+                        format!("{name} {}", tools::summary(name, &block["input"])),
+                    );
+                }
+                ("user", "text") => {
+                    app.push(Role::User, block["text"].as_str().unwrap_or_default());
+                }
+                _ => {}
+            }
         }
     }
 }
