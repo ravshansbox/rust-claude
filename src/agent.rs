@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 
 use crate::{
     auth::Credentials,
+    mcp::Mcp,
     models,
     session::{Session, SessionSummary},
     skills::{self, Skills},
@@ -452,6 +453,7 @@ pub struct Agent {
     quota: Quota,
     pub instructions: Vec<Instructions>,
     pub skills: Skills,
+    pub mcp: Mcp,
     pub session: Session,
 }
 
@@ -467,6 +469,7 @@ impl Agent {
             quota: Quota::default(),
             instructions: load_instructions(),
             skills: skills::load(),
+            mcp: Mcp::default(),
             session: Session::new()?,
         })
     }
@@ -542,11 +545,19 @@ impl Agent {
             tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(
                 &active_messages(&self.messages),
-                estimate_prompt_tokens(&self.system_prompt(), &tools::definitions()),
+                estimate_prompt_tokens(&self.system_prompt(), &self.tool_definitions()),
             ),
             context_window: models::context_window(&self.model),
             quota: self.quota,
         }
+    }
+
+    fn tool_definitions(&self) -> Value {
+        let mut definitions = tools::definitions();
+        if let Value::Array(list) = &mut definitions {
+            list.extend(self.mcp.definitions());
+        }
+        definitions
     }
 
     fn system_prompt(&self) -> Vec<Value> {
@@ -726,7 +737,11 @@ impl Agent {
                     summary: tools::summary(name, &block["input"]),
                     diff: tools::diff(name, &block["input"]),
                 });
-                let (text, is_error) = match tools::call(name, &block["input"]).await {
+                let result = match self.mcp.call(name, &block["input"]).await {
+                    Some(result) => result,
+                    None => tools::call(name, &block["input"]).await,
+                };
+                let (text, is_error) = match result {
                     Ok(text) => (text, false),
                     Err(text) => (text, true),
                 };
@@ -770,7 +785,7 @@ impl Agent {
             "thinking": { "type": "adaptive", "display": "summarized" },
             "output_config": { "effort": self.thinking_level },
             "system": system,
-            "tools": tools::definitions(),
+            "tools": self.tool_definitions(),
             "messages": messages,
         });
         if let Some(tool_choice) = tool_choice {
