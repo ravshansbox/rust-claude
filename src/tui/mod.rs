@@ -11,7 +11,9 @@ mod status;
 mod test_support;
 mod worker;
 
-use crate::{agent::Agent, clipboard, history, images, mcp, settings::Settings, skills::Scope};
+use crate::{
+    StopSignals, agent::Agent, clipboard, history, images, mcp, settings::Settings, skills::Scope,
+};
 use anyhow::Result;
 use app::{App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
@@ -74,7 +76,7 @@ impl<W: Write> Drop for InputModes<W> {
     }
 }
 
-pub async fn run(agent: Agent) -> Result<()> {
+pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
     THEME.get_or_init(Theme::detect);
     let mut terminal = ratatui::init();
     let modes = match InputModes::enable(std::io::stdout()) {
@@ -84,13 +86,17 @@ pub async fn run(agent: Agent) -> Result<()> {
             return Err(error.into());
         }
     };
-    let result = run_loop(&mut terminal, agent).await;
+    let result = run_loop(&mut terminal, agent, stop).await;
     drop(modes);
     ratatui::restore();
     result
 }
 
-async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
+async fn run_loop(
+    terminal: &mut DefaultTerminal,
+    agent: Agent,
+    mut stop: StopSignals,
+) -> Result<()> {
     let mut app = App::new(&agent.model, agent.thinking_level, agent.stats());
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
@@ -160,6 +166,7 @@ async fn run_loop(terminal: &mut DefaultTerminal, agent: Agent) -> Result<()> {
                     _ => anyhow::anyhow!("the agent stopped unexpectedly"),
                 });
             }
+            _ = stop.recv() => break Ok(()),
             _ = redraw.tick(), if dirty => {
                 if let Err(error) = terminal.draw(|frame| draw(frame, &mut app)) {
                     break Err(error.into());

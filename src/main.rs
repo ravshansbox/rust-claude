@@ -16,6 +16,7 @@ mod tui;
 use std::io::{IsTerminal, Write};
 
 use anyhow::{Context, Result, bail};
+use tokio::signal::unix::{Signal, SignalKind, signal};
 
 const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--image <path>]...]";
 
@@ -139,14 +140,15 @@ async fn main() -> Result<()> {
         }
     }
 
+    let mut stop = StopSignals::new()?;
     let Some(prompt) = print_prompt else {
-        return tui::run(agent).await;
+        return tui::run(agent, stop).await;
     };
-    let interrupt = tokio::signal::ctrl_c();
-    tokio::pin!(interrupt);
+    let stopped = stop.recv();
+    tokio::pin!(stopped);
     tokio::select! {
         mcp = mcp::Mcp::load() => agent.mcp = mcp,
-        _ = &mut interrupt => return interrupted(agent),
+        status = &mut stopped => return interrupted(agent, status),
     }
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{diagnostic}");
@@ -227,26 +229,58 @@ async fn main() -> Result<()> {
         _ => {}
     });
     let result = tokio::select! {
-        result = run => Some(result),
-        _ = &mut interrupt => None,
+        result = run => Ok(result),
+        status = &mut stopped => Err(status),
     };
     flush_reads(&mut reads);
-    let Some(result) = result else {
-        let saved = agent.cancel(checkpoint);
-        if let Err(error) = saved {
-            eprintln!("failed to save session: {error}");
+    let result = match result {
+        Ok(result) => result,
+        Err(status) => {
+            let saved = agent.cancel(checkpoint);
+            if let Err(error) = saved {
+                eprintln!("failed to save session: {error}");
+            }
+            return interrupted(agent, status);
         }
-        return interrupted(agent);
     };
     result?;
     writeln!(stdout)?;
     Ok(())
 }
 
-fn interrupted(agent: agent::Agent) -> Result<()> {
+/// Ctrl+C, a closed terminal (hangup) and `kill` (terminate) all stop
+/// rust-claude the same way, so running commands and MCP servers are stopped
+/// instead of left behind.
+struct StopSignals {
+    interrupt: Signal,
+    hangup: Signal,
+    terminate: Signal,
+}
+
+impl StopSignals {
+    fn new() -> Result<Self> {
+        Ok(Self {
+            interrupt: signal(SignalKind::interrupt())?,
+            hangup: signal(SignalKind::hangup())?,
+            terminate: signal(SignalKind::terminate())?,
+        })
+    }
+
+    /// Waits for a stop signal and returns the conventional exit status for
+    /// it: 128 plus the signal number.
+    async fn recv(&mut self) -> i32 {
+        tokio::select! {
+            _ = self.interrupt.recv() => 130,
+            _ = self.hangup.recv() => 129,
+            _ = self.terminate.recv() => 143,
+        }
+    }
+}
+
+fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
     drop(agent);
     eprintln!("\ncancelled");
-    std::process::exit(130);
+    std::process::exit(status);
 }
 
 fn flush_reads(reads: &mut tools::ReadGroup) {
