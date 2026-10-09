@@ -30,7 +30,7 @@ struct Input {
 pub fn definition() -> Value {
     json!({
         "name": NAME,
-        "description": "Ask the user one or more multiple-choice questions and wait for the answers. Use it when the task is ambiguous or needs a decision from the user. The user can always pick Other and type their own answer, so do not add an Other option",
+        "description": "Ask the user one or more multiple-choice questions and wait for the answers. Use it when the task is ambiguous or needs a decision from the user. The user can always pick Other and type their own answer, so do not add an Other option. Put the recommended option first",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -69,7 +69,10 @@ pub fn definition() -> Value {
 }
 
 pub fn parse(input: &Value) -> Result<Vec<Question>, String> {
-    let input = Input::deserialize(input).map_err(|error| error.to_string())?;
+    let mut input = Input::deserialize(input).map_err(|error| error.to_string())?;
+    for question in &mut input.questions {
+        question.options.sort_by_key(|choice| !choice.recommended);
+    }
     if !(1..=4).contains(&input.questions.len()) {
         return Err("ask between 1 and 4 questions".into());
     }
@@ -126,6 +129,17 @@ mod tests {
         assert_eq!(question["maxItems"], 4);
         assert_eq!(question["items"]["properties"]["options"]["minItems"], 2);
         assert_eq!(question["items"]["properties"]["options"]["maxItems"], 4);
+    }
+
+    #[test]
+    fn asks_for_the_recommended_option_first() {
+        let definition = definition();
+        assert!(
+            definition["description"]
+                .as_str()
+                .unwrap()
+                .contains("Put the recommended option first")
+        );
     }
 
     #[test]

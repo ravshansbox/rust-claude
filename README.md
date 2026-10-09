@@ -338,7 +338,7 @@ The agent can use these tools:
 
 The agent can also use tools from [MCP servers](#mcp-servers).
 
-`ask_user_question` takes a `questions` list. Each question has `question`, a short `header`, 2 to 4 `options` and an optional `multi_select`. Each option has a `label`, a `description` and an optional `recommended` flag, which shows as `(recommended)`. An `Other` option is always added so you can type your own answer. The interface shows one question at a time in a box above the input:
+`ask_user_question` takes a `questions` list. Each question has `question`, a short `header`, 2 to 4 `options` and an optional `multi_select`. Each option has a `label`, a `description` and an optional `recommended` flag, which shows as `(recommended)`. The tool asks the model to put the recommended option first, and rust-claude moves recommended options to the top in case it does not, so the recommended option is highlighted when the question opens. An `Other` option is always added so you can type your own answer. The interface shows one question at a time in a box above the input:
 
 - Up and Down move between options
 - Space ticks or unticks an option when `multi_select` is true

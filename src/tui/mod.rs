@@ -2588,4 +2588,26 @@ mod tests {
         assert!(!shown.contains("prompt 04"), "{shown}");
         assert!(shown.contains('█'), "{shown}");
     }
+
+    #[test]
+    fn highlights_the_recommended_option_even_when_listed_later() {
+        let mut app = new_app();
+        let mut answers = ask(
+            &mut app,
+            json!({ "questions": [{
+                "question": "Which output?",
+                "header": "Output",
+                "options": [
+                    { "label": "Text", "description": "Readable" },
+                    { "label": "JSON", "description": "Structured", "recommended": true }
+                ]
+            }] }),
+        );
+        let shown = screen(&mut app);
+        let json_row = shown.find("JSON (recommended)").unwrap();
+        let text_row = shown.find("Text: Readable").unwrap();
+        assert!(json_row < text_row, "{shown}");
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(answers.try_recv().unwrap(), vec![vec!["JSON".to_string()]]);
+    }
 }
