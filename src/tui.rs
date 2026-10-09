@@ -83,7 +83,7 @@ impl ChatMessage {
 fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
     match role {
         Role::User => user_message_lines(text, width as usize),
-        Role::Assistant => tui_markdown::from_str(text)
+        Role::Assistant => tui_markdown::from_str(&hard_line_breaks(text))
             .lines
             .into_iter()
             .map(owned_line)
@@ -98,6 +98,24 @@ fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
             .map(|line| Line::raw(line.to_string()))
             .collect(),
     }
+}
+
+fn hard_line_breaks(text: &str) -> String {
+    let mut in_fence = false;
+    text.lines()
+        .map(|line| {
+            let trimmed = line.trim_start();
+            if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+                in_fence = !in_fence;
+                line.to_string()
+            } else if in_fence {
+                line.to_string()
+            } else {
+                format!("{line}  ")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
