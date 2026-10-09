@@ -398,7 +398,8 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     rows.into_iter()
         .map(|row| {
             let padding = content_width.saturating_sub(row.chars().count()) + 1;
-            Line::from(format!(" {row}{}", " ".repeat(padding))).style(Style::new().reversed())
+            Line::from(format!(" {row}{}", " ".repeat(padding)))
+                .style(Style::new().fg(Color::Black).bg(Color::Gray))
         })
         .collect()
 }
