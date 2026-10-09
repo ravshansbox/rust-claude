@@ -45,6 +45,7 @@ Sessions and context:
 Reliability:
 
 - Retries for rate limits, overload, server errors and connection errors, with back-off and `retry-after`
+- Requests that get no data for 5 minutes, or cannot connect within 30 seconds, fail and are retried instead of hanging
 - Timed-out commands stopped with all their background processes
 - Optional `timeout` for `bash`
 - Command output capped at 20,000 bytes as it arrives
@@ -315,6 +316,8 @@ The skill name comes from `name` in the frontmatter, or from the folder name. Na
 ## Retries
 
 If a request fails with a rate limit (429), an overloaded API (529), a server error (5xx) or a connection error before the reply starts, rust-claude tries again up to 3 times. It waits 1, 2 and then 4 seconds, or as long as the `retry-after` header asks. It does not retry when `retry-after` is longer than 60 seconds. A notice shows each retry.
+
+A request counts as a connection error when it cannot connect within 30 seconds, or when no data arrives for 5 minutes. If no data arrives after the reply has started, the prompt fails with an error instead of hanging.
 
 ## Images
 

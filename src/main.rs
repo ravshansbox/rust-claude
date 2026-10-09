@@ -126,7 +126,7 @@ async fn main() -> Result<()> {
         })
         .collect::<Result<Vec<_>>>()?;
 
-    let http = reqwest::Client::new();
+    let http = agent::http_client()?;
     let credentials = auth::Credentials::load_or_login(&http).await?;
     let settings = settings::Settings::load();
     let model = options

@@ -1,4 +1,7 @@
-use std::sync::{Arc, Mutex};
+use std::{
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 
 use anyhow::{Result, bail};
 use serde_json::{Value, json};
@@ -7,6 +10,8 @@ mod context;
 mod retry;
 mod stream;
 mod system;
+#[cfg(test)]
+pub(crate) mod test_support;
 mod usage;
 
 use crate::{
@@ -29,7 +34,7 @@ use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
 pub use usage::{Quota, Stats, Usage};
 use usage::{cache_hit_rate, fetch_quota, tokens_per_second, total_usage};
 
-const MODELS_URL: &str = "https://api.anthropic.com/v1/models?limit=1000";
+const API_BASE: &str = "https://api.anthropic.com";
 
 pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
@@ -94,8 +99,28 @@ pub fn take_queued(queue: &Queue) -> Vec<Queued> {
         .unwrap_or_default()
 }
 
+/// Gives up on a connection attempt after this long.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
+/// Gives up when no data arrives for this long, so a dead connection fails
+/// and gets retried instead of hanging. Long, because the API can take a
+/// while to start replying to a large prompt.
+const READ_TIMEOUT: Duration = Duration::from_secs(300);
+
+pub fn http_client() -> Result<reqwest::Client> {
+    http_client_with(READ_TIMEOUT)
+}
+
+fn http_client_with(read_timeout: Duration) -> Result<reqwest::Client> {
+    Ok(reqwest::Client::builder()
+        .connect_timeout(CONNECT_TIMEOUT)
+        .read_timeout(read_timeout)
+        .build()?)
+}
+
 pub struct Agent {
     http: reqwest::Client,
+    /// Where API requests go. Tests point this at a local server.
+    pub(crate) api_base: String,
     credentials: Credentials,
     pub model: String,
     pub thinking_level: &'static str,
@@ -114,6 +139,7 @@ impl Agent {
     pub fn new(http: reqwest::Client, credentials: Credentials, model: String) -> Result<Self> {
         Ok(Self {
             http,
+            api_base: API_BASE.into(),
             credentials,
             model,
             thinking_level: DEFAULT_THINKING_LEVEL,
@@ -156,7 +182,7 @@ impl Agent {
         let token = self.credentials.access_token(&self.http).await?;
         let response = self
             .http
-            .get(MODELS_URL)
+            .get(format!("{}/v1/models?limit=1000", self.api_base))
             .bearer_auth(token)
             .header("anthropic-version", "2023-06-01")
             .header("anthropic-beta", "oauth-2025-04-20")
@@ -179,7 +205,11 @@ impl Agent {
         &mut self,
     ) -> Result<impl Future<Output = Result<Quota>> + Send + 'static> {
         let token = self.credentials.access_token(&self.http).await?;
-        Ok(fetch_quota(self.http.clone(), token))
+        Ok(fetch_quota(
+            self.http.clone(),
+            format!("{}/api/oauth/usage", self.api_base),
+            token,
+        ))
     }
 
     pub fn merge_quota(&mut self, quota: Quota) {
@@ -500,8 +530,35 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
+    use std::time::Duration;
 
-    use super::{cancel_point, parse_shell_message, shell_message};
+    use super::{
+        AgentEvent, cancel_point, http_client_with, parse_shell_message, shell_message,
+        test_support::{self, MockApi, Reply, text_reply},
+    };
+
+    #[tokio::test]
+    async fn retries_a_reply_that_stops_arriving() {
+        let api = MockApi::start(vec![Reply::Stall, text_reply("hello")]).await;
+        let http = http_client_with(Duration::from_millis(300)).unwrap();
+        let mut agent = test_support::agent(&api, http);
+        let mut text = String::new();
+        let mut notices = Vec::new();
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            agent.prompt("hi", &[], |event| match event {
+                AgentEvent::Text(delta) => text.push_str(&delta),
+                AgentEvent::Notice(notice) => notices.push(notice),
+                _ => {}
+            }),
+        )
+        .await;
+        test_support::remove_session(&agent);
+        assert!(result.expect("prompt hung").is_ok());
+        assert_eq!(text, "hello");
+        assert_eq!(api.requests().await.len(), 2);
+        assert!(notices.iter().any(|notice| notice.contains("retrying in")));
+    }
 
     #[test]
     fn parses_shell_messages() {
