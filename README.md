@@ -51,6 +51,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 | Key | Action |
 | --- | --- |
 | Enter | Send prompt |
+| Shift+Enter / Alt+Enter | Add a new line |
 | Esc | Cancel the running prompt, or quit when idle |
 | Ctrl+C | Clear input, or quit when input is empty |
 | Ctrl+D | Quit when input is empty |
@@ -65,6 +66,8 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 | Tab | Complete a command or file |
 
 While a reply streams, the view follows new text only when it is scrolled to the bottom. If you scroll up, the view stays where it is.
+
+Shift+Enter works in terminals that support the kitty keyboard protocol, such as kitty, WezTerm, Ghostty and iTerm2. Other terminals send it as Enter, so use Alt+Enter there.
 
 ## Status line
 
