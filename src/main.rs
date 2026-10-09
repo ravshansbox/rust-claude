@@ -1,5 +1,6 @@
 mod agent;
 mod auth;
+mod session;
 mod tools;
 mod tui;
 
@@ -19,7 +20,7 @@ async fn main() -> Result<()> {
     let http = reqwest::Client::new();
     let credentials = auth::Credentials::load_or_login(&http).await?;
     let model = std::env::var("RUST_CLAUDE_MODEL").unwrap_or_else(|_| "claude-opus-5-5".into());
-    let mut agent = agent::Agent::new(http, credentials, model);
+    let mut agent = agent::Agent::new(http, credentials, model)?;
 
     let Some(prompt) = print_prompt else {
         return tui::run(agent).await;
