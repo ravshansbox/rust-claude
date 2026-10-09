@@ -1,1 +1,2 @@
 commit after every self-contained small fix
+- Ask questions as numbered lists with lettered options, mark the recommended one, so I can reply like "1a 2b".
