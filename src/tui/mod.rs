@@ -943,7 +943,7 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
         match (key.code, key.modifiers) {
             (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
             (KeyCode::Up, _) => search.selected = search.selected.saturating_sub(1),
-            (KeyCode::Down, _) | (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+            (KeyCode::Down, _) => {
                 search.selected = (search.selected + 1).min(count.saturating_sub(1));
             }
             (KeyCode::Left | KeyCode::Right, _) => {
@@ -970,7 +970,9 @@ fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> boo
                     app.input_changed();
                 }
             }
-            (KeyCode::Esc, _) => app.history_search = None,
+            (KeyCode::Esc, _) | (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+                app.history_search = None;
+            }
             _ => {}
         }
         return false;
@@ -1754,6 +1756,9 @@ mod tests {
         assert_eq!(app.input, "elsewhere fix");
         handle_input(control('r'), &mut app, |_| {});
         handle_input(key(KeyCode::Esc), &mut app, |_| {});
+        assert!(app.history_search.is_none());
+        handle_input(control('r'), &mut app, |_| {});
+        handle_input(control('r'), &mut app, |_| {});
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "elsewhere fix");
     }
