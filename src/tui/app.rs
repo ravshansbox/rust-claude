@@ -377,10 +377,6 @@ impl App {
         }
     }
 
-    pub(super) fn greet(&mut self) {
-        self.push(Role::Event, "What would you like to do?");
-    }
-
     pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
         self.reads.clear();
         self.messages.push(ChatMessage {
@@ -762,15 +758,6 @@ mod tests {
     };
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use ratatui::text::Line;
-
-    #[test]
-    fn greets_with_open_question() {
-        let mut app = new_app();
-        app.greet();
-        let shown = screen(&mut app);
-        assert!(shown.contains("What would you like to do?"), "{shown}");
-        assert!(!shown.contains("this project"), "{shown}");
-    }
 
     #[test]
     fn merges_consecutive_reads() {
