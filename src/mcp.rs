@@ -139,12 +139,6 @@ fn read_config(
                 servers.remove(name);
                 diagnostics.push(format!("MCP server {name}: timeout must be at least 1"));
             }
-            Ok(server) if scope == Scope::Project && server.oauth.is_some() => {
-                servers.remove(name);
-                diagnostics.push(format!(
-                    "MCP server {name}: oauth is only allowed in the global mcp.json"
-                ));
-            }
             Ok(server) => {
                 servers.insert(name.clone(), (scope, server));
             }
@@ -1521,7 +1515,7 @@ mod tests {
     }
 
     #[test]
-    fn allows_oauth_settings_only_in_the_global_config() {
+    fn reads_oauth_settings_from_global_and_project_configs() {
         let directory = std::env::temp_dir().join(format!("mcp-oauth-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("mcp.json");
@@ -1530,24 +1524,22 @@ mod tests {
             r#"{ "mcpServers": { "figma": { "url": "https://mcp.figma.com/mcp", "oauth": { "clientName": "Claude Code" } } } }"#,
         )
         .unwrap();
-        let mut servers = BTreeMap::new();
-        let mut diagnostics = Vec::new();
-        read_config(&path, Scope::Global, &mut servers, &mut diagnostics);
-        assert_eq!(
-            servers["figma"]
-                .1
-                .oauth
-                .as_ref()
-                .and_then(|oauth| oauth.client_name.as_deref()),
-            Some("Claude Code")
-        );
-        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        for scope in [Scope::Global, Scope::Project] {
+            let mut servers = BTreeMap::new();
+            let mut diagnostics = Vec::new();
+            read_config(&path, scope, &mut servers, &mut diagnostics);
+            assert!(diagnostics.is_empty());
+            assert_eq!(servers["figma"].0, scope);
+            assert_eq!(
+                servers["figma"]
+                    .1
+                    .oauth
+                    .as_ref()
+                    .and_then(|oauth| oauth.client_name.as_deref()),
+                Some("Claude Code")
+            );
+        }
         std::fs::remove_dir_all(&directory).unwrap();
-        assert!(servers.is_empty());
-        assert_eq!(
-            diagnostics,
-            ["MCP server figma: oauth is only allowed in the global mcp.json"]
-        );
     }
 
     #[test]
