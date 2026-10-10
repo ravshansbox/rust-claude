@@ -1,6 +1,7 @@
 use super::{
     commands::command_matches,
     display_model,
+    draw::SPINNER_FRAMES,
     files::{FileList, file_query},
     render::{render_message, tool_message, wrapped_height},
     workspace_label,
@@ -92,9 +93,19 @@ impl Rendered {
     }
 }
 
+fn loading_text(spinner_frame: usize, label: &str) -> String {
+    let frame = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
+    format!("{frame} loading {label}")
+}
+
 impl ChatMessage {
     pub(super) fn append(&mut self, text: &str) {
         self.text.push_str(text);
+    }
+
+    fn replace(&mut self, text: String) {
+        self.text = text;
+        self.rendered = None;
     }
 
     /// Renders the text if it changed. A streaming reply keeps the lines of
@@ -296,6 +307,13 @@ pub(super) struct App {
     pub(super) history: Vec<history::Entry>,
     pub(super) history_file: Option<PathBuf>,
     pub(super) history_search: Option<HistorySearch>,
+    mcp_loading: Vec<McpLoading>,
+}
+
+struct McpLoading {
+    name: String,
+    label: String,
+    message: Option<usize>,
 }
 
 pub(super) struct HistorySearch {
@@ -374,6 +392,7 @@ impl App {
             history: Vec::new(),
             history_file: None,
             history_search: None,
+            mcp_loading: Vec::new(),
         }
     }
 
@@ -632,6 +651,40 @@ impl App {
         self.activity.is_some()
     }
 
+    pub(super) fn animating(&self) -> bool {
+        self.busy() || !self.mcp_loading.is_empty()
+    }
+
+    pub(super) fn tick_spinner(&mut self) {
+        self.spinner_frame = self.spinner_frame.wrapping_add(1);
+        for loading in &self.mcp_loading {
+            if let Some(index) = loading.message {
+                let text = loading_text(self.spinner_frame, &loading.label);
+                self.messages[index].replace(text);
+            }
+        }
+    }
+
+    pub(super) fn start_mcp_server(&mut self, name: &str, label: &str) {
+        self.push(Role::Event, loading_text(self.spinner_frame, label));
+        self.mcp_loading.push(McpLoading {
+            name: name.into(),
+            label: label.into(),
+            message: Some(self.messages.len() - 1),
+        });
+    }
+
+    pub(super) fn finish_mcp_server(&mut self, name: &str, status: String) {
+        let position = self
+            .mcp_loading
+            .iter()
+            .position(|loading| loading.name == name);
+        match position.and_then(|position| self.mcp_loading.remove(position).message) {
+            Some(index) => self.messages[index].replace(status),
+            None => self.push(Role::Event, status),
+        }
+    }
+
     pub(super) fn can_queue(&self) -> bool {
         self.activity.is_some_and(Activity::can_queue)
     }
@@ -732,6 +785,9 @@ impl App {
 
     pub(super) fn clear_session(&mut self) {
         self.messages.clear();
+        for loading in &mut self.mcp_loading {
+            loading.message = None;
+        }
         self.history_index = None;
     }
 
@@ -758,6 +814,86 @@ mod tests {
     };
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use ratatui::text::Line;
+
+    fn mcp_server_loaded(name: &str, status: &str) -> UiEvent {
+        UiEvent::McpServer(crate::mcp::Added {
+            name: name.into(),
+            status: status.into(),
+            diagnostics: Vec::new(),
+        })
+    }
+
+    #[test]
+    fn shows_mcp_servers_loading_then_replaces_each_line_once_loaded() {
+        let mut app = new_app();
+        app.start_mcp_server("docs", "project MCP server: docs");
+        app.start_mcp_server("slow", "global MCP server: slow");
+        app.push(Role::User, "hello");
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains("⠋ loading project MCP server: docs"),
+            "{shown}"
+        );
+        assert!(
+            shown.contains("⠋ loading global MCP server: slow"),
+            "{shown}"
+        );
+        handle_agent_event(
+            mcp_server_loaded("docs", "loaded project MCP server: docs (3 tools)"),
+            &mut app,
+        );
+        let shown = screen(&mut app);
+        assert!(
+            !shown.contains("loading project MCP server: docs"),
+            "{shown}"
+        );
+        let loaded = shown
+            .find("loaded project MCP server: docs (3 tools)")
+            .expect(&shown);
+        let slow = shown.find("loading global MCP server: slow").expect(&shown);
+        let hello = shown.find("hello").expect(&shown);
+        assert!(loaded < slow && slow < hello, "{shown}");
+    }
+
+    #[test]
+    fn animates_mcp_servers_loading() {
+        let mut app = new_app();
+        app.start_mcp_server("docs", "project MCP server: docs");
+        assert!(app.animating());
+        app.tick_spinner();
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains("⠙ loading project MCP server: docs"),
+            "{shown}"
+        );
+        handle_agent_event(
+            mcp_server_loaded("docs", "MCP server docs failed: timed out"),
+            &mut app,
+        );
+        assert!(!app.animating());
+        assert!(screen(&mut app).contains("MCP server docs failed: timed out"));
+    }
+
+    #[test]
+    fn shows_mcp_server_loaded_after_clearing_the_session() {
+        let mut app = new_app();
+        app.start_mcp_server("docs", "project MCP server: docs");
+        app.clear_session();
+        app.push(Role::Event, "new session");
+        handle_agent_event(
+            mcp_server_loaded("docs", "loaded project MCP server: docs (3 tools)"),
+            &mut app,
+        );
+        let texts: Vec<&str> = app
+            .messages
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            ["new session", "loaded project MCP server: docs (3 tools)"]
+        );
+    }
 
     #[test]
     fn merges_consecutive_reads() {

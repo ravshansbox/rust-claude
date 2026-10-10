@@ -15,7 +15,7 @@ use ratatui::{
 };
 
 const MAX_LIST_ROWS: usize = 10;
-const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let input_width = frame.area().width.max(1) as usize;
