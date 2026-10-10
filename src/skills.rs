@@ -89,14 +89,27 @@ pub fn load() -> Skills {
     load_from(config_dir.as_deref(), home.as_deref(), &cwd)
 }
 
+/// Whether two paths name the same folder, so a project `.rust-claude` run
+/// from the home folder is not mistaken for a second, project-level one.
+pub fn same_dir(a: &Path, b: &Path) -> bool {
+    a == b
+        || matches!(
+            (std::fs::canonicalize(a), std::fs::canonicalize(b)),
+            (Ok(a), Ok(b)) if a == b
+        )
+}
+
 fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skills {
     let with_scope =
         |files: Vec<PathBuf>, scope: Scope| files.into_iter().map(move |path| (path, scope));
-    let mut paths: Vec<(PathBuf, Scope)> = with_scope(
-        collect_skill_files(&cwd.join(".rust-claude").join("skills"), Mode::RustClaude),
-        Scope::Project,
-    )
-    .collect();
+    let project_dir = cwd.join(".rust-claude");
+    let mut paths: Vec<(PathBuf, Scope)> = Vec::new();
+    if !config_dir.is_some_and(|config_dir| same_dir(config_dir, &project_dir)) {
+        paths.extend(with_scope(
+            collect_skill_files(&project_dir.join("skills"), Mode::RustClaude),
+            Scope::Project,
+        ));
+    }
     let user_agents_dir = home.map(|home| home.join(".agents").join("skills"));
     for dir in ancestor_agents_skill_dirs(cwd) {
         if user_agents_dir.as_ref() != Some(&dir) {
@@ -554,6 +567,19 @@ mod tests {
             }]
         );
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn labels_skills_global_when_run_from_the_home_folder() {
+        let home = temp_dir("home-cwd");
+        write(
+            &home.join(".rust-claude/skills/alpha/SKILL.md"),
+            "---\ndescription: Alpha.\n---\n",
+        );
+        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &home);
+        let _ = std::fs::remove_dir_all(&home);
+        let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
+        assert_eq!(scopes, [Scope::Global]);
     }
 
     #[test]
