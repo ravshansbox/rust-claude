@@ -1,5 +1,5 @@
 use super::{
-    App, Picker, PickerKind, Role, display_model, status::format_context_use, time_ago,
+    Activity, App, Picker, PickerKind, Role, display_model, status::format_context_use, time_ago,
     worker::UiEvent,
 };
 use crate::{
@@ -40,7 +40,13 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {
-            if result.is_err() {
+            // Esc may come just as the reply finishes; it still keeps the
+            // queued prompts from being sent.
+            let cancelled = app.activity == Some(Activity::Cancelling);
+            if cancelled && result.is_ok() {
+                app.push(Role::Event, "cancelled");
+            }
+            if cancelled || result.is_err() {
                 app.restore_queued();
             }
             app.finish(result, |_, ()| {});
