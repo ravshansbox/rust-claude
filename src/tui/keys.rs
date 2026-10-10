@@ -4,7 +4,7 @@ use super::{
         next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
     },
 };
-use crate::{agent::THINKING_LEVELS, images::Image, skills};
+use crate::{agent::THINKING_LEVELS, images::Image, models, skills};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 
 pub(super) enum Action {
@@ -191,6 +191,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         (KeyCode::Esc, _) => return true,
         (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => return true,
         (KeyCode::BackTab, _) => app.cycle_thinking_level(),
+        (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
+            let model = models::next_known(&app.model);
+            app.set_model(model);
+            act(Action::SetModel(model.to_string()));
+        }
         (KeyCode::Up, _) if app.input.is_empty() || app.history_index.is_some() => {
             app.previous_prompt();
         }
@@ -612,6 +617,38 @@ mod tests {
         handle_input(control('r'), &mut app, |_| {});
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "elsewhere fix");
+    }
+
+    #[test]
+    fn ctrl_p_switches_between_the_latest_models() {
+        let mut app = new_app();
+        let mut switched = Vec::new();
+        for _ in 0..5 {
+            handle_input(
+                Event::Key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL)),
+                &mut app,
+                |action| {
+                    if let Action::SetModel(model) = action {
+                        switched.push(model);
+                    }
+                },
+            );
+        }
+        assert_eq!(
+            switched,
+            [
+                "claude-fable-5-1",
+                "claude-opus-5-5",
+                "claude-sonnet-5-5",
+                "claude-haiku-5-5",
+                "claude-fable-5-1",
+            ]
+        );
+        assert_eq!(app.model, "claude-fable-5-1");
+        let shown = screen(&mut app);
+        assert!(shown.contains("model: haiku-5-5"), "{shown}");
+        assert!(shown.contains("fable-5-1:medium"), "{shown}");
+        assert!(app.input.is_empty());
     }
 
     #[test]
