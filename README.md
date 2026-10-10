@@ -20,16 +20,16 @@ Command line:
 - `--config-dir <path>` to keep sign-in, settings, sessions and other files in another folder
 - Help with `-h` / `--help`
 
-Model and thinking:
+Model, effort and thinking:
 
 - `/model` picker with the latest model in each class available to your account: Fable, Opus, Sonnet and Haiku
 - `/model <id>`, which checks the id before switching
 - Ctrl+P to switch between the latest models: Fable, Opus, Sonnet, Haiku
 - Known context windows and output limits for the latest model in each class
-- Thinking levels with `/thinking`, `/thinking <level>` and Shift+Tab
+- Effort levels with `/effort`, `/effort <level>` and Shift+Tab
 - Thinking text shown in the conversation
-- Model and thinking level saved to `~/.rust-claude/settings.json`
-- `--model` and `--thinking` options for one run
+- Model and effort level saved to `~/.rust-claude/settings.json`
+- `--model` and `--effort` options for one run
 
 Sessions and context:
 
@@ -173,7 +173,7 @@ In print mode, tool calls go to standard error, with syntax highlighting when st
 
 Press Ctrl+C in print mode to stop. rust-claude stops running commands and MCP servers, saves the session with the prompt marked as cancelled, waits up to 5 seconds for a sign-in renewal in progress to be saved, prints `cancelled` to standard error and exits with status 130. Closing the terminal (SIGHUP) or `kill` (SIGTERM) stops it the same way, with status 129 or 143. In the interactive mode they quit as if you had pressed Ctrl+D, so running commands and MCP servers are stopped too. While rust-claude asks for the sign-in code or renews the sign-in at start, they stop it in both modes: it waits up to 5 seconds for the renewal to be saved, prints `cancelled` and exits with status 130, 129 or 143.
 
-Choose the model and thinking level for one run with `--model <id>` and `--thinking <level>`. See [Settings](#settings).
+Choose the model and effort level for one run with `--model <id>` and `--effort <level>`. See [Settings](#settings).
 
 Continue the latest session started in the current folder with `-c` or `--continue`. It works in the interface and in print mode:
 
@@ -211,13 +211,13 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/quit` | Quit |
 | `/resume` | Resume a previous session |
 | `/skill:name [request]` | Run a skill, with an optional request |
-| `/thinking [level]` | Select a thinking level |
+| `/effort [level]` | Select an effort level |
 
 Typing `/` lists the commands and skill commands that start with the input, in alphabetical order. A command typed out in full comes first. The list shows up to 10 at a time, and a longer list scrolls as you move through it, with a scrollbar on the right. Up on the first item moves to the last, and Down on the last moves to the first.
 
-An unknown command or thinking level shows an error and leaves the text in the input, so you can edit it.
+An unknown command or effort level shows an error and leaves the text in the input, so you can edit it.
 
-The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right. Esc or Ctrl+C closes a picker and keeps the text in the input.
+The `/resume`, `/model` and `/effort` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right. Esc or Ctrl+C closes a picker and keeps the text in the input.
 
 ## Files
 
@@ -240,7 +240,7 @@ In the interface, rust-claude saves each prompt you send, including `!` commands
 | Ctrl+D | Quit when input is empty |
 | Ctrl+V | Paste an image from the clipboard |
 | Ctrl+R | Search prompt history |
-| Shift+Tab | Cycle thinking level |
+| Shift+Tab | Cycle effort level |
 | Ctrl+P | Switch to the next model: Fable, Opus, Sonnet, Haiku |
 | Up / Down | Browse prompt history, move between input rows, or scroll |
 | Page Up / Page Down | Scroll by a page |
@@ -269,7 +269,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 ## Status line
 
-The status line is a single line below the input. It shows the folder and Git branch, the model and thinking level, context use, and token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps). A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`, or as a token count for a model with no known context window.
+The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, context use, and token use for the session: input (↑), output (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (tps). A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`, or as a token count for a model with no known context window.
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-claude loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 2h16m` or `7d 81% 2d12h`.
 
@@ -278,20 +278,20 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 | Setting | Option | `~/.rust-claude/settings.json` key | Default |
 | --- | --- | --- | --- |
 | Model | `--model <id>` | `model` | `claude-opus-5-5` |
-| Thinking level | `--thinking <level>` | `thinking_level` | `medium` |
+| Effort level | `--effort <level>` | `effort` | `medium` |
 | Check for updates | | `check_for_updates` | `true` |
 
-Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
+Effort levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
-rust-claude knows only the latest model in each class: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 4](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)). Every model uses adaptive thinking, with the level sent as the effort.
+rust-claude knows only the latest model in each class: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 4](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)). Every model uses adaptive thinking, and the effort level controls how much work Claude puts into each reply, thinking included. rust-claude no longer reads the old `thinking_level` key.
 
 Each reply from a known model may use up to 128,000 tokens. Other models get 8,192 tokens, and context use shows as a token count.
 
 Options take priority over the settings file and apply to that run only. They work in the interface and in print mode. rust-claude does not check the `--model` id, so an unknown id fails on the first request.
 
-An unknown thinking level prints a warning to standard error and uses `medium`.
+An unknown effort level prints a warning to standard error and uses `medium`.
 
-Changing the model or thinking level in the interface saves only the setting you changed. If `settings.json` is not valid JSON, rust-claude uses the defaults, and changing a setting shows an error instead of replacing the file, so fix or delete it first.
+Changing the model or effort level in the interface saves only the setting you changed. If `settings.json` is not valid JSON, rust-claude uses the defaults, and changing a setting shows an error instead of replacing the file, so fix or delete it first.
 
 ## Instructions
 

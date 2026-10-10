@@ -20,17 +20,17 @@ use std::{io::IsTerminal, time::Duration};
 use anyhow::{Context, Result, bail};
 use tokio::signal::unix::{Signal, SignalKind, signal};
 
-const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--image <path>]...]";
+const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--thinking <level>] [-p|--print <prompt> [--image <path>]...]
+usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]
 
 Options:
   -c, --continue           Continue the latest session in the current folder
       --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-claude
       --model <id>         Model to use
-      --thinking <level>   Thinking level: low, medium, high, xhigh, max
+      --effort <level>     Effort level: low, medium, high, xhigh, max
   -p, --print <prompt>     Run one prompt and print the answer
       --image <path>       Send an image with the prompt in print mode. Repeat for more images
   -h, --help               Show this help";
@@ -45,7 +45,7 @@ enum Command {
 #[derive(Debug, Default, PartialEq)]
 struct Options {
     model: Option<String>,
-    thinking_level: Option<String>,
+    effort: Option<String>,
     continue_session: bool,
     config_dir: Option<String>,
 }
@@ -76,7 +76,7 @@ fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
         match argument.as_str() {
             "--image" => images.push(arguments.next().context(USAGE)?),
             "--model" => set_value(&mut options.model, &mut arguments)?,
-            "--thinking" => set_value(&mut options.thinking_level, &mut arguments)?,
+            "--effort" => set_value(&mut options.effort, &mut arguments)?,
             "--config-dir" => {
                 set_value(&mut options.config_dir, &mut arguments)?;
                 // An empty folder, such as an unset variable, would put the
@@ -170,18 +170,18 @@ async fn run() -> Result<()> {
         .model
         .or(settings.model)
         .unwrap_or_else(|| "claude-opus-5-5".into());
-    let thinking_level = options.thinking_level.or(settings.thinking_level);
+    let effort = options.effort.or(settings.effort);
     let mut agent = agent::Agent::new(http, credentials, model)?;
     if let Some(id) = resume_id {
         agent.resume(&id)?;
     }
-    if let Some(name) = thinking_level {
-        match agent::THINKING_LEVELS.iter().find(|level| **level == name) {
-            Some(level) => agent.thinking_level = level,
+    if let Some(name) = effort {
+        match agent::EFFORT_LEVELS.iter().find(|level| **level == name) {
+            Some(level) => agent.effort = level,
             None => eprintln!(
-                "unknown thinking level: {name} (options: {}), using {}",
-                agent::THINKING_LEVELS.join(", "),
-                agent::DEFAULT_THINKING_LEVEL
+                "unknown effort level: {name} (options: {}), using {}",
+                agent::EFFORT_LEVELS.join(", "),
+                agent::DEFAULT_EFFORT
             ),
         }
     }
@@ -309,6 +309,7 @@ mod tests {
         assert_eq!(parse(&["-p", "hello", "--image"]), None);
         assert_eq!(parse(&["--help", "--model", "x"]), None);
         assert_eq!(parse(&["--model"]), None);
+        assert_eq!(parse(&["--thinking", "high"]), None);
     }
 
     #[test]
@@ -358,21 +359,21 @@ mod tests {
     }
 
     #[test]
-    fn parses_model_and_thinking_options() {
+    fn parses_model_and_effort_options() {
         assert_eq!(
-            parse_with_options(&["--model", "claude-x", "--thinking", "high"]),
+            parse_with_options(&["--model", "claude-x", "--effort", "high"]),
             Some((
                 Command::Interactive,
                 Options {
                     model: Some("claude-x".into()),
-                    thinking_level: Some("high".into()),
+                    effort: Some("high".into()),
                     continue_session: false,
                     config_dir: None,
                 }
             ))
         );
         assert_eq!(
-            parse_with_options(&["-p", "hello", "--thinking", "low"]),
+            parse_with_options(&["-p", "hello", "--effort", "low"]),
             Some((
                 Command::Print {
                     prompt: "hello".into(),
@@ -380,7 +381,7 @@ mod tests {
                 },
                 Options {
                     model: None,
-                    thinking_level: Some("low".into()),
+                    effort: Some("low".into()),
                     continue_session: false,
                     config_dir: None,
                 }

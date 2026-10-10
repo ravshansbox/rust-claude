@@ -7,7 +7,7 @@ pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/mcp", "sign in to or out of an MCP server"),
     ("/resume", "resume a previous session"),
     ("/model", "select model"),
-    ("/thinking", "select thinking level"),
+    ("/effort", "select effort level"),
     ("/quit", "quit"),
 ];
 

@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
     pub model: Option<String>,
-    pub thinking_level: Option<String>,
+    pub effort: Option<String>,
     pub check_for_updates: Option<bool>,
 }
 
@@ -70,15 +70,12 @@ mod tests {
     fn keeps_the_other_setting_when_one_changes() {
         let path = settings_file("keep");
         update_file(&path, |settings| settings.model = Some("opus".into())).unwrap();
-        update_file(&path, |settings| {
-            settings.thinking_level = Some("high".into())
-        })
-        .unwrap();
+        update_file(&path, |settings| settings.effort = Some("high".into())).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         let saved: serde_json::Value = serde_json::from_str(&text).unwrap();
         assert_eq!(saved["model"], "opus");
-        assert_eq!(saved["thinking_level"], "high");
+        assert_eq!(saved["effort"], "high");
     }
 
     #[test]
@@ -87,9 +84,7 @@ mod tests {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let broken = "{ \"model\": \"opus\", }";
         std::fs::write(&path, broken).unwrap();
-        let result = update_file(&path, |settings| {
-            settings.thinking_level = Some("high".into())
-        });
+        let result = update_file(&path, |settings| settings.effort = Some("high".into()));
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         let error = format!("{:#}", result.unwrap_err());

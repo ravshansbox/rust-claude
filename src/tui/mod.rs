@@ -262,7 +262,7 @@ async fn run_loop(
     agent: Agent,
     mut stop: StopSignals,
 ) -> Result<()> {
-    let mut app = App::new(&agent.model, agent.thinking_level, agent.stats());
+    let mut app = App::new(&agent.model, agent.effort, agent.stats());
     for instructions in &agent.instructions {
         app.push(Role::Event, format!("loaded {}", instructions.label));
     }
@@ -331,7 +331,7 @@ async fn run_loop(
     spinner.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut dirty = true;
     let mut saved_model = app.model.clone();
-    let mut saved_thinking_level = app.thinking_level;
+    let mut saved_effort = app.effort;
 
     let mut worker_stopped = false;
     let result = loop {
@@ -368,8 +368,8 @@ async fn run_loop(
                 };
                 dirty |= may_change_screen(&event);
                 let quit = handle_input(event, &mut app, |action| match action {
-                    Action::Submit(prompt, images, thinking_level) => {
-                        let _ = request_tx.send(Request::Prompt(prompt, images, thinking_level));
+                    Action::Submit(prompt, images, effort) => {
+                        let _ = request_tx.send(Request::Prompt(prompt, images, effort));
                     }
                     Action::Shell(command) => {
                         let _ = request_tx.send(Request::Shell(command));
@@ -382,8 +382,8 @@ async fn run_loop(
                             let _ = events.send(UiEvent::ImagePasted(result));
                         });
                     }
-                    Action::Compact(thinking_level) => {
-                        let _ = request_tx.send(Request::Compact(thinking_level));
+                    Action::Compact(effort) => {
+                        let _ = request_tx.send(Request::Compact(effort));
                     }
                     Action::Context => {
                         let _ = request_tx.send(Request::Context);
@@ -427,7 +427,7 @@ async fn run_loop(
                         let _ = copy_to_clipboard(terminal.backend_mut(), &text);
                     }
                 });
-                save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
+                save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
                 if quit {
                     break Ok(());
                 }
@@ -442,9 +442,9 @@ async fn run_loop(
                 if !app.busy()
                     && let Some((prompt, images)) = app.send_queued()
                 {
-                    let _ = request_tx.send(Request::Prompt(prompt, images, app.thinking_level));
+                    let _ = request_tx.send(Request::Prompt(prompt, images, app.effort));
                 }
-                save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
+                save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
             }
         }
         if let Some(generation) = app.start_listing_files() {
@@ -467,25 +467,20 @@ async fn run_loop(
     result
 }
 
-fn save_changed_settings(
-    app: &mut App,
-    saved_model: &mut String,
-    saved_thinking_level: &mut &'static str,
-) {
-    if app.model == *saved_model && app.thinking_level == *saved_thinking_level {
+fn save_changed_settings(app: &mut App, saved_model: &mut String, saved_effort: &mut &'static str) {
+    if app.model == *saved_model && app.effort == *saved_effort {
         return;
     }
     let model = (app.model != *saved_model).then(|| app.model.clone());
-    let thinking_level =
-        (app.thinking_level != *saved_thinking_level).then_some(app.thinking_level);
+    let effort = (app.effort != *saved_effort).then_some(app.effort);
     saved_model.clone_from(&app.model);
-    *saved_thinking_level = app.thinking_level;
+    *saved_effort = app.effort;
     let saved = Settings::update(|settings| {
         if let Some(model) = model {
             settings.model = Some(model);
         }
-        if let Some(thinking_level) = thinking_level {
-            settings.thinking_level = Some(thinking_level.to_string());
+        if let Some(effort) = effort {
+            settings.effort = Some(effort.to_string());
         }
     });
     if let Err(error) = saved {

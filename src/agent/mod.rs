@@ -37,8 +37,8 @@ use usage::{cache_hit_rate, fetch_quota, tokens_per_second, total_usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
 
-pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
-pub const DEFAULT_THINKING_LEVEL: &str = "medium";
+pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+pub const DEFAULT_EFFORT: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
 const COMPACT_AT_PERCENT: u64 = 80;
 /// How many characters of each tool output to keep, in turn, when the
@@ -127,7 +127,7 @@ pub struct Agent {
     pub(crate) api_base: String,
     credentials: Credentials,
     pub model: String,
-    pub thinking_level: &'static str,
+    pub effort: &'static str,
     messages: Vec<Value>,
     pending_usage: Usage,
     /// Results of the tool calls in the current round that have finished.
@@ -148,7 +148,7 @@ impl Agent {
             api_base: API_BASE.into(),
             credentials,
             model,
-            thinking_level: DEFAULT_THINKING_LEVEL,
+            effort: DEFAULT_EFFORT,
             messages: Vec::new(),
             pending_usage: Usage::default(),
             tool_results: Vec::new(),
