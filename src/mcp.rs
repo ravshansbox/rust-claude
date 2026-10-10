@@ -25,6 +25,7 @@ use crate::{
 const PROTOCOL_VERSION: &str = "2025-06-18";
 const DEFAULT_TIMEOUT: u64 = 60;
 const STDERR_TAIL: usize = 4_000;
+const MAX_LINE: usize = 32 << 20;
 const MAX_TOOL_NAME: usize = 64;
 
 #[derive(Deserialize)]
@@ -195,9 +196,25 @@ async fn read_messages(
     let mut line = Vec::new();
     loop {
         line.clear();
-        match stdout.read_until(b'\n', &mut line).await {
+        match (&mut stdout)
+            .take(MAX_LINE as u64 + 1)
+            .read_until(b'\n', &mut line)
+            .await
+        {
             Ok(0) | Err(_) => break,
             Ok(_) => {}
+        }
+        if line.len() > MAX_LINE {
+            let error = format!(
+                "server sent a line longer than {} MiB; closed the connection",
+                MAX_LINE >> 20
+            );
+            if let Ok(mut senders) = pending.senders.lock() {
+                for (_, sender) in senders.drain() {
+                    let _ = sender.send(Err(error.clone()));
+                }
+            }
+            break;
         }
         let Ok(message) = serde_json::from_slice::<Value>(&line) else {
             continue;
@@ -962,6 +979,28 @@ done
         assert_eq!(
             Mcp::default().add(started),
             ["MCP server test failed: tools/list repeated the cursor \"again\""]
+        );
+    }
+
+    #[tokio::test]
+    async fn fails_calls_when_the_server_sends_a_line_that_is_too_long() {
+        let mut config = server_answering_calls_with(&format!(
+            "head -c {} /dev/zero | tr '\\0' a; sleep 60",
+            MAX_LINE + 1
+        ));
+        config.timeout = Some(30);
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        let call = tokio::time::timeout(
+            Duration::from_secs(20),
+            mcp.call("mcp__test__echo", &json!({})),
+        )
+        .await;
+        assert_eq!(
+            call.ok(),
+            Some(Some(Err(
+                "server sent a line longer than 32 MiB; closed the connection".into()
+            )))
         );
     }
 }
