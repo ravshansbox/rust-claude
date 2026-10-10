@@ -14,7 +14,7 @@ mod skills;
 mod tools;
 mod tui;
 
-use std::io::IsTerminal;
+use std::{io::IsTerminal, time::Duration};
 
 use anyhow::{Context, Result, bail};
 use tokio::signal::unix::{Signal, SignalKind, signal};
@@ -92,8 +92,20 @@ fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
     Ok((command, options))
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+/// How long quitting waits for background jobs such as listing files for
+/// `@`, reading the Git branch or reading the clipboard. Their results are
+/// only shown in the interface, so a slow one should not hold up quitting,
+/// but a file write cut short by quitting still gets a moment to finish.
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
+
+fn main() -> Result<()> {
+    let runtime = tokio::runtime::Runtime::new()?;
+    let result = runtime.block_on(run());
+    runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
+    result
+}
+
+async fn run() -> Result<()> {
     let arguments = std::env::args_os()
         .skip(1)
         .map(|argument| {
