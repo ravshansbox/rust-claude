@@ -205,16 +205,16 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 
 | Command | Action |
 | --- | --- |
-| `/new` | Start a new session |
-| `/resume` | Resume a previous session |
 | `/compact` | Summarise the conversation to free context |
 | `/context` | Show what fills the context |
 | `/model [id]` | Select a model. The picker shows the latest model in each class. An id must be in the list of available models |
-| `/thinking [level]` | Select a thinking level |
-| `/skill:name [request]` | Run a skill, with an optional request |
+| `/new` | Start a new session |
 | `/quit` | Quit |
+| `/resume` | Resume a previous session |
+| `/skill:name [request]` | Run a skill, with an optional request |
+| `/thinking [level]` | Select a thinking level |
 
-Typing `/` lists the commands and skill commands that start with the input. The list shows up to 10 at a time, and a longer list scrolls as you move through it, with a scrollbar on the right.
+Typing `/` lists the commands and skill commands that start with the input, in alphabetical order. A command typed out in full comes first. The list shows up to 10 at a time, and a longer list scrolls as you move through it, with a scrollbar on the right. Up on the first item moves to the last, and Down on the last moves to the first.
 
 An unknown command or thinking level shows an error and leaves the text in the input, so you can edit it.
 
