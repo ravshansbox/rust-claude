@@ -167,8 +167,8 @@ impl Agent {
         self.messages.len()
     }
 
-    pub fn take_renewed(&mut self) -> bool {
-        self.credentials.take_renewed()
+    pub fn take_renewal_notice(&mut self) -> Option<String> {
+        self.credentials.take_renewal_notice()
     }
 
     pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {

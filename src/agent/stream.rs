@@ -27,8 +27,8 @@ impl Agent {
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Response> {
         let token = self.credentials.access_token(&self.http).await?;
-        if self.credentials.take_renewed() {
-            on_event(AgentEvent::Notice("renewed sign-in token".into()));
+        if let Some(notice) = self.credentials.take_renewal_notice() {
+            on_event(AgentEvent::Notice(notice));
         }
         let mut system = self.system_prompt();
         if let Some(last) = system.last_mut() {

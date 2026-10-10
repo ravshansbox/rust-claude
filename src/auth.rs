@@ -21,8 +21,9 @@ pub struct Credentials {
     access: String,
     refresh: String,
     expires: u128,
+    /// What to tell the user about the last renewal, until it is shown.
     #[serde(skip)]
-    renewed: bool,
+    renewal_notice: Option<String>,
 }
 
 fn credentials_path() -> Result<PathBuf> {
@@ -86,7 +87,14 @@ impl Credentials {
             }),
         )
         .await?;
-        credentials.renewed = true;
+        // The endpoint has spent our refresh token, so keep the new pair even
+        // when auth.json cannot take it.
+        credentials.renewal_notice = Some(match credentials.save() {
+            Ok(()) => "renewed sign-in token".into(),
+            Err(error) => {
+                format!("renewed sign-in token, but could not save it to auth.json: {error:#}")
+            }
+        });
         Ok(credentials)
     }
 
@@ -118,8 +126,8 @@ impl Credentials {
         }
     }
 
-    pub fn take_renewed(&mut self) -> bool {
-        std::mem::take(&mut self.renewed)
+    pub fn take_renewal_notice(&mut self) -> Option<String> {
+        self.renewal_notice.take()
     }
 
     /// Saves auth.json atomically, so readers never see a half-written file
@@ -159,7 +167,7 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
 
     let code = parse_pasted_code(&input, &state)?;
 
-    request_tokens(
+    let credentials = request_tokens(
         http,
         json!({
             "grant_type": "authorization_code",
@@ -170,7 +178,9 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
             "code_verifier": verifier,
         }),
     )
-    .await
+    .await?;
+    credentials.save()?;
+    Ok(credentials)
 }
 
 fn random_token() -> Result<String> {
@@ -192,8 +202,17 @@ fn parse_pasted_code<'a>(input: &'a str, expected_state: &str) -> Result<&'a str
     Ok(code)
 }
 
+/// Where token requests go; tests answer them locally.
+async fn token_url() -> String {
+    #[cfg(test)]
+    if let Some(url) = tests::TOKEN_URL.lock().await.clone() {
+        return url;
+    }
+    TOKEN_URL.into()
+}
+
 async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentials> {
-    let response = http.post(TOKEN_URL).json(&body).send().await?;
+    let response = http.post(token_url().await).json(&body).send().await?;
     let status = response.status();
     let text = response.text().await?;
     if !status.is_success() {
@@ -211,25 +230,150 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
             .into(),
         expires: now_millis() + data["expires_in"].as_u64().unwrap_or(0) as u128 * 1000
             - 5 * 60 * 1000,
-        renewed: false,
+        renewal_notice: None,
     };
-    credentials.save()?;
     Ok(credentials)
 }
 
 #[cfg(test)]
 mod tests {
     use super::{Credentials, credentials_path, parse_pasted_code};
-    use serde_json::json;
+    use serde_json::{Value, json};
+    use std::sync::Arc;
+    use tokio::{
+        io::{AsyncReadExt, AsyncWriteExt},
+        net::{TcpListener, TcpStream},
+        sync::{Mutex, Notify},
+    };
 
     /// Tests share one auth.json, so they take turns.
-    static AUTH_FILE: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+    static AUTH_FILE: Mutex<()> = Mutex::const_new(());
+
+    /// Where the running test answers token requests.
+    pub(super) static TOKEN_URL: Mutex<Option<String>> = Mutex::const_new(None);
 
     fn unreachable_client() -> reqwest::Client {
         reqwest::Client::builder()
             .proxy(reqwest::Proxy::all("http://127.0.0.1:1").unwrap())
             .build()
             .unwrap()
+    }
+
+    /// A local stand-in for the token endpoint. Like the real one, it accepts
+    /// only the refresh token it issued last, once, and answers with a new
+    /// pair.
+    struct TokenEndpoint {
+        /// The refresh tokens sent to it.
+        received: Arc<Mutex<Vec<String>>>,
+        /// Signalled when a request arrives.
+        arrived: Arc<Notify>,
+        /// Lets a held reply go, when the endpoint is slow.
+        release: Arc<Notify>,
+    }
+
+    impl TokenEndpoint {
+        async fn start(refresh: &str, slow: bool) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            *TOKEN_URL.lock().await = Some(format!(
+                "http://{}/v1/oauth/token",
+                listener.local_addr().unwrap()
+            ));
+            let endpoint = Self {
+                received: Arc::default(),
+                arrived: Arc::default(),
+                release: Arc::default(),
+            };
+            let valid = Arc::new(Mutex::new(refresh.to_string()));
+            let (received, arrived, release) = (
+                endpoint.received.clone(),
+                endpoint.arrived.clone(),
+                endpoint.release.clone(),
+            );
+            tokio::spawn(async move {
+                while let Ok((mut stream, _)) = listener.accept().await {
+                    let (received, arrived, release, valid) = (
+                        received.clone(),
+                        arrived.clone(),
+                        release.clone(),
+                        valid.clone(),
+                    );
+                    tokio::spawn(async move {
+                        let body = read_body(&mut stream).await;
+                        let token = body["refresh_token"].as_str().unwrap_or_default();
+                        received.lock().await.push(token.to_string());
+                        arrived.notify_one();
+                        if slow {
+                            release.notified().await;
+                        }
+                        let reply = {
+                            let mut valid = valid.lock().await;
+                            (token == *valid).then(|| {
+                                *valid = format!("{token}+");
+                                json!({
+                                    "access_token": format!("access from {token}"),
+                                    "refresh_token": *valid,
+                                    "expires_in": 3600,
+                                })
+                            })
+                        };
+                        let (status, body) = match reply {
+                            Some(body) => ("200 OK", body),
+                            None => ("400 Bad Request", json!({ "error": "invalid_grant" })),
+                        };
+                        let body = body.to_string();
+                        let response = format!(
+                            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                            body.len()
+                        );
+                        let _ = stream.write_all(response.as_bytes()).await;
+                    });
+                }
+            });
+            endpoint
+        }
+    }
+
+    async fn read_body(stream: &mut TcpStream) -> Value {
+        let mut data = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            if let Some(end) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+                let headers = String::from_utf8_lossy(&data[..end]).to_lowercase();
+                let length: usize = headers
+                    .lines()
+                    .find_map(|line| line.strip_prefix("content-length:"))
+                    .and_then(|value| value.trim().parse().ok())
+                    .unwrap_or(0);
+                if data.len() >= end + 4 + length {
+                    return serde_json::from_slice(&data[end + 4..]).unwrap_or(Value::Null);
+                }
+            }
+            match stream.read(&mut chunk).await {
+                Ok(0) | Err(_) => return Value::Null,
+                Ok(read) => data.extend_from_slice(&chunk[..read]),
+            }
+        }
+    }
+
+    fn expired(refresh: &str) -> Credentials {
+        serde_json::from_value(json!({ "access": "old", "refresh": refresh, "expires": 0 }))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    async fn keeps_a_renewed_sign_in_that_could_not_be_saved() {
+        let _lock = AUTH_FILE.lock().await;
+        let _endpoint = TokenEndpoint::start("first", false).await;
+        let path = credentials_path().unwrap();
+        // A folder in the way of auth.json makes saving fail.
+        std::fs::create_dir_all(&path).unwrap();
+        let mut credentials = expired("first");
+        let token = credentials.access_token(&reqwest::Client::new()).await;
+        let notice = credentials.take_renewal_notice();
+        let _ = std::fs::remove_dir_all(&path);
+        assert_eq!(token.unwrap(), "access from first");
+        let notice = notice.unwrap();
+        assert!(notice.contains("could not save"), "{notice}");
     }
 
     #[tokio::test]
