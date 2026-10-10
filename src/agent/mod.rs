@@ -556,10 +556,13 @@ impl Agent {
             }));
             self.pending_usage = Usage::default();
             on_event(AgentEvent::Stats(self.stats()));
-            if stop_reason == "max_tokens" {
-                on_event(AgentEvent::Notice(
-                    "reply cut off: max_tokens reached".into(),
-                ));
+            let cut_off = match stop_reason.as_str() {
+                "max_tokens" => Some("max_tokens reached"),
+                "model_context_window_exceeded" => Some("the context window is full"),
+                _ => None,
+            };
+            if let Some(cause) = cut_off {
+                on_event(AgentEvent::Notice(format!("reply cut off: {cause}")));
             }
             if stop_reason != "tool_use" {
                 return Ok(());
@@ -638,7 +641,7 @@ mod tests {
 
     use super::{
         AgentEvent, Queued, cancel_point, http_client_with, parse_shell_message, shell_message,
-        test_support::{self, MockApi, Reply, text_reply, tool_reply},
+        test_support::{self, MockApi, Reply, stopped_reply, text_reply, tool_reply},
     };
 
     #[tokio::test]
@@ -662,6 +665,30 @@ mod tests {
         assert_eq!(text, "hello");
         assert_eq!(api.requests().await.len(), 2);
         assert!(notices.iter().any(|notice| notice.contains("retrying in")));
+    }
+
+    #[tokio::test]
+    async fn says_when_a_reply_stopped_because_the_context_window_filled_up() {
+        let api = MockApi::start(vec![stopped_reply(
+            "the start of",
+            "model_context_window_exceeded",
+        )])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut notices = Vec::new();
+        let result = agent
+            .prompt("hi", &[], |event| {
+                if let AgentEvent::Notice(notice) = event {
+                    notices.push(notice);
+                }
+            })
+            .await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert_eq!(
+            notices,
+            vec!["reply cut off: the context window is full".to_string()]
+        );
     }
 
     #[tokio::test]
