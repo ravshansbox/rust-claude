@@ -1,5 +1,5 @@
+use ratatui::buffer::CellWidth;
 use unicode_segmentation::UnicodeSegmentation;
-use unicode_width::UnicodeWidthStr;
 
 const TAB: &str = "    ";
 
@@ -15,8 +15,10 @@ fn shown(grapheme: &str) -> &str {
     }
 }
 
+/// Width as ratatui draws it, which gives halfwidth katakana sound marks
+/// their own cell.
 fn shown_width(grapheme: &str) -> usize {
-    shown(grapheme).width()
+    usize::from(shown(grapheme).cell_width())
 }
 
 /// Text with each tab shown as spaces, as in the input box, since ratatui
@@ -196,6 +198,14 @@ mod tests {
         assert_eq!(input_rows("abcd", 4), vec!["abcd", ""]);
         assert_eq!(input_rows("", 4), vec![""]);
         assert_eq!(input_rows("ab\ncd\n", 4), vec!["ab", "cd", ""]);
+    }
+
+    #[test]
+    fn measures_halfwidth_sound_marks_as_drawn() {
+        // ratatui draws the halfwidth sound mark in "ｶﾞ" in its own cell.
+        assert_eq!(input_rows("ｶﾞｶﾞｶﾞ", 4), vec!["ｶﾞｶﾞ", "ｶﾞ"]);
+        assert_eq!(input_cursor("ｶﾞx", "ｶﾞ".len(), 10), (0, 2));
+        assert_eq!(row_below("ｶﾞｶﾞ\nabcd", "ｶﾞ".len(), 10), Some("ｶﾞｶﾞ\nab".len()));
     }
 
     #[test]

@@ -22,7 +22,6 @@ terminal-colorsaurus = "1.0.3"
 tokio = { version = "1", features = ["full"] }
 tui-markdown = "0.3.10"
 unicode-segmentation = "1.13.3"
-unicode-width = "0.2"
 yaml_serde = "0.10.7"
 
 [target.'cfg(unix)'.dependencies]
