@@ -146,6 +146,16 @@ async fn run() -> Result<()> {
         })
         .collect::<Result<Vec<_>>>()?;
 
+    // Look the session up before signing in, so a missing one is reported
+    // without asking to sign in first.
+    let resume_id = if options.continue_session {
+        Some(
+            session::Session::latest_in_current_folder()?
+                .context("no session to continue in this folder")?,
+        )
+    } else {
+        None
+    };
     let http = agent::http_client()?;
     let credentials = auth::Credentials::load_or_login(&http).await?;
     let settings = settings::Settings::load();
@@ -155,9 +165,7 @@ async fn run() -> Result<()> {
         .unwrap_or_else(|| "claude-opus-5-5".into());
     let thinking_level = options.thinking_level.or(settings.thinking_level);
     let mut agent = agent::Agent::new(http, credentials, model)?;
-    if options.continue_session {
-        let id = session::Session::latest_in_current_folder()?
-            .context("no session to continue in this folder")?;
+    if let Some(id) = resume_id {
         agent.resume(&id)?;
     }
     if let Some(name) = thinking_level {
