@@ -331,6 +331,8 @@ A request counts as a connection error when it cannot connect within 30 seconds,
 
 Renewing the sign-in before a request is retried the same way when it fails for any reason other than the server turning the sign-in down.
 
+If the API turns the sign-in down before it expires, for example because it was revoked, rust-claude renews it and sends the request once more. If the server also turns the renewal down, the prompt fails with an error that asks you to restart rust-claude, and the next start asks you to sign in again.
+
 ## Images
 
 Press Ctrl+V to paste an image from the clipboard. It adds a marker such as `[image 1]` at the cursor. Only images whose marker is still in the prompt are sent, so deleting the marker removes the image. On macOS, rust-claude reads the clipboard with `osascript`. On Linux, it uses `wl-paste` under Wayland and `xclip` otherwise. If one of these does not answer within 5 seconds, rust-claude stops it and shows an error.

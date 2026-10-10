@@ -105,7 +105,7 @@ impl Credentials {
         let mut credentials: Self =
             serde_json::from_str(text).map_err(|error| Unusable(error.to_string()))?;
         if now_millis() >= credentials.expires {
-            credentials.renew(http).await?;
+            credentials.renew(http, None).await?;
         }
         Ok(credentials)
     }
@@ -113,17 +113,24 @@ impl Credentials {
     /// Renews the tokens in their own task, so a cancelled prompt or start-up
     /// request cannot drop the new tokens after the endpoint has spent ours.
     /// Running copies take turns, and each first uses what the one before it
-    /// saved: its new refresh token replaces ours.
-    async fn renew(&mut self, http: &reqwest::Client) -> Result<()> {
+    /// saved: its new refresh token replaces ours. Tokens count as usable
+    /// until they expire or until the API has turned down `rejected`, the
+    /// access token they hold.
+    async fn renew(&mut self, http: &reqwest::Client, rejected: Option<&str>) -> Result<()> {
         let http = http.clone();
+        let rejected = rejected.map(str::to_string);
         let mut credentials = self.clone();
         *self = tokio::spawn(async move {
+            let usable = |credentials: &Self| {
+                now_millis() < credentials.expires
+                    && rejected.as_deref() != Some(credentials.access.as_str())
+            };
             let _renewing = RENEWING.read().await;
             // Without the lock, renewing still works; copies just may not
             // take turns.
             let _lock = lock_credentials().await.ok();
             credentials.adopt_saved();
-            if now_millis() < credentials.expires {
+            if usable(&credentials) {
                 return Ok(credentials);
             }
             match credentials.refresh(&http).await {
@@ -132,11 +139,17 @@ impl Credentials {
                 // the tokens meanwhile, spending the refresh token we hold.
                 Err(error) => {
                     credentials.adopt_saved();
-                    if now_millis() < credentials.expires {
-                        Ok(credentials)
-                    } else {
-                        Err(error)
+                    if usable(&credentials) {
+                        return Ok(credentials);
                     }
+                    // Turned-down tokens that cannot be renewed would still
+                    // look usable to the next start until they expire, so
+                    // mark them expired: it then renews them or signs in.
+                    if rejected.is_some() && error.is::<Unusable>() {
+                        credentials.expires = 0;
+                        let _ = credentials.save();
+                    }
+                    Err(error)
                 }
             }
         })
@@ -173,10 +186,27 @@ impl Credentials {
         if now_millis() < self.expires {
             return Ok(self.access.clone());
         }
-        match self.renew(http).await {
+        let renewed = self.renew(http, None).await;
+        self.renewed_token(renewed, "sign-in expired")
+    }
+
+    /// Renews the tokens after the API turned down `rejected`, the access
+    /// token sent, unless another renewal has replaced it since. Failures
+    /// are reported like those of `access_token`.
+    pub async fn renew_rejected(
+        &mut self,
+        http: &reqwest::Client,
+        rejected: &str,
+    ) -> Result<String> {
+        let renewed = self.renew(http, Some(rejected)).await;
+        self.renewed_token(renewed, "sign-in turned down")
+    }
+
+    fn renewed_token(&self, renewed: Result<()>, problem: &str) -> Result<String> {
+        match renewed {
             Ok(()) => Ok(self.access.clone()),
             Err(error) if error.is::<Unusable>() => {
-                Err(error.context("sign-in expired: restart rust-claude to sign in again"))
+                Err(error.context(format!("{problem}: restart rust-claude to sign in again")))
             }
             Err(error) => Err(crate::agent::retry::retryable(
                 format!("could not renew the sign-in: {error:#}"),
@@ -339,7 +369,11 @@ async fn request_tokens(
 #[cfg(test)]
 mod tests {
     use super::{Credentials, credentials_path, exchange_code, finish_renewal, parse_pasted_code};
-    use crate::agent::retry::retry_delay;
+    use crate::agent::{
+        AgentEvent,
+        retry::retry_delay,
+        test_support::{self, MockApi, Reply, text_reply},
+    };
     use serde_json::{Value, json};
     use std::sync::Arc;
     use tokio::{
@@ -663,6 +697,87 @@ mod tests {
         let _ = prompt.await;
         let _ = std::fs::remove_file(&path);
         assert!(waited.is_ok(), "kept waiting for the renewal");
+    }
+
+    #[tokio::test]
+    async fn renews_a_sign_in_the_api_turned_down_and_sends_the_request_again() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("refresh", false).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut text = String::new();
+        let result = agent
+            .prompt("hi", &[], |event| {
+                if let AgentEvent::Text(delta) = event {
+                    text.push_str(&delta);
+                }
+            })
+            .await;
+        test_support::remove_session(&agent);
+        let _ = std::fs::remove_file(&path);
+        result.unwrap();
+        assert_eq!(text, "hello");
+        assert_eq!(*endpoint.received.lock().await, ["refresh"]);
+        let headers = api.headers().await;
+        assert_eq!(headers.len(), 2);
+        assert!(
+            headers[1].contains("authorization: bearer access from refresh"),
+            "{}",
+            headers[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn uses_a_sign_in_another_instance_renewed_after_the_api_turned_ours_down() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("refresh", false).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_001u64 })
+                .to_string(),
+        )
+        .unwrap();
+        let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let result = agent.prompt("hi", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        let _ = std::fs::remove_file(&path);
+        result.unwrap();
+        assert!(endpoint.received.lock().await.is_empty());
+        let headers = api.headers().await;
+        assert_eq!(headers.len(), 2);
+        assert!(
+            headers[1].contains("authorization: bearer renewed"),
+            "{}",
+            headers[1]
+        );
+    }
+
+    #[tokio::test]
+    async fn asks_to_sign_in_again_when_a_sign_in_the_api_turned_down_cannot_be_renewed() {
+        let _lock = AUTH_FILE.lock().await;
+        let _endpoint = TokenEndpoint::start("other", false).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let result = agent.prompt("hi", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        // The next start reads what was saved and, unable to renew it, signs
+        // in again instead of sending the turned-down token.
+        let saved = std::fs::read_to_string(&path).unwrap_or_default();
+        let next_start = Credentials::load_and_refresh(&saved, &reqwest::Client::new()).await;
+        let _ = std::fs::remove_file(&path);
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("sign in again"), "{error}");
+        assert_eq!(api.requests().await.len(), 1);
+        assert!(next_start.is_err_and(|error| error.is::<super::Unusable>()));
     }
 
     #[tokio::test]
