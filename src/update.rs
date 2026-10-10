@@ -1,14 +1,10 @@
-use std::{
-    path::{Path, PathBuf},
-    time::{Duration, SystemTime},
-};
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
 pub const RELEASES_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-claude/releases/latest";
-const CHECK_INTERVAL: Duration = Duration::from_secs(60 * 60);
 const ASSET: &str = "rust-claude.zip";
 static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -54,7 +50,6 @@ pub struct Updater {
     pub http: reqwest::Client,
     pub releases_url: String,
     pub current_version: &'static str,
-    pub stamp: PathBuf,
     pub cargo: Option<PathBuf>,
 }
 
@@ -73,20 +68,18 @@ impl Updater {
             http: reqwest::Client::new(),
             releases_url: RELEASES_URL.into(),
             current_version: env!("CARGO_PKG_VERSION"),
-            stamp: crate::config::dir()?.join("update-check"),
             cargo: find_on_path("cargo", std::env::var_os("PATH")),
         })
     }
 
-    /// Checks for a newer release at most once an hour, and builds and
+    /// Checks for a newer release on every launch, and builds and
     /// installs it with cargo. Builds from `main`, at version 0.0.0, never
     /// check. A failed check stays quiet, as when offline.
     pub async fn run(self, report: impl Fn(Progress)) {
         let Some(current) = parse_version(self.current_version) else {
             return;
         };
-        if current == [0, 0, 0] || stamp_is_fresh(&self.stamp) || write_stamp(&self.stamp).is_err()
-        {
+        if current == [0, 0, 0] {
             return;
         }
         let Ok(release) = self.latest_release().await else {
@@ -188,21 +181,6 @@ fn parse_version(text: &str) -> Option<[u64; 3]> {
         parts.next()?.ok()?,
     ];
     parts.next().is_none().then_some(version)
-}
-
-fn stamp_is_fresh(stamp: &Path) -> bool {
-    std::fs::metadata(stamp)
-        .and_then(|metadata| metadata.modified())
-        .ok()
-        .and_then(|modified| SystemTime::now().duration_since(modified).ok())
-        .is_some_and(|age| age < CHECK_INTERVAL)
-}
-
-fn write_stamp(stamp: &Path) -> std::io::Result<()> {
-    if let Some(parent) = stamp.parent() {
-        crate::config::create_private_dir(parent)?;
-    }
-    crate::config::write_private_file(stamp, b"")
 }
 
 pub fn find_on_path(program: &str, path: Option<std::ffi::OsString>) -> Option<PathBuf> {
@@ -314,12 +292,11 @@ mod tests {
         Arc::try_unwrap(shown).unwrap().into_inner().unwrap()
     }
 
-    fn updater(base: &str, dir: &Path, cargo: Option<PathBuf>) -> Updater {
+    fn updater(base: &str, cargo: Option<PathBuf>) -> Updater {
         Updater {
             http: reqwest::Client::new(),
             releases_url: format!("{base}/latest"),
             current_version: "0.1.0",
-            stamp: dir.join("config").join("update-check"),
             cargo,
         }
     }
@@ -329,7 +306,7 @@ mod tests {
         let dir = temp_dir("newer");
         let (base, _) = github("v0.2.0").await;
         let cargo = fake_cargo(&dir, 0);
-        let shown = run(updater(&base, &dir, Some(cargo))).await;
+        let shown = run(updater(&base, Some(cargo))).await;
         assert_eq!(
             shown,
             [
@@ -349,7 +326,7 @@ mod tests {
         let dir = temp_dir("failed");
         let (base, _) = github("v0.2.0").await;
         let cargo = fake_cargo(&dir, 101);
-        let shown = run(updater(&base, &dir, Some(cargo))).await;
+        let shown = run(updater(&base, Some(cargo))).await;
         assert_eq!(
             shown.last().map(String::as_str),
             Some("update to v0.2.0 failed: error: could not compile")
@@ -358,9 +335,8 @@ mod tests {
 
     #[tokio::test]
     async fn warns_when_cargo_is_missing() {
-        let dir = temp_dir("no-cargo");
         let (base, requests) = github("v0.2.0").await;
-        let shown = run(updater(&base, &dir, None)).await;
+        let shown = run(updater(&base, None)).await;
         assert_eq!(
             shown,
             [
@@ -373,48 +349,33 @@ mod tests {
 
     #[tokio::test]
     async fn stays_quiet_when_the_latest_release_is_not_newer() {
-        let dir = temp_dir("same");
         for tag in ["v0.1.0", "v0.0.9"] {
             let (base, _) = github(tag).await;
-            let _ = std::fs::remove_dir_all(dir.join("config"));
-            let shown = run(updater(&base, &dir, None)).await;
+            let shown = run(updater(&base, None)).await;
             assert!(shown.is_empty(), "{tag}: {shown:?}");
         }
     }
 
     #[tokio::test]
     async fn compares_versions_by_number() {
-        let dir = temp_dir("numbers");
         let (base, _) = github("v0.10.0").await;
-        let mut updater = updater(&base, &dir, None);
+        let mut updater = updater(&base, None);
         updater.current_version = "0.9.0";
         assert_eq!(run(updater).await[0], "update v0.10.0 available");
     }
 
     #[tokio::test]
-    async fn checks_at_most_once_an_hour() {
-        let dir = temp_dir("hourly");
+    async fn checks_on_every_launch() {
         let (base, requests) = github("v0.1.0").await;
-        run(updater(&base, &dir, None)).await;
-        run(updater(&base, &dir, None)).await;
-        assert_eq!(requests.lock().unwrap().len(), 1);
-        let stamp = dir.join("config").join("update-check");
-        let earlier = std::time::SystemTime::now() - std::time::Duration::from_secs(61 * 60);
-        std::fs::File::options()
-            .write(true)
-            .open(&stamp)
-            .unwrap()
-            .set_modified(earlier)
-            .unwrap();
-        run(updater(&base, &dir, None)).await;
+        run(updater(&base, None)).await;
+        run(updater(&base, None)).await;
         assert_eq!(requests.lock().unwrap().len(), 2);
     }
 
     #[tokio::test]
     async fn skips_builds_from_main() {
-        let dir = temp_dir("dev");
         let (base, requests) = github("v0.2.0").await;
-        let mut updater = updater(&base, &dir, None);
+        let mut updater = updater(&base, None);
         updater.current_version = "0.0.0";
         assert!(run(updater).await.is_empty());
         assert!(requests.lock().unwrap().is_empty());
