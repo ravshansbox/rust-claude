@@ -141,6 +141,7 @@ impl Credentials {
                 "client_id": CLIENT_ID,
                 "refresh_token": self.refresh,
             }),
+            Some(&self.refresh),
         )
         .await?;
         // The endpoint has spent our refresh token, so keep the new pair even
@@ -247,6 +248,7 @@ async fn exchange_code(
             "redirect_uri": REDIRECT_URI,
             "code_verifier": verifier,
         }),
+        None,
     )
     .await?;
     if let Err(error) = credentials.save() {
@@ -283,7 +285,13 @@ async fn token_url() -> String {
     TOKEN_URL.into()
 }
 
-async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentials> {
+/// Asks the endpoint for tokens. A renewal passes the refresh token it holds
+/// as `current_refresh`, kept when the endpoint does not send a new one.
+async fn request_tokens(
+    http: &reqwest::Client,
+    body: Value,
+    current_refresh: Option<&str>,
+) -> Result<Credentials> {
     let response = http.post(token_url().await).json(&body).send().await?;
     let status = response.status();
     let text = response.text().await?;
@@ -307,6 +315,7 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
             .into(),
         refresh: data["refresh_token"]
             .as_str()
+            .or(current_refresh)
             .context("missing refresh_token")?
             .into(),
         expires: now_millis() + data["expires_in"].as_u64().unwrap_or(0) as u128 * 1000
@@ -509,6 +518,26 @@ mod tests {
             .unwrap_err();
         assert_eq!(retry_delay(&error, 0), None);
         assert!(error.to_string().contains("sign in again"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn keeps_the_refresh_token_when_a_renewal_does_not_replace_it() {
+        let _lock = AUTH_FILE.lock().await;
+        answer_token_requests(
+            "200 OK",
+            json!({ "access_token": "new", "expires_in": 3600 }),
+        )
+        .await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let mut credentials = expired("first");
+        let token = credentials.access_token(&reqwest::Client::new()).await;
+        let saved = std::fs::read_to_string(&path);
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(token.unwrap(), "new");
+        let saved: Credentials = serde_json::from_str(&saved.unwrap()).unwrap();
+        assert_eq!(saved.refresh, "first");
     }
 
     #[tokio::test]
