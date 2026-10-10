@@ -46,23 +46,39 @@ pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
             object.remove("usage");
         }
     }
-    if let Some(last) = messages.last_mut() {
-        if let Some(text) = last["content"].as_str().map(str::to_owned) {
-            last["content"] = json!([{ "type": "text", "text": text }]);
-        }
-        // The API does not allow cache_control on thinking blocks.
-        if let Some(block) = last["content"].as_array_mut().and_then(|blocks| {
-            blocks.iter_mut().rfind(|block| {
-                !matches!(
-                    block["type"].as_str(),
-                    Some("thinking" | "redacted_thinking")
-                )
-            })
-        }) {
-            block["cache_control"] = json!({ "type": "ephemeral" });
+    // Every request ends with a user message, so the last user message before
+    // the final one is where the previous request put its breakpoint and wrote
+    // its cache entry. The API only looks 20 blocks back from a breakpoint for
+    // an earlier entry, which a round with many tool calls can exceed, so mark
+    // that message again. With the system prompt's breakpoint this makes three
+    // of the four the API allows.
+    if let Some((last, earlier)) = messages.split_last_mut() {
+        mark_last_block(last);
+        if let Some(previous) = earlier
+            .iter_mut()
+            .rfind(|message| message["role"] == "user")
+        {
+            mark_last_block(previous);
         }
     }
     messages
+}
+
+fn mark_last_block(message: &mut Value) {
+    if let Some(text) = message["content"].as_str().map(str::to_owned) {
+        message["content"] = json!([{ "type": "text", "text": text }]);
+    }
+    // The API does not allow cache_control on thinking blocks.
+    if let Some(block) = message["content"].as_array_mut().and_then(|blocks| {
+        blocks.iter_mut().rfind(|block| {
+            !matches!(
+                block["type"].as_str(),
+                Some("thinking" | "redacted_thinking")
+            )
+        })
+    }) {
+        block["cache_control"] = json!({ "type": "ephemeral" });
+    }
 }
 
 pub(super) fn estimate_tokens(message: &Value) -> u64 {
