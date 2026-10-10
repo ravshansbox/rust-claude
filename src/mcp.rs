@@ -585,9 +585,21 @@ pub fn failed_start(name: &str, error: &str) -> Started {
 
 pub type Starting = std::pin::Pin<Box<dyn Future<Output = Started> + Send>>;
 
+pub struct StartingServer {
+    pub name: String,
+    pub label: String,
+    pub started: Starting,
+}
+
+pub struct Added {
+    pub name: String,
+    pub status: String,
+    pub diagnostics: Vec<String>,
+}
+
 pub struct Startup {
     pub diagnostics: Vec<String>,
-    pub servers: Vec<Starting>,
+    pub servers: Vec<StartingServer>,
 }
 
 pub fn startup() -> Startup {
@@ -596,7 +608,11 @@ pub fn startup() -> Startup {
     let servers = configs
         .into_iter()
         .filter(|(_, (_, config))| config.enabled != Some(false))
-        .map(|(name, (scope, config))| Box::pin(start(name, scope, config)) as Starting)
+        .map(|(name, (scope, config))| StartingServer {
+            label: format!("{scope} MCP server: {name}"),
+            started: Box::pin(start(name.clone(), scope, config)),
+            name,
+        })
         .collect();
     Startup {
         diagnostics,
@@ -611,24 +627,37 @@ impl Mcp {
             servers: Vec::new(),
             diagnostics: startup.diagnostics,
         };
-        for started in futures::future::join_all(startup.servers).await {
-            let (diagnostics, _) = mcp.add_server(started);
+        let servers = startup.servers.into_iter().map(|pending| pending.started);
+        for started in futures::future::join_all(servers).await {
+            let (diagnostics, status) = mcp.add_server(started);
             mcp.diagnostics.extend(diagnostics);
+            if let Err(failed) = status {
+                mcp.diagnostics.push(failed);
+            }
         }
         mcp
     }
 
-    pub fn add(&mut self, started: Started) -> Vec<String> {
-        let (mut messages, loaded) = self.add_server(started);
-        messages.extend(loaded);
-        messages
+    pub fn add(&mut self, started: Started) -> Added {
+        let name = started.name.clone();
+        let (diagnostics, status) = self.add_server(started);
+        Added {
+            name,
+            status: status.unwrap_or_else(|failed| failed),
+            diagnostics,
+        }
     }
 
-    fn add_server(&mut self, started: Started) -> (Vec<String>, Option<String>) {
+    fn add_server(&mut self, started: Started) -> (Vec<String>, Result<String, String>) {
         let Started { name, result } = started;
         let mut server = match result {
             Ok(server) => server,
-            Err(error) => return (vec![format!("MCP server {name} failed: {error}")], None),
+            Err(error) => {
+                return (
+                    Vec::new(),
+                    Err(format!("MCP server {name} failed: {error}")),
+                );
+            }
         };
         let mut diagnostics = Vec::new();
         let mut seen: HashMap<String, String> = self
@@ -660,7 +689,7 @@ impl Mcp {
             server.tools.len()
         );
         self.servers.push(server);
-        (diagnostics, Some(loaded))
+        (diagnostics, Ok(loaded))
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = Value> + '_ {
@@ -1106,8 +1135,9 @@ done
             .replace("LOG", &log.display().to_string());
         let mut mcp = Mcp::default();
         assert_eq!(
-            mcp.add(start("test".into(), Scope::Project, server_with(&cases, ":")).await),
-            ["loaded project MCP server: test (2 tools)"]
+            mcp.add(start("test".into(), Scope::Project, server_with(&cases, ":")).await)
+                .status,
+            "loaded project MCP server: test (2 tools)"
         );
         let names: Vec<Value> = mcp
             .definitions()
@@ -1153,31 +1183,30 @@ done
         let mut mcp = Mcp::default();
         let started = start("test".into(), Scope::Project, echo_server()).await;
         assert_eq!(
-            mcp.add(started),
-            ["loaded project MCP server: test (1 tools)"]
+            mcp.add(started).status,
+            "loaded project MCP server: test (1 tools)"
         );
         let mut broken = echo_server();
         broken.command = None;
         let failed = start("broken".into(), Scope::Global, broken).await;
         assert_eq!(
-            mcp.add(failed),
-            ["MCP server broken failed: command is missing"]
+            mcp.add(failed).status,
+            "MCP server broken failed: command is missing"
         );
         let mut lost = echo_server();
         lost.cwd = Some("/no/such/folder".into());
         let failed = start("lost".into(), Scope::Global, lost).await;
         assert_eq!(
-            mcp.add(failed),
-            ["MCP server lost failed: cwd /no/such/folder is not a folder"]
+            mcp.add(failed).status,
+            "MCP server lost failed: cwd /no/such/folder is not a folder"
         );
         let clash = start("test".into(), Scope::Global, echo_server()).await;
+        let added = mcp.add(clash);
         assert_eq!(
-            mcp.add(clash),
-            [
-                "MCP server test: skipped tool echo because its name clashes with test/echo",
-                "loaded global MCP server: test (0 tools)",
-            ]
+            added.diagnostics,
+            ["MCP server test: skipped tool echo because its name clashes with test/echo"]
         );
+        assert_eq!(added.status, "loaded global MCP server: test (0 tools)");
         assert!(mcp.diagnostics.is_empty());
     }
 
@@ -1194,8 +1223,8 @@ done
         .await
         .expect("tools/list did not stop");
         assert_eq!(
-            Mcp::default().add(started),
-            ["MCP server test failed: tools/list repeated the cursor \"again\""]
+            Mcp::default().add(started).status,
+            "MCP server test failed: tools/list repeated the cursor \"again\""
         );
     }
 

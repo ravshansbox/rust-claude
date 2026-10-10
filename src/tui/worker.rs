@@ -1,7 +1,7 @@
 use crate::{
     agent::{Agent, AgentEvent, ContextUse},
     images::Image,
-    mcp::Started,
+    mcp::{Added, Started},
     session::SessionSummary,
 };
 use anyhow::Result;
@@ -22,6 +22,7 @@ pub(super) enum UiEvent {
     Context(ContextUse),
     Files(u64, Vec<String>),
     Workspace(String),
+    McpServer(Added),
 }
 
 pub(super) enum Request {
@@ -77,9 +78,7 @@ pub(super) async fn agent_task(
                 continue;
             }
             Some(started) = mcp_servers.recv() => {
-                for message in agent.mcp.add(started) {
-                    let _ = events.send(UiEvent::Agent(AgentEvent::Notice(message)));
-                }
+                let _ = events.send(UiEvent::McpServer(agent.mcp.add(started)));
                 let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
@@ -229,7 +228,7 @@ mod tests {
     use super::{Request, UiEvent, agent_task, quit};
     use crate::{
         agent::{
-            Agent, AgentEvent,
+            Agent,
             test_support::{self, MockApi, Reply},
         },
         auth::Credentials,
@@ -405,8 +404,9 @@ mod tests {
         let reported = wait_for_event(&mut event_rx, |event| {
             matches!(
                 event,
-                UiEvent::Agent(AgentEvent::Notice(text))
-                    if text == "MCP server slow failed: initialize timed out"
+                UiEvent::McpServer(added)
+                    if added.name == "slow"
+                        && added.status == "MCP server slow failed: initialize timed out"
             )
         })
         .await;
