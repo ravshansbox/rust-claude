@@ -61,21 +61,21 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
 
     let panel_height =
         |content: usize| (content.min(u16::MAX as usize - 1) as u16 + 1).min(chat.height);
-    let panel = if let Some(search) = &app.history_search {
-        let count = search.matches().len();
-        let height = panel_height(count.min(MAX_LIST_ROWS) + 2);
-        let list = (count, 2, search.selected);
-        Some((
-            history_view(search, height.saturating_sub(1)),
-            height,
-            Some(list),
-        ))
-    } else if let Some(picker) = &app.picker {
+    let panel = if let Some(picker) = &app.picker {
         let count = picker.items.len();
         let height = panel_height(count.min(MAX_LIST_ROWS) + 1);
         let list = (count, 1, picker.selected);
         Some((
             picker_view(picker, height.saturating_sub(1)),
+            height,
+            Some(list),
+        ))
+    } else if let Some(search) = &app.history_search {
+        let count = search.matches().len();
+        let height = panel_height(count.min(MAX_LIST_ROWS) + 2);
+        let list = (count, 2, search.selected);
+        Some((
+            history_view(search, height.saturating_sub(1)),
             height,
             Some(list),
         ))
@@ -169,7 +169,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
 
     if let Some(suggestions) = app
         .visible_suggestions()
-        .filter(|_| app.history_search.is_none())
+        .filter(|_| app.history_search.is_none() && app.picker.is_none())
     {
         let matches = suggestions.items;
         let height = (matches.len().min(MAX_LIST_ROWS) as u16).min(chat.height);
