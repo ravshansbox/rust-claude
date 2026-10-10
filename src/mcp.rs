@@ -262,8 +262,7 @@ impl Connection {
         if let Some(cwd) = &config.cwd {
             process.current_dir(expand_home(cwd, home.as_deref()));
         }
-        #[cfg(unix)]
-        process.process_group(0);
+        tools::new_session(&mut process);
         let mut child = process
             .spawn()
             .map_err(|error| format!("failed to start {command}: {error}"))?;

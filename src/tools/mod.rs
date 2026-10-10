@@ -8,7 +8,7 @@ mod read;
 mod test_support;
 mod write;
 
-pub use bash::ProcessGroup;
+pub use bash::{ProcessGroup, new_session};
 pub use display::{ReadGroup, diff, note, summary};
 
 const MAX_OUTPUT: usize = 20_000;
