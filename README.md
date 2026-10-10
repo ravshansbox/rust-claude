@@ -452,7 +452,7 @@ Architecture decision records are in [docs/adr](docs/adr):
 
 Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Tests keep sign-in, sessions and other files in a temporary folder, not in `~/.rust-claude`.
 
-Every push to `main` runs these checks and then makes a release if needed. [git-cliff](https://git-cliff.org) works out the next version from the [conventional commit](https://www.conventionalcommits.org) messages since the last tag: `fix` and `perf` bump the patch version, `feat` the minor version and a breaking change (`feat!` or `BREAKING CHANGE`) the major version. Commits of other types, such as `docs` or `chore`, do not make a release. The release adds tag `v<version>` and a `rust-claude.zip` with the source and the version set in `Cargo.toml`. Nothing is pushed to `main`, so `Cargo.toml` there stays at `0.0.0`.
+Every push to `main` runs these checks and then makes a release if needed. The checks for each push start straight away, but only one release runs at a time. [git-cliff](https://git-cliff.org) works out the next version from the [conventional commit](https://www.conventionalcommits.org) messages since the last tag: `fix` and `perf` bump the patch version, `feat` the minor version and a breaking change (`feat!` or `BREAKING CHANGE`) the major version. Commits of other types, such as `docs` or `chore`, do not make a release. The release adds tag `v<version>` and a `rust-claude.zip` with the source and the version set in `Cargo.toml`. Nothing is pushed to `main`, so `Cargo.toml` there stays at `0.0.0`.
 
 ## Licence
 
