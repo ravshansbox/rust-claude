@@ -260,7 +260,7 @@ mod tests {
                 json!({ "role": "user", "content": [result("1", false), result("2", true), result("3", false)] }),
             ],
         );
-        let texts: Vec<&str> = app.messages[..]
+        let texts: Vec<&str> = app.messages[1..]
             .iter()
             .map(|message| message.text.as_str())
             .collect();
@@ -280,7 +280,7 @@ mod tests {
                 json!({ "role": "assistant", "stop_reason": "compacted", "content": [], "summary": "greeted" }),
             ],
         );
-        let texts: Vec<&str> = app.messages[..]
+        let texts: Vec<&str> = app.messages[1..]
             .iter()
             .map(|message| message.text.as_str())
             .collect();
@@ -326,7 +326,7 @@ mod tests {
             ],
         );
         let texts = |app: &App| -> Vec<String> {
-            app.messages[..]
+            app.messages[1..]
                 .iter()
                 .map(|message| message.text.clone())
                 .collect()
@@ -366,7 +366,7 @@ mod tests {
             ],
         );
         let texts = |app: &App| -> Vec<String> {
-            app.messages[..]
+            app.messages[1..]
                 .iter()
                 .map(|message| message.text.clone())
                 .collect()
