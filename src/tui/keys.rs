@@ -85,7 +85,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 }
             }
             KeyCode::Esc => app.picker = None,
-            KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => return true,
+            KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => app.picker = None,
             _ => {}
         }
         return false;
@@ -94,7 +94,6 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
     if let Some(search) = &mut app.history_search {
         let count = search.matches().len();
         match (key.code, key.modifiers) {
-            (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
             (KeyCode::Up, _) => search.selected = search.selected.saturating_sub(1),
             (KeyCode::Down, _) => {
                 search.selected = (search.selected + 1).min(count.saturating_sub(1));
@@ -123,7 +122,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     app.input_changed();
                 }
             }
-            (KeyCode::Esc, _) | (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
+            (KeyCode::Esc, _) | (KeyCode::Char('r' | 'c'), KeyModifiers::CONTROL) => {
                 app.history_search = None;
             }
             _ => {}
@@ -920,6 +919,35 @@ mod tests {
         assert_eq!(app.input, "read @src/main.rs ");
         assert_eq!(app.cursor, app.input.len());
         assert!(app.visible_suggestions().is_none());
+    }
+
+    #[test]
+    fn ctrl_c_closes_pickers_and_history_search_keeping_the_draft() {
+        let control = |character| {
+            Event::Key(KeyEvent::new(
+                KeyCode::Char(character),
+                KeyModifiers::CONTROL,
+            ))
+        };
+        let mut app = new_app();
+        app.add_prompt("fix tests".into());
+        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
+        handle_input(control('r'), &mut app, |_| {});
+        handle_input(Event::Paste("fix".into()), &mut app, |_| {});
+        assert!(!handle_input(control('c'), &mut app, |_| {}));
+        assert!(!screen(&mut app).contains("Prompt history"));
+        assert_eq!(app.input, "draft");
+        handle_input(control('c'), &mut app, |_| {});
+        handle_input(Event::Paste("/model".into()), &mut app, |_| {});
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
+        let models = vec!["model".to_string(), "other".to_string()];
+        handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
+        assert!(screen(&mut app).contains("Select model"));
+        assert!(!handle_input(control('c'), &mut app, |_| {}));
+        assert!(!screen(&mut app).contains("Select model"));
+        assert_eq!(app.input, "draft");
+        assert_eq!(app.model, "model");
     }
 
     #[test]
