@@ -192,6 +192,8 @@ Sessions hold whole conversations and tool output, so rust-claude creates `~/.ru
 
 Show help with `-h` or `--help`. An unknown option, or an argument that is not valid UTF-8 text, stops rust-claude with the usage line.
 
+The interface starts with the name and version, such as `rust-claude v0.1.0`, above the start-up lines. Builds from `main` show `v0.0.0`.
+
 Markdown tables in replies wrap their cells to fit the window width.
 
 Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background. Leading spaces are removed from each line to save room.
