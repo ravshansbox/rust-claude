@@ -335,6 +335,8 @@ Press Ctrl+V to paste an image from the clipboard. It adds a marker such as `[im
 
 rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the limits. It scales larger images down to at most 2,000 pixels on the long edge, and converts other formats to PNG. Photos stored sideways with an Exif orientation, as phone cameras often save them, are turned upright and re-encoded. If an image is still larger than 5 MB in base64, it uses JPEG at lower quality, then halves the size until it fits. JPEG has no transparency, so transparent areas turn white.
 
+An image that would take more than 512 MiB of memory to decode, such as a small file that claims to be tens of thousands of pixels wide, is refused with the error `image is too large`.
+
 ## Sessions
 
 Sessions are saved to `~/.rust-claude/sessions/` as JSON Lines files. The first line records the folder the session started in, which `--continue` uses. Sessions saved before this line was added are not found by `--continue`, but `/resume` still lists them. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-claude/sessions/<id>/`, and the session file refers to them by name.
