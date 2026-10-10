@@ -92,8 +92,21 @@ fn highlight_code(highlighter: &mut HighlightLines, code: &str) -> Vec<Segment> 
     }
 }
 
-pub fn highlight_body(path: &str, body: &str, dark: bool) -> Vec<HighlightedLine> {
-    let syntax = syntax_for_path(path);
+pub fn highlight_tool(
+    name: &str,
+    summary: &str,
+    body: &str,
+    dark: bool,
+) -> Option<Vec<HighlightedLine>> {
+    let syntax = match name {
+        "edit" | "write" => syntax_for_path(summary),
+        "python" => syntax_set().find_syntax_by_extension("py")?,
+        _ => return None,
+    };
+    Some(highlight_body(syntax, body, dark))
+}
+
+fn highlight_body(syntax: &SyntaxReference, body: &str, dark: bool) -> Vec<HighlightedLine> {
     let mut old_highlighter = HighlightLines::new(syntax, theme(dark));
     let mut new_highlighter = HighlightLines::new(syntax, theme(dark));
     body.lines()
@@ -172,11 +185,13 @@ mod tests {
 
     #[test]
     fn marks_changes_and_keeps_text() {
-        let lines = highlight_body(
+        let lines = highlight_tool(
+            "edit",
             "main.rs",
             "-let a = 1;\n+let a = 2;\n fn b() {}\n… 3 more lines",
             true,
-        );
+        )
+        .unwrap();
         let changes: Vec<Option<Change>> = lines.iter().map(|line| line.change).collect();
         assert_eq!(
             changes,
@@ -206,7 +221,13 @@ mod tests {
 
     #[test]
     fn ansi_line_keeps_its_colours_but_not_escapes_in_the_text() {
-        let lines = highlight_body("notes.txt", "+a\x1b]52;c;aGk=\x07b\x1b[2J\u{9b}c\r", true);
+        let lines = highlight_tool(
+            "write",
+            "notes.txt",
+            "+a\x1b]52;c;aGk=\x07b\x1b[2J\u{9b}c\r",
+            true,
+        )
+        .unwrap();
         let line = ansi_line(&lines[0], true);
         assert!(line.starts_with("\x1b[48;2;"));
         assert!(line.ends_with("\x1b[0m"));

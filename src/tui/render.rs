@@ -132,10 +132,10 @@ fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
     };
     let (name, path) = first.split_once(' ').unwrap_or((first, ""));
     let mut lines = vec![tool_header(first)];
-    if name == "edit" || name == "write" {
-        let dark = matches!(theme(), Theme::Dark);
+    let dark = matches!(theme(), Theme::Dark);
+    if let Some(highlighted) = crate::highlight::highlight_tool(name, path, body, dark) {
         lines.extend(
-            crate::highlight::highlight_body(path, body, dark)
+            highlighted
                 .into_iter()
                 .map(|line| highlighted_line(line, dark)),
         );
@@ -289,6 +289,28 @@ mod tests {
         let write = shown(Role::Tool, "write main.go\n+\treturn");
         assert_eq!(write[1], "+    return");
         assert_eq!(shown(Role::Event, "\tnote"), ["    note"]);
+    }
+
+    #[test]
+    fn highlights_python_code() {
+        let input = serde_json::json!({ "code": "def f():\n    return 1" });
+        let message = tool_message(
+            "python",
+            crate::tools::summary("python", &input),
+            crate::tools::diff("python", &input),
+        );
+        let lines = render_message(Role::Tool, &message, 40);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|line| line.to_string().trim_end().to_string())
+            .collect();
+        assert_eq!(texts, [" python", " def f():", "     return 1"]);
+        let colours: std::collections::HashSet<_> = lines[1]
+            .spans
+            .iter()
+            .filter_map(|span| span.style.fg)
+            .collect();
+        assert!(colours.len() > 1, "{:?}", lines[1]);
     }
 
     #[test]
