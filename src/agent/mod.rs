@@ -37,7 +37,6 @@ use usage::{cache_hit_rate, fetch_quota, tokens_per_second, total_usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
 
-pub const EFFORT_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 pub const DEFAULT_EFFORT: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
 const COMPACT_AT_PERCENT: u64 = 80;
@@ -958,6 +957,32 @@ mod tests {
                 ),
                 "{}",
                 headers[index]
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn turns_thinking_off_without_asking_to_drop_mismatched_thinking() {
+        for (model, kind) in [
+            ("claude-sonnet-5-5", "between_tools"),
+            ("claude-haiku-5-5", "disabled"),
+        ] {
+            let api = MockApi::start(vec![text_reply("done")]).await;
+            let mut agent = test_support::agent(&api, reqwest::Client::new());
+            agent.model = model.into();
+            agent.effort = "off";
+            agent.session.drop_mismatched_thinking();
+            let result = agent.prompt("hello", &[], |_| {}).await;
+            test_support::remove_session(&agent);
+            result.unwrap();
+            let requests = api.requests().await;
+            let headers = api.headers().await;
+            assert_eq!(requests[0]["thinking"], json!({ "type": kind }), "{model}");
+            assert_eq!(requests[0].get("output_config"), None, "{model}");
+            assert!(
+                headers[0].contains("anthropic-beta: oauth-2025-04-20\r\n"),
+                "{}",
+                headers[0]
             );
         }
     }
