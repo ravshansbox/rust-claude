@@ -94,7 +94,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         app.start(Activity::Resuming);
                         act(Action::Resume(value));
                     }
-                    PickerKind::Thinking => {
+                    PickerKind::Effort => {
                         app.set_effort(&value);
                     }
                     PickerKind::Model => {
@@ -272,7 +272,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     }
                     "/effort" if argument.is_empty() => {
                         app.open_picker(Picker {
-                            kind: PickerKind::Thinking,
+                            kind: PickerKind::Effort,
                             title: "Select effort level",
                             items: EFFORT_LEVELS
                                 .iter()
@@ -488,6 +488,15 @@ mod tests {
             assert_eq!(app.cursor, typed.len());
             assert_eq!(app.effort, "medium");
         }
+    }
+
+    #[test]
+    fn reports_the_chosen_effort_level() {
+        let mut app = new_app();
+        handle_input(Event::Paste("/effort high".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.effort, "high");
+        assert_eq!(app.messages.last().unwrap().text, "effort: high");
     }
 
     #[test]
