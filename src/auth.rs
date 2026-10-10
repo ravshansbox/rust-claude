@@ -1,7 +1,8 @@
 use std::{
+    fs::{File, TryLockError},
     io::Write,
     path::PathBuf,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use anyhow::{Context, Result, bail};
@@ -16,7 +17,7 @@ const TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
 const REDIRECT_URI: &str = "https://platform.claude.com/oauth/code/callback";
 const SCOPES: &str = "org:create_api_key user:profile user:inference user:sessions:claude_code user:mcp_servers user:file_upload";
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Credentials {
     access: String,
     refresh: String,
@@ -30,6 +31,26 @@ fn credentials_path() -> Result<PathBuf> {
     Ok(crate::config::dir()
         .context("HOME is not set")?
         .join("auth.json"))
+}
+
+/// Locks auth.lock until the returned file is closed, so running copies
+/// renew the sign-in one at a time.
+async fn lock_credentials() -> Result<File> {
+    let path = credentials_path()?.with_file_name("auth.lock");
+    crate::config::create_private_dir(path.parent().context("invalid credentials path")?)?;
+    let file = crate::config::private_file()
+        .create(true)
+        .write(true)
+        .open(&path)?;
+    // Waiting without a blocking lock keeps quitting from waiting for
+    // another copy's renewal.
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(TryLockError::WouldBlock) => tokio::time::sleep(Duration::from_millis(50)).await,
+            Err(TryLockError::Error(error)) => return Err(error.into()),
+        }
+    }
 }
 
 fn now_millis() -> u128 {
@@ -61,58 +82,67 @@ impl Credentials {
         Ok(credentials)
     }
 
-    /// Refreshes the tokens, falling back to auth.json when that fails:
-    /// another rust-claude may have renewed the tokens since we read it,
-    /// spending the refresh token we hold.
+    /// Renews the tokens in their own task, so a cancelled prompt or start-up
+    /// request cannot drop the new tokens after the endpoint has spent ours.
+    /// Running copies take turns, and each first uses what the one before it
+    /// saved: its new refresh token replaces ours.
     async fn renew(&mut self, http: &reqwest::Client) -> Result<()> {
-        match self.refresh(http).await {
-            Ok(credentials) => *self = credentials,
-            Err(error) => {
-                self.adopt_saved();
-                if now_millis() >= self.expires {
-                    return Err(error);
+        let http = http.clone();
+        let mut credentials = self.clone();
+        *self = tokio::spawn(async move {
+            // Without the lock, renewing still works; copies just may not
+            // take turns.
+            let _lock = lock_credentials().await.ok();
+            credentials.adopt_saved();
+            if now_millis() < credentials.expires {
+                return Ok(credentials);
+            }
+            match credentials.refresh(&http).await {
+                Ok(renewed) => Ok(renewed),
+                // A rust-claude that does not take turns may have renewed
+                // the tokens meanwhile, spending the refresh token we hold.
+                Err(error) => {
+                    credentials.adopt_saved();
+                    if now_millis() < credentials.expires {
+                        Ok(credentials)
+                    } else {
+                        Err(error)
+                    }
                 }
             }
-        }
+        })
+        .await??;
         Ok(())
     }
 
-    /// Runs in its own task, so a cancelled prompt or start-up request
-    /// cannot drop the new tokens after the endpoint has spent ours.
     async fn refresh(&self, http: &reqwest::Client) -> Result<Self> {
-        let http = http.clone();
-        let body = json!({
-            "grant_type": "refresh_token",
-            "client_id": CLIENT_ID,
-            "refresh_token": self.refresh,
+        let mut credentials = request_tokens(
+            http,
+            json!({
+                "grant_type": "refresh_token",
+                "client_id": CLIENT_ID,
+                "refresh_token": self.refresh,
+            }),
+        )
+        .await?;
+        // The endpoint has spent our refresh token, so keep the new pair even
+        // when auth.json cannot take it.
+        credentials.renewal_notice = Some(match credentials.save() {
+            Ok(()) => "renewed sign-in token".into(),
+            Err(error) => {
+                format!("renewed sign-in token, but could not save it to auth.json: {error:#}")
+            }
         });
-        tokio::spawn(async move {
-            let mut credentials = request_tokens(&http, body).await?;
-            // The endpoint has spent our refresh token, so keep the new pair
-            // even when auth.json cannot take it.
-            credentials.renewal_notice = Some(match credentials.save() {
-                Ok(()) => "renewed sign-in token".into(),
-                Err(error) => {
-                    format!("renewed sign-in token, but could not save it to auth.json: {error:#}")
-                }
-            });
-            Ok(credentials)
-        })
-        .await?
+        Ok(credentials)
     }
 
     pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
         if now_millis() < self.expires {
             return Ok(self.access.clone());
         }
-        // Another rust-claude may have renewed the tokens already. Its new
-        // refresh token replaces ours, so use what it saved.
-        self.adopt_saved();
-        if now_millis() >= self.expires {
-            self.renew(http)
-                .await
-                .context("sign-in expired: restart rust-claude to sign in again")?;
-        }
+        self.renew(http)
+            .await
+            .context("sign-in expired: restart rust-claude to sign in again")?;
         Ok(self.access.clone())
     }
 
@@ -409,6 +439,26 @@ mod tests {
             (saved.access.as_str(), saved.refresh.as_str()),
             ("access from first", "first+")
         );
+    }
+
+    #[tokio::test]
+    async fn running_copies_renew_one_at_a_time() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("first", false).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(
+            &path,
+            json!({ "access": "old", "refresh": "first", "expires": 0 }).to_string(),
+        )
+        .unwrap();
+        let http = reqwest::Client::new();
+        let (mut one, mut other) = (expired("first"), expired("first"));
+        let (token, other_token) = tokio::join!(one.access_token(&http), other.access_token(&http));
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(*endpoint.received.lock().await, ["first"]);
+        assert_eq!(token.unwrap(), "access from first");
+        assert_eq!(other_token.unwrap(), "access from first");
     }
 
     #[tokio::test]
