@@ -515,6 +515,24 @@ mod tests {
     }
 
     #[test]
+    fn restores_queued_prompts_when_esc_comes_as_the_reply_finishes() {
+        let mut app = new_app();
+        queue_while_working(&mut app, "first");
+        let mut cancelled = false;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Esc)),
+            &mut app,
+            |action| cancelled |= matches!(action, Action::Cancel),
+        );
+        assert!(cancelled);
+        handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+        assert!(!app.busy());
+        assert_eq!(app.input, "first");
+        assert!(app.send_queued().is_none());
+        assert_eq!(app.messages.last().unwrap().text, "cancelled");
+    }
+
+    #[test]
     fn searches_prompt_history_in_tabs() {
         let path = std::env::temp_dir().join(format!(
             "rust-claude-tui-history-{}/history.jsonl",
