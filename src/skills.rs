@@ -113,7 +113,10 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
     }
     let user_agents_dir = home.map(|home| home.join(".agents").join("skills"));
     for dir in ancestor_agents_skill_dirs(cwd) {
-        if user_agents_dir.as_ref() != Some(&dir) {
+        if !user_agents_dir
+            .as_ref()
+            .is_some_and(|user| same_dir(user, &dir))
+        {
             paths.extend(with_scope(
                 collect_skill_files(&dir, Mode::Agents),
                 Scope::Project,
@@ -531,6 +534,23 @@ mod tests {
     fn write(path: &Path, content: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, content).unwrap();
+    }
+
+    #[test]
+    fn keeps_home_agents_skills_global_when_home_is_a_symlink() {
+        let root = temp_dir("symlinked-home");
+        let real_home = root.join("real-home");
+        write(
+            &real_home.join(".agents/skills/gamma/SKILL.md"),
+            "---\nname: gamma\ndescription: Home gamma.\n---\n",
+        );
+        let home = root.join("home");
+        std::os::unix::fs::symlink(&real_home, &home).unwrap();
+
+        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &real_home);
+        let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
+        assert_eq!(scopes, [Scope::Global]);
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
