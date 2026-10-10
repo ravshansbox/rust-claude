@@ -6,6 +6,7 @@ mod input;
 mod keys;
 mod render;
 mod replay;
+mod selection;
 mod status;
 #[cfg(test)]
 mod test_support;
@@ -17,6 +18,7 @@ use crate::{
 use anyhow::Result;
 use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
+    clipboard::CopyToClipboard,
     event::{
         DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
         EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
@@ -415,6 +417,9 @@ async fn run_loop(
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
                     }
+                    Action::Copy(text) => {
+                        let _ = copy_to_clipboard(terminal.backend_mut(), &text);
+                    }
                 });
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_thinking_level);
                 if quit {
@@ -520,9 +525,13 @@ fn display_model(model: &str) -> &str {
     model.strip_prefix("claude-").unwrap_or(model)
 }
 
+fn copy_to_clipboard(output: &mut impl Write, text: &str) -> std::io::Result<()> {
+    execute!(output, CopyToClipboard::to_clipboard_from(text))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HeldPanics, InputModes};
+    use super::{HeldPanics, InputModes, copy_to_clipboard};
     use std::sync::{Mutex, PoisonError};
 
     /// Tests that change the process-wide panic hook take turns.
@@ -547,6 +556,13 @@ mod tests {
             disabled.contains("\x1b[?2004l"),
             "bracketed paste still on: {written:?}"
         );
+    }
+
+    #[test]
+    fn copies_text_with_an_osc_52_sequence() {
+        let mut output = Vec::new();
+        copy_to_clipboard(&mut output, "héllo").unwrap();
+        assert_eq!(output, b"\x1b]52;c;aMOpbGxv\x1b\\");
     }
 
     /// Panics on a thread named "agent" while the interface holds panics.
