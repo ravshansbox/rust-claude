@@ -15,7 +15,7 @@ use crate::{
     StopSignals, agent::Agent, clipboard, history, images, mcp, settings::Settings, skills::Scope,
 };
 use anyhow::Result;
-use app::{App, HistorySearch, Picker, PickerKind, Role};
+use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
     event::{
         DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
@@ -173,7 +173,7 @@ async fn run_loop(
                 }
                 dirty = false;
             }
-            _ = spinner.tick(), if app.busy => {
+            _ = spinner.tick(), if app.busy() => {
                 app.spinner_frame = app.spinner_frame.wrapping_add(1);
                 dirty = true;
             }
@@ -239,7 +239,7 @@ async fn run_loop(
                     handle_agent_event(event, &mut app);
                     next = event_rx.try_recv().ok();
                 }
-                if !app.busy
+                if !app.busy()
                     && let Some((prompt, images)) = app.send_queued()
                 {
                     let _ = request_tx.send(Request::Prompt(prompt, images, app.thinking_level));
