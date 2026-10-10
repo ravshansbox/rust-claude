@@ -114,6 +114,7 @@ MCP:
 - `~/` expansion, `env`, `cwd`, `timeout` and `enabled` options
 - Paginated tool lists, `ping` replies, and server error output shown in errors
 - A server that sends the same page of its tool list twice fails with an error instead of loading forever
+- A server that writes a single line longer than 32 MiB is disconnected with an error, so it cannot use up memory
 - Clear errors for HTTP and SSE servers, which are not supported yet
 
 Other:
