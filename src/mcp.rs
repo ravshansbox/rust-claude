@@ -1179,6 +1179,27 @@ async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn,
     })
 }
 
+fn sign_out_with(name: &str, config: &ServerConfig) -> Result<String, String> {
+    let Some(url) = http_url(config) else {
+        return Err(format!("MCP server {name} is not an HTTP server"));
+    };
+    Ok(if oauth::remove(url)? {
+        format!("signed out of MCP server {name}")
+    } else {
+        format!("MCP server {name} was not signed in")
+    })
+}
+
+/// Forgets the saved sign-in for the configured server `name`.
+pub fn sign_out(name: &str) -> Result<String, String> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (configs, _) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let Some((_, config)) = configs.get(name) else {
+        return Err(format!("no MCP server named {name}"));
+    };
+    sign_out_with(name, config)
+}
+
 /// Starts signing in to the configured server `name`.
 pub async fn begin_sign_in(name: &str) -> Result<SignIn, String> {
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -2357,6 +2378,31 @@ done
         assert_eq!(mcp.definitions().count(), 1);
         mcp.replace(failed_start("test", "gone"));
         assert_eq!(mcp.definitions().count(), 0);
+    }
+
+    #[tokio::test]
+    async fn signs_out_of_an_http_server() {
+        let (url, _) = http_server(signed_in_mcp).await;
+        save_tokens(&url, "fresh", now_millis() + 3_600_000);
+        assert_eq!(
+            sign_out_with("web", &http_config(&url)),
+            Ok("signed out of MCP server web".into())
+        );
+        assert!(oauth::load(&url).is_none());
+        assert_eq!(
+            sign_out_with("web", &http_config(&url)),
+            Ok("MCP server web was not signed in".into())
+        );
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "MCP server web needs sign-in: run /mcp login web"
+        );
+        assert_eq!(
+            sign_out_with("local", &echo_server()),
+            Err("MCP server local is not an HTTP server".into())
+        );
     }
 
     #[tokio::test]

@@ -37,8 +37,12 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
-        UiEvent::McpSignedIn { name, label } => {
-            app.push(Role::Event, format!("signed in to MCP server {name}"));
+        UiEvent::McpRestarting {
+            name,
+            label,
+            notice,
+        } => {
+            app.push(Role::Event, notice);
             app.start_mcp_server(&name, &label);
         }
         UiEvent::McpServer(added) => {

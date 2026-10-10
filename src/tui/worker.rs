@@ -23,7 +23,12 @@ pub(super) enum UiEvent {
     Files(u64, Vec<String>),
     Workspace(String),
     McpServer(Added),
-    McpSignedIn { name: String, label: String },
+    /// The server starts again, after `notice`.
+    McpRestarting {
+        name: String,
+        label: String,
+        notice: String,
+    },
     Update(crate::update::Progress),
 }
 
