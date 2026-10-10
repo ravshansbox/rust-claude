@@ -345,7 +345,7 @@ A session is open in one rust-claude at a time, so two copies never write to the
 
 Quitting while a prompt runs cancels it and saves the session first. Quitting while `/model` loads the model list stops that request. Requests still waiting when you quit, such as a prompt sent just before, are not started.
 
-A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request. A tool call that was still running or waiting when you cancelled is recorded as cancelled.
+A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request. This includes a prompt cancelled before it was sent, for example while the sign-in renews at start. A tool call that was still running or waiting when you cancelled is recorded as cancelled.
 
 If the model declines to answer, even partway through a reply, the prompt fails with the error `the model declined to answer`. The partial reply is left out of the session and is not sent again, but its tokens still count toward the session's token use.
 
