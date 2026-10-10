@@ -322,6 +322,9 @@ fn read_preview(path: &Path) -> Result<String> {
         }
         let message: Value = serde_json::from_str(&line)?;
         if let Some(text) = message["content"].as_str() {
+            if let Some((command, _)) = crate::agent::parse_shell_message(text) {
+                return Ok(format!("!{command}"));
+            }
             return Ok(text.to_string());
         }
         let text = message["content"]
@@ -437,6 +440,20 @@ mod tests {
         let preview = read_preview(&path);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(preview.unwrap(), "look");
+    }
+
+    #[test]
+    fn previews_shell_command_without_markup() {
+        let path =
+            std::env::temp_dir().join(format!("rust-claude-shell-preview-{}", std::process::id()));
+        let message = json!({
+            "role": "user",
+            "content": crate::agent::shell_message("ls -la", "file\n"),
+        });
+        std::fs::write(&path, format!("{message}\n")).unwrap();
+        let preview = read_preview(&path);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(preview.unwrap(), "!ls -la");
     }
 
     #[test]
