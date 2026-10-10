@@ -543,9 +543,14 @@ impl App {
         if items.is_empty() {
             return None;
         }
+        // Accepting replaces the whole `@` word, including any part after
+        // the cursor, so no tail of the old name is left behind.
+        let end = self.input[self.cursor..]
+            .find(char::is_whitespace)
+            .map_or(self.input.len(), |offset| self.cursor + offset);
         Some(Suggestions {
             start,
-            end: self.cursor,
+            end,
             items,
             files: true,
         })
