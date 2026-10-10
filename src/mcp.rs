@@ -320,7 +320,11 @@ impl Connection {
             .stderr(Stdio::piped())
             .kill_on_drop(true);
         if let Some(cwd) = &config.cwd {
-            process.current_dir(expand_home(cwd, home.as_deref()));
+            let cwd = expand_home(cwd, home.as_deref());
+            if !Path::new(&cwd).is_dir() {
+                return Err(format!("cwd {cwd} is not a folder"));
+            }
+            process.current_dir(cwd);
         }
         tools::new_session(&mut process);
         let mut child = process
@@ -1158,6 +1162,13 @@ done
         assert_eq!(
             mcp.add(failed),
             ["MCP server broken failed: command is missing"]
+        );
+        let mut lost = echo_server();
+        lost.cwd = Some("/no/such/folder".into());
+        let failed = start("lost".into(), Scope::Global, lost).await;
+        assert_eq!(
+            mcp.add(failed),
+            ["MCP server lost failed: cwd /no/such/folder is not a folder"]
         );
         let clash = start("test".into(), Scope::Global, echo_server()).await;
         assert_eq!(
