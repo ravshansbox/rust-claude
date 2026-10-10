@@ -703,6 +703,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn retries_an_overloaded_reply_whose_error_breaks_off() {
+        let api = MockApi::start(vec![Reply::CutOffOverloaded, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut text = String::new();
+        let result = agent
+            .prompt("hi", &[], |event| {
+                if let AgentEvent::Text(delta) = event {
+                    text.push_str(&delta);
+                }
+            })
+            .await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert_eq!(text, "hello");
+        assert_eq!(api.requests().await.len(), 2);
+    }
+
+    #[tokio::test]
     async fn says_when_a_reply_stopped_because_the_context_window_filled_up() {
         let api = MockApi::start(vec![stopped_reply(
             "the start of",

@@ -76,7 +76,12 @@ impl Agent {
         if !response.status().is_success() {
             let status = response.status();
             let delay = retry_after(response.headers());
-            let message = format!("{status}: {}", response.text().await?);
+            // A body that breaks off still leaves the status to go by.
+            let text = response
+                .text()
+                .await
+                .unwrap_or_else(|error| error.to_string());
+            let message = format!("{status}: {text}");
             if is_retryable_status(status) {
                 return Err(retryable(message, delay));
             }

@@ -13,6 +13,8 @@ pub(crate) enum Reply {
     Events(Vec<Value>),
     /// A 400 `invalid_request_error` with this message.
     BadRequest(String),
+    /// A 529 overloaded error, to retry at once, whose body breaks off.
+    CutOffOverloaded,
 }
 
 pub(crate) fn text_reply(text: &str) -> Reply {
@@ -147,6 +149,11 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
                 .write_all(b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\n")
                 .await;
             std::future::pending::<()>().await;
+        }
+        Some(Reply::CutOffOverloaded) => {
+            let _ = stream
+                .write_all(b"HTTP/1.1 529 Overloaded\r\nretry-after: 0\r\ncontent-type: application/json\r\ncontent-length: 100\r\nconnection: close\r\n\r\n{\"type\":")
+                .await;
         }
         Some(Reply::BadRequest(message)) => bad_request(stream, &message).await,
         None => bad_request(stream, "no scripted reply").await,
