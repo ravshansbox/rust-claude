@@ -846,9 +846,10 @@ mod tests {
     fn shows_a_signed_in_server_loading_again() {
         let mut app = new_app();
         handle_agent_event(
-            UiEvent::McpSignedIn {
+            UiEvent::McpRestarting {
                 name: "figma".into(),
                 label: "global MCP server: figma".into(),
+                notice: "signed in to MCP server figma".into(),
             },
             &mut app,
         );

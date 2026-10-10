@@ -86,6 +86,17 @@ pub(super) fn save(server_url: &str, saved: &Saved) -> Result<(), String> {
     write_all(&all)
 }
 
+/// Forgets the sign-in for `server_url`. Returns whether there was one.
+pub(super) fn remove(server_url: &str) -> Result<bool, String> {
+    let _file = FILE.lock();
+    let mut all = read_all();
+    if all.remove(server_url).is_none() {
+        return Ok(false);
+    }
+    write_all(&all)?;
+    Ok(true)
+}
+
 /// Asks the token endpoint for tokens with `form`, and adds the client's
 /// credentials. Fields the reply leaves out are kept from `saved`.
 pub(super) async fn request_tokens(

@@ -81,12 +81,41 @@ async fn sign_in_to_mcp_server(
     if let Err(error) = sign_in.finish().await {
         return notice(format!("MCP sign-in to {name} failed: {error}"));
     }
+    let signed_in = format!("signed in to MCP server {name}");
+    restart_mcp_server(name, signed_in, events, requests).await;
+}
+
+/// Forgets the sign-in for the MCP server `name`, then starts it again.
+async fn sign_out_of_mcp_server(
+    name: String,
+    events: mpsc::UnboundedSender<UiEvent>,
+    requests: mpsc::UnboundedSender<Request>,
+) {
+    match mcp::sign_out(&name) {
+        Ok(signed_out) => restart_mcp_server(name, signed_out, events, requests).await,
+        Err(error) => {
+            let notice = format!("MCP sign-out of {name} failed: {error}");
+            let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(notice)));
+        }
+    }
+}
+
+/// Shows `notice` and starts the MCP server `name` again in place of the
+/// running one.
+async fn restart_mcp_server(
+    name: String,
+    notice: String,
+    events: mpsc::UnboundedSender<UiEvent>,
+    requests: mpsc::UnboundedSender<Request>,
+) {
     let Some(server) = mcp::restart(&name) else {
-        return notice(format!("signed in to MCP server {name}"));
+        let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(notice)));
+        return;
     };
-    let _ = events.send(UiEvent::McpSignedIn {
+    let _ = events.send(UiEvent::McpRestarting {
         name,
         label: server.label.clone(),
+        notice,
     });
     let _ = requests.send(Request::ReplaceMcpServer(server.started.await));
 }
@@ -366,6 +395,13 @@ async fn run_loop(
                     }
                     Action::McpSignIn(name) => {
                         tokio::spawn(sign_in_to_mcp_server(
+                            name,
+                            background_events.clone(),
+                            request_tx.clone(),
+                        ));
+                    }
+                    Action::McpSignOut(name) => {
+                        tokio::spawn(sign_out_of_mcp_server(
                             name,
                             background_events.clone(),
                             request_tx.clone(),

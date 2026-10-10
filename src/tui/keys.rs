@@ -20,6 +20,7 @@ pub(super) enum Action {
     ListModels,
     Context,
     McpSignIn(String),
+    McpSignOut(String),
     Cancel,
 }
 
@@ -291,8 +292,14 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         Some(("login", server)) if !server.trim().is_empty() => {
                             act(Action::McpSignIn(server.trim().to_string()));
                         }
+                        Some(("logout", server)) if !server.trim().is_empty() => {
+                            act(Action::McpSignOut(server.trim().to_string()));
+                        }
                         _ => {
-                            app.push(Role::Event, "usage: /mcp login <server>");
+                            app.push(
+                                Role::Event,
+                                "usage: /mcp login <server> or /mcp logout <server>",
+                            );
                             app.restore_input(prompt);
                         }
                     },
@@ -568,7 +575,7 @@ mod tests {
         handle_input(Event::Paste("/mc".into()), &mut app, |_| {});
         assert_eq!(suggested(&app), ["/mcp"]);
         handle_input(Event::Paste("p ".into()), &mut app, |_| {});
-        assert_eq!(suggested(&app), ["/mcp login"]);
+        assert_eq!(suggested(&app), ["/mcp login", "/mcp logout"]);
         handle_input(Event::Paste("login f".into()), &mut app, |_| {});
         assert_eq!(suggested(&app), ["/mcp login figma", "/mcp login files"]);
         press(&mut app, KeyCode::Tab);
@@ -585,18 +592,31 @@ mod tests {
         );
         assert_eq!(signing_in, ["figma"]);
         assert!(app.input.is_empty());
+        handle_input(Event::Paste("/mcp logout l".into()), &mut app, |_| {});
+        assert_eq!(suggested(&app), ["/mcp logout linear"]);
+        let mut signing_out = Vec::new();
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::McpSignOut(name) = action {
+                    signing_out.push(name);
+                }
+            },
+        );
+        assert_eq!(signing_out, ["linear"]);
     }
 
     #[test]
     fn explains_how_to_use_the_mcp_command() {
         let mut app = new_app();
-        for input in ["/mcp", "/mcp login", "/mcp dance figma"] {
+        for input in ["/mcp", "/mcp login", "/mcp logout", "/mcp dance figma"] {
             handle_input(Event::Paste(input.into()), &mut app, |_| {});
             app.commands_dismissed = true;
             press(&mut app, KeyCode::Enter);
             assert_eq!(
                 app.messages.last().unwrap().text,
-                "usage: /mcp login <server>",
+                "usage: /mcp login <server> or /mcp logout <server>",
                 "{input}"
             );
             assert_eq!(app.input, input);

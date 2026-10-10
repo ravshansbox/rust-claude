@@ -117,7 +117,7 @@ MCP:
 - A server that sends the same page of its tool list twice fails with an error instead of loading forever
 - A server that writes a single line longer than 32 MiB is disconnected with an error, so it cannot use up memory
 - Streamable HTTP servers with `headers`, sessions and retries; a clear error for the older SSE transport
-- OAuth sign-in to HTTP servers with `/mcp login <server>`, which completes server names
+- OAuth sign-in to HTTP servers with `/mcp login <server>` and `/mcp logout <server>`, which complete server names
 
 Other:
 
@@ -429,9 +429,9 @@ In the interface, rust-claude starts all servers in the background, so you can t
 
 An HTTP server without an `Authorization` header in its entry signs in with OAuth. When it needs sign-in, its line shows `MCP server figma needs sign-in: run /mcp login figma`.
 
-Type `/mcp login <server>` in the interface. After `/mcp `, the command list offers `login`, and after `/mcp login ` the names of the HTTP servers that sign in with OAuth. rust-claude finds the server's sign-in server, registers with it unless `oauth.clientId` is set, and opens the sign-in page in your browser (`open` on macOS, `xdg-open` elsewhere). It also shows the link, in case the browser does not open. The page sends the browser back to `http://127.0.0.1:<port>/callback`, where rust-claude waits for up to 5 minutes. rust-claude then starts the server again with the new sign-in. You can keep working while it waits.
+Type `/mcp login <server>` in the interface. After `/mcp `, the command list offers `login` and `logout`, and after either one the names of the HTTP servers that sign in with OAuth. rust-claude finds the server's sign-in server, registers with it unless `oauth.clientId` is set, and opens the sign-in page in your browser (`open` on macOS, `xdg-open` elsewhere). It also shows the link, in case the browser does not open. The page sends the browser back to `http://127.0.0.1:<port>/callback`, where rust-claude waits for up to 5 minutes. rust-claude then starts the server again with the new sign-in. You can keep working while it waits.
 
-rust-claude saves the sign-in for each server URL in `~/.rust-claude/mcp-auth.json`, which only you can read. It renews the sign-in when it expires or the server turns it down. In print mode, servers use the saved sign-in, but you can only sign in from the interface.
+rust-claude saves the sign-in for each server URL in `~/.rust-claude/mcp-auth.json`, which only you can read. It renews the sign-in when it expires or the server turns it down. `/mcp logout <server>` removes the saved sign-in and starts the server again without it. In print mode, servers use the saved sign-in, but you can only sign in from the interface.
 
 Some sign-in servers only let approved apps register. Figma, for example, turns down `rust-claude` but accepts `Claude Code`. To register under another name, set `clientName` in the global `mcp.json`. Using another app's name may break the server's terms, so do it only if you accept that risk:
 
