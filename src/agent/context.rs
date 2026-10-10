@@ -30,6 +30,28 @@ pub(super) fn has_uncompacted(messages: &[Value]) -> bool {
         .any(|message| message.get("stop_reason").is_none())
 }
 
+/// Copies `messages` with each tool output cut to its first `limit`
+/// characters. Tool calls and their results stay paired.
+pub(super) fn shorten_tool_results(messages: &[Value], limit: usize) -> Vec<Value> {
+    let mut messages = messages.to_vec();
+    let blocks = messages
+        .iter_mut()
+        .filter_map(|message| message["content"].as_array_mut())
+        .flatten();
+    for block in blocks.filter(|block| block["type"] == "tool_result") {
+        let Some(text) = block["content"].as_str() else {
+            continue;
+        };
+        if text.chars().count() > limit {
+            let kept: String = text.chars().take(limit).collect();
+            block["content"] = json!(format!(
+                "{kept}\n[the rest of this output was left out to fit the context window]"
+            ));
+        }
+    }
+    messages
+}
+
 pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
     let mut messages: Vec<Value> = messages
         .iter()

@@ -63,6 +63,12 @@ pub(super) fn is_thinking_mismatch(error: &anyhow::Error) -> bool {
         .contains("The block is bound to a different conversation")
 }
 
+/// Whether the API rejected a request because it does not fit in the
+/// model's context window.
+pub(super) fn is_prompt_too_long(error: &anyhow::Error) -> bool {
+    error.to_string().contains("prompt is too long")
+}
+
 #[cfg(test)]
 mod tests {
     use super::{retry_after, retry_delay, retryable};

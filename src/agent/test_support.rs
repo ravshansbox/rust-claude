@@ -50,6 +50,12 @@ pub(crate) struct MockApi {
 
 impl MockApi {
     pub(crate) async fn start(replies: Vec<Reply>) -> Self {
+        Self::start_with_message_limit(replies, usize::MAX).await
+    }
+
+    /// Like `start`, but rejects a request as too long, without using up a
+    /// scripted reply, when its messages take more than `limit` bytes of JSON.
+    pub(crate) async fn start_with_message_limit(replies: Vec<Reply>, limit: usize) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let requests = Arc::new(Mutex::new(Vec::new()));
@@ -60,7 +66,13 @@ impl MockApi {
                 let Some(request) = read_request(&mut stream).await else {
                     continue;
                 };
+                let size = request.1["messages"].to_string().len();
                 recorded.lock().await.push(request);
+                if size > limit {
+                    let message = format!("prompt is too long: {size} tokens > {limit} maximum");
+                    tokio::spawn(async move { bad_request(stream, &message).await });
+                    continue;
+                }
                 tokio::spawn(respond(stream, replies.pop_front()));
             }
         });

@@ -26,9 +26,9 @@ use crate::{
 pub use context::ContextUse;
 use context::{
     active_messages, context_tokens, estimate_prompt_tokens, estimate_text_tokens, estimate_tokens,
-    has_uncompacted, is_compaction, scale_parts, with_cache_breakpoint,
+    has_uncompacted, is_compaction, scale_parts, shorten_tool_results, with_cache_breakpoint,
 };
-use retry::{MAX_RETRIES, is_thinking_mismatch, retry_delay};
+use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
 use stream::Response;
 pub use system::Instructions;
 use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
@@ -41,6 +41,9 @@ pub const THINKING_LEVELS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"]
 pub const DEFAULT_THINKING_LEVEL: &str = "medium";
 const COMPACT_PROMPT: &str = "Summarise this conversation so that you can continue the work from the summary alone. Include the user's requests, decisions made, files read and changed, the current state of the work and the next steps. Do not call tools. Reply with the summary only.";
 const COMPACT_AT_PERCENT: u64 = 80;
+/// How many characters of each tool output to keep, in turn, when the
+/// conversation is too long to summarise.
+const COMPACT_TOOL_RESULT_LIMITS: [usize; 2] = [2_000, 200];
 
 fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
     messages[checkpoint..]
@@ -435,15 +438,23 @@ impl Agent {
             bail!("nothing to compact");
         }
         on_event(AgentEvent::Notice("compacting conversation".into()));
-        let mut messages = with_cache_breakpoint(&active_messages(&self.messages[..end]));
-        messages.push(json!({ "role": "user", "content": COMPACT_PROMPT }));
-        let response = self
-            .request(messages, Some(json!({ "type": "none" })), &mut |event| {
-                if let AgentEvent::Notice(_) = event {
-                    on_event(event);
-                }
-            })
-            .await?;
+        let active = active_messages(&self.messages[..end]);
+        let mut response = self.summarise(&active, on_event).await;
+        // A round of tool calls can take the conversation past the context
+        // window, and then the API rejects it whole. The summary can do with
+        // less of each tool output.
+        for limit in COMPACT_TOOL_RESULT_LIMITS {
+            if !response.as_ref().is_err_and(is_prompt_too_long) {
+                break;
+            }
+            on_event(AgentEvent::Notice(format!(
+                "conversation too long to summarise; retrying with tool output cut to {limit} characters"
+            )));
+            response = self
+                .summarise(&shorten_tool_results(&active, limit), on_event)
+                .await;
+        }
+        let response = response?;
         match response.stop_reason.as_str() {
             "end_turn" => {}
             "refusal" => bail!(
@@ -476,6 +487,21 @@ impl Agent {
         on_event(AgentEvent::Notice("compacted conversation".into()));
         on_event(AgentEvent::Stats(self.stats()));
         Ok(())
+    }
+
+    async fn summarise(
+        &mut self,
+        messages: &[Value],
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<Response> {
+        let mut messages = with_cache_breakpoint(messages);
+        messages.push(json!({ "role": "user", "content": COMPACT_PROMPT }));
+        self.request(messages, Some(json!({ "type": "none" })), &mut |event| {
+            if let AgentEvent::Notice(_) = event {
+                on_event(event);
+            }
+        })
+        .await
     }
 
     async fn request(
@@ -983,6 +1009,51 @@ mod tests {
         assert!(
             after_compaction.contains("also update the README"),
             "{after_compaction}"
+        );
+    }
+
+    #[tokio::test]
+    async fn compacts_a_conversation_that_outgrew_the_context_window() {
+        let full_context_tool_call = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "head -c 15000 /dev/zero | tr '\\0' x" } } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        ]);
+        // The tool output alone is larger than the API accepts.
+        let api = MockApi::start_with_message_limit(
+            vec![
+                full_context_tool_call,
+                text_reply("summary of the work"),
+                text_reply("done"),
+            ],
+            10_000,
+        )
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut notices = Vec::new();
+        let result = agent
+            .prompt("read the big file", &[], |event| {
+                if let AgentEvent::Notice(notice) = event {
+                    notices.push(notice);
+                }
+            })
+            .await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert!(
+            notices.iter().any(|notice| notice.contains("too long")),
+            "{notices:?}"
+        );
+        let requests = api.requests().await;
+        let last = requests.last().unwrap()["messages"].to_string();
+        assert!(last.contains("summary of the work"), "{last}");
+        // The session keeps the full tool output.
+        let output = "x".repeat(15_000);
+        assert!(
+            serde_json::Value::from(agent.messages())
+                .to_string()
+                .contains(&output)
         );
     }
 
