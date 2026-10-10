@@ -347,6 +347,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
 mod tests {
     use super::{Action, handle_input, may_change_screen};
     use crate::images::Image;
+    use crate::skills::{Scope, Skill};
     use crate::tui::{
         Activity, App, UiEvent, handle_agent_event,
         test_support::{new_app, screen},
@@ -501,6 +502,36 @@ mod tests {
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
         assert_eq!(app.input, "/new");
         assert!(app.queued_prompts().is_empty());
+    }
+
+    #[test]
+    fn runs_the_skill_named_exactly_when_a_longer_name_comes_first() {
+        let skill = |name: &str, scope| Skill {
+            name: name.into(),
+            description: format!("{name} skill"),
+            path: format!("/skills/{name}/SKILL.md").into(),
+            base_dir: format!("/skills/{name}").into(),
+            disable_model_invocation: false,
+            scope,
+        };
+        let mut app = new_app();
+        app.skills = vec![
+            skill("pdf-tools", Scope::Project),
+            skill("pdf", Scope::Global),
+        ];
+        handle_input(Event::Paste("/skill:pdf".into()), &mut app, |_| {});
+        let mut submitted = None;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::Submit(prompt, _, _) = action {
+                    submitted = Some(prompt);
+                }
+            },
+        );
+        assert_eq!(submitted.as_deref(), Some("/skill:pdf"));
+        assert_eq!(app.messages.last().unwrap().text, "[skill] pdf");
     }
 
     #[test]
