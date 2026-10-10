@@ -76,7 +76,14 @@ fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
             "--image" => images.push(arguments.next().context(USAGE)?),
             "--model" => set_value(&mut options.model, &mut arguments)?,
             "--thinking" => set_value(&mut options.thinking_level, &mut arguments)?,
-            "--config-dir" => set_value(&mut options.config_dir, &mut arguments)?,
+            "--config-dir" => {
+                set_value(&mut options.config_dir, &mut arguments)?;
+                // An empty folder, such as an unset variable, would put the
+                // sign-in and sessions in the current folder.
+                if options.config_dir.as_deref() == Some("") {
+                    bail!(USAGE);
+                }
+            }
             "-p" | "--print" => set_value(&mut prompt, &mut arguments)?,
             "-c" | "--continue" if !options.continue_session => options.continue_session = true,
             "-h" | "--help" if !help => help = true,
@@ -327,6 +334,8 @@ mod tests {
             Some(Some("/tmp/rc".into()))
         );
         assert_eq!(parse(&["--config-dir"]), None);
+        assert_eq!(parse(&["--config-dir", ""]), None);
+        assert_eq!(parse(&["--config-dir", "", "-p", "hello"]), None);
         assert_eq!(parse(&["--config-dir", "/tmp/rc", "--help"]), None);
     }
 
