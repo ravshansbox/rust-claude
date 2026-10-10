@@ -105,16 +105,30 @@ fn read_config(
     }
 }
 
-fn config_paths() -> Vec<(Scope, PathBuf)> {
-    let mut paths = Vec::new();
-    if let Some(config_dir) = crate::config::dir() {
-        paths.push((Scope::Global, config_dir.join("mcp.json")));
+fn read_configs(
+    config_dir: Option<&Path>,
+    cwd: &Path,
+) -> (BTreeMap<String, (Scope, ServerConfig)>, Vec<String>) {
+    let mut configs = BTreeMap::new();
+    let mut diagnostics = Vec::new();
+    if let Some(config_dir) = config_dir {
+        read_config(
+            &config_dir.join("mcp.json"),
+            Scope::Global,
+            &mut configs,
+            &mut diagnostics,
+        );
     }
-    paths.push((
-        Scope::Project,
-        PathBuf::from(".rust-claude").join("mcp.json"),
-    ));
-    paths
+    let project_dir = cwd.join(".rust-claude");
+    if !config_dir.is_some_and(|config_dir| crate::skills::same_dir(config_dir, &project_dir)) {
+        read_config(
+            &project_dir.join("mcp.json"),
+            Scope::Project,
+            &mut configs,
+            &mut diagnostics,
+        );
+    }
+    (configs, diagnostics)
 }
 
 struct Pending {
@@ -543,11 +557,8 @@ pub struct Startup {
 }
 
 pub fn startup() -> Startup {
-    let mut configs = BTreeMap::new();
-    let mut diagnostics = Vec::new();
-    for (scope, path) in config_paths() {
-        read_config(&path, scope, &mut configs, &mut diagnostics);
-    }
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (configs, diagnostics) = read_configs(crate::config::dir().as_deref(), &cwd);
     let servers = configs
         .into_iter()
         .filter(|(_, (_, config))| config.enabled != Some(false))
@@ -771,6 +782,21 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert!(servers.is_empty());
         assert_eq!(diagnostics, ["MCP server docs: timeout must be at least 1"]);
+    }
+
+    #[test]
+    fn labels_servers_global_when_run_from_the_home_folder() {
+        let home = std::env::temp_dir().join(format!("mcp-home-{}", std::process::id()));
+        std::fs::create_dir_all(home.join(".rust-claude")).unwrap();
+        std::fs::write(
+            home.join(".rust-claude/mcp.json"),
+            r#"{ "mcpServers": { "docs": { "command": "a" } } }"#,
+        )
+        .unwrap();
+        let (servers, diagnostics) = read_configs(Some(&home.join(".rust-claude")), &home);
+        std::fs::remove_dir_all(&home).unwrap();
+        assert_eq!(servers["docs"].0, Scope::Global);
+        assert!(diagnostics.is_empty());
     }
 
     fn echo_server() -> ServerConfig {
