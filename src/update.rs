@@ -59,10 +59,14 @@ pub struct Updater {
 }
 
 impl Updater {
-    /// The updater for this build, unless `check_for_updates` is false in
-    /// settings.json.
+    /// The updater for this build, unless it is a debug build, as from
+    /// `cargo run`, or `check_for_updates` is false in settings.json.
     pub fn for_this_build(settings: &crate::settings::Settings) -> Option<Self> {
-        if settings.check_for_updates == Some(false) {
+        Self::new(settings, cfg!(debug_assertions))
+    }
+
+    fn new(settings: &crate::settings::Settings, debug_build: bool) -> Option<Self> {
+        if debug_build || settings.check_for_updates == Some(false) {
             return None;
         }
         Some(Self {
@@ -422,9 +426,19 @@ mod tests {
             check_for_updates,
             ..Default::default()
         };
-        assert!(Updater::for_this_build(&settings(Some(false))).is_none());
-        assert!(Updater::for_this_build(&settings(Some(true))).is_some());
-        assert!(Updater::for_this_build(&settings(None)).is_some());
+        assert!(Updater::new(&settings(Some(false)), false).is_none());
+        assert!(Updater::new(&settings(Some(true)), false).is_some());
+        assert!(Updater::new(&settings(None), false).is_some());
+    }
+
+    #[test]
+    fn skips_debug_builds_such_as_cargo_run() {
+        let settings = crate::settings::Settings {
+            check_for_updates: Some(true),
+            ..Default::default()
+        };
+        assert!(Updater::new(&settings, true).is_none());
+        assert!(Updater::for_this_build(&settings).is_none());
     }
 
     #[test]
