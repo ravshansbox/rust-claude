@@ -4,7 +4,7 @@ use super::{
 };
 use crate::{
     agent::{AgentEvent, parse_shell_message},
-    skills, tools,
+    models, skills, tools,
 };
 use serde_json::Value;
 
@@ -88,6 +88,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         }),
         UiEvent::ModelChecked(result) => app.finish(result, |app, model| app.set_model(&model)),
         UiEvent::Models(result) => app.finish(result, |app, models| {
+            let models = models::latest_in_each_class(models);
             if models.is_empty() {
                 app.push(Role::Event, "no models available");
                 return;
@@ -252,6 +253,39 @@ mod tests {
             .find("installed v0.2.0, restart rust-claude to use it")
             .expect(&shown);
         assert!(available < ready, "{shown}");
+    }
+
+    #[test]
+    fn offers_only_the_latest_model_in_each_class() {
+        let mut app = new_app();
+        let models = [
+            "claude-haiku-4-5-20251001",
+            "claude-sonnet-5-5",
+            "claude-opus-4-6",
+            "claude-haiku-5-5",
+            "claude-fable-5",
+            "claude-opus-5-5",
+            "claude-opus-4-5-20251101",
+            "claude-fable-5-1",
+            "claude-sonnet-4-5",
+        ];
+        handle_agent_event(
+            UiEvent::Models(Ok(models.map(String::from).to_vec())),
+            &mut app,
+        );
+        let shown = screen(&mut app);
+        let rows: Vec<&str> = shown
+            .lines()
+            .skip_while(|line| !line.starts_with("Select model"))
+            .skip(1)
+            .take_while(|line| !line.starts_with('─'))
+            .map(str::trim)
+            .collect();
+        assert_eq!(
+            rows,
+            ["fable-5-1", "opus-5-5", "sonnet-5-5", "haiku-5-5"],
+            "{shown}"
+        );
     }
 
     #[test]

@@ -628,7 +628,10 @@ mod tests {
             |_| {},
         );
         assert!(screen(&mut app).contains("Prompt history"));
-        let models = vec!["model".to_string(), "other".to_string()];
+        let models = vec![
+            "claude-opus-5-5".to_string(),
+            "claude-sonnet-5-5".to_string(),
+        ];
         handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
         let shown = screen(&mut app);
         assert!(shown.contains("Select model"), "{shown}");
@@ -645,7 +648,7 @@ mod tests {
                 }
             },
         );
-        assert_eq!(chosen.as_deref(), Some("other"));
+        assert_eq!(chosen.as_deref(), Some("claude-sonnet-5-5"));
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "/mo");
     }
@@ -941,7 +944,10 @@ mod tests {
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
         handle_input(Event::Paste("draft".into()), &mut app, |_| {});
-        let models = vec!["model".to_string(), "other".to_string()];
+        let models = vec![
+            "claude-opus-5-5".to_string(),
+            "claude-sonnet-5-5".to_string(),
+        ];
         handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
         assert!(screen(&mut app).contains("Select model"));
         assert!(!handle_input(control('c'), &mut app, |_| {}));

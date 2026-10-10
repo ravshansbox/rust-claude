@@ -22,7 +22,7 @@ Command line:
 
 Model and thinking:
 
-- `/model` picker with the models available to your account
+- `/model` picker with the latest model in each class available to your account: Fable, Opus, Sonnet and Haiku
 - `/model <id>`, which checks the id before switching
 - Known context windows and output limits for the latest model in each class
 - Thinking levels with `/thinking`, `/thinking <level>` and Shift+Tab
@@ -208,7 +208,7 @@ Edit tool calls show a diff, and write tool calls show the first 10 lines of the
 | `/resume` | Resume a previous session |
 | `/compact` | Summarise the conversation to free context |
 | `/context` | Show what fills the context |
-| `/model [id]` | Select a model. An id must be in the list of available models |
+| `/model [id]` | Select a model. The picker shows the latest model in each class. An id must be in the list of available models |
 | `/thinking [level]` | Select a thinking level |
 | `/skill:name [request]` | Run a skill, with an optional request |
 | `/quit` | Quit |
