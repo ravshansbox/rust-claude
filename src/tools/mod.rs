@@ -43,15 +43,20 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 /// Replaces the file at `path`, or the file a symlink there points to, in one
 /// step, keeping the permissions and group of the file it replaces. In a
 /// folder where no temporary file can be created, and for a file with other
-/// hard links or another owner, it writes the file in place instead.
+/// hard links or another owner, it writes the file in place instead. A pipe or
+/// device gets the contents written into it.
 async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
         let (target, metadata) = match std::fs::canonicalize(&path) {
             Ok(target) => {
                 // Refuses a file the user made read-only, as writing in place would.
-                let file = std::fs::OpenOptions::new().write(true).open(&target)?;
+                let mut file = std::fs::OpenOptions::new().write(true).open(&target)?;
                 let metadata = file.metadata()?;
+                if !metadata.is_file() {
+                    use std::io::Write;
+                    return file.write_all(contents.as_bytes());
+                }
                 (target, Some(metadata))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

@@ -364,7 +364,7 @@ The agent can use these tools:
 
 The agent can also use tools from [MCP servers](#mcp-servers).
 
-`write` and `edit` write a temporary file in the same folder and then replace the file with it, so a failed write, for example on a full disk, keeps the old file. The file keeps its permissions and group, so a script stays executable, and a symlink stays a symlink, with the file it points to replaced. A file with other hard links, or owned by someone else, is written in place instead, so every link sees the new text and the owner does not change.
+`write` and `edit` write a temporary file in the same folder and then replace the file with it, so a failed write, for example on a full disk, keeps the old file. The file keeps its permissions and group, so a script stays executable, and a symlink stays a symlink, with the file it points to replaced. A file with other hard links, or owned by someone else, is written in place instead, so every link sees the new text and the owner does not change. `write` to a pipe or device sends the text into it and leaves it in place.
 
 `bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice. `bash` and `!` commands and MCP servers run without the terminal, so programs that prompt on it, such as `sudo`, `ssh` or `git` asking for a password, fail at once instead of waiting for input.
 

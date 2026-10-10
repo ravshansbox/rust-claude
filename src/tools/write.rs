@@ -34,7 +34,10 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::{call, test_support::TemporaryDir};
+    use crate::tools::{
+        call,
+        test_support::{TemporaryDir, TemporaryFile},
+    };
     use serde_json::json;
 
     #[tokio::test]
@@ -180,5 +183,22 @@ mod tests {
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
         assert_eq!(std::fs::metadata(&path).unwrap().gid(), group);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writes_into_named_pipe() {
+        use std::os::unix::fs::FileTypeExt;
+        let fifo = TemporaryFile::fifo("write-fifo");
+        let path = fifo.path().to_owned();
+        // Opening the pipe waits for the other end, so read it on another thread.
+        let reader = std::thread::spawn(move || std::fs::read_to_string(path).unwrap());
+        let input = json!({ "path": fifo.path(), "content": "new" });
+        let result = call("write", &input).await;
+        let read = reader.join().unwrap();
+        assert_eq!(result, Ok(format!("wrote {}", fifo.path().display())));
+        assert_eq!(read, "new");
+        let file_type = std::fs::symlink_metadata(fifo.path()).unwrap().file_type();
+        assert!(file_type.is_fifo());
     }
 }
