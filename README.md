@@ -91,6 +91,7 @@ Display:
 - Tabs in replies, tool output and `!` command output shown as four spaces
 - Light and dark theme detection
 - Mouse wheel scrolling
+- Drag over the conversation to select text. Releasing the button copies it to the clipboard with an OSC 52 escape sequence, so the terminal must allow OSC 52. Each screen row is copied as its own line
 - The view stays still while you read earlier text and a reply streams
 - Spinner with status text
 

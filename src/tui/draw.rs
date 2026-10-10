@@ -2,6 +2,7 @@ use super::{
     App, HistorySearch, Picker, display_model,
     input::{input_cursor, input_rows},
     render::{borrowed_line, theme, wrapped_height},
+    selection::highlight_selection,
     status::{format_context, format_quota, format_stats},
 };
 use ratatui::{
@@ -48,16 +49,6 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     for message in &mut app.messages {
         message.render(chat.width);
     }
-    let mut status_lines = Vec::new();
-    if let Some(activity) = app.activity {
-        status_lines.push(Line::default());
-        let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
-        status_lines.push(Line::from(format!("{frame} {activity}").dark_gray()));
-        for prompt in app.queued_prompts() {
-            let first_line = prompt.lines().next().unwrap_or_default();
-            status_lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
-        }
-    }
 
     let panel_height =
         |content: usize| (content.min(u16::MAX as usize - 1) as u16 + 1).min(chat.height);
@@ -88,18 +79,16 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         ..chat
     };
 
-    let wrap = Wrap { trim: false };
-    let status_heights: Vec<usize> = status_lines
-        .iter()
-        .map(|line| wrapped_height(line, chat.width))
-        .collect();
     // Each message starts with a blank line, one row high.
     let wrapped_line_count: usize = app
         .messages
         .iter()
         .map(|message| 1 + message.height())
         .sum::<usize>()
-        + status_heights.iter().sum::<usize>();
+        + status_lines(app)
+            .iter()
+            .map(|line| wrapped_height(line, chat.width))
+            .sum::<usize>();
     let viewport_height = conversation_area.height;
     let max_scroll = wrapped_line_count.saturating_sub(viewport_height as usize);
     app.scroll_from_bottom =
@@ -107,45 +96,13 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1) as usize;
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
-    // Paragraph offsets are u16, so drop the lines above the view and scroll
-    // only within the first visible one. Lines below the view are left out.
-    let mut skipped = 0;
-    let mut first_message = 0;
-    while let Some(message) = app.messages.get(first_message)
-        && skipped + 1 + message.height() <= scroll
-    {
-        skipped += 1 + message.height();
-        first_message += 1;
-    }
-    let rows = app.messages[first_message..]
-        .iter()
-        .flat_map(|message| {
-            let rendered = message.rendered.iter().flat_map(|rendered| {
-                rendered
-                    .lines
-                    .iter()
-                    .map(borrowed_line)
-                    .zip(rendered.heights.iter().copied())
-            });
-            std::iter::once((Line::default(), 1)).chain(rendered)
-        })
-        .chain(status_lines.into_iter().zip(status_heights));
-    let mut lines = Vec::new();
-    let mut filled = 0;
-    for (line, height) in rows {
-        if lines.is_empty() && skipped + height <= scroll {
-            skipped += height;
-            continue;
-        }
-        if filled >= scroll - skipped + viewport_height as usize {
-            break;
-        }
-        filled += height;
-        lines.push(line);
-    }
-    let offset = (scroll - skipped).min(u16::MAX as usize) as u16;
-    let conversation = Paragraph::new(Text::from(lines)).wrap(wrap);
-    frame.render_widget(conversation.scroll((offset, 0)), conversation_area);
+    app.conversation_area = conversation_area;
+    app.conversation_top = scroll;
+    frame.render_widget(
+        conversation(app, chat.width, scroll, viewport_height),
+        conversation_area,
+    );
+    highlight_selection(app, frame.buffer_mut());
     if let Some((view, height, list)) = panel {
         let area = Rect {
             y: chat.y + chat.height - height,
@@ -229,6 +186,69 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     ));
 
     frame.render_widget(footer_paragraph, footer);
+}
+
+fn status_lines(app: &App) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    if let Some(activity) = app.activity {
+        lines.push(Line::default());
+        let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
+        lines.push(Line::from(format!("{frame} {activity}").dark_gray()));
+        for prompt in app.queued_prompts() {
+            let first_line = prompt.lines().next().unwrap_or_default();
+            lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
+        }
+    }
+    lines
+}
+
+/// The conversation `width` columns wide, from row `top` for `height_shown` rows.
+pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16) -> Paragraph<'_> {
+    let status_lines = status_lines(app);
+    let status_heights: Vec<usize> = status_lines
+        .iter()
+        .map(|line| wrapped_height(line, width))
+        .collect();
+    // Paragraph offsets are u16, so drop the lines above the view and scroll
+    // only within the first visible one. Lines below the view are left out.
+    let mut skipped = 0;
+    let mut first_message = 0;
+    while let Some(message) = app.messages.get(first_message)
+        && skipped + 1 + message.height() <= top
+    {
+        skipped += 1 + message.height();
+        first_message += 1;
+    }
+    let rows = app.messages[first_message..]
+        .iter()
+        .flat_map(|message| {
+            let rendered = message.rendered.iter().flat_map(|rendered| {
+                rendered
+                    .lines
+                    .iter()
+                    .map(borrowed_line)
+                    .zip(rendered.heights.iter().copied())
+            });
+            std::iter::once((Line::default(), 1)).chain(rendered)
+        })
+        .chain(status_lines.into_iter().zip(status_heights));
+    let mut lines = Vec::new();
+    let mut filled = 0;
+    for (line, height) in rows {
+        if lines.is_empty() && skipped + height <= top {
+            skipped += height;
+            continue;
+        }
+        if filled >= top - skipped + height_shown as usize {
+            break;
+        }
+        filled += height;
+        lines.push(line);
+    }
+    let offset = (top - skipped).min(u16::MAX as usize) as u16;
+    Paragraph::new(Text::from(lines))
+        .wrap(Wrap { trim: false })
+        .scroll((offset, 0))
 }
 
 fn held_scroll_from_bottom(

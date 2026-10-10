@@ -5,7 +5,7 @@ use super::{
     },
 };
 use crate::{agent::THINKING_LEVELS, images::Image, models, skills};
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 
 pub(super) enum Action {
     Submit(String, Vec<Image>, &'static str),
@@ -22,15 +22,21 @@ pub(super) enum Action {
     McpSignIn(String),
     McpSignOut(String),
     Cancel,
+    Copy(String),
 }
 
 /// Whether `handle_input` may change what the screen shows for the event.
-/// Mouse capture reports every mouse movement, and only scrolling counts.
+/// Mouse capture reports every mouse movement, and only scrolling and the
+/// left button count.
 pub(super) fn may_change_screen(event: &Event) -> bool {
     match event {
         Event::Mouse(mouse) => matches!(
             mouse.kind,
-            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+            MouseEventKind::ScrollUp
+                | MouseEventKind::ScrollDown
+                | MouseEventKind::Down(MouseButton::Left)
+                | MouseEventKind::Drag(MouseButton::Left)
+                | MouseEventKind::Up(MouseButton::Left)
         ),
         Event::Key(key) => key.kind == KeyEventKind::Press,
         Event::Paste(_) | Event::Resize(..) => true,
@@ -43,8 +49,19 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         match mouse.kind {
             MouseEventKind::ScrollUp => app.scroll_up(3),
             MouseEventKind::ScrollDown => app.scroll_down(3),
+            MouseEventKind::Down(MouseButton::Left) => app.press_mouse(mouse.column, mouse.row),
+            MouseEventKind::Drag(MouseButton::Left) => app.drag_mouse(mouse.column, mouse.row),
+            MouseEventKind::Up(MouseButton::Left) => {
+                if let Some(text) = app.release_mouse(mouse.column, mouse.row) {
+                    act(Action::Copy(text));
+                }
+            }
             _ => {}
         }
+        return false;
+    }
+    if let Event::Resize(..) = event {
+        app.selection = None;
         return false;
     }
     if let Event::Paste(text) = event {
@@ -392,7 +409,10 @@ mod tests {
         release.kind = KeyEventKind::Release;
         for (event, redraw) in [
             (mouse(MouseEventKind::Moved), false),
-            (mouse(MouseEventKind::Drag(MouseButton::Left)), false),
+            (mouse(MouseEventKind::Drag(MouseButton::Right)), false),
+            (mouse(MouseEventKind::Down(MouseButton::Left)), true),
+            (mouse(MouseEventKind::Drag(MouseButton::Left)), true),
+            (mouse(MouseEventKind::Up(MouseButton::Left)), true),
             (mouse(MouseEventKind::ScrollUp), true),
             (mouse(MouseEventKind::ScrollDown), true),
             (Event::Key(release), false),

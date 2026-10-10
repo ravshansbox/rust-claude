@@ -4,6 +4,7 @@ use super::{
     draw::SPINNER_FRAMES,
     files::{FileList, file_query},
     render::{render_message, tool_message, wrapped_height},
+    selection::Selection,
     workspace_label,
 };
 use crate::{
@@ -14,7 +15,7 @@ use crate::{
     tools,
 };
 use anyhow::Result;
-use ratatui::text::Line;
+use ratatui::{layout::Rect, text::Line};
 use std::path::PathBuf;
 
 pub(super) struct Suggestions {
@@ -323,6 +324,10 @@ pub(super) struct App {
     pub(super) history_file: Option<PathBuf>,
     pub(super) history_search: Option<HistorySearch>,
     mcp_groups: Vec<McpGroup>,
+    pub(super) selection: Option<Selection>,
+    /// Where the conversation was last drawn, and its first row shown.
+    pub(super) conversation_area: Rect,
+    pub(super) conversation_top: usize,
 }
 
 struct McpGroup {
@@ -420,6 +425,9 @@ impl App {
             history_file: None,
             history_search: None,
             mcp_groups: Vec::new(),
+            selection: None,
+            conversation_area: Rect::default(),
+            conversation_top: 0,
         };
         app.push(
             Role::Event,
@@ -886,6 +894,7 @@ impl App {
 
     pub(super) fn clear_session(&mut self) {
         self.messages.clear();
+        self.selection = None;
         for group in &mut self.mcp_groups {
             group.message = None;
         }
