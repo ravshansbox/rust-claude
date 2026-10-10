@@ -10,7 +10,7 @@ use crate::{
     agent::{Queue, Queued, Stats, THINKING_LEVELS, take_queued},
     history,
     images::Image,
-    skills::Skill,
+    skills::{Scope, Skill},
     tools,
 };
 use anyhow::Result;
@@ -93,9 +93,23 @@ impl Rendered {
     }
 }
 
-fn loading_text(spinner_frame: usize, label: &str) -> String {
+fn group_text(spinner_frame: usize, group: &McpGroup) -> String {
     let frame = SPINNER_FRAMES[spinner_frame % SPINNER_FRAMES.len()];
-    format!("{frame} loading {label}")
+    let entries = group
+        .servers
+        .iter()
+        .map(|server| match &server.summary {
+            Some(summary) => summary.clone(),
+            None => format!("{frame} {}", server.name),
+        })
+        .collect::<Vec<_>>()
+        .join(", ");
+    let scope = group.scope;
+    if group.loading() {
+        format!("{scope} MCP servers: {entries}")
+    } else {
+        format!("loaded {scope} MCP servers: {entries}")
+    }
 }
 
 impl ChatMessage {
@@ -308,13 +322,24 @@ pub(super) struct App {
     pub(super) history: Vec<history::Entry>,
     pub(super) history_file: Option<PathBuf>,
     pub(super) history_search: Option<HistorySearch>,
-    mcp_loading: Vec<McpLoading>,
+    mcp_groups: Vec<McpGroup>,
 }
 
-struct McpLoading {
-    name: String,
-    label: String,
+struct McpGroup {
+    scope: Scope,
+    servers: Vec<McpEntry>,
     message: Option<usize>,
+}
+
+impl McpGroup {
+    fn loading(&self) -> bool {
+        self.servers.iter().any(|server| server.summary.is_none())
+    }
+}
+
+struct McpEntry {
+    name: String,
+    summary: Option<String>,
 }
 
 pub(super) struct HistorySearch {
@@ -394,7 +419,7 @@ impl App {
             history: Vec::new(),
             history_file: None,
             history_search: None,
-            mcp_loading: Vec::new(),
+            mcp_groups: Vec::new(),
         };
         app.push(
             Role::Event,
@@ -659,36 +684,105 @@ impl App {
     }
 
     pub(super) fn animating(&self) -> bool {
-        self.busy() || !self.mcp_loading.is_empty()
+        self.busy() || self.mcp_groups.iter().any(McpGroup::loading)
     }
 
     pub(super) fn tick_spinner(&mut self) {
         self.spinner_frame = self.spinner_frame.wrapping_add(1);
-        for loading in &self.mcp_loading {
-            if let Some(index) = loading.message {
-                let text = loading_text(self.spinner_frame, &loading.label);
-                self.messages[index].replace(text);
+        for index in 0..self.mcp_groups.len() {
+            if self.mcp_groups[index].loading() {
+                self.show_mcp_group(index);
             }
         }
     }
 
-    pub(super) fn start_mcp_server(&mut self, name: &str, label: &str) {
-        self.push(Role::Event, loading_text(self.spinner_frame, label));
-        self.mcp_loading.push(McpLoading {
-            name: name.into(),
-            label: label.into(),
-            message: Some(self.messages.len() - 1),
-        });
+    /// Shows the servers loading, one line for each scope, global first.
+    pub(super) fn start_mcp_servers<'a>(
+        &mut self,
+        servers: impl IntoIterator<Item = (&'a str, Scope)>,
+    ) {
+        let mut changed = Vec::new();
+        for (name, scope) in servers {
+            let found = self
+                .mcp_groups
+                .iter_mut()
+                .enumerate()
+                .find_map(|(index, group)| {
+                    let server = group
+                        .servers
+                        .iter_mut()
+                        .find(|server| server.name == name)?;
+                    Some((index, server))
+                });
+            if let Some((index, server)) = found {
+                server.summary = None;
+                changed.push(index);
+                continue;
+            }
+            let index = match self
+                .mcp_groups
+                .iter()
+                .position(|group| group.scope == scope)
+            {
+                Some(index) => index,
+                None => {
+                    self.mcp_groups.push(McpGroup {
+                        scope,
+                        servers: Vec::new(),
+                        message: None,
+                    });
+                    self.mcp_groups
+                        .sort_by_key(|group| matches!(group.scope, Scope::Project));
+                    self.mcp_groups
+                        .iter()
+                        .position(|group| group.scope == scope)
+                        .unwrap_or_default()
+                }
+            };
+            self.mcp_groups[index].servers.push(McpEntry {
+                name: name.into(),
+                summary: None,
+            });
+        }
+        for index in 0..self.mcp_groups.len() {
+            if self.mcp_groups[index].message.is_none() || changed.contains(&index) {
+                self.show_mcp_group(index);
+            }
+        }
     }
 
-    pub(super) fn finish_mcp_server(&mut self, name: &str, status: String) {
-        let position = self
-            .mcp_loading
-            .iter()
-            .position(|loading| loading.name == name);
-        match position.and_then(|position| self.mcp_loading.remove(position).message) {
-            Some(index) => self.messages[index].replace(status),
-            None => self.push(Role::Event, status),
+    pub(super) fn finish_mcp_server(&mut self, added: crate::mcp::Added) {
+        let found = self
+            .mcp_groups
+            .iter_mut()
+            .enumerate()
+            .find_map(|(index, group)| {
+                let server = group
+                    .servers
+                    .iter_mut()
+                    .find(|server| server.name == added.name)?;
+                Some((index, server))
+            });
+        match found {
+            Some((index, server)) => {
+                server.summary = Some(added.summary);
+                self.show_mcp_group(index);
+                if added.failed {
+                    self.push(Role::Event, added.status);
+                }
+            }
+            None => self.push(Role::Event, added.status),
+        }
+    }
+
+    fn show_mcp_group(&mut self, index: usize) {
+        let text = group_text(self.spinner_frame, &self.mcp_groups[index]);
+        match self.mcp_groups[index].message {
+            Some(message) => self.messages[message].replace(text),
+            None => {
+                self.push(Role::Event, text);
+                self.mcp_groups[index].message = Some(self.messages.len() - 1);
+            }
         }
     }
 
@@ -792,8 +886,8 @@ impl App {
 
     pub(super) fn clear_session(&mut self) {
         self.messages.clear();
-        for loading in &mut self.mcp_loading {
-            loading.message = None;
+        for group in &mut self.mcp_groups {
+            group.message = None;
         }
         self.history_index = None;
     }
@@ -813,7 +907,7 @@ pub(super) fn image_marker(number: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Activity, App, ChatMessage, Role};
+    use super::{Activity, App, ChatMessage, Role, Scope};
     use crate::agent::AgentEvent;
     use crate::tui::{
         UiEvent, handle_agent_event, handle_input,
@@ -822,10 +916,22 @@ mod tests {
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use ratatui::text::Line;
 
-    fn mcp_server_loaded(name: &str, status: &str) -> UiEvent {
+    fn mcp_server_loaded(name: &str, summary: &str) -> UiEvent {
+        UiEvent::McpServer(crate::mcp::Added {
+            name: name.into(),
+            status: format!("loaded MCP server: {summary}"),
+            summary: summary.into(),
+            failed: false,
+            diagnostics: Vec::new(),
+        })
+    }
+
+    fn mcp_server_failed(name: &str, summary: &str, status: &str) -> UiEvent {
         UiEvent::McpServer(crate::mcp::Added {
             name: name.into(),
             status: status.into(),
+            summary: summary.into(),
+            failed: true,
             diagnostics: Vec::new(),
         })
     }
@@ -843,98 +949,99 @@ mod tests {
     }
 
     #[test]
-    fn shows_a_signed_in_server_loading_again() {
+    fn groups_mcp_servers_by_scope_on_two_lines_with_spinners() {
         let mut app = new_app();
-        handle_agent_event(
-            UiEvent::McpRestarting {
-                name: "figma".into(),
-                label: "global MCP server: figma".into(),
-                notice: "signed in to MCP server figma".into(),
-            },
-            &mut app,
-        );
-        let texts: Vec<&str> = app
-            .messages
-            .iter()
-            .map(|message| message.text.as_str())
-            .collect();
-        assert_eq!(texts[texts.len() - 2], "signed in to MCP server figma");
-        assert!(texts[texts.len() - 1].ends_with("loading global MCP server: figma"));
-        handle_agent_event(
-            UiEvent::McpServer(crate::mcp::Added {
-                name: "figma".into(),
-                status: "loaded global MCP server: figma (5 tools)".into(),
-                diagnostics: Vec::new(),
-            }),
-            &mut app,
-        );
-        assert_eq!(
-            app.messages.last().unwrap().text,
-            "loaded global MCP server: figma (5 tools)"
-        );
-    }
-
-    #[test]
-    fn shows_mcp_servers_loading_then_replaces_each_line_once_loaded() {
-        let mut app = new_app();
-        app.start_mcp_server("docs", "project MCP server: docs");
-        app.start_mcp_server("slow", "global MCP server: slow");
+        app.start_mcp_servers([
+            ("docs", Scope::Project),
+            ("figma", Scope::Global),
+            ("web", Scope::Global),
+        ]);
         app.push(Role::User, "hello");
         let shown = screen(&mut app);
+        let global = shown
+            .find("global MCP servers: ⠋ figma, ⠋ web")
+            .expect(&shown);
+        let project = shown.find("project MCP servers: ⠋ docs").expect(&shown);
+        let hello = shown.find("hello").expect(&shown);
+        assert!(global < project && project < hello, "{shown}");
+        handle_agent_event(mcp_server_loaded("web", "web (3 tools)"), &mut app);
+        let shown = screen(&mut app);
         assert!(
-            shown.contains("⠋ loading project MCP server: docs"),
-            "{shown}"
-        );
-        assert!(
-            shown.contains("⠋ loading global MCP server: slow"),
+            shown.contains("global MCP servers: ⠋ figma, web (3 tools)"),
             "{shown}"
         );
         handle_agent_event(
-            mcp_server_loaded("docs", "loaded project MCP server: docs (3 tools)"),
+            mcp_server_failed(
+                "figma",
+                "figma (needs sign-in)",
+                "MCP server figma needs sign-in: run /mcp login figma",
+            ),
             &mut app,
         );
         let shown = screen(&mut app);
+        let global = shown
+            .find("loaded global MCP servers: figma (needs sign-in), web (3 tools)")
+            .expect(&shown);
+        let project = shown.find("project MCP servers: ⠋ docs").expect(&shown);
+        let hello = shown.find("hello").expect(&shown);
+        let failure = shown
+            .find("MCP server figma needs sign-in: run /mcp login figma")
+            .expect(&shown);
         assert!(
-            !shown.contains("loading project MCP server: docs"),
+            global < project && project < hello && hello < failure,
             "{shown}"
         );
-        let loaded = shown
-            .find("loaded project MCP server: docs (3 tools)")
-            .expect(&shown);
-        let slow = shown.find("loading global MCP server: slow").expect(&shown);
-        let hello = shown.find("hello").expect(&shown);
-        assert!(loaded < slow && slow < hello, "{shown}");
     }
 
     #[test]
     fn animates_mcp_servers_loading() {
         let mut app = new_app();
-        app.start_mcp_server("docs", "project MCP server: docs");
+        app.start_mcp_servers([("docs", Scope::Project)]);
         assert!(app.animating());
         app.tick_spinner();
         let shown = screen(&mut app);
-        assert!(
-            shown.contains("⠙ loading project MCP server: docs"),
-            "{shown}"
-        );
-        handle_agent_event(
-            mcp_server_loaded("docs", "MCP server docs failed: timed out"),
-            &mut app,
-        );
+        assert!(shown.contains("project MCP servers: ⠙ docs"), "{shown}");
+        handle_agent_event(mcp_server_loaded("docs", "docs (3 tools)"), &mut app);
         assert!(!app.animating());
-        assert!(screen(&mut app).contains("MCP server docs failed: timed out"));
+        assert!(screen(&mut app).contains("loaded project MCP servers: docs (3 tools)"));
     }
 
     #[test]
-    fn shows_mcp_server_loaded_after_clearing_the_session() {
+    fn shows_a_signed_in_server_loading_again_in_its_group() {
         let mut app = new_app();
-        app.start_mcp_server("docs", "project MCP server: docs");
-        app.clear_session();
-        app.push(Role::Event, "new session");
+        app.start_mcp_servers([("figma", Scope::Global)]);
         handle_agent_event(
-            mcp_server_loaded("docs", "loaded project MCP server: docs (3 tools)"),
+            mcp_server_failed("figma", "figma (needs sign-in)", "needs sign-in"),
             &mut app,
         );
+        handle_agent_event(
+            UiEvent::McpRestarting {
+                name: "figma".into(),
+                scope: Scope::Global,
+                notice: "signed in to MCP server figma".into(),
+            },
+            &mut app,
+        );
+        let shown = screen(&mut app);
+        let group = shown.find("global MCP servers: ⠋ figma").expect(&shown);
+        let notice = shown.find("signed in to MCP server figma").expect(&shown);
+        assert!(group < notice, "{shown}");
+        handle_agent_event(mcp_server_loaded("figma", "figma (5 tools)"), &mut app);
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains("loaded global MCP servers: figma (5 tools)"),
+            "{shown}"
+        );
+        assert_eq!(shown.matches("MCP servers:").count(), 1, "{shown}");
+    }
+
+    #[test]
+    fn shows_mcp_servers_again_after_clearing_the_session() {
+        let mut app = new_app();
+        app.start_mcp_servers([("docs", Scope::Project)]);
+        app.clear_session();
+        app.push(Role::Event, "new session");
+        handle_agent_event(mcp_server_loaded("docs", "docs (3 tools)"), &mut app);
         let texts: Vec<&str> = app
             .messages
             .iter()
@@ -942,7 +1049,7 @@ mod tests {
             .collect();
         assert_eq!(
             texts,
-            ["new session", "loaded project MCP server: docs (3 tools)"]
+            ["new session", "loaded project MCP servers: docs (3 tools)"]
         );
     }
 
