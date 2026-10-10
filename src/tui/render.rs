@@ -3,11 +3,11 @@ use super::{
     input::{expand_tabs, input_rows},
 };
 use ratatui::{
+    buffer::CellWidth,
     style::{Color, Style, Stylize},
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
-use unicode_width::UnicodeWidthStr;
 
 #[derive(Clone, Copy)]
 pub(super) enum Theme {
@@ -220,7 +220,7 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     rows.push(String::new());
     rows.into_iter()
         .map(|row| {
-            let padding = content_width.saturating_sub(row.width()) + 1;
+            let padding = content_width.saturating_sub(usize::from(row.cell_width())) + 1;
             Line::from(format!(" {row}{}", " ".repeat(padding))).style(theme().highlight_style())
         })
         .collect()
@@ -257,6 +257,14 @@ mod tests {
             .map(|line| line.to_string())
             .collect();
         assert_eq!(rows, vec!["        ", "     x  ", "        "]);
+    }
+
+    #[test]
+    fn pads_user_message_with_halfwidth_sound_marks_to_width() {
+        use ratatui::buffer::CellWidth;
+        for line in user_message_lines("ｶﾞｷﾞ", 8) {
+            assert_eq!(line.to_string().cell_width(), 8, "{line}");
+        }
     }
 
     #[test]
