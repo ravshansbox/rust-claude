@@ -12,4 +12,10 @@ trap 'rm -rf "$folder"' EXIT
 curl -fsSL -o "$folder/rust-claude.zip" \
   https://github.com/ravshansbox/rust-claude/releases/latest/download/rust-claude.zip
 unzip -q "$folder/rust-claude.zip" -d "$folder"
-cargo install --locked --force --path "$folder/rust-claude"
+build="$HOME/.rust-claude/build"
+if version=$(rustc -vV 2>/dev/null) && [ "$(cat "$build/rustc-version" 2>/dev/null)" != "$version" ]; then
+  rm -rf "$build"
+  mkdir -p "$build"
+  printf '%s\n' "$version" > "$build/rustc-version"
+fi
+cargo install --locked --force --target-dir "$build" --path "$folder/rust-claude"

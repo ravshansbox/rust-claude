@@ -132,7 +132,7 @@ You need [Rust](https://rustup.rs).
 curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-claude/main/install.sh | sh
 ```
 
-[install.sh](install.sh) downloads the source of the latest [release](https://github.com/ravshansbox/rust-claude/releases) into a temporary folder, builds it with `cargo install --locked --force` and puts `rust-claude` in `~/.cargo/bin`. It stops with an error if `cargo` is not on `PATH`. `--force` makes cargo rebuild even if this version is already installed, so the same command also upgrades or reinstalls.
+[install.sh](install.sh) downloads the source of the latest [release](https://github.com/ravshansbox/rust-claude/releases) into a temporary folder, builds it with `cargo install --locked --force` in `~/.rust-claude/build`, the same folder that updates use, and puts `rust-claude` in `~/.cargo/bin`. It stops with an error if `cargo` is not on `PATH`. `--force` makes cargo rebuild even if this version is already installed, so the same command also upgrades or reinstalls.
 
 **Upgrade or reinstall:** run the same command again.
 

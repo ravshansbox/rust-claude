@@ -63,8 +63,13 @@ impl Setup {
         Command::new("/bin/sh")
             .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/install.sh"))
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
+            .env("HOME", self.root.join("home"))
             .output()
             .unwrap()
+    }
+
+    fn build(&self) -> PathBuf {
+        self.root.join("home/.rust-claude/build")
     }
 
     fn read(&self, name: &str) -> String {
@@ -88,12 +93,40 @@ fn installs_the_latest_release_with_cargo() {
     );
     let cargo = setup.read("cargo.log");
     assert!(
-        cargo.starts_with("install --locked --force --path "),
+        cargo.starts_with(&format!(
+            "install --locked --force --target-dir {} --path ",
+            setup.build().display()
+        )),
         "{cargo}"
     );
     assert!(cargo.contains("unpacked"), "{cargo}");
     let folder = setup.read("folder");
     assert!(!Path::new(folder.trim()).exists(), "left {folder} behind");
+}
+
+#[test]
+fn keeps_the_build_folder_while_the_compiler_stays_the_same() {
+    let setup = Setup::new("same-compiler").with_cargo();
+    setup.script("rustc", "echo 'rustc 1.99.0'\n");
+    for _ in 0..2 {
+        let output = setup.install();
+        assert!(output.status.success(), "{}", stderr(&output));
+        std::fs::write(setup.build().join("earlier-build"), "").unwrap();
+    }
+    assert!(setup.build().join("earlier-build").exists());
+}
+
+#[test]
+fn empties_the_build_folder_when_the_compiler_changes() {
+    let setup = Setup::new("new-compiler").with_cargo();
+    for version in ["rustc 1.98.0", "rustc 1.99.0"] {
+        setup.script("rustc", &format!("echo '{version}'\n"));
+        let output = setup.install();
+        assert!(output.status.success(), "{}", stderr(&output));
+        std::fs::write(setup.build().join(version), "").unwrap();
+    }
+    assert!(!setup.build().join("rustc 1.98.0").exists());
+    assert!(setup.build().join("rustc 1.99.0").exists());
 }
 
 #[test]
