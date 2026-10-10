@@ -71,7 +71,7 @@ impl Agent {
                 .await
                 .map_err(|error| {
                     if error.is_connect() || error.is_timeout() || error.is_request() {
-                        retryable(error, None)
+                        retryable(format!("{:#}", anyhow::Error::from(error)), None)
                     } else {
                         error.into()
                     }
@@ -116,7 +116,9 @@ impl Agent {
         while let Some(chunk) = stream.next().await {
             let chunk = match chunk {
                 Ok(chunk) => chunk,
-                Err(error) if content.is_empty() => return Err(retryable(error, None)),
+                Err(error) if content.is_empty() => {
+                    return Err(retryable(format!("{:#}", anyhow::Error::from(error)), None));
+                }
                 Err(error) => return Err(error.into()),
             };
             buffer.extend_from_slice(&chunk);

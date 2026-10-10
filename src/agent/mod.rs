@@ -729,6 +729,28 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn says_why_the_api_could_not_be_reached() {
+        let api = MockApi::start(vec![]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        // Nothing listens on a port that was just freed.
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        agent.api_base = format!("http://{}", listener.local_addr().unwrap());
+        drop(listener);
+        let mut notices = Vec::new();
+        let result = agent
+            .prompt("hi", &[], |event| {
+                if let AgentEvent::Notice(notice) = event {
+                    notices.push(notice);
+                }
+            })
+            .await;
+        test_support::remove_session(&agent);
+        let message = result.unwrap_err().to_string();
+        assert!(message.to_lowercase().contains("refused"), "{message}");
+        assert!(notices[0].to_lowercase().contains("refused"), "{notices:?}");
+    }
+
+    #[tokio::test]
     async fn says_when_a_reply_stopped_because_the_context_window_filled_up() {
         let api = MockApi::start(vec![stopped_reply(
             "the start of",
