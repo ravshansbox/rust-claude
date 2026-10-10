@@ -689,23 +689,35 @@ impl App {
         self.input_changed();
     }
 
+    /// Puts back text the user entered so they can fix it.
+    pub(super) fn restore_input(&mut self, text: String) {
+        self.input = text;
+        self.cursor = self.input.len();
+        self.input_changed();
+    }
+
     pub(super) fn start(&mut self, activity: Activity) {
         self.activity = Some(activity);
     }
 
-    pub(super) fn set_thinking_level(&mut self, name: &str) {
+    /// Returns whether `name` is a thinking level.
+    pub(super) fn set_thinking_level(&mut self, name: &str) -> bool {
         match THINKING_LEVELS.iter().find(|level| **level == name) {
             Some(level) => {
                 self.thinking_level = level;
                 self.push(Role::Event, format!("thinking: {level}"));
+                true
             }
-            None => self.push(
-                Role::Event,
-                format!(
-                    "unknown thinking level: {name} (options: {})",
-                    THINKING_LEVELS.join(", ")
-                ),
-            ),
+            None => {
+                self.push(
+                    Role::Event,
+                    format!(
+                        "unknown thinking level: {name} (options: {})",
+                        THINKING_LEVELS.join(", ")
+                    ),
+                );
+                false
+            }
         }
     }
 
