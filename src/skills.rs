@@ -508,10 +508,13 @@ pub fn parse_block(text: &str) -> Option<SkillBlock<'_>> {
     if name.is_empty() || location.is_empty() {
         return None;
     }
-    let user_message = match rest.find("\n</skill>\n\n") {
-        Some(index) => Some(rest[index + "\n</skill>\n\n".len()..].trim()),
-        None if rest.ends_with("\n</skill>") => None,
-        None => return None,
+    // The skill body comes from SKILL.md and may itself show a closing tag,
+    // so the block ends at the end of the text or at the last closing tag.
+    let user_message = if rest.ends_with("\n</skill>") {
+        None
+    } else {
+        let index = rest.rfind("\n</skill>\n\n")?;
+        Some(rest[index + "\n</skill>\n\n".len()..].trim())
     };
     Some(SkillBlock {
         name: unescape_xml(name),
@@ -855,6 +858,34 @@ mod tests {
             "/skill:other x"
         );
         assert_eq!(parse_block("plain text"), None);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn parses_skill_blocks_whose_body_shows_a_skill_block() {
+        let root = temp_dir("expand-nested");
+        let dir = root.join("demo");
+        write(
+            &dir.join("SKILL.md"),
+            "---\ndescription: Demo.\n---\nA call looks like:\n\n<skill name=\"x\" location=\"y\">\nBody\n</skill>\n\nrequest\n\nDo it.\n",
+        );
+        let skills = [skill("demo", &dir, true)];
+        let expanded = expand_command("/skill:demo fix the bug", &skills).unwrap();
+        assert_eq!(
+            parse_block(&expanded),
+            Some(SkillBlock {
+                name: "demo".into(),
+                user_message: Some("fix the bug"),
+            })
+        );
+        let bare = expand_command("/skill:demo", &skills).unwrap();
+        assert_eq!(
+            parse_block(&bare),
+            Some(SkillBlock {
+                name: "demo".into(),
+                user_message: None,
+            })
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 
