@@ -77,25 +77,28 @@ impl Credentials {
         Ok(())
     }
 
+    /// Runs in its own task, so a cancelled prompt or start-up request
+    /// cannot drop the new tokens after the endpoint has spent ours.
     async fn refresh(&self, http: &reqwest::Client) -> Result<Self> {
-        let mut credentials = request_tokens(
-            http,
-            json!({
-                "grant_type": "refresh_token",
-                "client_id": CLIENT_ID,
-                "refresh_token": self.refresh,
-            }),
-        )
-        .await?;
-        // The endpoint has spent our refresh token, so keep the new pair even
-        // when auth.json cannot take it.
-        credentials.renewal_notice = Some(match credentials.save() {
-            Ok(()) => "renewed sign-in token".into(),
-            Err(error) => {
-                format!("renewed sign-in token, but could not save it to auth.json: {error:#}")
-            }
+        let http = http.clone();
+        let body = json!({
+            "grant_type": "refresh_token",
+            "client_id": CLIENT_ID,
+            "refresh_token": self.refresh,
         });
-        Ok(credentials)
+        tokio::spawn(async move {
+            let mut credentials = request_tokens(&http, body).await?;
+            // The endpoint has spent our refresh token, so keep the new pair
+            // even when auth.json cannot take it.
+            credentials.renewal_notice = Some(match credentials.save() {
+                Ok(()) => "renewed sign-in token".into(),
+                Err(error) => {
+                    format!("renewed sign-in token, but could not save it to auth.json: {error:#}")
+                }
+            });
+            Ok(credentials)
+        })
+        .await?
     }
 
     pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
@@ -374,6 +377,38 @@ mod tests {
         assert_eq!(token.unwrap(), "access from first");
         let notice = notice.unwrap();
         assert!(notice.contains("could not save"), "{notice}");
+    }
+
+    #[tokio::test]
+    async fn finishes_renewing_after_the_caller_gives_up() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("first", true).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let prompt = tokio::spawn(async {
+            let mut credentials = expired("first");
+            credentials.access_token(&reqwest::Client::new()).await
+        });
+        endpoint.arrived.notified().await;
+        prompt.abort();
+        let _ = prompt.await;
+        endpoint.release.notify_one();
+        let mut saved = None;
+        for _ in 0..100 {
+            saved = std::fs::read_to_string(&path).ok();
+            if saved.is_some() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        }
+        let _ = std::fs::remove_file(&path);
+        let saved: Credentials =
+            serde_json::from_str(&saved.expect("auth.json not saved")).unwrap();
+        assert_eq!(
+            (saved.access.as_str(), saved.refresh.as_str()),
+            ("access from first", "first+")
+        );
     }
 
     #[tokio::test]
