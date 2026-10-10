@@ -143,7 +143,9 @@ async fn main() -> Result<()> {
 
     let mut stop = StopSignals::new()?;
     let Some(prompt) = print_prompt else {
-        return tui::run(agent, stop).await;
+        let result = tui::run(agent, stop).await;
+        auth::finish_renewal(RENEWAL_WAIT).await;
+        return result;
     };
     let stopped = stop.recv();
     tokio::pin!(stopped);
@@ -153,7 +155,7 @@ async fn main() -> Result<()> {
             if let Err(error) = agent.cancel_unsent(&prompt, &images) {
                 eprintln!("failed to save session: {error}");
             }
-            return interrupted(agent, status);
+            return interrupted(agent, status).await;
         }
     }
     for diagnostic in &agent.mcp.diagnostics {
@@ -181,7 +183,7 @@ async fn main() -> Result<()> {
             if let Err(error) = saved {
                 eprintln!("failed to save session: {error}");
             }
-            return interrupted(agent, status);
+            return interrupted(agent, status).await;
         }
     };
     result?;
@@ -218,8 +220,12 @@ impl StopSignals {
     }
 }
 
-fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
+/// How long stopping waits for a sign-in renewal to be saved.
+const RENEWAL_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+
+async fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
     drop(agent);
+    auth::finish_renewal(RENEWAL_WAIT).await;
     eprintln!("\ncancelled");
     std::process::exit(status);
 }
