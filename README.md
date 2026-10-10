@@ -126,7 +126,7 @@ Other:
 
 ## Install
 
-You need [Rust](https://rustup.rs).
+You need [Rust](https://rustup.rs), `curl` and `unzip`.
 
 ```sh
 curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-claude/main/install.sh | sh
