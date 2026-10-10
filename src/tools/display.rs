@@ -74,9 +74,18 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     if name != "edit" {
         return None;
     }
-    let old_text = input["old_text"].as_str()?;
-    let new_text = input["new_text"].as_str()?;
-    let diff = similar::TextDiff::from_lines(old_text, new_text);
+    // "x" and "x\n" count as different lines, so end both texts the same way
+    // to keep an unchanged last line from showing as removed and re-added.
+    let terminated = |text: &str| {
+        if text.is_empty() || text.ends_with('\n') {
+            text.to_string()
+        } else {
+            format!("{text}\n")
+        }
+    };
+    let old_text = terminated(input["old_text"].as_str()?);
+    let new_text = terminated(input["new_text"].as_str()?);
+    let diff = similar::TextDiff::from_lines(&old_text, &new_text);
     let lines: Vec<String> = diff
         .iter_all_changes()
         .map(|change| {
@@ -169,6 +178,12 @@ mod tests {
         let input = json!({ "path": "a", "old_text": "a\nb\n", "new_text": "a\nc\n" });
         assert_eq!(diff("edit", &input), Some(" a\n-b\n+c".into()));
         assert_eq!(diff("write", &input), None);
+    }
+
+    #[test]
+    fn keeps_last_line_unchanged_when_lines_are_appended_without_newline() {
+        let input = json!({ "path": "a", "old_text": "foo()", "new_text": "foo()\nbar()" });
+        assert_eq!(diff("edit", &input), Some(" foo()\n+bar()".into()));
     }
 
     #[test]
