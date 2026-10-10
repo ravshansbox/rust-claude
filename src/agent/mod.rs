@@ -1058,6 +1058,33 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn keeps_the_conversation_cached_when_a_queued_prompt_follows_a_tool_round() {
+        let api = MockApi::start(vec![
+            tool_reply("call-1", "bash", json!({ "command": "true" })),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        agent.queue.lock().unwrap().push(Queued {
+            prompt: "also this".into(),
+            images: Vec::new(),
+        });
+        let result = agent.prompt("run it", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 2);
+        let messages = requests[1]["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 4);
+        let marked: Vec<bool> = messages
+            .iter()
+            .map(|message| message.to_string().contains("cache_control"))
+            .collect();
+        // The prompt ended the first request, where its cache entry was written.
+        assert_eq!(marked, [true, false, false, true]);
+    }
+
+    #[tokio::test]
     async fn keeps_the_conversation_cached_after_a_round_with_many_tool_calls() {
         let mut events = vec![
             json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),

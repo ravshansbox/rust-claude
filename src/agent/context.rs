@@ -69,14 +69,19 @@ pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
         }
     }
     // Every request ends with a user message, so the last user message before
-    // the final one is where the previous request put its breakpoint and wrote
-    // its cache entry. The API only looks 20 blocks back from a breakpoint for
-    // an earlier entry, which a round with many tool calls can exceed, so mark
-    // that message again. With the system prompt's breakpoint this makes three
-    // of the four the API allows.
+    // the last reply is where the previous request put its breakpoint and
+    // wrote its cache entry. More than one user message can follow that reply,
+    // such as tool results and a queued prompt. The API only looks 20 blocks
+    // back from a breakpoint for an earlier entry, which a round with many
+    // tool calls can exceed, so mark that message again. With the system
+    // prompt's breakpoint this makes three of the four the API allows.
     if let Some((last, earlier)) = messages.split_last_mut() {
         mark_last_block(last);
-        if let Some(previous) = earlier
+        let reply = earlier
+            .iter()
+            .rposition(|message| message["role"] == "assistant")
+            .unwrap_or(0);
+        if let Some(previous) = earlier[..reply]
             .iter_mut()
             .rfind(|message| message["role"] == "user")
         {
@@ -229,6 +234,23 @@ mod tests {
         let request = with_cache_breakpoint(&messages);
         assert_eq!(request.len(), 2);
         assert_eq!(request[1]["content"][0]["text"], "again");
+    }
+
+    #[test]
+    fn marks_the_end_of_the_previous_request_after_a_cancelled_tool_round() {
+        let messages = vec![
+            json!({ "role": "user", "content": "run it" }),
+            json!({ "role": "assistant", "content": [{ "type": "tool_use", "id": "1", "name": "bash", "input": {} }] }),
+            json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "1", "content": "cancelled by the user" }] }),
+            json!({ "role": "assistant", "stop_reason": "aborted", "content": [] }),
+            json!({ "role": "user", "content": "next" }),
+        ];
+        let request = with_cache_breakpoint(&messages);
+        let marked: Vec<bool> = request
+            .iter()
+            .map(|message| message.to_string().contains("cache_control"))
+            .collect();
+        assert_eq!(marked, [true, false, false, true]);
     }
 
     #[test]
