@@ -13,7 +13,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader},
-    process::{Child, ChildStdin},
+    process::ChildStdin,
     sync::{mpsc, oneshot},
 };
 
@@ -181,7 +181,6 @@ struct Connection {
     next_id: AtomicU64,
     stderr: Arc<Mutex<Vec<u8>>>,
     timeout: Duration,
-    _child: Child,
     _process_group: ProcessGroup,
 }
 
@@ -329,13 +328,17 @@ impl Connection {
         tokio::spawn(write_messages(stdin, lines, pending.clone()));
         tokio::spawn(read_messages(stdout, writer.clone(), pending.clone()));
         tokio::spawn(read_stderr(stderr, stderr_tail.clone()));
+        // Reap the server if it exits on its own; dropping the connection
+        // kills its process group, after which this wait returns too.
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+        });
         Ok(Self {
             writer,
             pending,
             next_id: AtomicU64::new(1),
             stderr: stderr_tail,
             timeout: Duration::from_secs(config.timeout.unwrap_or(DEFAULT_TIMEOUT)),
-            _child: child,
             _process_group: process_group,
         })
     }
@@ -883,6 +886,62 @@ done
                 "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
             ))
         );
+    }
+
+    #[tokio::test]
+    async fn reaps_a_server_that_exits_mid_session() {
+        let pid_file = std::env::temp_dir().join(format!("mcp-reap-{}", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let config =
+            server_answering_calls_with(&format!("echo $$ > '{}'; exit 0", pid_file.display()));
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        assert!(
+            mcp.call("mcp__test__echo", &json!({}))
+                .await
+                .unwrap()
+                .is_err()
+        );
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        let _ = std::fs::remove_file(&pid_file);
+        assert_eq!(
+            wait_until_gone(pid.trim()).await,
+            "",
+            "server was not reaped"
+        );
+        drop(mcp);
+    }
+
+    async fn wait_until_gone(pid: &str) -> String {
+        let mut listed = String::new();
+        for _ in 0..50 {
+            let output = std::process::Command::new("ps")
+                .args(["-o", "stat=", "-p", pid])
+                .output()
+                .unwrap();
+            listed = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if listed.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        listed
+    }
+
+    #[tokio::test]
+    async fn stops_the_server_when_dropped() {
+        let pid_file = std::env::temp_dir().join(format!("mcp-drop-{}", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let mut config =
+            server_answering_calls_with(&format!("echo $$ > '{}'; sleep 30", pid_file.display()));
+        config.timeout = Some(1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        let _ = mcp.call("mcp__test__echo", &json!({})).await;
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        let _ = std::fs::remove_file(&pid_file);
+        drop(mcp);
+        assert_eq!(wait_until_gone(pid.trim()).await, "");
     }
 
     #[tokio::test]
