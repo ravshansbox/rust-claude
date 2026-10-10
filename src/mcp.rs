@@ -181,7 +181,20 @@ struct Connection {
     next_id: AtomicU64,
     stderr: Arc<Mutex<Vec<u8>>>,
     timeout: Duration,
-    _process_group: ProcessGroup,
+    _process_group: ServerGroup,
+}
+
+/// The server's process group, shared by the connection and the task that
+/// reaps the server. Whichever lets go first kills the group; the other
+/// then finds it gone, so a recycled group id is never signalled.
+struct ServerGroup(Arc<Mutex<ProcessGroup>>);
+
+impl Drop for ServerGroup {
+    fn drop(&mut self) {
+        if let Ok(mut group) = self.0.lock() {
+            drop(ProcessGroup(group.0.take()));
+        }
+    }
 }
 
 fn frame(message: &Value) -> String {
@@ -313,7 +326,7 @@ impl Connection {
         let mut child = process
             .spawn()
             .map_err(|error| format!("failed to start {command}: {error}"))?;
-        let process_group = ProcessGroup(child.id());
+        let process_group = Arc::new(Mutex::new(ProcessGroup(child.id())));
         let (Some(stdin), Some(stdout), Some(stderr)) =
             (child.stdin.take(), child.stdout.take(), child.stderr.take())
         else {
@@ -328,10 +341,13 @@ impl Connection {
         tokio::spawn(write_messages(stdin, lines, pending.clone()));
         tokio::spawn(read_messages(stdout, writer.clone(), pending.clone()));
         tokio::spawn(read_stderr(stderr, stderr_tail.clone()));
-        // Reap the server if it exits on its own; dropping the connection
-        // kills its process group, after which this wait returns too.
+        // Reap the server if it exits on its own and stop anything it left
+        // running; dropping the connection kills its process group first,
+        // after which this wait returns too.
+        let reaper_group = ServerGroup(process_group.clone());
         tokio::spawn(async move {
             let _ = child.wait().await;
+            drop(reaper_group);
         });
         Ok(Self {
             writer,
@@ -339,7 +355,7 @@ impl Connection {
             next_id: AtomicU64::new(1),
             stderr: stderr_tail,
             timeout: Duration::from_secs(config.timeout.unwrap_or(DEFAULT_TIMEOUT)),
-            _process_group: process_group,
+            _process_group: ServerGroup(process_group),
         })
     }
 
@@ -908,6 +924,32 @@ done
             wait_until_gone(pid.trim()).await,
             "",
             "server was not reaped"
+        );
+        drop(mcp);
+    }
+
+    #[tokio::test]
+    async fn stops_what_a_server_left_running_when_it_exits() {
+        let pid_file = std::env::temp_dir().join(format!("mcp-leftover-{}", std::process::id()));
+        let _ = std::fs::remove_file(&pid_file);
+        let config = server_answering_calls_with(&format!(
+            "sleep 30 >/dev/null 2>&1 & echo $! > '{}'; exit 0",
+            pid_file.display()
+        ));
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        assert!(
+            mcp.call("mcp__test__echo", &json!({}))
+                .await
+                .unwrap()
+                .is_err()
+        );
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        let _ = std::fs::remove_file(&pid_file);
+        assert_eq!(
+            wait_until_gone(pid.trim()).await,
+            "",
+            "leftover process kept running"
         );
         drop(mcp);
     }
