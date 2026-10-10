@@ -110,7 +110,7 @@ Instructions and skills:
 
 MCP:
 
-- [MCP servers](#mcp-servers) over stdio, configured globally or per project
+- [MCP servers](#mcp-servers) over stdio or Streamable HTTP, configured globally or per project
 - MCP servers started in the background in the interface, each shown loading until ready
 - `~/` expansion, `env`, `cwd`, `timeout` and `enabled` options
 - Paginated tool lists, `ping` replies, and server error output shown in errors
@@ -398,7 +398,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 ## MCP servers
 
-rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format uses the standard `mcpServers` shape:
+rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio or Streamable HTTP and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format uses the standard `mcpServers` shape:
 
 ```json
 {
@@ -406,15 +406,20 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
     "filesystem": {
       "command": "npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    },
+    "docs": {
+      "url": "https://example.com/mcp",
+      "headers": { "Authorization": "Bearer your-token" }
     }
   }
 }
 ```
 
 - `command` is a single executable and `args` its arguments. `env` sets environment variables and `cwd` the working folder. A leading `~/` in `command`, an argument or `cwd` names the home folder.
+- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. rust-claude keeps the session the server gives it and ends the session when it quits. Sign-in with OAuth is not supported yet.
 - `timeout` sets the time limit for each request in seconds, at least 1 (default 60). When a request times out, or you press Esc during a tool call, rust-claude tells the server to stop working on it.
 - `enabled: false` keeps an entry without connecting to it.
-- `type` is optional. When present, it must be `stdio`. HTTP and SSE servers are not supported yet.
+- `type` is optional. When present, it must be `stdio`, `http` or `streamable-http`. Without `type`, an entry with `url` and no `command` is an HTTP server. The older SSE transport (`sse`) is not supported; use the server's Streamable HTTP URL.
 - Server names may only contain letters, digits, `_` and `-`.
 
 Project entries replace global entries with the same name. rust-claude starts project servers without asking (see [ADR 3](docs/adr/0003-start-project-mcp-servers-without-approval.md)). When you run rust-claude from your home folder, `~/.rust-claude/mcp.json` counts as global only. A missing `mcp.json` is fine; one that exists but cannot be read gives a notice.
