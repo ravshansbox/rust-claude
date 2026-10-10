@@ -127,15 +127,12 @@ Other:
 You need [Rust](https://rustup.rs).
 
 ```sh
-cd "$(mktemp -d)"
-curl -fsSLO https://github.com/ravshansbox/rust-claude/releases/latest/download/rust-claude.zip
-unzip -q rust-claude.zip
-cargo install --locked --force --path rust-claude
+curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-claude/main/install.sh | sh
 ```
 
-This downloads the source of the latest [release](https://github.com/ravshansbox/rust-claude/releases), builds it and puts `rust-claude` in `~/.cargo/bin`. `--force` makes cargo rebuild even if this version is already installed, so the same commands also upgrade or reinstall.
+[install.sh](install.sh) downloads the source of the latest [release](https://github.com/ravshansbox/rust-claude/releases) into a temporary folder, builds it with `cargo install --locked --force` and puts `rust-claude` in `~/.cargo/bin`. It stops with an error if `cargo` is not on `PATH`. `--force` makes cargo rebuild even if this version is already installed, so the same command also upgrades or reinstalls.
 
-**Upgrade or reinstall:** run the same commands again.
+**Upgrade or reinstall:** run the same command again.
 
 **Updates:** when the interface starts, rust-claude checks the [latest release](https://github.com/ravshansbox/rust-claude/releases/latest) in the background, at most once an hour. If it is newer, rust-claude shows `update v0.2.0 available`, then `downloading v0.2.0` and `building v0.2.0`, and builds and installs it with `cargo install` while you keep working. When it is done, it shows `installed v0.2.0, restart rust-claude to use it`. If `cargo` is not on `PATH`, it shows a warning instead. A failed build shows the first error from cargo. A failed check, for example when offline, shows nothing. Debug builds, such as from `cargo run`, and builds from `main` (`v0.0.0`) do not check. To turn the check off, set `check_for_updates` to `false` in `settings.json`.
 
