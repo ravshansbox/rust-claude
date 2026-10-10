@@ -37,6 +37,7 @@ pub(super) fn command_matches(input: &str, skills: &[Skill]) -> Vec<(String, Str
         .chain(skill_commands)
         .filter(|(name, _)| name.starts_with(input))
         .collect();
+    matches.sort();
     if let Some(exact) = matches.iter().position(|(name, _)| name == input) {
         matches[..=exact].rotate_right(1);
     }

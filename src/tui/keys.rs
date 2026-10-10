@@ -146,11 +146,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         app.command_selected = app.command_selected.min(count - 1);
         match key.code {
             KeyCode::Up => {
-                app.command_selected = app.command_selected.saturating_sub(1);
+                app.command_selected = (app.command_selected + count - 1) % count;
                 return false;
             }
             KeyCode::Down => {
-                app.command_selected = (app.command_selected + 1).min(count - 1);
+                app.command_selected = (app.command_selected + 1) % count;
                 return false;
             }
             KeyCode::Enter if suggestions.files => {
@@ -506,6 +506,53 @@ mod tests {
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
         assert_eq!(app.input, "/new");
         assert!(app.queued_prompts().is_empty());
+    }
+
+    #[test]
+    fn lists_commands_and_skill_commands_in_alphabetical_order() {
+        let mut app = new_app();
+        app.skills = vec![Skill {
+            name: "lint".into(),
+            description: "lint skill".into(),
+            path: "/skills/lint/SKILL.md".into(),
+            base_dir: "/skills/lint".into(),
+            disable_model_invocation: false,
+            scope: Scope::Global,
+        }];
+        handle_input(Event::Paste("/".into()), &mut app, |_| {});
+        let shown = screen(&mut app);
+        let names = [
+            "/compact",
+            "/context",
+            "/model",
+            "/new",
+            "/quit",
+            "/resume",
+            "/skill:lint",
+            "/thinking",
+        ];
+        let positions: Vec<usize> = names
+            .iter()
+            .map(|name| shown.find(&format!("{name} ")).expect(name))
+            .collect();
+        assert!(positions.is_sorted(), "{shown}");
+    }
+
+    #[test]
+    fn wraps_the_command_selection_at_either_end() {
+        let mut app = new_app();
+        handle_input(Event::Paste("/".into()), &mut app, |_| {});
+        let key = |code| Event::Key(KeyEvent::from(code));
+        handle_input(key(KeyCode::Up), &mut app, |_| {});
+        handle_input(key(KeyCode::Tab), &mut app, |_| {});
+        assert_eq!(app.input, "/thinking");
+        app.input.clear();
+        app.cursor = 0;
+        handle_input(Event::Paste("/".into()), &mut app, |_| {});
+        handle_input(key(KeyCode::Up), &mut app, |_| {});
+        handle_input(key(KeyCode::Down), &mut app, |_| {});
+        handle_input(key(KeyCode::Tab), &mut app, |_| {});
+        assert_eq!(app.input, "/compact");
     }
 
     #[test]
