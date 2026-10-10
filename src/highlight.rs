@@ -45,14 +45,24 @@ fn syntax_set() -> &'static SyntaxSet {
 }
 
 fn theme(dark: bool) -> &'static Theme {
-    static THEMES: OnceLock<ThemeSet> = OnceLock::new();
-    let themes = THEMES.get_or_init(ThemeSet::load_defaults);
-    let name = if dark {
-        "base16-ocean.dark"
-    } else {
-        "base16-ocean.light"
+    static DARK: OnceLock<Theme> = OnceLock::new();
+    static LIGHT: OnceLock<Theme> = OnceLock::new();
+    let load = |source: &str| {
+        ThemeSet::load_from_reader(&mut std::io::Cursor::new(source)).expect("bundled theme")
     };
-    &themes.themes[name]
+    if dark {
+        DARK.get_or_init(|| {
+            load(include_str!(
+                "../assets/themes/GitHub Dark High Contrast.tmTheme"
+            ))
+        })
+    } else {
+        LIGHT.get_or_init(|| {
+            load(include_str!(
+                "../assets/themes/GitHub Light High Contrast.tmTheme"
+            ))
+        })
+    }
 }
 
 fn syntax_for_path(path: &str) -> &'static SyntaxReference {
