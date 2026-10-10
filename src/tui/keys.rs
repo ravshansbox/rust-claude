@@ -872,7 +872,7 @@ mod tests {
     #[test]
     fn picks_file_after_at_sign() {
         let mut app = new_app();
-        app.files = Some(vec!["src/agent.rs".into(), "src/main.rs".into()]);
+        app.set_files(0, vec!["src/agent.rs".into(), "src/main.rs".into()]);
         for character in "read @src".chars() {
             handle_input(
                 Event::Key(KeyEvent::from(KeyCode::Char(character))),
@@ -927,7 +927,7 @@ mod tests {
     #[test]
     fn browses_prompt_history_past_a_recalled_command() {
         let mut app = new_app();
-        app.files = Some(vec!["src/main.rs".into()]);
+        app.set_files(0, vec!["src/main.rs".into()]);
         for prompt in ["first", "/compact", "read @src", "hello"] {
             app.add_prompt(prompt.into());
         }

@@ -1,7 +1,7 @@
 use super::{
     commands::command_matches,
     display_model,
-    files::{file_matches, file_query},
+    files::{FileList, file_query},
     render::{render_message, tool_message, wrapped_height},
     workspace_label,
 };
@@ -281,7 +281,7 @@ pub(super) struct App {
     pub(super) picker: Option<Picker>,
     pub(super) command_selected: usize,
     pub(super) commands_dismissed: bool,
-    pub(super) files: Option<Vec<String>>,
+    pub(super) files: Option<FileList>,
     pub(super) listing_files: bool,
     /// Counts prompts sent, so a list read before the last one is dropped.
     files_generation: u64,
@@ -533,7 +533,10 @@ impl App {
             });
         }
         let (start, query) = file_query(&self.input, self.cursor)?;
-        let items: Vec<(String, String)> = file_matches(self.files.as_deref()?, query)
+        let items: Vec<(String, String)> = self
+            .files
+            .as_ref()?
+            .matches(query)
             .into_iter()
             .map(|path| (path, String::new()))
             .collect();
@@ -589,7 +592,7 @@ impl App {
 
     pub(super) fn set_files(&mut self, generation: u64, files: Vec<String>) {
         if generation == self.files_generation {
-            self.files = Some(files);
+            self.files = Some(FileList::new(files));
             self.listing_files = false;
         }
     }
