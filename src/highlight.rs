@@ -143,10 +143,27 @@ pub fn ansi_line(line: &HighlightedLine, dark: bool) -> String {
         } else {
             text.push_str("\x1b[39m");
         }
-        text.push_str(&segment.text);
+        text.push_str(&strip_controls(&segment.text));
     }
     text.push_str("\x1b[0m");
     text
+}
+
+/// Removes control characters other than newline and tab, such as escape
+/// sequences that would clear the screen or set the clipboard, so text from
+/// the model or a tool can be written to a terminal as plain text. Carriage
+/// returns go too: a lone one could overwrite what is shown, and a terminal
+/// already starts a new line at column one after a newline.
+pub fn strip_controls(text: &str) -> std::borrow::Cow<'_, str> {
+    let removed = |c: char| c.is_control() && c != '\n' && c != '\t';
+    if text.contains(removed) {
+        text.chars()
+            .filter(|&c| !removed(c))
+            .collect::<String>()
+            .into()
+    } else {
+        text.into()
+    }
 }
 
 #[cfg(test)]
@@ -185,5 +202,18 @@ mod tests {
         );
         assert!(lines[0].segments.len() > 2);
         assert_eq!(lines[3].segments[0].foreground, None);
+    }
+
+    #[test]
+    fn ansi_line_keeps_its_colours_but_not_escapes_in_the_text() {
+        let lines = highlight_body("notes.txt", "+a\x1b]52;c;aGk=\x07b\x1b[2J\u{9b}c\r", true);
+        let line = ansi_line(&lines[0], true);
+        assert!(line.starts_with("\x1b[48;2;"));
+        assert!(line.ends_with("\x1b[0m"));
+        let text: String = line
+            .split('\x1b')
+            .map(|part| part.split_once('m').map_or(part, |(_, text)| text))
+            .collect();
+        assert_eq!(text, "+a]52;c;aGk=b[2Jc");
     }
 }
