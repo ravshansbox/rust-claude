@@ -149,10 +149,11 @@ fn read_config(
     }
 }
 
-fn read_configs(
-    config_dir: Option<&Path>,
-    cwd: &Path,
-) -> (BTreeMap<String, (Scope, ServerConfig)>, Vec<String>) {
+type Configs = BTreeMap<String, (Scope, ServerConfig)>;
+
+/// Reads the global and project configs. Also gives the enabled global
+/// servers that project entries override.
+fn read_configs(config_dir: Option<&Path>, cwd: &Path) -> (Configs, Vec<String>, Vec<String>) {
     let mut configs = BTreeMap::new();
     let mut diagnostics = Vec::new();
     if let Some(config_dir) = config_dir {
@@ -163,6 +164,11 @@ fn read_configs(
             &mut diagnostics,
         );
     }
+    let global: Vec<String> = configs
+        .iter()
+        .filter(|(_, (_, config))| config.enabled != Some(false))
+        .map(|(name, _)| name.clone())
+        .collect();
     let project_dir = cwd.join(".rust-claude");
     if !config_dir.is_some_and(|config_dir| crate::skills::same_dir(config_dir, &project_dir)) {
         read_config(
@@ -172,7 +178,15 @@ fn read_configs(
             &mut diagnostics,
         );
     }
-    (configs, diagnostics)
+    let overridden = global
+        .into_iter()
+        .filter(|name| {
+            configs
+                .get(name)
+                .is_some_and(|(scope, _)| *scope == Scope::Project)
+        })
+        .collect();
+    (configs, overridden, diagnostics)
 }
 
 struct Pending {
@@ -1186,7 +1200,7 @@ fn sign_out_with(name: &str, config: &ServerConfig) -> Result<String, String> {
 /// Forgets the saved sign-in for the configured server `name`.
 pub fn sign_out(name: &str) -> Result<String, String> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (configs, _) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let (configs, _, _) = read_configs(crate::config::dir().as_deref(), &cwd);
     let Some((_, config)) = configs.get(name) else {
         return Err(format!("no MCP server named {name}"));
     };
@@ -1196,7 +1210,7 @@ pub fn sign_out(name: &str) -> Result<String, String> {
 /// Starts signing in to the configured server `name`.
 pub async fn begin_sign_in(name: &str) -> Result<SignIn, String> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (configs, _) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let (configs, _, _) = read_configs(crate::config::dir().as_deref(), &cwd);
     let Some((_, config)) = configs.get(name) else {
         return Err(format!("no MCP server named {name}"));
     };
@@ -1247,6 +1261,8 @@ pub struct Added {
 pub struct Startup {
     pub diagnostics: Vec<String>,
     pub servers: Vec<StartingServer>,
+    /// Global servers that project entries override.
+    pub overridden: Vec<String>,
     /// HTTP servers that sign in with OAuth.
     pub sign_in_servers: Vec<String>,
 }
@@ -1262,14 +1278,14 @@ fn starting(name: String, scope: Scope, config: ServerConfig) -> StartingServer 
 /// Starts the configured server `name` again, as after signing in.
 pub fn restart(name: &str) -> Option<StartingServer> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (mut configs, _) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let (mut configs, _, _) = read_configs(crate::config::dir().as_deref(), &cwd);
     let (scope, config) = configs.remove(name)?;
     Some(starting(name.to_string(), scope, config))
 }
 
 pub fn startup() -> Startup {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (configs, diagnostics) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let (configs, overridden, diagnostics) = read_configs(crate::config::dir().as_deref(), &cwd);
     let enabled: Vec<_> = configs
         .into_iter()
         .filter(|(_, (_, config))| config.enabled != Some(false))
@@ -1286,6 +1302,7 @@ pub fn startup() -> Startup {
     Startup {
         diagnostics,
         servers,
+        overridden,
         sign_in_servers,
     }
 }
@@ -1599,10 +1616,39 @@ mod tests {
             r#"{ "mcpServers": { "docs": { "command": "a" } } }"#,
         )
         .unwrap();
-        let (servers, diagnostics) = read_configs(Some(&home.join(".rust-claude")), &home);
+        let (servers, overridden, diagnostics) =
+            read_configs(Some(&home.join(".rust-claude")), &home);
         std::fs::remove_dir_all(&home).unwrap();
         assert_eq!(servers["docs"].0, Scope::Global);
+        assert!(overridden.is_empty());
         assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn lists_enabled_global_servers_that_project_entries_override() {
+        let directory = std::env::temp_dir().join(format!("mcp-override-{}", std::process::id()));
+        let global = directory.join("global");
+        let project = directory.join("project");
+        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(project.join(".rust-claude")).unwrap();
+        std::fs::write(
+            global.join("mcp.json"),
+            r#"{ "mcpServers": {
+                "docs": { "command": "a" },
+                "off": { "command": "a", "enabled": false },
+                "web": { "command": "a" }
+            } }"#,
+        )
+        .unwrap();
+        std::fs::write(
+            project.join(".rust-claude/mcp.json"),
+            r#"{ "mcpServers": { "docs": { "command": "c" }, "off": { "command": "c" } } }"#,
+        )
+        .unwrap();
+        let (servers, overridden, _) = read_configs(Some(&global), &project);
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(servers["docs"].0, Scope::Project);
+        assert_eq!(overridden, ["docs"]);
     }
 
     fn echo_server() -> ServerConfig {
