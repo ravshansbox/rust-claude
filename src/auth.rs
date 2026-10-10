@@ -154,14 +154,23 @@ impl Credentials {
         Ok(credentials)
     }
 
+    /// Renews the tokens when they have expired. Failures other than the
+    /// endpoint turning the sign-in down, such as no network or a server
+    /// error, may pass, so requests retry them.
     pub async fn access_token(&mut self, http: &reqwest::Client) -> Result<String> {
         if now_millis() < self.expires {
             return Ok(self.access.clone());
         }
-        self.renew(http)
-            .await
-            .context("sign-in expired: restart rust-claude to sign in again")?;
-        Ok(self.access.clone())
+        match self.renew(http).await {
+            Ok(()) => Ok(self.access.clone()),
+            Err(error) if error.is::<Unusable>() => {
+                Err(error.context("sign-in expired: restart rust-claude to sign in again"))
+            }
+            Err(error) => Err(crate::agent::retry::retryable(
+                format!("could not renew the sign-in: {error:#}"),
+                None,
+            )),
+        }
     }
 
     /// Switches to the tokens in auth.json when they last longer than ours.
@@ -298,6 +307,7 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
 #[cfg(test)]
 mod tests {
     use super::{Credentials, credentials_path, parse_pasted_code};
+    use crate::agent::retry::retry_delay;
     use serde_json::{Value, json};
     use std::sync::Arc;
     use tokio::{
@@ -459,6 +469,34 @@ mod tests {
         );
         assert!(error.contains("503"), "{error}");
         assert_eq!(after, saved);
+    }
+
+    #[tokio::test]
+    async fn retries_a_renewal_the_server_could_not_answer() {
+        let _lock = AUTH_FILE.lock().await;
+        answer_token_requests("503 Service Unavailable", json!({ "error": "overloaded" })).await;
+        let _ = std::fs::remove_file(credentials_path().unwrap());
+        let mut credentials = expired("first");
+        let error = credentials
+            .access_token(&reqwest::Client::new())
+            .await
+            .unwrap_err();
+        assert!(retry_delay(&error, 0).is_some(), "{error:#}");
+        assert!(error.to_string().contains("503"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn asks_to_sign_in_again_when_the_server_turns_the_renewal_down() {
+        let _lock = AUTH_FILE.lock().await;
+        let _endpoint = TokenEndpoint::start("other", false).await;
+        let _ = std::fs::remove_file(credentials_path().unwrap());
+        let mut credentials = expired("spent");
+        let error = credentials
+            .access_token(&reqwest::Client::new())
+            .await
+            .unwrap_err();
+        assert_eq!(retry_delay(&error, 0), None);
+        assert!(error.to_string().contains("sign in again"), "{error}");
     }
 
     #[tokio::test]
