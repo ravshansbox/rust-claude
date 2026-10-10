@@ -87,6 +87,7 @@ Input and editing:
 Display:
 
 - Markdown replies, with tables wrapped to the window width
+- Tabs in replies, tool output and `!` command output shown as four spaces
 - Light and dark theme detection
 - Mouse wheel scrolling
 - The view stays still while you read earlier text and a reply streams
