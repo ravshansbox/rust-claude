@@ -444,6 +444,15 @@ impl Agent {
                 }
             })
             .await?;
+        match response.stop_reason.as_str() {
+            "end_turn" => {}
+            "refusal" => bail!(
+                "the model declined to summarise the conversation; the conversation was not compacted"
+            ),
+            reason => {
+                bail!("the summary was cut off ({reason}); the conversation was not compacted")
+            }
+        }
         let summary: String = response
             .content
             .iter()
@@ -717,6 +726,34 @@ mod tests {
         assert_eq!(api.requests().await.len(), 2);
         let usage = agent.stats().usage;
         assert_eq!((usage.input, usage.output), (501, 2));
+    }
+
+    #[tokio::test]
+    async fn keeps_the_conversation_when_the_summary_does_not_finish() {
+        for stop_reason in ["max_tokens", "model_context_window_exceeded", "refusal"] {
+            let api = MockApi::start(vec![
+                text_reply("hello"),
+                stopped_reply("partial summary", stop_reason),
+                text_reply("ok"),
+            ])
+            .await;
+            let mut agent = test_support::agent(&api, reqwest::Client::new());
+            let first = agent.prompt("hi", &[], |_| {}).await;
+            let compacted = agent.compact(|_| {}).await;
+            let next = agent.prompt("next", &[], |_| {}).await;
+            test_support::remove_session(&agent);
+            first.unwrap();
+            next.unwrap();
+            let message = compacted.unwrap_err().to_string();
+            assert!(
+                message.contains("not compacted"),
+                "{stop_reason}: {message}"
+            );
+            let requests = api.requests().await;
+            let after = requests[2]["messages"].to_string();
+            assert!(!after.contains("partial summary"), "{stop_reason}: {after}");
+            assert!(after.contains("hello"), "{stop_reason}: {after}");
+        }
     }
 
     #[tokio::test]
