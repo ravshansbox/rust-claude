@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 mod bash;
 mod display;
 mod edit;
+mod python;
 mod read;
 #[cfg(test)]
 mod test_support;
@@ -28,6 +29,7 @@ pub fn truncate(mut text: String) -> String {
 pub fn definitions() -> Value {
     json!([
         bash::definition(),
+        python::definition(),
         read::definition(),
         write::definition(),
         edit::definition()
@@ -104,6 +106,7 @@ async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
     match name {
         "bash" => bash::run(input).await,
+        "python" => python::run(input).await,
         "read" => read::run(input).await,
         "write" => write::run(input).await,
         "edit" => edit::run(input).await,
