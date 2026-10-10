@@ -80,6 +80,14 @@ pub fn prepare(data: Vec<u8>) -> Result<Image> {
         .into_decoder()
         .context("failed to decode image")?;
     let orientation = decoder.orientation().unwrap_or(Orientation::NoTransforms);
+    // Decoding straight from the decoder skips the reader's memory limit,
+    // so a tiny file claiming huge dimensions could exhaust memory.
+    if image::Limits::default()
+        .reserve(decoder.total_bytes())
+        .is_err()
+    {
+        bail!("image is too large");
+    }
     let mut decoded = DynamicImage::from_decoder(decoder).context("failed to decode image")?;
     // Photos are often stored sideways with an Exif note saying how to turn
     // them. Turn them upright, since the re-encoded image has no Exif data.
@@ -157,6 +165,29 @@ mod tests {
         let image = prepare(encoded(MAX_EDGE * 2, 100, ImageFormat::Png)).unwrap();
         let decoded = image::load_from_memory(&image.data).unwrap();
         assert_eq!(decoded.dimensions(), (MAX_EDGE, 50));
+    }
+
+    #[test]
+    fn rejects_images_too_large_to_decode() {
+        // A tiny 1x1 greyscale PNG whose header claims 24000x24000, which
+        // would need 576 MiB to decode: over the limit but survivable if
+        // the limit were ignored.
+        let mut data = Vec::new();
+        DynamicImage::ImageLuma8(image::GrayImage::new(1, 1))
+            .write_to(&mut Cursor::new(&mut data), ImageFormat::Png)
+            .unwrap();
+        data[16..20].copy_from_slice(&24000u32.to_be_bytes());
+        data[20..24].copy_from_slice(&24000u32.to_be_bytes());
+        let mut crc = !0u32;
+        for byte in &data[12..29] {
+            crc ^= u32::from(*byte);
+            for _ in 0..8 {
+                crc = (crc >> 1) ^ (0xEDB8_8320 & (crc & 1).wrapping_neg());
+            }
+        }
+        data[29..33].copy_from_slice(&(!crc).to_be_bytes());
+        let error = prepare(data).unwrap_err();
+        assert_eq!(error.to_string(), "image is too large");
     }
 
     #[test]
