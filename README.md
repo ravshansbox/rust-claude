@@ -24,6 +24,7 @@ Model and thinking:
 
 - `/model` picker with the latest model in each class available to your account: Fable, Opus, Sonnet and Haiku
 - `/model <id>`, which checks the id before switching
+- Ctrl+P to switch between the latest models: Fable, Opus, Sonnet, Haiku
 - Known context windows and output limits for the latest model in each class
 - Thinking levels with `/thinking`, `/thinking <level>` and Shift+Tab
 - Thinking text shown in the conversation
@@ -241,6 +242,7 @@ In the interface, rust-claude saves each prompt you send, including `!` commands
 | Ctrl+V | Paste an image from the clipboard |
 | Ctrl+R | Search prompt history |
 | Shift+Tab | Cycle thinking level |
+| Ctrl+P | Switch to the next model: Fable, Opus, Sonnet, Haiku |
 | Up / Down | Browse prompt history, move between input rows, or scroll |
 | Page Up / Page Down | Scroll by a page |
 | Home / End | Scroll to top or bottom |
