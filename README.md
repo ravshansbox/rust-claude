@@ -161,7 +161,7 @@ Send images with the prompt with `--image <path>`. Repeat it for more images:
 rust-claude -p "what is wrong in this screenshot?" --image error.png
 ```
 
-In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal.
+In print mode, tool calls go to standard error, with syntax highlighting when standard error is a terminal. rust-claude removes control characters other than newline and tab, such as escape sequences that clear the screen or set the clipboard, from the tool calls, tool errors, notices and MCP messages it shows, and from the answer when standard output is a terminal. A piped answer is written byte for byte.
 
 Press Ctrl+C in print mode to stop. rust-claude stops running commands and MCP servers, saves the session with the prompt marked as cancelled, prints `cancelled` to standard error and exits with status 130. Closing the terminal (SIGHUP) or `kill` (SIGTERM) stops it the same way, with status 129 or 143. In the interactive mode they quit as if you had pressed Ctrl+D, so running commands and MCP servers are stopped too.
 

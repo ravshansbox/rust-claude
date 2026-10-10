@@ -7,13 +7,14 @@ mod history;
 mod images;
 mod mcp;
 mod models;
+mod print;
 mod session;
 mod settings;
 mod skills;
 mod tools;
 mod tui;
 
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 
 use anyhow::{Context, Result, bail};
 use tokio::signal::unix::{Signal, SignalKind, signal};
@@ -156,88 +157,23 @@ async fn main() -> Result<()> {
         }
     }
     for diagnostic in &agent.mcp.diagnostics {
-        eprintln!("{diagnostic}");
+        eprintln!("{}", highlight::strip_controls(diagnostic));
     }
     for program in &agent.missing_programs {
-        eprintln!("{program} not found on PATH");
+        eprintln!("{} not found on PATH", highlight::strip_controls(program));
     }
-    let mut stdout = std::io::stdout();
-    let mut printed = false;
-    let mut separate = false;
-    let mut line_open = false;
+    let stdout = std::io::stdout();
+    let out_terminal = stdout.is_terminal();
     let colour = std::io::stderr().is_terminal();
     let dark = colour && tui::dark_theme();
-    let mut reads = tools::ReadGroup::default();
+    let mut printer = print::Printer::new(stdout, out_terminal, std::io::stderr(), colour, dark);
     let checkpoint = agent.history_len();
-    let run = agent.prompt(&prompt, &images, |event| match event {
-        agent::AgentEvent::Text(text) => {
-            flush_reads(&mut reads);
-            if separate {
-                let _ = write!(stdout, "\n\n");
-                separate = false;
-            }
-            let _ = write!(stdout, "{text}");
-            let _ = stdout.flush();
-            printed = true;
-            line_open = !text.ends_with('\n');
-        }
-        agent::AgentEvent::ToolStart {
-            name,
-            summary,
-            diff,
-        } => {
-            separate = printed;
-            if line_open {
-                eprintln!();
-                line_open = false;
-            }
-            if name == "read" && diff.is_none() {
-                reads.add(summary);
-                return;
-            }
-            flush_reads(&mut reads);
-            eprintln!("{name} {summary}");
-            if let Some(diff) = diff {
-                if colour {
-                    for line in highlight::highlight_body(&summary, &diff, dark) {
-                        eprintln!("{}", highlight::ansi_line(&line, dark));
-                    }
-                } else {
-                    eprintln!("{diff}");
-                }
-            }
-        }
-        agent::AgentEvent::ToolDone {
-            name,
-            error: Some(error),
-            ..
-        } => {
-            flush_reads(&mut reads);
-            if line_open {
-                eprintln!();
-                line_open = false;
-            }
-            eprintln!("{name} failed: {error}");
-        }
-        agent::AgentEvent::ToolDone {
-            name,
-            note: Some(note),
-            ..
-        } => {
-            flush_reads(&mut reads);
-            eprintln!("{name}: {note}");
-        }
-        agent::AgentEvent::Notice(text) => {
-            flush_reads(&mut reads);
-            eprintln!("\n{text}");
-        }
-        _ => {}
-    });
+    let run = agent.prompt(&prompt, &images, |event| printer.event(event));
     let result = tokio::select! {
         result = run => Ok(result),
         status = &mut stopped => Err(status),
     };
-    flush_reads(&mut reads);
+    printer.flush_reads();
     let result = match result {
         Ok(result) => result,
         Err(status) => {
@@ -249,7 +185,7 @@ async fn main() -> Result<()> {
         }
     };
     result?;
-    writeln!(stdout)?;
+    printer.finish()?;
     Ok(())
 }
 
@@ -286,13 +222,6 @@ fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
     drop(agent);
     eprintln!("\ncancelled");
     std::process::exit(status);
-}
-
-fn flush_reads(reads: &mut tools::ReadGroup) {
-    if !reads.is_empty() {
-        eprintln!("read {}", reads.summary());
-        reads.clear();
-    }
 }
 
 #[cfg(test)]
