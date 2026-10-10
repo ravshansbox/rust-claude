@@ -51,6 +51,8 @@ pub struct Updater {
     pub releases_url: String,
     pub current_version: &'static str,
     pub cargo: Option<PathBuf>,
+    pub rustc: Option<PathBuf>,
+    pub build_dir: Option<PathBuf>,
 }
 
 impl Updater {
@@ -69,6 +71,8 @@ impl Updater {
             releases_url: RELEASES_URL.into(),
             current_version: env!("CARGO_PKG_VERSION"),
             cargo: find_on_path("cargo", std::env::var_os("PATH")),
+            rustc: find_on_path("rustc", std::env::var_os("PATH")),
+            build_dir: crate::config::dir().map(|dir| dir.join("build")),
         })
     }
 
@@ -153,8 +157,14 @@ impl Updater {
         .await?
         .with_context(|| format!("unpacking {ASSET}"))?;
         report(Progress::Building(version.into()));
-        let output = tokio::process::Command::new(cargo)
-            .args(["install", "--locked", "--force", "--path"])
+        let mut command = tokio::process::Command::new(cargo);
+        command.args(["install", "--locked", "--force"]);
+        if let Some(build_dir) = &self.build_dir {
+            self.prepare_build_dir(build_dir).await;
+            command.arg("--target-dir").arg(build_dir);
+        }
+        let output = command
+            .arg("--path")
             .arg(folder.join("rust-claude"))
             .stdin(std::process::Stdio::null())
             .output()
@@ -170,6 +180,30 @@ impl Updater {
             .map(str::to_string)
             .unwrap_or_else(|| format!("cargo install exited with {}", output.status));
         anyhow::bail!(reason)
+    }
+
+    async fn prepare_build_dir(&self, build_dir: &Path) {
+        let Some(rustc) = &self.rustc else {
+            return;
+        };
+        let Ok(output) = tokio::process::Command::new(rustc)
+            .arg("-vV")
+            .stdin(std::process::Stdio::null())
+            .output()
+            .await
+        else {
+            return;
+        };
+        if !output.status.success() {
+            return;
+        }
+        let stamp = build_dir.join("rustc-version");
+        if std::fs::read(&stamp).ok().as_deref() == Some(output.stdout.as_slice()) {
+            return;
+        }
+        let _ = std::fs::remove_dir_all(build_dir);
+        let _ = std::fs::create_dir_all(build_dir);
+        let _ = std::fs::write(stamp, output.stdout);
     }
 }
 
@@ -283,6 +317,14 @@ mod tests {
         cargo
     }
 
+    fn fake_rustc(dir: &Path, version: &str) -> PathBuf {
+        let rustc = dir.join("rustc");
+        std::fs::write(&rustc, format!("#!/bin/sh\necho '{version}'\n")).unwrap();
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&rustc, std::fs::Permissions::from_mode(0o755)).unwrap();
+        rustc
+    }
+
     async fn run(updater: Updater) -> Vec<String> {
         let shown = Arc::new(Mutex::new(Vec::new()));
         let recorded = shown.clone();
@@ -298,6 +340,8 @@ mod tests {
             releases_url: format!("{base}/latest"),
             current_version: "0.1.0",
             cargo,
+            rustc: None,
+            build_dir: None,
         }
     }
 
@@ -319,6 +363,52 @@ mod tests {
         let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
         assert!(log.starts_with("install --locked --force --path "), "{log}");
         assert!(log.contains("unpacked"), "{log}");
+    }
+
+    #[tokio::test]
+    async fn builds_in_the_build_folder() {
+        let dir = temp_dir("build-folder");
+        let (base, _) = github("v0.2.0").await;
+        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
+        updater.build_dir = Some(dir.join("build"));
+        run(updater).await;
+        let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
+        let expected = format!(
+            "install --locked --force --target-dir {} --path ",
+            dir.join("build").display()
+        );
+        assert!(log.starts_with(&expected), "{log}");
+    }
+
+    #[tokio::test]
+    async fn keeps_the_build_folder_while_the_compiler_stays_the_same() {
+        let dir = temp_dir("same-compiler");
+        let (base, _) = github("v0.2.0").await;
+        let build = dir.join("build");
+        for _ in 0..2 {
+            let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
+            updater.rustc = Some(fake_rustc(&dir, "rustc 1.99.0"));
+            updater.build_dir = Some(build.clone());
+            run(updater).await;
+            std::fs::write(build.join("earlier-build"), "").unwrap();
+        }
+        assert!(build.join("earlier-build").exists());
+    }
+
+    #[tokio::test]
+    async fn empties_the_build_folder_when_the_compiler_changes() {
+        let dir = temp_dir("new-compiler");
+        let (base, _) = github("v0.2.0").await;
+        let build = dir.join("build");
+        for version in ["rustc 1.98.0", "rustc 1.99.0"] {
+            let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
+            updater.rustc = Some(fake_rustc(&dir, version));
+            updater.build_dir = Some(build.clone());
+            run(updater).await;
+            std::fs::write(build.join(version), "").unwrap();
+        }
+        assert!(!build.join("rustc 1.98.0").exists());
+        assert!(build.join("rustc 1.99.0").exists());
     }
 
     #[tokio::test]
