@@ -857,6 +857,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn says_the_model_declined_when_it_stops_partway_through_a_tool_call() {
+        // The tool input may be whole or cut off where the model stopped.
+        for partial in [
+            "{\"command\": \"touch declined\"}",
+            "{\"command\": \"touch declined",
+        ] {
+            let refusal = Reply::Events(vec![
+                json!({ "type": "message_start", "message": { "usage": { "input_tokens": 10, "output_tokens": 1 } } }),
+                json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": partial } }),
+                json!({ "type": "content_block_stop", "index": 0 }),
+                json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
+                json!({ "type": "message_stop" }),
+            ]);
+            let api = MockApi::start(vec![refusal, text_reply("hello")]).await;
+            let mut agent = test_support::agent(&api, reqwest::Client::new());
+            let declined = agent.prompt("hi", &[], |_| {}).await;
+            let next = agent.prompt("again", &[], |_| {}).await;
+            test_support::remove_session(&agent);
+            let message = declined.unwrap_err().to_string();
+            assert!(
+                message.contains("declined to answer"),
+                "{partial}: {message}"
+            );
+            next.unwrap();
+            let requests = api.requests().await;
+            let resent = requests[1]["messages"].to_string();
+            assert!(!resent.contains("touch declined"), "{partial}: {resent}");
+            let usage = agent.stats().usage;
+            assert_eq!((usage.input, usage.output), (11, 6), "{partial}");
+        }
+    }
+
+    #[tokio::test]
     async fn keeps_tokens_of_a_failed_attempt_out_of_the_context_size() {
         let overloaded = Reply::Events(vec![
             json!({ "type": "message_start", "message": { "usage": { "input_tokens": 500, "cache_read_input_tokens": 500, "output_tokens": 1 } } }),

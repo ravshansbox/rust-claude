@@ -208,11 +208,16 @@ impl Agent {
         if stop_reason.is_empty() {
             bail!("response ended before the reply finished");
         }
-        if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use") {
-            bail!("reply stopped ({stop_reason}) before its tool call finished");
-        }
-        if let Some(error) = input_error {
-            return Err(error.into());
+        // A refusal is reported as such by the caller, which drops the reply
+        // along with any tool call it left unfinished.
+        if stop_reason != "refusal" {
+            if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use")
+            {
+                bail!("reply stopped ({stop_reason}) before its tool call finished");
+            }
+            if let Some(error) = input_error {
+                return Err(error.into());
+            }
         }
         Ok(Response {
             content,
