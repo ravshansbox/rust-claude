@@ -4,14 +4,17 @@ pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
     ("/compact", "summarise the conversation to free context"),
     ("/context", "show what fills the context"),
-    ("/mcp", "sign in to an MCP server"),
+    ("/mcp", "sign in to or out of an MCP server"),
     ("/resume", "resume a previous session"),
     ("/model", "select model"),
     ("/thinking", "select thinking level"),
     ("/quit", "quit"),
 ];
 
-pub(super) const MCP_SUBCOMMANDS: &[(&str, &str)] = &[("login", "sign in to an MCP server")];
+pub(super) const MCP_SUBCOMMANDS: &[(&str, &str)] = &[
+    ("login", "sign in to an MCP server"),
+    ("logout", "sign out of an MCP server"),
+];
 
 /// `/mcp` subcommands, or the servers they apply to, starting with the
 /// input after `/mcp `.
