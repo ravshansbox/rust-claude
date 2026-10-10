@@ -104,7 +104,9 @@ pub fn private_file() -> OpenOptions {
 pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     let target = match std::fs::canonicalize(path) {
         Ok(target) => target,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => path.to_path_buf(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            dangling_target(path.to_path_buf())
+        }
         Err(error) => return Err(error),
     };
     let path = target.as_path();
@@ -120,6 +122,22 @@ pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
         Some(permissions) => file.set_permissions(permissions),
         None => Ok(()),
     })
+}
+
+/// Follows symlinks at a path that does not exist yet to the file they would
+/// create, so writing it keeps the links.
+pub(crate) fn dangling_target(mut path: std::path::PathBuf) -> std::path::PathBuf {
+    // Stops at a loop of links, as the system does.
+    for _ in 0..40 {
+        let Ok(link) = std::fs::read_link(&path) else {
+            break;
+        };
+        path = match path.parent() {
+            Some(parent) => parent.join(link),
+            None => link,
+        };
+    }
+    path
 }
 
 /// Counts temporary files this process made, to give each a new name.
@@ -204,6 +222,26 @@ mod tests {
         std::fs::remove_dir_all(&base).unwrap();
         result.unwrap();
         assert_eq!(found, (true, "{\"model\":\"opus\"}".into(), Some(0o600)));
+    }
+
+    /// A link to a file not made yet stays, and the file is made.
+    #[cfg(unix)]
+    #[test]
+    fn saves_through_dangling_symlink() {
+        let base =
+            std::env::temp_dir().join(format!("rust-claude-dangling-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("dotfiles")).unwrap();
+        let link = base.join("settings.json");
+        std::os::unix::fs::symlink("dotfiles/settings.json", &link).unwrap();
+        let result = write_private_file(&link, b"{}");
+        let found = (
+            std::fs::symlink_metadata(&link).unwrap().is_symlink(),
+            std::fs::read_to_string(base.join("dotfiles/settings.json")).ok(),
+        );
+        std::fs::remove_dir_all(&base).unwrap();
+        result.unwrap();
+        assert_eq!(found, (true, Some("{}".into())));
     }
 
     /// A file someone links to from the next temporary names is left alone.
