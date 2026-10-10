@@ -347,6 +347,8 @@ Quitting while a prompt runs cancels it and saves the session first. Quitting wh
 
 A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request. A tool call that was still running or waiting when you cancelled is recorded as cancelled.
 
+If the model declines to answer, even partway through a reply, the prompt fails with the error `the model declined to answer`. The partial reply is left out of the session and is not sent again, but its tokens still count toward the session's token use.
+
 Newer models only use thinking from earlier replies while the system prompt, tools and messages sent before it stay the same. These can change during a session, for example when an MCP server connects after the first prompt, or when a resumed session finds different `AGENTS.md` files or skills. When the API rejects a request for this reason, rust-claude shows a notice, sends the request once more asking the API to drop the thinking that no longer matches, and keeps asking for the rest of the session. The session file records this, so it also applies after resuming.
 
 `/compact` asks the model to summarise the conversation. Later requests send the summary in place of the earlier messages. The session file keeps the full conversation and a compaction entry that holds the summary. A resumed session shows the earlier messages, then a `compacted conversation` notice. Esc cancels a running compaction.
