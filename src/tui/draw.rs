@@ -49,10 +49,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         message.render(chat.width);
     }
     let mut status_lines = Vec::new();
-    if app.busy {
+    if let Some(activity) = app.activity {
         status_lines.push(Line::default());
         let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
-        status_lines.push(Line::from(format!("{frame} {}", app.status).dark_gray()));
+        status_lines.push(Line::from(format!("{frame} {activity}").dark_gray()));
         for prompt in app.queued_prompts() {
             let first_line = prompt.lines().next().unwrap_or_default();
             status_lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
