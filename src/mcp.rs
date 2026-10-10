@@ -516,10 +516,16 @@ fn result_text(result: &Value) -> String {
             Some("text") => block["text"].as_str().unwrap_or_default().to_string(),
             Some("image") => format!("[image: {mime_type}]"),
             Some("audio") => format!("[audio: {mime_type}]"),
-            Some("resource_link") => format!("[resource link: {}]", block["uri"]),
+            Some("resource_link") => format!(
+                "[resource link: {}]",
+                block["uri"].as_str().unwrap_or("unknown")
+            ),
             Some("resource") => match block["resource"]["text"].as_str() {
                 Some(text) => text.to_string(),
-                None => format!("[resource: {}]", block["resource"]["uri"]),
+                None => format!(
+                    "[resource: {}]",
+                    block["resource"]["uri"].as_str().unwrap_or("unknown")
+                ),
             },
             _ => block.to_string(),
         });
@@ -737,9 +743,15 @@ mod tests {
                 { "type": "text", "text": "hello" },
                 { "type": "image", "data": "", "mimeType": "image/png" },
                 { "type": "resource", "resource": { "uri": "file:///a", "text": "body" } },
+                { "type": "resource_link", "uri": "file:///b", "name": "b" },
+                { "type": "resource", "resource": { "uri": "file:///c", "blob": "" } },
+                { "type": "resource_link" },
             ]
         });
-        assert_eq!(result_text(&result), "hello\n[image: image/png]\nbody");
+        assert_eq!(
+            result_text(&result),
+            "hello\n[image: image/png]\nbody\n[resource link: file:///b]\n[resource: file:///c]\n[resource link: unknown]"
+        );
         assert_eq!(
             result_text(&json!({ "content": [], "structuredContent": { "a": 1 } })),
             r#"{"a":1}"#
