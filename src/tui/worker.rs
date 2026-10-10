@@ -26,7 +26,7 @@ pub(super) enum UiEvent {
     /// The server starts again, after `notice`.
     McpRestarting {
         name: String,
-        label: String,
+        scope: crate::skills::Scope,
         notice: String,
     },
     Update(crate::update::Progress),

@@ -39,15 +39,16 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
         UiEvent::McpRestarting {
             name,
-            label,
+            scope,
             notice,
         } => {
             app.push(Role::Event, notice);
-            app.start_mcp_server(&name, &label);
+            app.start_mcp_servers([(name.as_str(), scope)]);
         }
-        UiEvent::McpServer(added) => {
-            app.finish_mcp_server(&added.name, added.status);
-            for diagnostic in added.diagnostics {
+        UiEvent::McpServer(mut added) => {
+            let diagnostics = std::mem::take(&mut added.diagnostics);
+            app.finish_mcp_server(added);
+            for diagnostic in diagnostics {
                 app.push(Role::Event, diagnostic);
             }
         }
