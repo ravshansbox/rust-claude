@@ -183,7 +183,7 @@ Keep sign-in, settings, sessions, prompt history, skills and MCP config in anoth
 rust-claude --config-dir ~/work/.rust-claude
 ```
 
-Sessions hold whole conversations and tool output, so rust-claude creates `~/.rust-claude` and the folders and files it writes there so that only you can read them. Folders and files made by older versions keep their permissions.
+Sessions hold whole conversations and tool output, so rust-claude creates `~/.rust-claude` and the folders and files it writes there so that only you can read them. Folders and files made by older versions keep their permissions. If `settings.json` or `auth.json` is a symlink, for example into a dotfiles folder, saving keeps the symlink and replaces the file it points to.
 
 Show help with `-h` or `--help`.
 
