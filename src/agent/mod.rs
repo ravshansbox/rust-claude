@@ -644,25 +644,32 @@ impl Agent {
     }
 
     /// Turns queued prompts into message blocks. The prompts stay queued when
-    /// saving one of their images fails.
+    /// saving one of their images fails. Images are saved with the queue
+    /// unlocked, so the interface does not wait to draw or queue a prompt.
     fn take_queued_prompts(
         &self,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Option<Vec<Value>>> {
-        let Ok(mut queue) = self.queue.lock() else {
-            return Ok(None);
-        };
-        if queue.is_empty() {
+        let queued = take_queued(&self.queue);
+        if queued.is_empty() {
             return Ok(None);
         }
         let mut blocks = Vec::new();
-        for queued in queue.iter() {
+        let saved = queued.iter().try_for_each(|queued| {
             for (_, image) in &queued.images {
                 blocks.push(self.session.save_image(image)?);
             }
             blocks.push(json!({ "type": "text", "text": queued.prompt }));
+            Ok::<_, anyhow::Error>(())
+        });
+        if let Err(error) = saved {
+            // Ahead of any prompt queued meanwhile, keeping their order.
+            if let Ok(mut queue) = self.queue.lock() {
+                queue.splice(0..0, queued);
+            }
+            return Err(error);
         }
-        for queued in queue.drain(..) {
+        for queued in queued {
             on_event(AgentEvent::Queued(queued.prompt));
         }
         Ok(Some(blocks))
@@ -672,12 +679,13 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use serde_json::json;
-    use std::time::Duration;
+    use std::{sync::Arc, time::Duration};
 
     use super::{
         AgentEvent, Queued, cancel_point, http_client_with, parse_shell_message, shell_message,
         test_support::{self, MockApi, Reply, stopped_reply, text_reply, tool_reply},
     };
+    use crate::images::Image;
 
     #[tokio::test]
     async fn retries_a_reply_that_stops_arriving() {
@@ -1073,6 +1081,102 @@ mod tests {
                 .to_string()
                 .contains(&output)
         );
+    }
+
+    #[tokio::test]
+    async fn lets_prompts_be_queued_while_queued_images_are_saved() {
+        use std::sync::{
+            TryLockError,
+            atomic::{AtomicBool, Ordering},
+        };
+
+        let api = MockApi::start(vec![
+            tool_reply("call-1", "bash", json!({ "command": "true" })),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let small = Image {
+            media_type: "image/png",
+            data: vec![1; 16],
+        };
+        // Large enough that saving it takes a while.
+        let large = Image {
+            media_type: "image/png",
+            data: vec![2; 8 << 20],
+        };
+        agent.queue.lock().unwrap().push(Queued {
+            prompt: "look at these".into(),
+            images: vec![(1, small), (2, large)],
+        });
+        let directory = test_support::session_file(&agent).with_file_name(&agent.session.id);
+        let queue = agent.queue.clone();
+        let finished = Arc::new(AtomicBool::new(false));
+        let watching = finished.clone();
+        // Watches the queue while the first image is saved and the second
+        // one is being saved.
+        let watcher = std::thread::spawn(move || {
+            let mut blocked = false;
+            while !watching.load(Ordering::Relaxed) {
+                let saved = std::fs::read_dir(&directory).map_or(0, |entries| {
+                    entries
+                        .filter_map(Result::ok)
+                        .filter(|entry| entry.path().extension() == Some("png".as_ref()))
+                        .count()
+                });
+                if saved == 1 && matches!(queue.try_lock(), Err(TryLockError::WouldBlock)) {
+                    blocked = true;
+                }
+            }
+            blocked
+        });
+        let result = agent.prompt("run it", &[], |_| {}).await;
+        finished.store(true, Ordering::Relaxed);
+        let blocked = watcher.join().unwrap();
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert!(!blocked, "the queue was locked while an image was saved");
+        assert!(agent.queue.lock().unwrap().is_empty());
+        let requests = api.requests().await;
+        assert!(
+            requests[1]["messages"]
+                .to_string()
+                .contains("look at these")
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_prompts_queued_when_their_image_cannot_be_saved() {
+        let api = MockApi::start(vec![
+            tool_reply("call-1", "bash", json!({ "command": "true" })),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let image = Image {
+            media_type: "image/png",
+            data: vec![1; 16],
+        };
+        agent.queue.lock().unwrap().push(Queued {
+            prompt: "look at this".into(),
+            images: vec![(1, image)],
+        });
+        // A file in the way of the session's image folder makes saving fail.
+        let images = test_support::session_file(&agent).with_file_name(&agent.session.id);
+        std::fs::create_dir_all(images.parent().unwrap()).unwrap();
+        std::fs::write(&images, "").unwrap();
+        let result = agent.prompt("run it", &[], |_| {}).await;
+        let _ = std::fs::remove_file(&images);
+        test_support::remove_session(&agent);
+        assert!(result.is_err());
+        let queued: Vec<_> = agent
+            .queue
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|queued| queued.prompt.clone())
+            .collect();
+        assert_eq!(queued, ["look at this"]);
     }
 
     #[tokio::test]
