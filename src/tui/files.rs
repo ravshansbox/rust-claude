@@ -71,19 +71,34 @@ pub(super) fn file_query(input: &str, cursor: usize) -> Option<(usize, &str)> {
         .map(|query| (start, query))
 }
 
-pub(super) fn file_matches(files: &[String], query: &str) -> Vec<String> {
-    let query = query.to_lowercase();
-    files
-        .iter()
-        .filter(|path| path.to_lowercase().contains(&query))
-        .take(MAX_MATCHES)
-        .cloned()
-        .collect()
+/// The repository paths offered after `@`, with their lowercase forms worked
+/// out once, as matching runs on every key press and redraw.
+pub(super) struct FileList {
+    paths: Vec<String>,
+    lowercase: Vec<String>,
+}
+
+impl FileList {
+    pub(super) fn new(paths: Vec<String>) -> Self {
+        let lowercase = paths.iter().map(|path| path.to_lowercase()).collect();
+        Self { paths, lowercase }
+    }
+
+    pub(super) fn matches(&self, query: &str) -> Vec<String> {
+        let query = query.to_lowercase();
+        self.paths
+            .iter()
+            .zip(&self.lowercase)
+            .filter(|(_, lowercase)| lowercase.contains(&query))
+            .take(MAX_MATCHES)
+            .map(|(path, _)| path.clone())
+            .collect()
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{file_matches, file_query, files_in, walk};
+    use super::{FileList, file_query, files_in, walk};
     use std::process::Command;
 
     #[test]
@@ -154,8 +169,8 @@ mod tests {
 
     #[test]
     fn matches_files_ignoring_case() {
-        let files = vec!["README.md".to_string(), "src/main.rs".to_string()];
-        assert_eq!(file_matches(&files, "readme"), vec!["README.md"]);
-        assert_eq!(file_matches(&files, "").len(), 2);
+        let files = FileList::new(vec!["README.md".to_string(), "src/main.rs".to_string()]);
+        assert_eq!(files.matches("readme"), vec!["README.md"]);
+        assert_eq!(files.matches("").len(), 2);
     }
 }
