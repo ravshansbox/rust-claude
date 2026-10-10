@@ -43,10 +43,8 @@ pub(super) fn quit(requests: mpsc::UnboundedSender<Request>, cancel: mpsc::Unbou
 }
 
 pub(super) fn notify_renewed(agent: &mut Agent, events: &mpsc::UnboundedSender<UiEvent>) {
-    if agent.take_renewed() {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(
-            "renewed sign-in token".into(),
-        )));
+    if let Some(notice) = agent.take_renewal_notice() {
+        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
     }
 }
 
