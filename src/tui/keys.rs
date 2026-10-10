@@ -75,7 +75,9 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         app.start(Activity::Resuming);
                         act(Action::Resume(value));
                     }
-                    PickerKind::Thinking => app.set_thinking_level(&value),
+                    PickerKind::Thinking => {
+                        app.set_thinking_level(&value);
+                    }
                     PickerKind::Model => {
                         app.set_model(&value);
                         act(Action::SetModel(value));
@@ -259,7 +261,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                                 .unwrap_or_default(),
                         });
                     }
-                    "/thinking" => app.set_thinking_level(argument),
+                    "/thinking" => {
+                        if !app.set_thinking_level(argument) {
+                            app.restore_input(prompt);
+                        }
+                    }
                     "/model" if argument.is_empty() => {
                         app.start(Activity::LoadingModels);
                         act(Action::ListModels);
@@ -290,7 +296,10 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         let images = app.take_images(&prompt);
                         act(Action::Submit(prompt, images, app.thinking_level));
                     }
-                    command => app.push(Role::Event, format!("unknown command: {command}")),
+                    command => {
+                        app.push(Role::Event, format!("unknown command: {command}"));
+                        app.restore_input(prompt);
+                    }
                 }
                 return false;
             }
@@ -411,6 +420,32 @@ mod tests {
         assert_eq!(checked.as_deref(), Some("other"));
         assert_eq!(app.model, "model");
         assert!(app.busy());
+    }
+
+    #[test]
+    fn keeps_typed_text_after_an_unknown_command_or_thinking_level() {
+        for (typed, error) in [
+            (
+                "/Users/me/proj/main.rs fails, fix it",
+                "unknown command: /Users/me/proj/main.rs",
+            ),
+            ("/thinking loud", "unknown thinking level: loud"),
+        ] {
+            let mut app = new_app();
+            handle_input(Event::Paste(typed.into()), &mut app, |_| {});
+            let mut acted = false;
+            handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {
+                acted = true
+            });
+            assert!(!acted && !app.busy(), "{typed}");
+            assert!(
+                app.messages.last().unwrap().text.starts_with(error),
+                "{typed}"
+            );
+            assert_eq!(app.input, typed);
+            assert_eq!(app.cursor, typed.len());
+            assert_eq!(app.thinking_level, "medium");
+        }
     }
 
     #[test]
