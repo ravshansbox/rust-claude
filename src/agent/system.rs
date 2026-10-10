@@ -5,7 +5,6 @@ pub(super) const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI
 const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running in a terminal.
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
-Prefer edit and write over bash for changing files.
 Put questions to the user in bold.
 Give each question lettered options, and mark the recommended one. Number the questions when there is more than one."#;
 
@@ -98,6 +97,11 @@ mod tests {
         assert!(system_text(&[]).contains(
             "Give each question lettered options, and mark the recommended one. Number the questions when there is more than one."
         ));
+    }
+
+    #[test]
+    fn leaves_out_the_ignored_edit_and_write_preference() {
+        assert!(!system_text(&[]).contains("Prefer edit and write over bash"));
     }
 
     #[test]
