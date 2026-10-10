@@ -365,8 +365,12 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
         .filter(|name| !name.is_empty())
         .map(String::from)
         .unwrap_or_else(|| {
-            base_dir
-                .file_name()
+            let fallback = if is_declared_skill {
+                base_dir.file_name()
+            } else {
+                path.file_stem()
+            };
+            fallback
                 .map(|name| name.to_string_lossy().into_owned())
                 .unwrap_or_default()
         });
@@ -549,6 +553,41 @@ mod tests {
                 loser: home.join(".rust-claude/skills/alpha/SKILL.md"),
             }]
         );
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn names_loose_markdown_skills_after_their_file() {
+        let root = temp_dir("loose-names");
+        let home = root.join("home");
+        let cwd = root.join("project");
+        std::fs::create_dir_all(cwd.join(".git")).unwrap();
+        let skills = home.join(".rust-claude/skills");
+        write(
+            &skills.join("commit.md"),
+            "---\ndescription: Commit.\n---\n",
+        );
+        write(
+            &skills.join("review.md"),
+            "---\ndescription: Review.\n---\n",
+        );
+        write(
+            &skills.join("My Notes.md"),
+            "---\ndescription: Notes.\n---\n",
+        );
+
+        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &cwd);
+        let names: Vec<&str> = loaded
+            .skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect();
+        assert_eq!(names, ["My Notes", "commit", "review"]);
+        assert!(loaded.diagnostics.iter().all(|diagnostic| matches!(
+            diagnostic,
+            Diagnostic::Warning { path, .. } if *path == skills.join("My Notes.md")
+        )));
+        assert!(!loaded.diagnostics.is_empty());
         let _ = std::fs::remove_dir_all(root);
     }
 
