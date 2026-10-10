@@ -423,7 +423,7 @@ pub(super) async fn begin(
         }
         None => {
             let registration_endpoint = discovered.registration_endpoint.as_deref().ok_or(
-                "the sign-in server does not let rust-claude register; set oauth.clientId in the global mcp.json",
+                "the sign-in server does not let rust-claude register; set oauth.clientId in mcp.json",
             )?;
             let client_name = oauth.client_name.as_deref().unwrap_or("rust-claude");
             register(client, registration_endpoint, client_name, &redirect_uri).await?
