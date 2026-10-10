@@ -360,15 +360,14 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
 async fn register(
     client: &reqwest::Client,
     registration_endpoint: &str,
-    client_name: &str,
     redirect_uri: &str,
 ) -> Result<(String, Option<String>), String> {
     let failed =
-        |reason: String| format!("cannot register {client_name} with the sign-in server: {reason}");
+        |reason: String| format!("cannot register Claude Code with the sign-in server: {reason}");
     let response = client
         .post(registration_endpoint)
         .json(&serde_json::json!({
-            "client_name": client_name,
+            "client_name": "Claude Code",
             "redirect_uris": [redirect_uri],
             "grant_types": ["authorization_code", "refresh_token"],
             "response_types": ["code"],
@@ -425,7 +424,7 @@ pub(super) async fn begin(
             let registration_endpoint = discovered.registration_endpoint.as_deref().ok_or(
                 "the sign-in server does not let rust-claude register; set oauth.clientId in mcp.json",
             )?;
-            register(client, registration_endpoint, "Claude Code", &redirect_uri).await?
+            register(client, registration_endpoint, &redirect_uri).await?
         }
     };
     let state = random_token()?;
