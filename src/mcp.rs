@@ -63,8 +63,13 @@ fn read_config(
     servers: &mut BTreeMap<String, (Scope, ServerConfig)>,
     diagnostics: &mut Vec<String>,
 ) {
-    let Ok(text) = std::fs::read_to_string(path) else {
-        return;
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) => {
+            diagnostics.push(format!("MCP: cannot read {}: {error}", path.display()));
+            return;
+        }
     };
     let config: Value = match serde_json::from_str(&text) {
         Ok(config) => config,
@@ -782,6 +787,24 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         assert!(servers.is_empty());
         assert_eq!(diagnostics, ["MCP server docs: timeout must be at least 1"]);
+    }
+
+    #[test]
+    fn reports_an_unreadable_config() {
+        let path = std::env::temp_dir().join(format!("mcp-unreadable-{}.json", std::process::id()));
+        std::fs::create_dir_all(&path).unwrap();
+        let mut servers = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        read_config(
+            &path.join("missing.json"),
+            Scope::Project,
+            &mut servers,
+            &mut diagnostics,
+        );
+        std::fs::remove_dir_all(&path).unwrap();
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].starts_with(&format!("MCP: cannot read {}: ", path.display())));
     }
 
     #[test]
