@@ -198,7 +198,7 @@ The interface starts with the name and version, such as `rust-claude v0.1.0`, ab
 
 Markdown tables in replies wrap their cells to fit the window width.
 
-Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background. Leading spaces are removed from each line to save room.
+Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background. Leading spaces are removed from each line to save room. Python tool calls show all their code with Python syntax highlighting, keeping its indentation.
 
 ## Commands
 

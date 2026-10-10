@@ -4,6 +4,7 @@ pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "bash" => "command",
         "read" | "write" | "edit" => "path",
+        "python" => return String::new(),
         _ => return input.to_string(),
     };
     let value = input[key].as_str().unwrap_or_default().to_string();
@@ -71,6 +72,9 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     if name == "write" {
         return write_preview(input["content"].as_str()?);
     }
+    if name == "python" {
+        return code_preview(input["code"].as_str()?);
+    }
     if name != "edit" {
         return None;
     }
@@ -101,6 +105,11 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
         })
         .collect();
     Some(lines.join("\n"))
+}
+
+fn code_preview(code: &str) -> Option<String> {
+    let lines: Vec<String> = code.lines().map(|line| format!(" {line}")).collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
 }
 
 fn write_preview(content: &str) -> Option<String> {
@@ -184,6 +193,17 @@ mod tests {
     fn keeps_last_line_unchanged_when_lines_are_appended_without_newline() {
         let input = json!({ "path": "a", "old_text": "foo()", "new_text": "foo()\nbar()" });
         assert_eq!(diff("edit", &input), Some(" foo()\n+bar()".into()));
+    }
+
+    #[test]
+    fn shows_all_python_code_with_its_indentation() {
+        let code = format!("def f():\n    return 1\n{}", "pass\n".repeat(20));
+        let input = json!({ "code": code });
+        assert_eq!(summary("python", &input), "");
+        assert_eq!(
+            diff("python", &input),
+            Some(format!(" def f():\n     return 1{}", "\n pass".repeat(20)))
+        );
     }
 
     #[test]

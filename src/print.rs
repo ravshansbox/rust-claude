@@ -65,15 +65,23 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                     return;
                 }
                 self.flush_reads();
-                self.line(&format!("{name} {summary}"));
+                if summary.is_empty() {
+                    self.line(&name);
+                } else {
+                    self.line(&format!("{name} {summary}"));
+                }
                 if let Some(diff) = diff {
-                    if self.colour {
-                        for line in highlight::highlight_body(&summary, &diff, self.dark) {
-                            let _ =
-                                writeln!(self.err, "{}", highlight::ansi_line(&line, self.dark));
+                    match highlight::highlight_tool(&name, &summary, &diff, self.dark) {
+                        Some(lines) if self.colour => {
+                            for line in lines {
+                                let _ = writeln!(
+                                    self.err,
+                                    "{}",
+                                    highlight::ansi_line(&line, self.dark)
+                                );
+                            }
                         }
-                    } else {
-                        self.line(&diff);
+                        _ => self.line(&diff),
                     }
                 }
             }
@@ -204,6 +212,37 @@ mod tests {
         assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
         assert!(plain.contains("bash printf"), "{plain:?}");
         assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
+    }
+
+    #[tokio::test]
+    async fn highlights_python_code() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "python",
+                json!({ "code": "def f():\n    return 1\nprint(f())" }),
+            ),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut err = Vec::new();
+        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true);
+        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+        let finished = printer.finish(result);
+        test_support::remove_session(&agent);
+        finished.unwrap();
+        let err = String::from_utf8(err).unwrap();
+        let plain = without_colours(&err);
+        assert!(
+            plain.contains("python\n def f():\n     return 1\n print(f())\n"),
+            "{plain:?}"
+        );
+        let definition = err.lines().find(|line| line.contains("def")).unwrap();
+        assert!(
+            definition.matches("\x1b[38;2;").count() > 1,
+            "{definition:?}"
+        );
     }
 
     #[tokio::test]
