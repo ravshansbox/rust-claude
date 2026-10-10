@@ -37,8 +37,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(unix)]
-    command.process_group(0);
+    new_session(&mut command);
     let mut child = command
         .spawn()
         .map_err(|error| format!("failed to run command: {error}"))?;
@@ -84,6 +83,21 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
 }
 
 const OUTPUT_GRACE: Duration = Duration::from_millis(100);
+
+/// Starts the command in a session of its own, without the terminal, so prompts
+/// that open /dev/tty fail at once instead of stopping it, and its process group
+/// can be killed as a whole.
+pub fn new_session(command: &mut tokio::process::Command) {
+    #[cfg(unix)]
+    unsafe {
+        command.pre_exec(|| {
+            if libc::setsid() == -1 {
+                return Err(std::io::Error::last_os_error());
+            }
+            Ok(())
+        });
+    }
+}
 
 pub struct ProcessGroup(pub Option<u32>);
 
@@ -138,6 +152,17 @@ mod tests {
         assert_eq!(
             call("bash", &input).await,
             Err("command timed out after 1s".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn runs_bash_command_without_the_terminal() {
+        let command = "ps -o stat= -p $$ | grep -q s && echo own session; \
+                       (exec 3</dev/tty) 2>/dev/null || echo no terminal";
+        let input = json!({ "command": command, "timeout": 5 });
+        assert_eq!(
+            call("bash", &input).await,
+            Ok("own session\nno terminal\n".into())
         );
     }
 
