@@ -22,6 +22,20 @@ pub(super) enum Action {
     Cancel,
 }
 
+/// Whether `handle_input` may change what the screen shows for the event.
+/// Mouse capture reports every mouse movement, and only scrolling counts.
+pub(super) fn may_change_screen(event: &Event) -> bool {
+    match event {
+        Event::Mouse(mouse) => matches!(
+            mouse.kind,
+            MouseEventKind::ScrollUp | MouseEventKind::ScrollDown
+        ),
+        Event::Key(key) => key.kind == KeyEventKind::Press,
+        Event::Paste(_) | Event::Resize(..) => true,
+        Event::FocusGained | Event::FocusLost => false,
+    }
+}
+
 pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> bool {
     if let Event::Mouse(mouse) = event {
         match mouse.kind {
@@ -330,13 +344,43 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
 
 #[cfg(test)]
 mod tests {
-    use super::{Action, handle_input};
+    use super::{Action, handle_input, may_change_screen};
     use crate::images::Image;
     use crate::tui::{
         App, UiEvent, handle_agent_event,
         test_support::{new_app, screen},
     };
-    use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use crossterm::event::{
+        Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
+        MouseEventKind,
+    };
+
+    #[test]
+    fn redraws_only_for_events_that_may_change_the_screen() {
+        let mouse = |kind| {
+            Event::Mouse(MouseEvent {
+                kind,
+                column: 3,
+                row: 4,
+                modifiers: KeyModifiers::NONE,
+            })
+        };
+        let mut release = KeyEvent::from(KeyCode::Char('a'));
+        release.kind = KeyEventKind::Release;
+        for (event, redraw) in [
+            (mouse(MouseEventKind::Moved), false),
+            (mouse(MouseEventKind::Drag(MouseButton::Left)), false),
+            (mouse(MouseEventKind::ScrollUp), true),
+            (mouse(MouseEventKind::ScrollDown), true),
+            (Event::Key(release), false),
+            (Event::Key(KeyEvent::from(KeyCode::Char('a'))), true),
+            (Event::FocusLost, false),
+            (Event::Paste("a".into()), true),
+            (Event::Resize(80, 24), true),
+        ] {
+            assert_eq!(may_change_screen(&event), redraw, "{event:?}");
+        }
+    }
 
     #[test]
     fn edits_emoji_as_whole_graphemes() {

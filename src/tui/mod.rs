@@ -27,7 +27,7 @@ use crossterm::{
 use draw::draw;
 use files::list_files;
 use futures::StreamExt;
-use keys::{Action, handle_input};
+use keys::{Action, handle_input, may_change_screen};
 use ratatui::DefaultTerminal;
 use render::{THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
@@ -178,12 +178,12 @@ async fn run_loop(
                 dirty = true;
             }
             event = terminal_events.next() => {
-                dirty = true;
                 let event = match event {
                     Some(Ok(event)) => event,
                     Some(Err(error)) => break Err(error.into()),
                     None => break Ok(()),
                 };
+                dirty |= may_change_screen(&event);
                 let quit = handle_input(event, &mut app, |action| match action {
                     Action::Submit(prompt, images, thinking_level) => {
                         let _ = request_tx.send(Request::Prompt(prompt, images, thinking_level));
