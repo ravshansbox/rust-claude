@@ -2319,10 +2319,25 @@ done
     }
 
     #[tokio::test]
+    async fn registers_as_claude_code_unless_the_config_names_another_client() {
+        let (url, requests) = oauth_server().await;
+        begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+        assert_eq!(
+            requests_for_path(&requests, "/register")[0].body["client_name"],
+            "Claude Code"
+        );
+    }
+
+    #[tokio::test]
     async fn reports_failed_sign_ins() {
         let (url, _) = oauth_server().await;
+        let mut named_rust_claude = http_config(&url);
+        named_rust_claude.oauth = Some(OAuthConfig {
+            client_name: Some("rust-claude".into()),
+            ..OAuthConfig::default()
+        });
         assert_eq!(
-            begin_sign_in_with("web", &http_config(&url)).await.err(),
+            begin_sign_in_with("web", &named_rust_claude).await.err(),
             Some(
                 "cannot register rust-claude with the sign-in server: status 403: Forbidden".into()
             )
