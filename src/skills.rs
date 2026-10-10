@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::HashSet;
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -410,6 +411,19 @@ fn escape_xml(text: &str) -> String {
         .replace('\'', "&apos;")
 }
 
+fn unescape_xml(text: &str) -> Cow<'_, str> {
+    if !text.contains('&') {
+        return Cow::Borrowed(text);
+    }
+    Cow::Owned(
+        text.replace("&lt;", "<")
+            .replace("&gt;", ">")
+            .replace("&quot;", "\"")
+            .replace("&apos;", "'")
+            .replace("&amp;", "&"),
+    )
+}
+
 pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
     let visible: Vec<&Skill> = skills
         .iter()
@@ -464,8 +478,8 @@ pub fn expand_command(text: &str, skills: &[Skill]) -> Result<String> {
     let body = strip_frontmatter(&content);
     let block = format!(
         "<skill name=\"{}\" location=\"{}\">\nReferences are relative to {}.\n\n{}\n</skill>",
-        skill.name,
-        skill.path.display(),
+        escape_xml(&skill.name),
+        escape_xml(&skill.path.to_string_lossy()),
         skill.base_dir.display(),
         body.trim()
     );
@@ -478,7 +492,7 @@ pub fn expand_command(text: &str, skills: &[Skill]) -> Result<String> {
 
 #[derive(Debug, PartialEq)]
 pub struct SkillBlock<'a> {
-    pub name: &'a str,
+    pub name: Cow<'a, str>,
     pub user_message: Option<&'a str>,
 }
 
@@ -497,7 +511,7 @@ pub fn parse_block(text: &str) -> Option<SkillBlock<'_>> {
         None => return None,
     };
     Some(SkillBlock {
-        name,
+        name: unescape_xml(name),
         user_message: user_message.filter(|message| !message.is_empty()),
     })
 }
@@ -793,7 +807,7 @@ mod tests {
         assert_eq!(
             parse_block(&expanded),
             Some(SkillBlock {
-                name: "demo",
+                name: "demo".into(),
                 user_message: Some("fix the bug"),
             })
         );
@@ -801,7 +815,7 @@ mod tests {
         assert_eq!(
             parse_block(&bare),
             Some(SkillBlock {
-                name: "demo",
+                name: "demo".into(),
                 user_message: None,
             })
         );
@@ -810,7 +824,7 @@ mod tests {
             assert_eq!(
                 parse_block(&expanded),
                 Some(SkillBlock {
-                    name: "demo",
+                    name: "demo".into(),
                     user_message: Some("fix the bug"),
                 }),
                 "{separated:?}"
@@ -821,6 +835,26 @@ mod tests {
             "/skill:other x"
         );
         assert_eq!(parse_block("plain text"), None);
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn parses_skill_blocks_with_quotes_in_name_and_path() {
+        let root = temp_dir("expand-quotes");
+        let dir = root.join("say \"hi\" & <go>");
+        write(
+            &dir.join("SKILL.md"),
+            "---\ndescription: Demo.\n---\nDo it.\n",
+        );
+        let skills = [skill("it's\"x\"", &dir, true)];
+        let expanded = expand_command("/skill:it's\"x\" now", &skills).unwrap();
+        assert_eq!(
+            parse_block(&expanded),
+            Some(SkillBlock {
+                name: "it's\"x\"".into(),
+                user_message: Some("now"),
+            })
+        );
         let _ = std::fs::remove_dir_all(root);
     }
 }
