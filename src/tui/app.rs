@@ -423,7 +423,7 @@ impl App {
         {
             self.push(
                 Role::Event,
-                format!("failed to trim prompt history: {error}"),
+                format!("failed to trim prompt history: {error:#}"),
             );
         }
         self.prompt_history =
@@ -447,7 +447,7 @@ impl App {
         if let Some(Err(error)) = saved {
             self.push(
                 Role::Event,
-                format!("failed to save prompt history: {error}"),
+                format!("failed to save prompt history: {error:#}"),
             );
         }
     }
@@ -734,7 +734,7 @@ impl App {
     pub(super) fn finish<T>(&mut self, result: Result<T>, on_success: impl FnOnce(&mut Self, T)) {
         match result {
             Ok(value) => on_success(self, value),
-            Err(error) => self.push(Role::Event, format!("error: {error}")),
+            Err(error) => self.push(Role::Event, format!("error: {error:#}")),
         }
         self.activity = None;
     }
