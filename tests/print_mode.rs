@@ -100,10 +100,18 @@ fn interrupt(child: Child) -> std::process::Output {
 /// Sends `signal` and waits up to the usual 10 s for the binary to exit,
 /// killing it and failing the test if it does not.
 fn signal(child: Child, signal: &str) -> std::process::Output {
+    send_signal(&child, signal);
+    wait_for_exit(child, signal)
+}
+
+fn send_signal(child: &Child, signal: &str) {
     Command::new("kill")
         .args([signal, &child.id().to_string()])
         .status()
         .unwrap();
+}
+
+fn wait_for_exit(child: Child, signal: &str) -> std::process::Output {
     let child = std::cell::RefCell::new(child);
     let exited = wait_for(|| child.borrow_mut().try_wait().unwrap().is_some());
     let mut child = child.into_inner();
@@ -215,6 +223,98 @@ fn continuing_without_a_session_fails_before_asking_to_sign_in() {
         "{stderr}"
     );
     assert!(!stderr.contains("sign in"), "{stderr}");
+}
+
+#[test]
+fn ctrl_c_while_the_sign_in_renews_at_start_waits_for_the_renewal() {
+    let setup = Setup::new("renewal-interrupt");
+    let auth = setup.home.join(".rust-claude/auth.json");
+    let expired = r#"{ "access": "access", "refresh": "refresh", "expires": 0 }"#;
+    write(&auth, expired);
+    std::fs::create_dir_all(&setup.project).unwrap();
+    // Token requests go through this stand-in proxy, which holds them until
+    // the test closes them.
+    let proxy = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    proxy.set_nonblocking(true).unwrap();
+    let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
+    let child = Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+        .args(["-p", "hello"])
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .env("HTTPS_PROXY", &proxy_url)
+        .env("https_proxy", &proxy_url)
+        .env_remove("NO_PROXY")
+        .env_remove("no_proxy")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let request = std::cell::RefCell::new(None);
+    let renewing = wait_for(|| {
+        if let Ok((stream, _)) = proxy.accept() {
+            *request.borrow_mut() = Some(stream);
+        }
+        request.borrow().is_some()
+    });
+    send_signal(&child, "-INT");
+    std::thread::sleep(Duration::from_millis(500));
+    let mut child = child;
+    let waited = child.try_wait().unwrap().is_none();
+    // The renewal fails once its request is closed, which ends the wait.
+    drop(request);
+    let output = wait_for_exit(child, "-INT");
+    let saved = std::fs::read_to_string(&auth).unwrap_or_default();
+    let _ = std::fs::remove_dir_all(&setup.root);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(renewing, "no renewal request: {stderr}");
+    assert!(waited, "exited before the renewal finished: {stderr}");
+    assert_eq!(output.status.code(), Some(130), "{stderr}");
+    assert!(stderr.contains("cancelled"), "{stderr}");
+    assert_eq!(saved, expired);
+}
+
+#[test]
+fn ctrl_c_at_the_sign_in_prompt_exits_as_cancelled() {
+    use std::io::Read;
+
+    let setup = Setup::new("sign-in-interrupt");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+        .args(["-p", "hello"])
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    // Kept open, so the prompt waits for a code.
+    let _stdin = child.stdin.take();
+    let (sender, chunks) = std::sync::mpsc::channel();
+    let mut pipe = child.stderr.take().unwrap();
+    let reader = std::thread::spawn(move || {
+        let mut chunk = [0u8; 4096];
+        while let Ok(read @ 1..) = pipe.read(&mut chunk) {
+            let _ = sender.send(String::from_utf8_lossy(&chunk[..read]).into_owned());
+        }
+    });
+    let stderr = std::cell::RefCell::new(String::new());
+    let prompted = wait_for(|| {
+        stderr.borrow_mut().extend(chunks.try_iter());
+        stderr.borrow().contains("Paste the code")
+    });
+    let output = interrupt(child);
+    reader.join().unwrap();
+    let _ = std::fs::remove_dir_all(&setup.root);
+
+    let mut stderr = stderr.into_inner();
+    stderr.extend(chunks.try_iter());
+    assert!(prompted, "{stderr}");
+    assert_eq!(output.status.code(), Some(130), "{stderr}");
+    assert!(stderr.contains("cancelled"), "{stderr}");
 }
 
 #[test]

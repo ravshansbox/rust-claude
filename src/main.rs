@@ -156,8 +156,14 @@ async fn run() -> Result<()> {
     } else {
         None
     };
+    // Signals are caught from here on, so stopping waits for a sign-in
+    // renewal at start to be saved instead of losing the new tokens.
+    let mut stop = StopSignals::new()?;
     let http = agent::http_client()?;
-    let credentials = auth::Credentials::load_or_login(&http).await?;
+    let credentials = tokio::select! {
+        credentials = auth::Credentials::load_or_login(&http) => credentials?,
+        status = stop.recv() => return stopped(status).await,
+    };
     let settings = settings::Settings::load();
     let model = options
         .model
@@ -179,7 +185,6 @@ async fn run() -> Result<()> {
         }
     }
 
-    let mut stop = StopSignals::new()?;
     let Some(prompt) = print_prompt else {
         let result = tui::run(agent, stop).await;
         auth::finish_renewal(RENEWAL_WAIT).await;
@@ -262,6 +267,11 @@ const RENEWAL_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
 
 async fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
     drop(agent);
+    stopped(status).await
+}
+
+/// Exits after a stop signal, once a sign-in renewal in progress is saved.
+async fn stopped(status: i32) -> Result<()> {
     auth::finish_renewal(RENEWAL_WAIT).await;
     eprintln!("\ncancelled");
     std::process::exit(status);
