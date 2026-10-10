@@ -342,6 +342,13 @@ async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mu
 }
 
 const MAX_ERROR_BODY: usize = 500;
+const CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
+
+struct PostError {
+    message: String,
+    /// A network failure, or a status that may clear up on its own.
+    transient: bool,
+}
 
 /// A Streamable HTTP server. Each message is a POST; the server answers a
 /// request with JSON or an event stream, and other messages with 202.
@@ -412,7 +419,23 @@ async fn post_messages(
 }
 
 impl Http {
-    async fn post(&self, message: &Value) -> Result<reqwest::Response, String> {
+    /// Posts `message`, trying `initialize` again after a transient failure.
+    async fn post_retrying(&self, message: &Value) -> Result<reqwest::Response, String> {
+        let mut delays = CONNECT_RETRY_DELAYS.iter();
+        loop {
+            match self.post(message).await {
+                Ok(response) => return Ok(response),
+                Err(error) => match delays.next() {
+                    Some(delay) if error.transient && message["method"] == "initialize" => {
+                        tokio::time::sleep(*delay).await;
+                    }
+                    _ => return Err(error.message),
+                },
+            }
+        }
+    }
+
+    async fn post(&self, message: &Value) -> Result<reqwest::Response, PostError> {
         let method = message["method"].as_str().unwrap_or("a reply");
         let mut request = self
             .client
@@ -434,10 +457,10 @@ impl Http {
         {
             request = request.header("mcp-protocol-version", version);
         }
-        let response = request
-            .send()
-            .await
-            .map_err(|error| format!("cannot reach {}: {}", self.url, error_chain(&error)))?;
+        let response = request.send().await.map_err(|error| PostError {
+            message: format!("cannot reach {}: {}", self.url, error_chain(&error)),
+            transient: true,
+        })?;
         if let Some(session) = response
             .headers()
             .get("mcp-session-id")
@@ -453,13 +476,18 @@ impl Http {
         let body = response.text().await.unwrap_or_default();
         let body = body.trim();
         let body: String = body.chars().take(MAX_ERROR_BODY).collect();
-        Err(if body.is_empty() {
+        let message = if body.is_empty() {
             format!("server answered {method} with status {}", status.as_u16())
         } else {
             format!(
                 "server answered {method} with status {}: {body}",
                 status.as_u16()
             )
+        };
+        let status = status.as_u16();
+        Err(PostError {
+            message,
+            transient: status == 408 || status == 429 || (status >= 500 && status != 501),
         })
     }
 
@@ -502,7 +530,7 @@ impl Http {
         mut handle: impl FnMut(&Value),
     ) -> Result<(), String> {
         let method = message["method"].as_str().unwrap_or_default();
-        let mut response = self.post(message).await?;
+        let mut response = self.post_retrying(message).await?;
         if matches!(response.status().as_u16(), 202 | 204) {
             return Err(format!("server accepted {method} without a reply"));
         }
@@ -1599,6 +1627,38 @@ done
                 .status,
             "MCP server unset failed: header Authorization uses RUST_CLAUDE_UNSET_TOKEN, which is not set"
         );
+    }
+
+    #[tokio::test]
+    async fn retries_connecting_after_a_transient_http_error() {
+        let attempts = Arc::new(AtomicU64::new(0));
+        let counted = attempts.clone();
+        let (url, requests) = http_server(move |request| {
+            if request.body["method"] == "initialize" && counted.fetch_add(1, Ordering::SeqCst) < 2
+            {
+                return HttpReply::status(503, "starting up");
+            }
+            http_mcp(request)
+        })
+        .await;
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+        assert_eq!(requests_for(&requests, "initialize").len(), 3);
+        let (url, requests) = http_server(|request| match request.body["method"].as_str() {
+            Some("initialize") => HttpReply::status(401, "sign in first"),
+            _ => http_mcp(request),
+        })
+        .await;
+        assert_eq!(
+            mcp.add(start("locked".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "MCP server locked failed: server answered initialize with status 401: sign in first"
+        );
+        assert_eq!(requests_for(&requests, "initialize").len(), 1);
     }
 
     #[tokio::test]
