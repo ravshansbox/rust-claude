@@ -923,6 +923,19 @@ mod tests {
     }
 
     #[test]
+    fn replaces_the_whole_file_name_when_the_cursor_is_inside_it() {
+        let mut app = new_app();
+        app.set_files(0, vec!["src/main.rs".into()]);
+        handle_input(Event::Paste("read @src/main.rs".into()), &mut app, |_| {});
+        for _ in 0..2 {
+            handle_input(Event::Key(KeyEvent::from(KeyCode::Left)), &mut app, |_| {});
+        }
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        assert_eq!(app.input, "read @src/main.rs ");
+        assert_eq!(app.cursor, app.input.len());
+    }
+
+    #[test]
     fn picks_the_file_named_exactly_before_longer_paths() {
         let mut app = new_app();
         app.set_files(
