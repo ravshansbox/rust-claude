@@ -19,6 +19,7 @@ pub(super) enum Action {
     NewSession,
     ListModels,
     Context,
+    McpSignIn(String),
     Cancel,
 }
 
@@ -286,6 +287,15 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         app.start(Activity::LoadingSessions);
                         act(Action::ListSessions);
                     }
+                    "/mcp" => match argument.split_once(char::is_whitespace) {
+                        Some(("login", server)) if !server.trim().is_empty() => {
+                            act(Action::McpSignIn(server.trim().to_string()));
+                        }
+                        _ => {
+                            app.push(Role::Event, "usage: /mcp login <server>");
+                            app.restore_input(prompt);
+                        }
+                    },
                     _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
                         if app.skills.iter().any(|skill| skill.name == name) {
                             app.push(Role::Event, format!("[skill] {name}"));
@@ -354,7 +364,7 @@ mod tests {
     use crate::skills::{Scope, Skill};
     use crate::tui::{
         Activity, App, UiEvent, handle_agent_event,
-        test_support::{new_app, screen},
+        test_support::{new_app, press, screen},
     };
     use crossterm::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
@@ -524,6 +534,7 @@ mod tests {
         let names = [
             "/compact",
             "/context",
+            "/mcp",
             "/model",
             "/new",
             "/quit",
@@ -536,6 +547,62 @@ mod tests {
             .map(|name| shown.find(&format!("{name} ")).expect(name))
             .collect();
         assert!(positions.is_sorted(), "{shown}");
+    }
+
+    fn suggested(app: &App) -> Vec<String> {
+        app.visible_suggestions()
+            .map(|suggestions| {
+                suggestions
+                    .items
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    #[test]
+    fn completes_mcp_subcommands_and_server_names() {
+        let mut app = new_app();
+        app.mcp_sign_in_servers = vec!["figma".into(), "files".into(), "linear".into()];
+        handle_input(Event::Paste("/mc".into()), &mut app, |_| {});
+        assert_eq!(suggested(&app), ["/mcp"]);
+        handle_input(Event::Paste("p ".into()), &mut app, |_| {});
+        assert_eq!(suggested(&app), ["/mcp login"]);
+        handle_input(Event::Paste("login f".into()), &mut app, |_| {});
+        assert_eq!(suggested(&app), ["/mcp login figma", "/mcp login files"]);
+        press(&mut app, KeyCode::Tab);
+        assert_eq!(app.input, "/mcp login figma");
+        let mut signing_in = Vec::new();
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::McpSignIn(name) = action {
+                    signing_in.push(name);
+                }
+            },
+        );
+        assert_eq!(signing_in, ["figma"]);
+        assert!(app.input.is_empty());
+    }
+
+    #[test]
+    fn explains_how_to_use_the_mcp_command() {
+        let mut app = new_app();
+        for input in ["/mcp", "/mcp login", "/mcp dance figma"] {
+            handle_input(Event::Paste(input.into()), &mut app, |_| {});
+            app.commands_dismissed = true;
+            press(&mut app, KeyCode::Enter);
+            assert_eq!(
+                app.messages.last().unwrap().text,
+                "usage: /mcp login <server>",
+                "{input}"
+            );
+            assert_eq!(app.input, input);
+            app.input.clear();
+            app.cursor = 0;
+        }
     }
 
     #[test]

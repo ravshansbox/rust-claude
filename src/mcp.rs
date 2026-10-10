@@ -43,8 +43,17 @@ struct ServerConfig {
     url: Option<String>,
     #[serde(default)]
     headers: HashMap<String, String>,
+    oauth: Option<OAuthConfig>,
     enabled: Option<bool>,
     timeout: Option<u64>,
+}
+
+#[derive(Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OAuthConfig {
+    client_name: Option<String>,
+    client_id: Option<String>,
+    client_secret: Option<String>,
 }
 
 /// HTTP servers sign in with OAuth unless their entry sets an
@@ -129,6 +138,12 @@ fn read_config(
             Ok(server) if server.timeout == Some(0) => {
                 servers.remove(name);
                 diagnostics.push(format!("MCP server {name}: timeout must be at least 1"));
+            }
+            Ok(server) if scope == Scope::Project && server.oauth.is_some() => {
+                servers.remove(name);
+                diagnostics.push(format!(
+                    "MCP server {name}: oauth is only allowed in the global mcp.json"
+                ));
             }
             Ok(server) => {
                 servers.insert(name.clone(), (scope, server));
@@ -1122,6 +1137,58 @@ fn result_text(result: &Value) -> String {
     parts.join("\n")
 }
 
+/// The URL of an HTTP server entry, or `None` for a stdio one.
+fn http_url(config: &ServerConfig) -> Option<&str> {
+    match (config.kind.as_deref(), &config.command) {
+        (Some("http" | "streamable-http"), _) | (None, None) => config.url.as_deref(),
+        _ => None,
+    }
+}
+
+/// A sign-in waiting for the user to finish it in the browser.
+pub struct SignIn {
+    pub authorize_url: String,
+    pending: oauth::Pending,
+}
+
+impl SignIn {
+    /// Waits for the browser to come back, then saves the tokens.
+    pub async fn finish(self) -> Result<(), String> {
+        self.pending.finish().await
+    }
+}
+
+async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn, String> {
+    let Some(url) = http_url(config) else {
+        return Err(format!("MCP server {name} is not an HTTP server"));
+    };
+    if !uses_oauth(config) {
+        return Err(format!(
+            "MCP server {name} sends its own Authorization header"
+        ));
+    }
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|error| format!("cannot set up HTTP: {error}"))?;
+    let pending = oauth::begin(&client, url, &config.oauth.clone().unwrap_or_default()).await?;
+    Ok(SignIn {
+        authorize_url: pending.authorize_url.clone(),
+        pending,
+    })
+}
+
+/// Starts signing in to the configured server `name`.
+pub async fn begin_sign_in(name: &str) -> Result<SignIn, String> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (configs, _) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let Some((_, config)) = configs.get(name) else {
+        return Err(format!("no MCP server named {name}"));
+    };
+    begin_sign_in_with(name, config).await
+}
+
 #[derive(Default)]
 pub struct Mcp {
     servers: Vec<Server>,
@@ -1163,23 +1230,46 @@ pub struct Added {
 pub struct Startup {
     pub diagnostics: Vec<String>,
     pub servers: Vec<StartingServer>,
+    /// HTTP servers that sign in with OAuth.
+    pub sign_in_servers: Vec<String>,
+}
+
+fn starting(name: String, scope: Scope, config: ServerConfig) -> StartingServer {
+    StartingServer {
+        label: format!("{scope} MCP server: {name}"),
+        started: Box::pin(start(name.clone(), scope, config)),
+        name,
+    }
+}
+
+/// Starts the configured server `name` again, as after signing in.
+pub fn restart(name: &str) -> Option<StartingServer> {
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let (mut configs, _) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let (scope, config) = configs.remove(name)?;
+    Some(starting(name.to_string(), scope, config))
 }
 
 pub fn startup() -> Startup {
     let cwd = std::env::current_dir().unwrap_or_default();
     let (configs, diagnostics) = read_configs(crate::config::dir().as_deref(), &cwd);
-    let servers = configs
+    let enabled: Vec<_> = configs
         .into_iter()
         .filter(|(_, (_, config))| config.enabled != Some(false))
-        .map(|(name, (scope, config))| StartingServer {
-            label: format!("{scope} MCP server: {name}"),
-            started: Box::pin(start(name.clone(), scope, config)),
-            name,
-        })
+        .collect();
+    let sign_in_servers = enabled
+        .iter()
+        .filter(|(_, (_, config))| http_url(config).is_some() && uses_oauth(config))
+        .map(|(name, _)| name.clone())
+        .collect();
+    let servers = enabled
+        .into_iter()
+        .map(|(name, (scope, config))| starting(name, scope, config))
         .collect();
     Startup {
         diagnostics,
         servers,
+        sign_in_servers,
     }
 }
 
@@ -1209,6 +1299,12 @@ impl Mcp {
             status: status.unwrap_or_else(|failed| failed),
             diagnostics,
         }
+    }
+
+    /// Adds a server that started again in place of the old one.
+    pub fn replace(&mut self, started: Started) -> Added {
+        self.servers.retain(|server| server.name != started.name);
+        self.add(started)
     }
 
     fn add_server(&mut self, started: Started) -> (Vec<String>, Result<String, String>) {
@@ -1404,6 +1500,36 @@ mod tests {
     }
 
     #[test]
+    fn allows_oauth_settings_only_in_the_global_config() {
+        let directory = std::env::temp_dir().join(format!("mcp-oauth-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("mcp.json");
+        std::fs::write(
+            &path,
+            r#"{ "mcpServers": { "figma": { "url": "https://mcp.figma.com/mcp", "oauth": { "clientName": "Claude Code" } } } }"#,
+        )
+        .unwrap();
+        let mut servers = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        read_config(&path, Scope::Global, &mut servers, &mut diagnostics);
+        assert_eq!(
+            servers["figma"]
+                .1
+                .oauth
+                .as_ref()
+                .and_then(|oauth| oauth.client_name.as_deref()),
+            Some("Claude Code")
+        );
+        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert!(servers.is_empty());
+        assert_eq!(
+            diagnostics,
+            ["MCP server figma: oauth is only allowed in the global mcp.json"]
+        );
+    }
+
+    #[test]
     fn rejects_a_zero_timeout() {
         let path = std::env::temp_dir().join(format!("mcp-timeout-{}.json", std::process::id()));
         std::fs::write(
@@ -1485,6 +1611,7 @@ done
             cwd: None,
             url: None,
             headers: HashMap::new(),
+            oauth: None,
             enabled: None,
             timeout: Some(5),
         }
@@ -1678,6 +1805,7 @@ done
             cwd: None,
             url: Some(url.into()),
             headers: HashMap::new(),
+            oauth: None,
             enabled: None,
             timeout: Some(5),
         }
@@ -2023,6 +2151,212 @@ done
                 .status,
             "MCP server keyed failed: server answered initialize with status 401"
         );
+    }
+
+    /// Answers like a server that needs OAuth, with its sign-in server at
+    /// `/auth` on the same host, and records the forms sent to `/register`
+    /// and `/token`.
+    fn oauth_mcp(base: &str, request: &HttpRequest) -> HttpReply {
+        let url = format!("{base}/mcp");
+        match (request.method.as_str(), request.path.as_str()) {
+            ("GET", "/.well-known/oauth-protected-resource/mcp") => HttpReply::json(json!({
+                "resource": url,
+                "authorization_servers": [format!("{base}/auth")],
+                "scopes_supported": ["unused"],
+            })),
+            ("GET", "/.well-known/oauth-authorization-server/auth") => HttpReply::json(json!({
+                "issuer": format!("{base}/auth"),
+                "authorization_endpoint": format!("{base}/authorize"),
+                "token_endpoint": format!("{base}/token"),
+                "registration_endpoint": format!("{base}/register"),
+                "code_challenge_methods_supported": ["S256"],
+            })),
+            ("POST", "/register") if request.body["client_name"] == "Claude Code" => {
+                HttpReply::json(json!({ "client_id": "registered", "client_secret": "shh" }))
+            }
+            ("POST", "/register") => HttpReply::status(403, "Forbidden"),
+            ("POST", "/token") if request.form().get("code").map(String::as_str) == Some("the-code") => {
+                HttpReply::json(json!({
+                    "access_token": "issued",
+                    "refresh_token": "r",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                }))
+            }
+            ("POST", "/token") => HttpReply::status(400, r#"{"error":"invalid_grant"}"#),
+            _ if request.headers.get("authorization").map(String::as_str)
+                == Some("Bearer issued") =>
+            {
+                http_mcp(request)
+            }
+            _ => HttpReply::status(401, "").with_header(
+                "www-authenticate",
+                &format!(
+                    r#"Bearer resource_metadata="{base}/.well-known/oauth-protected-resource/mcp", scope="mcp:connect""#
+                ),
+            ),
+        }
+    }
+
+    async fn oauth_server() -> (String, Requests) {
+        let base = Arc::new(Mutex::new(String::new()));
+        let shared = base.clone();
+        let (url, requests) =
+            http_server(move |request| oauth_mcp(&shared.lock().unwrap(), request)).await;
+        *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
+        (url, requests)
+    }
+
+    fn query(url: &str) -> HashMap<String, String> {
+        reqwest::Url::parse(url)
+            .unwrap()
+            .query_pairs()
+            .into_owned()
+            .collect()
+    }
+
+    /// Opens the redirect the sign-in server would send the browser to.
+    async fn visit_callback(authorize_url: &str, code: &str, state: Option<&str>) -> String {
+        let parameters = query(authorize_url);
+        let mut callback = reqwest::Url::parse(&parameters["redirect_uri"]).unwrap();
+        callback
+            .query_pairs_mut()
+            .append_pair("code", code)
+            .append_pair("state", state.unwrap_or(&parameters["state"]));
+        reqwest::get(callback).await.unwrap().text().await.unwrap()
+    }
+
+    fn figma_like(url: &str) -> ServerConfig {
+        let mut config = http_config(url);
+        config.oauth = Some(OAuthConfig {
+            client_name: Some("Claude Code".into()),
+            ..OAuthConfig::default()
+        });
+        config
+    }
+
+    #[tokio::test]
+    async fn signs_in_to_an_http_server_with_oauth() {
+        let (url, requests) = oauth_server().await;
+        let base = url.trim_end_matches("/mcp");
+        let sign_in = begin_sign_in_with("web", &figma_like(&url)).await.unwrap();
+        let parameters = query(&sign_in.authorize_url);
+        assert!(
+            sign_in
+                .authorize_url
+                .starts_with(&format!("{base}/authorize?"))
+        );
+        assert_eq!(parameters["response_type"], "code");
+        assert_eq!(parameters["client_id"], "registered");
+        assert_eq!(parameters["code_challenge_method"], "S256");
+        assert_eq!(parameters["scope"], "mcp:connect");
+        assert_eq!(parameters["resource"], url);
+        assert!(parameters["redirect_uri"].starts_with("http://127.0.0.1:"));
+        assert!(parameters["redirect_uri"].ends_with("/callback"));
+        let authorize_url = sign_in.authorize_url.clone();
+        let finished = tokio::spawn(sign_in.finish());
+        let page = visit_callback(&authorize_url, "the-code", None).await;
+        assert!(page.contains("Signed in"), "{page}");
+        assert_eq!(finished.await.unwrap(), Ok(()));
+        let registration = &requests_for_path(&requests, "/register")[0];
+        assert_eq!(
+            registration.body["redirect_uris"],
+            json!([parameters["redirect_uri"]])
+        );
+        let token_form = requests_for_path(&requests, "/token")[0].form();
+        assert_eq!(token_form["grant_type"], "authorization_code");
+        assert_eq!(token_form["client_id"], "registered");
+        assert_eq!(token_form["client_secret"], "shh");
+        assert_eq!(token_form["redirect_uri"], parameters["redirect_uri"]);
+        assert_eq!(token_form["resource"], url);
+        use base64::Engine;
+        let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+            <sha2::Sha256 as sha2::Digest>::digest(token_form["code_verifier"].as_bytes()),
+        );
+        assert_eq!(parameters["code_challenge"], challenge);
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, figma_like(&url)).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+    }
+
+    fn requests_for_path(requests: &Requests, path: &str) -> Vec<HttpRequest> {
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.path == path)
+            .cloned()
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn signs_in_with_a_client_id_from_the_config() {
+        let (url, requests) = oauth_server().await;
+        let mut config = http_config(&url);
+        config.oauth = Some(OAuthConfig {
+            client_id: Some("own".into()),
+            ..OAuthConfig::default()
+        });
+        let sign_in = begin_sign_in_with("web", &config).await.unwrap();
+        assert_eq!(query(&sign_in.authorize_url)["client_id"], "own");
+        assert!(requests_for_path(&requests, "/register").is_empty());
+    }
+
+    #[tokio::test]
+    async fn reports_failed_sign_ins() {
+        let (url, _) = oauth_server().await;
+        assert_eq!(
+            begin_sign_in_with("web", &http_config(&url)).await.err(),
+            Some(
+                "cannot register rust-claude with the sign-in server: status 403: Forbidden".into()
+            )
+        );
+        let sign_in = begin_sign_in_with("web", &figma_like(&url)).await.unwrap();
+        let authorize_url = sign_in.authorize_url.clone();
+        let finished = tokio::spawn(sign_in.finish());
+        let page = visit_callback(&authorize_url, "the-code", Some("forged")).await;
+        assert!(page.contains("Sign-in failed"), "{page}");
+        assert_eq!(
+            finished.await.unwrap(),
+            Err("the sign-in page sent back a different state".into())
+        );
+        let sign_in = begin_sign_in_with("web", &figma_like(&url)).await.unwrap();
+        let authorize_url = sign_in.authorize_url.clone();
+        let finished = tokio::spawn(sign_in.finish());
+        visit_callback(&authorize_url, "wrong-code", None).await;
+        assert_eq!(
+            finished.await.unwrap(),
+            Err("token endpoint answered with status 400: invalid_grant".into())
+        );
+        let mut keyed = http_config(&url);
+        keyed
+            .headers
+            .insert("Authorization".into(), "Bearer key".into());
+        assert_eq!(
+            begin_sign_in_with("keyed", &keyed).await.err(),
+            Some("MCP server keyed sends its own Authorization header".into())
+        );
+        assert_eq!(
+            begin_sign_in_with("local", &echo_server()).await.err(),
+            Some("MCP server local is not an HTTP server".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn replaces_a_server_that_starts_again() {
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, echo_server()).await);
+        assert_eq!(
+            mcp.replace(start("test".into(), Scope::Project, echo_server()).await)
+                .status,
+            "loaded project MCP server: test (1 tools)"
+        );
+        assert_eq!(mcp.definitions().count(), 1);
+        mcp.replace(failed_start("test", "gone"));
+        assert_eq!(mcp.definitions().count(), 0);
     }
 
     #[tokio::test]

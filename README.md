@@ -116,7 +116,8 @@ MCP:
 - Paginated tool lists, `ping` replies, and server error output shown in errors
 - A server that sends the same page of its tool list twice fails with an error instead of loading forever
 - A server that writes a single line longer than 32 MiB is disconnected with an error, so it cannot use up memory
-- Clear errors for HTTP and SSE servers, which are not supported yet
+- Streamable HTTP servers with `headers`, sessions and retries; a clear error for the older SSE transport
+- OAuth sign-in to HTTP servers with `/mcp login <server>`, which completes server names
 
 Other:
 
@@ -413,7 +414,8 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
 ```
 
 - `command` is a single executable and `args` its arguments. `env` sets environment variables and `cwd` the working folder. A leading `~/` in `command`, an argument or `cwd` names the home folder.
-- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. `${NAME}` in a header value is replaced with the environment variable `NAME`; the server fails to connect if it is not set. A project `mcp.json` can use this too, so it can send your environment variables to a server it chooses. If connecting fails because the server cannot be reached or answers with status 408, 429 or 5xx (other than 501), rust-claude tries twice more, after 0.25 and 1 second. rust-claude keeps the session the server gives it and ends the session when it quits. If the server says the session has expired (status 404), rust-claude starts a new one and sends the request once more. A server without an `Authorization` header uses the OAuth sign-in saved for its URL in `~/.rust-claude/mcp-auth.json`, if any. rust-claude renews the sign-in when it expires or the server turns it down. A server that needs sign-in shows `MCP server <name> needs sign-in: run /mcp login <name>`.
+- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. `${NAME}` in a header value is replaced with the environment variable `NAME`; the server fails to connect if it is not set. A project `mcp.json` can use this too, so it can send your environment variables to a server it chooses. If connecting fails because the server cannot be reached or answers with status 408, 429 or 5xx (other than 501), rust-claude tries twice more, after 0.25 and 1 second. rust-claude keeps the session the server gives it and ends the session when it quits. If the server says the session has expired (status 404), rust-claude starts a new one and sends the request once more. A server without an `Authorization` header signs in with OAuth; see [Signing in to MCP servers](#signing-in-to-mcp-servers).
+- `oauth` sets how rust-claude signs in to an HTTP server, and is only allowed in the global `mcp.json`. `clientName` is the name rust-claude registers with (default `rust-claude`). `clientId` and `clientSecret` name a client you registered yourself, so rust-claude does not register; `${NAME}` in `clientSecret` is replaced with the environment variable `NAME`.
 - `timeout` sets the time limit for each request in seconds, at least 1 (default 60). When a request times out, or you press Esc during a tool call, rust-claude tells the server to stop working on it.
 - `enabled: false` keeps an entry without connecting to it.
 - `type` is optional. When present, it must be `stdio`, `http` or `streamable-http`. Without `type`, an entry with `url` and no `command` is an HTTP server. The older SSE transport (`sse`) is not supported; use the server's Streamable HTTP URL.
@@ -422,6 +424,27 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
 Project entries replace global entries with the same name. rust-claude starts project servers without asking (see [ADR 3](docs/adr/0003-start-project-mcp-servers-without-approval.md)). When you run rust-claude from your home folder, `~/.rust-claude/mcp.json` counts as global only. A missing `mcp.json` is fine; one that exists but cannot be read gives a notice.
 
 In the interface, rust-claude starts all servers in the background, so you can type and send prompts straight away. It lists every server at once with a spinner, such as `⠋ loading project MCP server: docs`. Each server's tools become available once it is ready, and its line then changes to `loaded project MCP server: docs (3 tools)`, or to the reason it failed. A prompt sent before then goes without those tools, and a server that becomes ready while a prompt runs joins after that prompt. The interface also shows a notice for each invalid entry. In print mode, rust-claude waits for all servers before sending the prompt, and the notices for invalid entries and failed servers go to standard error. Tools are named `mcp__<server>__<tool>`, with other characters replaced by `_` and cut to 64 characters. `anyOf`, `oneOf` and `allOf` at the top level of a tool's input schema are dropped, because the API rejects them. Text results longer than 20,000 bytes are cut. Images, audio and binary resources show as short placeholders. Servers stop when rust-claude quits.
+
+### Signing in to MCP servers
+
+An HTTP server without an `Authorization` header in its entry signs in with OAuth. When it needs sign-in, its line shows `MCP server figma needs sign-in: run /mcp login figma`.
+
+Type `/mcp login <server>` in the interface. After `/mcp `, the command list offers `login`, and after `/mcp login ` the names of the HTTP servers that sign in with OAuth. rust-claude finds the server's sign-in server, registers with it unless `oauth.clientId` is set, and opens the sign-in page in your browser (`open` on macOS, `xdg-open` elsewhere). It also shows the link, in case the browser does not open. The page sends the browser back to `http://127.0.0.1:<port>/callback`, where rust-claude waits for up to 5 minutes. rust-claude then starts the server again with the new sign-in. You can keep working while it waits.
+
+rust-claude saves the sign-in for each server URL in `~/.rust-claude/mcp-auth.json`, which only you can read. It renews the sign-in when it expires or the server turns it down. In print mode, servers use the saved sign-in, but you can only sign in from the interface.
+
+Some sign-in servers only let approved apps register. Figma, for example, turns down `rust-claude` but accepts `Claude Code`. To register under another name, set `clientName` in the global `mcp.json`. Using another app's name may break the server's terms, so do it only if you accept that risk:
+
+```json
+{
+  "mcpServers": {
+    "figma": {
+      "url": "https://mcp.figma.com/mcp",
+      "oauth": { "clientName": "Claude Code" }
+    }
+  }
+}
+```
 
 ## Decisions
 
