@@ -26,7 +26,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
     let mut footer_parts = vec![
         app.workspace.to_string(),
-        format!("{}:{}", display_model(&app.model), app.thinking_level),
+        format!("{}:{}", display_model(&app.model), app.effort),
         format_context(&app.stats),
         format_stats(&app.stats),
         format_quota(&app.stats),
@@ -413,13 +413,13 @@ mod tests {
     }
 
     #[test]
-    fn keeps_the_conversation_visible_while_picking_a_thinking_level() {
+    fn keeps_the_conversation_visible_while_picking_an_effort_level() {
         let mut app = app_with_reply();
-        handle_input(Event::Paste("/thinking".into()), &mut app, |_| {});
+        handle_input(Event::Paste("/effort".into()), &mut app, |_| {});
         press(&mut app, KeyCode::Enter);
         let shown = screen(&mut app);
         assert!(shown.contains("Earlier reply"), "{shown}");
-        assert!(shown.contains("Select thinking level"), "{shown}");
+        assert!(shown.contains("Select effort level"), "{shown}");
     }
 
     #[test]
@@ -539,7 +539,7 @@ mod tests {
         assert!(shown.contains("/compact"), "{shown}");
         assert!(!shown.contains("/skill:skill03"), "{shown}");
         assert!(shown.contains('█'), "{shown}");
-        for _ in 0..36 {
+        for _ in 0..37 {
             press(&mut app, KeyCode::Down);
         }
         let shown = screen(&mut app);

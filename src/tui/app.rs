@@ -8,7 +8,7 @@ use super::{
     workspace_label,
 };
 use crate::{
-    agent::{Queue, Queued, Stats, THINKING_LEVELS, take_queued},
+    agent::{EFFORT_LEVELS, Queue, Queued, Stats, take_queued},
     history,
     images::Image,
     skills::{Scope, Skill},
@@ -295,7 +295,7 @@ pub(super) struct App {
     /// loop starts reading the folder and branch again.
     pub(super) workspace_stale: bool,
     pub(super) model: String,
-    pub(super) thinking_level: &'static str,
+    pub(super) effort: &'static str,
     /// What the app is waiting for, shown next to the spinner. `None` when idle.
     pub(super) activity: Option<Activity>,
     pub(super) spinner_frame: usize,
@@ -393,7 +393,7 @@ pub(super) struct Picker {
 }
 
 impl App {
-    pub(super) fn new(model: &str, thinking_level: &'static str, stats: Stats) -> Self {
+    pub(super) fn new(model: &str, effort: &'static str, stats: Stats) -> Self {
         let mut app = Self {
             input: String::new(),
             cursor: 0,
@@ -401,7 +401,7 @@ impl App {
             workspace: workspace_label(),
             workspace_stale: false,
             model: model.into(),
-            thinking_level,
+            effort,
             activity: None,
             spinner_frame: 0,
             stats,
@@ -626,12 +626,12 @@ impl App {
         self.cursor = suggestions.start + replacement.len();
     }
 
-    pub(super) fn cycle_thinking_level(&mut self) {
-        let index = THINKING_LEVELS
+    pub(super) fn cycle_effort(&mut self) {
+        let index = EFFORT_LEVELS
             .iter()
-            .position(|level| *level == self.thinking_level)
-            .map_or(0, |index| (index + 1) % THINKING_LEVELS.len());
-        self.thinking_level = THINKING_LEVELS[index];
+            .position(|level| *level == self.effort)
+            .map_or(0, |index| (index + 1) % EFFORT_LEVELS.len());
+        self.effort = EFFORT_LEVELS[index];
     }
 
     pub(super) fn input_changed(&mut self) {
@@ -869,11 +869,11 @@ impl App {
         self.activity = Some(activity);
     }
 
-    /// Returns whether `name` is a thinking level.
-    pub(super) fn set_thinking_level(&mut self, name: &str) -> bool {
-        match THINKING_LEVELS.iter().find(|level| **level == name) {
+    /// Returns whether `name` is an effort level.
+    pub(super) fn set_effort(&mut self, name: &str) -> bool {
+        match EFFORT_LEVELS.iter().find(|level| **level == name) {
             Some(level) => {
-                self.thinking_level = level;
+                self.effort = level;
                 self.push(Role::Event, format!("thinking: {level}"));
                 true
             }
@@ -881,8 +881,8 @@ impl App {
                 self.push(
                     Role::Event,
                     format!(
-                        "unknown thinking level: {name} (options: {})",
-                        THINKING_LEVELS.join(", ")
+                        "unknown effort level: {name} (options: {})",
+                        EFFORT_LEVELS.join(", ")
                     ),
                 );
                 false

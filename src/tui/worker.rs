@@ -118,11 +118,9 @@ pub(super) async fn agent_task(
             let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
             continue;
         }
-        let (prompt, thinking_level) = match request {
-            Request::Prompt(prompt, images, thinking_level) => {
-                (Some((prompt, images)), thinking_level)
-            }
-            Request::Compact(thinking_level) => (None, thinking_level),
+        let (prompt, effort) = match request {
+            Request::Prompt(prompt, images, effort) => (Some((prompt, images)), effort),
+            Request::Compact(effort) => (None, effort),
             Request::Shell(_) => continue,
             Request::Context => {
                 let _ = events.send(UiEvent::Context(agent.context_use()));
@@ -183,7 +181,7 @@ pub(super) async fn agent_task(
                 continue;
             }
         };
-        agent.thinking_level = thinking_level;
+        agent.effort = effort;
         while cancel.try_recv().is_ok() {}
 
         let checkpoint = agent.history_len();
