@@ -210,7 +210,7 @@ Typing `/` lists the commands and skill commands that start with the input. The 
 
 An unknown command or thinking level shows an error and leaves the text in the input, so you can edit it.
 
-The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right.
+The `/resume`, `/model` and `/thinking` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right. Esc or Ctrl+C closes a picker and keeps the text in the input.
 
 ## Files
 
@@ -218,7 +218,7 @@ Type `@` to pick a file. The list shows up to 10 project files whose path contai
 
 ## Prompt history
 
-Press Ctrl+R to search earlier prompts. The search opens in a box above the input, with the conversation still visible above it. The box shows up to 10 prompts, with a scrollbar when there are more. Type to filter the list, ignoring case. The list has two tabs: **Folder** holds prompts sent from the current folder, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc or Ctrl+R closes the list. Repeated prompts show once, at their newest position.
+Press Ctrl+R to search earlier prompts. The search opens in a box above the input, with the conversation still visible above it. The box shows up to 10 prompts, with a scrollbar when there are more. Type to filter the list, ignoring case. The list has two tabs: **Folder** holds prompts sent from the current folder, and **All** holds prompts from every folder, with the folder name next to each one. Left and Right switch tabs, Up / Down select, Enter puts the prompt in the input to edit, and Esc, Ctrl+R or Ctrl+C closes the list and keeps the text in the input. Repeated prompts show once, at their newest position.
 
 In the interface, rust-claude saves each prompt you send, including `!` commands, skill commands and queued prompts, to `~/.rust-claude/history.jsonl` with the folder it was sent from. The file keeps the newest 10,000 prompts; rust-claude drops older ones when it starts, and keeps prompts that other running copies send meanwhile. It reads the file once at start-up: the **All** tab holds the prompts from the file and those you send in this run, but not those sent from another rust-claude since it started. Up / Down and the **Folder** tab hold the prompts sent from the current folder, so they keep them after a restart or `/new`. Resuming a session, with `/resume` or `--continue`, also adds its prompts to Up / Down and the **Folder** tab for that run. Prompts sent in print mode or before this file existed are not in it.
 
@@ -229,7 +229,7 @@ In the interface, rust-claude saves each prompt you send, including `!` commands
 | Enter | Send prompt, or queue it while the agent works |
 | Shift+Enter / Alt+Enter | Add a new line |
 | Esc | Cancel the running prompt or model lookup, or quit when idle |
-| Ctrl+C | Clear input, or quit when input is empty |
+| Ctrl+C | Clear input, or quit when input is empty. In a picker or prompt search, close it |
 | Ctrl+D | Quit when input is empty |
 | Ctrl+V | Paste an image from the clipboard |
 | Ctrl+R | Search prompt history |
