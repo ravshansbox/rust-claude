@@ -329,7 +329,7 @@ A request counts as a connection error when it cannot connect within 30 seconds,
 
 Press Ctrl+V to paste an image from the clipboard. It adds a marker such as `[image 1]` at the cursor. Only images whose marker is still in the prompt are sent, so deleting the marker removes the image. On macOS, rust-claude reads the clipboard with `osascript`. On Linux, it uses `wl-paste` under Wayland and `xclip` otherwise.
 
-rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the limits. It scales larger images down to at most 2,000 pixels on the long edge, and converts other formats to PNG. Photos stored sideways with an Exif orientation, as phone cameras often save them, are turned upright and re-encoded. If an image is still larger than 5 MB in base64, it uses JPEG at lower quality, then halves the size until it fits.
+rust-claude sends PNG, JPEG, GIF and WebP images as they are when they fit the limits. It scales larger images down to at most 2,000 pixels on the long edge, and converts other formats to PNG. Photos stored sideways with an Exif orientation, as phone cameras often save them, are turned upright and re-encoded. If an image is still larger than 5 MB in base64, it uses JPEG at lower quality, then halves the size until it fits. JPEG has no transparency, so transparent areas turn white.
 
 ## Sessions
 

@@ -2,7 +2,7 @@ use std::io::Cursor;
 
 use anyhow::{Context, Result, bail};
 use image::{
-    DynamicImage, ImageDecoder, ImageFormat, ImageReader, codecs::jpeg::JpegEncoder,
+    DynamicImage, ImageDecoder, ImageFormat, ImageReader, Rgb, RgbImage, codecs::jpeg::JpegEncoder,
     imageops::FilterType, metadata::Orientation,
 };
 
@@ -52,9 +52,22 @@ fn encode_png(image: &DynamicImage) -> Result<Image> {
 
 fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Image> {
     let mut data = Vec::new();
-    image
-        .to_rgb8()
-        .write_with_encoder(JpegEncoder::new_with_quality(&mut data, quality))?;
+    // JPEG has no transparency, so blend transparent areas onto white
+    // instead of keeping their stored colour, which is usually black.
+    let rgb = if image.color().has_alpha() {
+        let rgba = image.to_rgba8();
+        RgbImage::from_fn(rgba.width(), rgba.height(), |x, y| {
+            let [red, green, blue, alpha] = rgba.get_pixel(x, y).0;
+            let blend = |channel: u8| {
+                ((u16::from(channel) * u16::from(alpha) + 255 * (255 - u16::from(alpha))) / 255)
+                    as u8
+            };
+            Rgb([blend(red), blend(green), blend(blue)])
+        })
+    } else {
+        image.to_rgb8()
+    };
+    rgb.write_with_encoder(JpegEncoder::new_with_quality(&mut data, quality))?;
     Ok(Image {
         media_type: "image/jpeg",
         data,
@@ -185,5 +198,29 @@ mod tests {
         assert!(base64_len > 5_250_000 && base64_len < 10_000_000);
         let image = prepare(data).unwrap();
         assert!(image.data.len().div_ceil(3) * 4 <= 5 * 1024 * 1024);
+    }
+
+    #[test]
+    fn shows_transparent_areas_as_white_in_jpeg() {
+        // Noise too large for PNG, with a fully transparent top-left corner.
+        let mut seed: u32 = 1;
+        let noise = RgbaImage::from_fn(1500, 1500, |x, y| {
+            seed = seed.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+            if x < 100 && y < 100 {
+                image::Rgba([0, 0, 0, 0])
+            } else {
+                let [red, green, blue, _] = (seed >> 8).to_le_bytes();
+                image::Rgba([red, green, blue, 255])
+            }
+        });
+        let mut data = Vec::new();
+        DynamicImage::ImageRgba8(noise)
+            .write_to(&mut Cursor::new(&mut data), ImageFormat::Png)
+            .unwrap();
+        let image = prepare(data).unwrap();
+        assert_eq!(image.media_type, "image/jpeg");
+        let decoded = image::load_from_memory(&image.data).unwrap().to_rgb8();
+        let corner = decoded.get_pixel(10, 10);
+        assert!(corner.0.iter().all(|channel| *channel > 240), "{corner:?}");
     }
 }
