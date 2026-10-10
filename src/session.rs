@@ -321,20 +321,27 @@ fn read_preview(path: &Path) -> Result<String> {
             continue;
         }
         let message: Value = serde_json::from_str(&line)?;
-        if let Some(text) = message["content"].as_str() {
-            if let Some((command, _)) = crate::agent::parse_shell_message(text) {
-                return Ok(format!("!{command}"));
-            }
-            return Ok(text.to_string());
+        let text = match message["content"].as_str() {
+            Some(text) => Some(text),
+            None => message["content"]
+                .as_array()
+                .filter(|_| message["role"] == "user")
+                .and_then(|blocks| blocks.iter().find(|block| block["type"] == "text"))
+                .and_then(|block| block["text"].as_str()),
+        };
+        let Some(text) = text else {
+            continue;
+        };
+        if let Some((command, _)) = crate::agent::parse_shell_message(text) {
+            return Ok(format!("!{command}"));
         }
-        let text = message["content"]
-            .as_array()
-            .filter(|_| message["role"] == "user")
-            .and_then(|blocks| blocks.iter().find(|block| block["type"] == "text"))
-            .and_then(|block| block["text"].as_str());
-        if let Some(text) = text {
-            return Ok(text.to_string());
+        if let Some(block) = crate::skills::parse_block(text) {
+            return Ok(match block.user_message {
+                Some(user_message) => format!("/skill:{} {user_message}", block.name),
+                None => format!("/skill:{}", block.name),
+            });
         }
+        return Ok(text.to_string());
     }
     Ok(String::new())
 }
@@ -451,6 +458,20 @@ mod tests {
         let preview = read_preview(&path);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(preview.unwrap(), "!ls -la");
+    }
+
+    #[test]
+    fn previews_skill_command_without_markup() {
+        let path =
+            std::env::temp_dir().join(format!("rust-claude-skill-preview-{}", std::process::id()));
+        let message = json!({
+            "role": "user",
+            "content": "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nDo the demo.\n</skill>\n\nfix it",
+        });
+        std::fs::write(&path, format!("{message}\n")).unwrap();
+        let preview = read_preview(&path);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(preview.unwrap(), "/skill:demo fix it");
     }
 
     #[test]
