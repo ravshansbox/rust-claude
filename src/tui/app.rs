@@ -210,6 +210,56 @@ fn finished_markdown_len(text: &str) -> usize {
     finished
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(super) enum Activity {
+    Working,
+    Compacting,
+    Running,
+    LoadingModels,
+    CheckingModel,
+    Cancelling,
+    Resuming,
+    StartingNewSession,
+    MeasuringContext,
+    LoadingSessions,
+}
+
+impl Activity {
+    /// Whether Esc can stop it.
+    pub(super) fn can_cancel(self) -> bool {
+        matches!(
+            self,
+            Self::Working
+                | Self::Compacting
+                | Self::Running
+                | Self::LoadingModels
+                | Self::CheckingModel
+        )
+    }
+
+    /// Whether prompts sent meanwhile are queued for the model.
+    fn can_queue(self) -> bool {
+        matches!(self, Self::Working | Self::Compacting)
+    }
+}
+
+impl std::fmt::Display for Activity {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Working => "working",
+            Self::Compacting => "compacting",
+            Self::Running => "running",
+            Self::LoadingModels => "loading models",
+            Self::CheckingModel => "checking model",
+            Self::Cancelling => "cancelling",
+            Self::Resuming => "resuming",
+            Self::StartingNewSession => "starting new session",
+            Self::MeasuringContext => "measuring context",
+            Self::LoadingSessions => "loading sessions",
+        })
+    }
+}
+
 pub(super) struct App {
     pub(super) input: String,
     pub(super) cursor: usize,
@@ -220,14 +270,14 @@ pub(super) struct App {
     pub(super) workspace_stale: bool,
     pub(super) model: String,
     pub(super) thinking_level: &'static str,
-    pub(super) status: String,
+    /// What the app is waiting for, shown next to the spinner. `None` when idle.
+    pub(super) activity: Option<Activity>,
     pub(super) spinner_frame: usize,
     pub(super) stats: Stats,
     pub(super) scroll_from_bottom: usize,
     pub(super) max_scroll: usize,
     pub(super) page_size: usize,
     pub(super) input_width: usize,
-    pub(super) busy: bool,
     pub(super) picker: Option<Picker>,
     pub(super) command_selected: usize,
     pub(super) commands_dismissed: bool,
@@ -301,14 +351,13 @@ impl App {
             workspace_stale: false,
             model: model.into(),
             thinking_level,
-            status: String::new(),
+            activity: None,
             spinner_frame: 0,
             stats,
             scroll_from_bottom: 0,
             max_scroll: 0,
             page_size: 1,
             input_width: usize::MAX,
-            busy: false,
             picker: None,
             command_selected: 0,
             commands_dismissed: false,
@@ -575,8 +624,12 @@ impl App {
             .collect()
     }
 
+    pub(super) fn busy(&self) -> bool {
+        self.activity.is_some()
+    }
+
     pub(super) fn can_queue(&self) -> bool {
-        self.busy && (self.status == "working" || self.status == "compacting")
+        self.activity.is_some_and(Activity::can_queue)
     }
 
     pub(super) fn queue_prompt(&mut self) {
@@ -614,7 +667,7 @@ impl App {
             .map(|(_, image)| image)
             .collect();
         self.push(Role::User, prompt.clone());
-        self.start("working");
+        self.start(Activity::Working);
         Some((prompt, images))
     }
 
@@ -636,9 +689,8 @@ impl App {
         self.input_changed();
     }
 
-    pub(super) fn start(&mut self, status: &str) {
-        self.status = status.into();
-        self.busy = true;
+    pub(super) fn start(&mut self, activity: Activity) {
+        self.activity = Some(activity);
     }
 
     pub(super) fn set_thinking_level(&mut self, name: &str) {
@@ -672,7 +724,7 @@ impl App {
             Ok(value) => on_success(self, value),
             Err(error) => self.push(Role::Event, format!("error: {error}")),
         }
-        self.busy = false;
+        self.activity = None;
     }
 }
 
@@ -682,7 +734,7 @@ pub(super) fn image_marker(number: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, ChatMessage, Role};
+    use super::{Activity, App, ChatMessage, Role};
     use crate::agent::AgentEvent;
     use crate::tui::{
         UiEvent, handle_agent_event, handle_input,
@@ -743,17 +795,16 @@ mod tests {
 
     #[test]
     fn drops_a_file_list_started_before_the_prompt_was_sent() {
-        for status in ["", "working"] {
+        for activity in [None, Some(Activity::Working)] {
             let mut app = new_app();
-            app.busy = !status.is_empty();
-            app.status = status.into();
+            app.activity = activity;
             handle_input(Event::Paste("read @".into()), &mut app, |_| {});
             let generation = app.start_listing_files().unwrap();
             handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
             handle_agent_event(UiEvent::Files(generation, vec!["old.rs".into()]), &mut app);
             handle_input(Event::Paste("@".into()), &mut app, |_| {});
-            assert!(app.start_listing_files().is_some(), "{status}");
-            assert!(!screen(&mut app).contains("old.rs"), "{status}");
+            assert!(app.start_listing_files().is_some(), "{activity:?}");
+            assert!(!screen(&mut app).contains("old.rs"), "{activity:?}");
         }
     }
 

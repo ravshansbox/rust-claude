@@ -1,5 +1,5 @@
 use super::{
-    App, Picker, PickerKind, Role,
+    Activity, App, Picker, PickerKind, Role,
     input::{
         next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
     },
@@ -72,7 +72,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 app.picker = None;
                 match kind {
                     PickerKind::Session => {
-                        app.start("resuming");
+                        app.start(Activity::Resuming);
                         act(Action::Resume(value));
                     }
                     PickerKind::Thinking => app.set_thinking_level(&value),
@@ -157,7 +157,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 app.input_changed();
                 return false;
             }
-            KeyCode::Enter if !app.busy => app.accept_suggestion(&suggestions),
+            KeyCode::Enter if !app.busy() => app.accept_suggestion(&suggestions),
             KeyCode::Tab => {
                 app.accept_suggestion(&suggestions);
                 app.command_selected = 0;
@@ -181,17 +181,9 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             app.input_changed();
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
-        (KeyCode::Esc, _) if app.busy => {
-            if [
-                "working",
-                "compacting",
-                "running",
-                "loading models",
-                "checking model",
-            ]
-            .contains(&app.status.as_str())
-            {
-                app.status = "cancelling".into();
+        (KeyCode::Esc, _) if app.busy() => {
+            if app.activity.is_some_and(Activity::can_cancel) {
+                app.start(Activity::Cancelling);
                 act(Action::Cancel);
             }
         }
@@ -221,7 +213,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         {
             app.queue_prompt();
         }
-        (KeyCode::Enter, _) if !app.busy && !app.input.trim().is_empty() => {
+        (KeyCode::Enter, _) if !app.busy() && !app.input.trim().is_empty() => {
             app.scroll_to_bottom();
             let prompt = std::mem::take(&mut app.input);
             app.cursor = 0;
@@ -231,7 +223,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 let command = command.trim().to_string();
                 app.remember(&prompt);
                 if !command.is_empty() {
-                    app.start("running");
+                    app.start(Activity::Running);
                     act(Action::Shell(command));
                 }
                 return false;
@@ -246,11 +238,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 match command {
                     "/quit" => return true,
                     "/new" => {
-                        app.start("starting new session");
+                        app.start(Activity::StartingNewSession);
                         act(Action::NewSession);
                     }
                     "/compact" => {
-                        app.start("compacting");
+                        app.start(Activity::Compacting);
                         act(Action::Compact(app.thinking_level));
                     }
                     "/thinking" if argument.is_empty() => {
@@ -269,19 +261,19 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     }
                     "/thinking" => app.set_thinking_level(argument),
                     "/model" if argument.is_empty() => {
-                        app.start("loading models");
+                        app.start(Activity::LoadingModels);
                         act(Action::ListModels);
                     }
                     "/model" => {
-                        app.start("checking model");
+                        app.start(Activity::CheckingModel);
                         act(Action::CheckModel(argument.to_string()));
                     }
                     "/context" => {
-                        app.start("measuring context");
+                        app.start(Activity::MeasuringContext);
                         act(Action::Context);
                     }
                     "/resume" => {
-                        app.start("loading sessions");
+                        app.start(Activity::LoadingSessions);
                         act(Action::ListSessions);
                     }
                     _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
@@ -294,7 +286,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                             app.push(Role::User, prompt.clone());
                         }
                         app.remember(&prompt);
-                        app.start("working");
+                        app.start(Activity::Working);
                         let images = app.take_images(&prompt);
                         act(Action::Submit(prompt, images, app.thinking_level));
                     }
@@ -304,7 +296,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             }
             app.push(Role::User, prompt.clone());
             app.remember(&prompt);
-            app.start("working");
+            app.start(Activity::Working);
             let images = app.take_images(&prompt);
             act(Action::Submit(prompt, images, app.thinking_level));
         }
@@ -347,7 +339,7 @@ mod tests {
     use super::{Action, handle_input, may_change_screen};
     use crate::images::Image;
     use crate::tui::{
-        App, UiEvent, handle_agent_event,
+        Activity, App, UiEvent, handle_agent_event,
         test_support::{new_app, screen},
     };
     use crossterm::event::{
@@ -418,14 +410,14 @@ mod tests {
         );
         assert_eq!(checked.as_deref(), Some("other"));
         assert_eq!(app.model, "model");
-        assert!(app.busy);
+        assert!(app.busy());
     }
 
     #[test]
     fn esc_cancels_model_loading() {
-        for status in ["loading models", "checking model"] {
+        for activity in [Activity::LoadingModels, Activity::CheckingModel] {
             let mut app = new_app();
-            app.start(status);
+            app.start(activity);
             let mut cancelled = false;
             let quit = handle_input(
                 Event::Key(KeyEvent::from(KeyCode::Esc)),
@@ -434,15 +426,14 @@ mod tests {
                     cancelled |= matches!(action, Action::Cancel);
                 },
             );
-            assert!(!quit && cancelled, "{status}");
+            assert!(!quit && cancelled, "{activity}");
             handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
-            assert!(!app.busy);
+            assert!(!app.busy());
         }
     }
 
     fn queue_while_working(app: &mut App, prompt: &str) {
-        app.busy = true;
-        app.status = "working".into();
+        app.start(Activity::Working);
         handle_input(Event::Paste(prompt.into()), app, |_| {});
         let mut submitted = false;
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), app, |action| {
@@ -462,7 +453,7 @@ mod tests {
         let (prompt, images) = app.send_queued().unwrap();
         assert_eq!(prompt, "first\n\nsecond");
         assert!(images.is_empty());
-        assert!(app.busy);
+        assert!(app.busy());
         assert!(app.queued_prompts().is_empty());
         assert_eq!(app.messages.last().unwrap().text, "first\n\nsecond");
     }
@@ -470,8 +461,7 @@ mod tests {
     #[test]
     fn does_not_queue_commands() {
         let mut app = new_app();
-        app.busy = true;
-        app.status = "working".into();
+        app.start(Activity::Working);
         handle_input(Event::Paste("/new".into()), &mut app, |_| {});
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
         assert_eq!(app.input, "/new");
@@ -547,7 +537,7 @@ mod tests {
         app.add_prompt("earlier".into());
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
-        assert_eq!(app.status, "loading models");
+        assert_eq!(app.activity, Some(Activity::LoadingModels));
         handle_input(Event::Paste("/mo".into()), &mut app, |_| {});
         handle_input(
             Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
@@ -609,7 +599,7 @@ mod tests {
         press(&mut app, KeyCode::Down);
         handle_input(Event::Paste("third".into()), &mut app, |_| {});
         handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
-        app.busy = false;
+        app.activity = None;
         handle_agent_event(UiEvent::NewSession(Ok(())), &mut app);
         handle_input(
             Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
@@ -639,14 +629,14 @@ mod tests {
             |action| requested |= matches!(action, Action::Context),
         );
         assert!(requested);
-        assert!(app.busy);
+        assert!(app.busy());
         let context = crate::agent::ContextUse {
             parts: vec![("messages", 10)],
             total: 10,
             window: 0,
         };
         handle_agent_event(UiEvent::Context(context), &mut app);
-        assert!(!app.busy);
+        assert!(!app.busy());
         assert!(
             app.messages
                 .last()
@@ -671,7 +661,7 @@ mod tests {
             },
         );
         assert_eq!(command.as_deref(), Some("ls -a"));
-        assert_eq!(app.status, "running");
+        assert_eq!(app.activity, Some(Activity::Running));
         let mut cancelled = false;
         handle_input(
             Event::Key(KeyEvent::from(KeyCode::Esc)),
@@ -683,15 +673,14 @@ mod tests {
             UiEvent::Shell("ls -a".into(), Ok("a\nb\n".into())),
             &mut app,
         );
-        assert!(!app.busy);
+        assert!(!app.busy());
         assert_eq!(app.messages.last().unwrap().text, "! ls -a\na\nb");
     }
 
     #[test]
     fn ignores_escape_while_loading_sessions() {
         let mut app = new_app();
-        app.busy = true;
-        app.status = "loading sessions".into();
+        app.start(Activity::LoadingSessions);
         let mut cancelled = false;
         let quit = handle_input(
             Event::Key(KeyEvent::from(KeyCode::Esc)),
@@ -702,7 +691,7 @@ mod tests {
         );
         assert!(!quit);
         assert!(!cancelled);
-        assert_eq!(app.status, "loading sessions");
+        assert_eq!(app.activity, Some(Activity::LoadingSessions));
     }
 
     #[test]
@@ -867,7 +856,7 @@ mod tests {
         for prompt in ["first", "second"] {
             handle_input(Event::Paste(prompt.into()), &mut app, |_| {});
             handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
-            app.busy = false;
+            app.activity = None;
         }
         let press = |app: &mut App, code| {
             handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});

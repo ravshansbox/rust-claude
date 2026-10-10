@@ -95,7 +95,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         }),
         UiEvent::Context(context) => {
             app.push(Role::Event, format_context_use(&context));
-            app.busy = false;
+            app.activity = None;
         }
         UiEvent::Shell(command, result) => {
             app.workspace_stale = true;
