@@ -1,4 +1,7 @@
-use super::{Role, input::input_rows};
+use super::{
+    Role,
+    input::{expand_tabs, input_rows},
+};
 use ratatui::{
     style::{Color, Style, Stylize},
     text::{Line, Span},
@@ -88,12 +91,12 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
         .collect(),
         Role::Thinking => text
             .lines()
-            .map(|line| Line::from(line.to_string().dark_gray().italic()))
+            .map(|line| Line::from(expand_tabs(line.to_string()).dark_gray().italic()))
             .collect(),
         Role::Tool => tool_message_lines(text),
         Role::Event => text
             .lines()
-            .map(|line| Line::raw(line.to_string()))
+            .map(|line| Line::raw(expand_tabs(line.to_string())))
             .collect(),
     }
 }
@@ -137,7 +140,10 @@ fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
                 .map(|line| highlighted_line(line, dark)),
         );
     } else {
-        lines.extend(body.lines().map(|line| Line::raw(line.to_string())));
+        lines.extend(
+            body.lines()
+                .map(|line| Line::raw(expand_tabs(line.to_string()))),
+        );
     }
     lines
 }
@@ -160,7 +166,7 @@ fn highlighted_line(line: crate::highlight::HighlightedLine, dark: bool) -> Line
                 Some((red, green, blue)) => Style::new().fg(Color::Rgb(red, green, blue)),
                 None => Style::new(),
             };
-            Span::styled(segment.text, style)
+            Span::styled(expand_tabs(segment.text), style)
         })
         .collect();
     let line = Line::from(spans);
@@ -170,6 +176,7 @@ fn highlighted_line(line: crate::highlight::HighlightedLine, dark: bool) -> Line
     }
 }
 
+/// The line with its own text, and tabs shown as spaces.
 fn owned_line(line: Line<'_>) -> Line<'static> {
     Line {
         style: line.style,
@@ -177,7 +184,7 @@ fn owned_line(line: Line<'_>) -> Line<'static> {
         spans: line
             .spans
             .into_iter()
-            .map(|span| Span::styled(span.content.into_owned(), span.style))
+            .map(|span| Span::styled(expand_tabs(span.content.into_owned()), span.style))
             .collect(),
     }
 }
@@ -250,6 +257,30 @@ mod tests {
             .map(|line| line.to_string())
             .collect();
         assert_eq!(rows, vec!["        ", "     x  ", "        "]);
+    }
+
+    #[test]
+    fn shows_tab_indentation_in_replies_and_tool_output() {
+        let shown = |role, text| -> Vec<String> {
+            render_message(role, text, 40)
+                .iter()
+                .map(|line| line.to_string().trim_end().to_string())
+                .collect()
+        };
+        let reply = shown(
+            Role::Assistant,
+            "Here:\n\n```go\nfunc f() {\n\treturn\n}\n```\n\nname\tvalue",
+        );
+        assert!(reply.iter().any(|line| line == "    return"), "{reply:?}");
+        assert!(
+            reply.iter().any(|line| line == "name    value"),
+            "{reply:?}"
+        );
+        let shell = shown(Role::Tool, "! make\n\tcc main.c");
+        assert_eq!(shell[1], "    cc main.c");
+        let write = shown(Role::Tool, "write main.go\n+\treturn");
+        assert_eq!(write[1], "+    return");
+        assert_eq!(shown(Role::Event, "\tnote"), ["    note"]);
     }
 
     #[test]
