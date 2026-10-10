@@ -32,7 +32,10 @@ use ratatui::DefaultTerminal;
 use render::{THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
 use std::{
+    backtrace::{Backtrace, BacktraceStatus},
     io::Write,
+    panic::PanicHookInfo,
+    sync::{Arc, Mutex, PoisonError},
     time::{Duration, SystemTime},
 };
 use tokio::{sync::mpsc, time::MissedTickBehavior};
@@ -76,19 +79,82 @@ impl<W: Write> Drop for InputModes<W> {
     }
 }
 
+type PanicHook = dyn Fn(&PanicHookInfo<'_>) + Send + Sync;
+
+/// Holds back panic messages from other threads while the interface owns the
+/// terminal. ratatui's hook would restore the terminal from the panicking
+/// thread, and the interface could then draw over the shell and the message.
+/// The interface notices a crashed agent, restores the terminal itself, and
+/// then prints the held messages.
+struct HeldPanics {
+    messages: Arc<Mutex<Vec<String>>>,
+    previous: Arc<PanicHook>,
+}
+
+impl HeldPanics {
+    /// Panics on the calling thread still go to the previous hook.
+    fn install() -> Self {
+        let messages = Arc::new(Mutex::new(Vec::new()));
+        let previous: Arc<PanicHook> = Arc::from(std::panic::take_hook());
+        let interface = std::thread::current().id();
+        let held = messages.clone();
+        let hook = previous.clone();
+        std::panic::set_hook(Box::new(move |info| {
+            let thread = std::thread::current();
+            if thread.id() == interface {
+                hook(info);
+            } else {
+                held.lock()
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .push(panic_message(&thread, info));
+            }
+        }));
+        Self { messages, previous }
+    }
+
+    /// Puts the previous hook back and returns the held messages.
+    fn release(self) -> Vec<String> {
+        let previous = self.previous;
+        drop(std::panic::take_hook());
+        std::panic::set_hook(Box::new(move |info| previous(info)));
+        std::mem::take(&mut self.messages.lock().unwrap_or_else(PoisonError::into_inner))
+    }
+}
+
+/// The message the default hook prints.
+fn panic_message(thread: &std::thread::Thread, info: &PanicHookInfo<'_>) -> String {
+    let name = thread.name().unwrap_or("<unnamed>");
+    let backtrace = Backtrace::capture();
+    match backtrace.status() {
+        BacktraceStatus::Captured => {
+            format!("thread '{name}' {info}\nstack backtrace:\n{backtrace}")
+        }
+        _ => format!("thread '{name}' {info}"),
+    }
+}
+
+fn print_panics(held: HeldPanics) {
+    for message in held.release() {
+        eprintln!("{message}");
+    }
+}
+
 pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
     THEME.get_or_init(Theme::detect);
     let mut terminal = ratatui::init();
+    let held = HeldPanics::install();
     let modes = match InputModes::enable(std::io::stdout()) {
         Ok(modes) => modes,
         Err(error) => {
             ratatui::restore();
+            print_panics(held);
             return Err(error.into());
         }
     };
     let result = run_loop(&mut terminal, agent, stop).await;
     drop(modes);
     ratatui::restore();
+    print_panics(held);
     result
 }
 
@@ -333,7 +399,7 @@ fn display_model(model: &str) -> &str {
 
 #[cfg(test)]
 mod tests {
-    use super::InputModes;
+    use super::{HeldPanics, InputModes};
 
     #[test]
     fn turns_input_modes_off_after_a_panic() {
@@ -353,6 +419,26 @@ mod tests {
         assert!(
             disabled.contains("\x1b[?2004l"),
             "bracketed paste still on: {written:?}"
+        );
+    }
+
+    #[test]
+    fn holds_panics_from_other_threads_until_released() {
+        let held = HeldPanics::install();
+        let result = std::thread::Builder::new()
+            .name("agent".into())
+            .spawn(|| panic!("the agent broke"))
+            .unwrap()
+            .join();
+        assert!(result.is_err());
+        let messages = held.release();
+        // Other tests may panic on their own threads meanwhile.
+        assert!(
+            messages.iter().any(|message| {
+                message.starts_with("thread 'agent' panicked at ")
+                    && message.contains("the agent broke")
+            }),
+            "{messages:?}"
         );
     }
 }
