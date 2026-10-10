@@ -44,6 +44,9 @@ fn syntax_set() -> &'static SyntaxSet {
     SYNTAX_SET.get_or_init(SyntaxSet::load_defaults_nonewlines)
 }
 
+pub const DARK_THEME: &str = include_str!("../assets/themes/GitHub Dark High Contrast.tmTheme");
+pub const LIGHT_THEME: &str = include_str!("../assets/themes/GitHub Light High Contrast.tmTheme");
+
 fn theme(dark: bool) -> &'static Theme {
     static DARK: OnceLock<Theme> = OnceLock::new();
     static LIGHT: OnceLock<Theme> = OnceLock::new();
@@ -51,17 +54,9 @@ fn theme(dark: bool) -> &'static Theme {
         ThemeSet::load_from_reader(&mut std::io::Cursor::new(source)).expect("bundled theme")
     };
     if dark {
-        DARK.get_or_init(|| {
-            load(include_str!(
-                "../assets/themes/GitHub Dark High Contrast.tmTheme"
-            ))
-        })
+        DARK.get_or_init(|| load(DARK_THEME))
     } else {
-        LIGHT.get_or_init(|| {
-            load(include_str!(
-                "../assets/themes/GitHub Light High Contrast.tmTheme"
-            ))
-        })
+        LIGHT.get_or_init(|| load(LIGHT_THEME))
     }
 }
 

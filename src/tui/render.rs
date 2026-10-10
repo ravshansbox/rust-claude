@@ -53,11 +53,15 @@ impl Theme {
         }
     }
 
-    fn code_theme(self) -> tui_markdown::BuiltinCodeTheme {
+    fn code_theme(self) -> tui_markdown::CodeTheme {
+        static DARK: std::sync::OnceLock<tui_markdown::CodeTheme> = std::sync::OnceLock::new();
+        static LIGHT: std::sync::OnceLock<tui_markdown::CodeTheme> = std::sync::OnceLock::new();
+        let load = |source| tui_markdown::CodeTheme::from_textmate(source).expect("bundled theme");
         match self {
-            Self::Light => tui_markdown::BuiltinCodeTheme::Base16OceanLight,
-            Self::Dark => tui_markdown::BuiltinCodeTheme::Base16OceanDark,
+            Self::Light => LIGHT.get_or_init(|| load(crate::highlight::LIGHT_THEME)),
+            Self::Dark => DARK.get_or_init(|| load(crate::highlight::DARK_THEME)),
         }
+        .clone()
     }
 }
 
@@ -333,6 +337,21 @@ mod tests {
             .filter_map(|span| span.style.fg)
             .collect();
         assert!(colours.len() > 1, "{:?}", lines[1]);
+    }
+
+    #[test]
+    fn uses_github_high_contrast_colours_in_reply_code_blocks() {
+        let lines = render_message(Role::Assistant, "```python\ndef f():\n    pass\n```", 40);
+        let keyword = lines
+            .iter()
+            .flat_map(|line| &line.spans)
+            .find(|span| span.content.contains("def"))
+            .unwrap();
+        assert_eq!(
+            keyword.style.fg,
+            Some(Color::Rgb(160, 17, 31)),
+            "{keyword:?}"
+        );
     }
 
     #[test]
