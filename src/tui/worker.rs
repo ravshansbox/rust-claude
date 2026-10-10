@@ -23,6 +23,7 @@ pub(super) enum UiEvent {
     Files(u64, Vec<String>),
     Workspace(String),
     McpServer(Added),
+    McpSignedIn { name: String, label: String },
     Update(crate::update::Progress),
 }
 
@@ -37,6 +38,7 @@ pub(super) enum Request {
     NewSession,
     ListModels,
     Context,
+    ReplaceMcpServer(Started),
 }
 
 pub(super) fn quit(requests: mpsc::UnboundedSender<Request>, cancel: mpsc::UnboundedSender<()>) {
@@ -119,6 +121,11 @@ pub(super) async fn agent_task(
             Request::Shell(_) => continue,
             Request::Context => {
                 let _ = events.send(UiEvent::Context(agent.context_use()));
+                continue;
+            }
+            Request::ReplaceMcpServer(started) => {
+                let _ = events.send(UiEvent::McpServer(agent.mcp.replace(started)));
+                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
             Request::ListSessions => {
