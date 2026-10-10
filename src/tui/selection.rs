@@ -4,8 +4,11 @@ use ratatui::{
     layout::{Position, Rect},
     style::Style,
     text::Span,
-    widgets::Widget,
+    widgets::{Block, Clear, Paragraph, Widget},
 };
+use std::time::{Duration, Instant};
+
+const COPIED_NOTICE_TIME: Duration = Duration::from_secs(2);
 
 /// A cell of the conversation, counting rows from its top.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -75,6 +78,7 @@ impl App {
             self.selection = None;
             return None;
         };
+        self.copied_until = Some(Instant::now() + COPIED_NOTICE_TIME);
         Some(self.selected_text(start, end))
     }
 
@@ -112,6 +116,20 @@ impl App {
             .collect::<Vec<_>>()
             .join("\n")
     }
+}
+
+/// Shows that text was copied in a box at the top right of the conversation.
+pub(super) fn show_copied_notice(app: &App, buffer: &mut Buffer) {
+    if app.copied_until.is_none_or(|until| until <= Instant::now()) {
+        return;
+    }
+    let area = app.conversation_area;
+    let width = 10.min(area.width);
+    let box_area = Rect::new(area.right() - width, area.top(), width, 3.min(area.height));
+    Clear.render(box_area, buffer);
+    Paragraph::new(" Copied")
+        .block(Block::bordered())
+        .render(box_area, buffer);
 }
 
 /// Shows the selected cells of the conversation in reverse video.
@@ -253,11 +271,27 @@ mod tests {
     }
 
     #[test]
+    fn shows_a_copied_notice_at_the_top_right_for_a_while() {
+        let mut app = app_with_reply();
+        let (column, row) = position(&mut app, "Earlier reply");
+        assert!(!screen(&mut app).contains("Copied"));
+        drag(&mut app, (column, row), (column + 6, row));
+        let shown = screen(&mut app);
+        let notice_row = shown.lines().position(|line| line.contains("Copied"));
+        assert_eq!(notice_row, Some(1), "{shown}");
+        let line = shown.lines().nth(1).unwrap();
+        assert!(line.trim_end().ends_with("Copied │"), "{shown}");
+        app.copied_until = Some(std::time::Instant::now());
+        assert!(!screen(&mut app).contains("Copied"));
+    }
+
+    #[test]
     fn copies_nothing_on_a_click() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
         let copied = drag(&mut app, (column, row), (column, row));
         assert!(copied.is_empty());
+        assert!(!screen(&mut app).contains("Copied"));
         assert_eq!(reversed_text(&mut app), "");
     }
 

@@ -16,7 +16,7 @@ use crate::{
 };
 use anyhow::Result;
 use ratatui::{layout::Rect, text::Line};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Instant};
 
 pub(super) struct Suggestions {
     pub(super) start: usize,
@@ -328,6 +328,8 @@ pub(super) struct App {
     /// Where the conversation was last drawn, and its first row shown.
     pub(super) conversation_area: Rect,
     pub(super) conversation_top: usize,
+    /// When the notice that text was copied goes away.
+    pub(super) copied_until: Option<Instant>,
 }
 
 struct McpGroup {
@@ -428,6 +430,7 @@ impl App {
             selection: None,
             conversation_area: Rect::default(),
             conversation_top: 0,
+            copied_until: None,
         };
         app.push(
             Role::Event,
