@@ -4,7 +4,7 @@ use super::{
         next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
     },
 };
-use crate::{agent::EFFORT_LEVELS, images::Image, models, skills};
+use crate::{images::Image, models, skills};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 
 pub(super) enum Action {
@@ -274,11 +274,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         app.open_picker(Picker {
                             kind: PickerKind::Effort,
                             title: "Select effort level",
-                            items: EFFORT_LEVELS
+                            items: models::effort_levels(&app.model)
                                 .iter()
                                 .map(|level| (level.to_string(), level.to_string()))
                                 .collect(),
-                            selected: EFFORT_LEVELS
+                            selected: models::effort_levels(&app.model)
                                 .iter()
                                 .position(|level| *level == app.effort)
                                 .unwrap_or_default(),
@@ -488,6 +488,56 @@ mod tests {
             assert_eq!(app.cursor, typed.len());
             assert_eq!(app.effort, "medium");
         }
+    }
+
+    #[test]
+    fn offers_off_only_for_models_that_can_turn_thinking_off() {
+        let mut app = new_app();
+        app.model = "claude-haiku-5-5".into();
+        app.effort = "max";
+        press(&mut app, KeyCode::BackTab);
+        assert_eq!(app.effort, "off");
+        press(&mut app, KeyCode::BackTab);
+        assert_eq!(app.effort, "low");
+        handle_input(Event::Paste("/effort".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        let items: Vec<&str> = app
+            .picker
+            .as_ref()
+            .unwrap()
+            .items
+            .iter()
+            .map(|(value, _)| value.as_str())
+            .collect();
+        assert_eq!(items, ["off", "low", "medium", "high", "xhigh", "max"]);
+
+        let mut app = new_app();
+        app.model = "claude-opus-5-5".into();
+        app.effort = "max";
+        press(&mut app, KeyCode::BackTab);
+        assert_eq!(app.effort, "low");
+        handle_input(Event::Paste("/effort off".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.effort, "low");
+        assert_eq!(
+            app.messages.last().unwrap().text,
+            "unknown effort level: off (options: low, medium, high, xhigh, max)"
+        );
+    }
+
+    #[test]
+    fn switches_off_to_the_default_on_a_model_that_cannot_turn_thinking_off() {
+        let mut app = new_app();
+        app.model = "claude-sonnet-5-5".into();
+        app.effort = "off";
+        let ctrl_p = Event::Key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL));
+        handle_input(ctrl_p.clone(), &mut app, |_| {});
+        assert_eq!(app.model, "claude-haiku-5-5");
+        assert_eq!(app.effort, "off");
+        handle_input(ctrl_p, &mut app, |_| {});
+        assert_eq!(app.model, "claude-fable-5-1");
+        assert_eq!(app.effort, "medium");
+        assert_eq!(app.messages.last().unwrap().text, "model: fable-5-1");
     }
 
     #[test]

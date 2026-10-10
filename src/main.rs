@@ -30,7 +30,7 @@ Options:
   -c, --continue           Continue the latest session in the current folder
       --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-claude
       --model <id>         Model to use
-      --effort <level>     Effort level: low, medium, high, xhigh, max
+      --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
   -p, --print <prompt>     Run one prompt and print the answer
       --image <path>       Send an image with the prompt in print mode. Repeat for more images
   -h, --help               Show this help";
@@ -98,6 +98,22 @@ fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
         _ => bail!(USAGE),
     };
     Ok((command, options))
+}
+
+fn choose_effort(model: &str, name: &str) -> (&'static str, Option<String>) {
+    let levels = models::effort_levels(model);
+    match levels.iter().find(|level| **level == name) {
+        Some(level) => (level, None),
+        None if name == "off" => (agent::DEFAULT_EFFORT, None),
+        None => (
+            agent::DEFAULT_EFFORT,
+            Some(format!(
+                "unknown effort level: {name} (options: {}), using {}",
+                levels.join(", "),
+                agent::DEFAULT_EFFORT
+            )),
+        ),
+    }
 }
 
 /// How long quitting waits for background jobs such as listing files for
@@ -176,13 +192,10 @@ async fn run() -> Result<()> {
         agent.resume(&id)?;
     }
     if let Some(name) = effort {
-        match agent::EFFORT_LEVELS.iter().find(|level| **level == name) {
-            Some(level) => agent.effort = level,
-            None => eprintln!(
-                "unknown effort level: {name} (options: {}), using {}",
-                agent::EFFORT_LEVELS.join(", "),
-                agent::DEFAULT_EFFORT
-            ),
+        let (level, warning) = choose_effort(&agent.model, &name);
+        agent.effort = level;
+        if let Some(warning) = warning {
+            eprintln!("{warning}");
         }
     }
 
@@ -280,7 +293,7 @@ async fn stopped(status: i32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, Options, parse_arguments};
+    use super::{Command, Options, choose_effort, parse_arguments};
 
     fn parse_with_options(arguments: &[&str]) -> Option<(Command, Options)> {
         parse_arguments(
@@ -386,6 +399,23 @@ mod tests {
                     config_dir: None,
                 }
             ))
+        );
+    }
+
+    #[test]
+    fn chooses_an_effort_level_the_model_supports() {
+        assert_eq!(choose_effort("claude-haiku-5-5", "off"), ("off", None));
+        assert_eq!(choose_effort("claude-opus-5-5", "high"), ("high", None));
+        assert_eq!(choose_effort("claude-opus-5-5", "off"), ("medium", None));
+        assert_eq!(
+            choose_effort("claude-opus-5-5", "loud"),
+            (
+                "medium",
+                Some(
+                    "unknown effort level: loud (options: low, medium, high, xhigh, max), using medium"
+                        .into()
+                )
+            )
         );
     }
 

@@ -26,7 +26,7 @@ Model, effort and thinking:
 - `/model <id>`, which checks the id before switching
 - Ctrl+P to switch between the latest models: Fable, Opus, Sonnet, Haiku
 - Known context windows and output limits for the latest model in each class
-- Effort levels with `/effort`, `/effort <level>` and Shift+Tab
+- Effort levels with `/effort`, `/effort <level>` and Shift+Tab, and `off` to turn thinking off on Sonnet and Haiku
 - Thinking text shown in the conversation
 - Model and effort level saved to `~/.rust-claude/settings.json`
 - `--model` and `--effort` options for one run
@@ -281,9 +281,11 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 | Effort level | `--effort <level>` | `effort` | `medium` |
 | Check for updates | | `check_for_updates` | `true` |
 
-Effort levels: `low`, `medium`, `high`, `xhigh`, `max`.
+Effort levels: `off`, `low`, `medium`, `high`, `xhigh`, `max`.
 
-rust-claude knows only the latest model in each class: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 4](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)). Every model uses adaptive thinking, and the effort level controls how much work Claude puts into each reply, thinking included. rust-claude no longer reads the old `thinking_level` key.
+`off` turns thinking off and is offered only on Sonnet and Haiku, because Fable and Opus cannot turn thinking off. On Sonnet it turns off thinking before the reply, but Claude still writes short updates between tool calls. With `off`, rust-claude sends no effort level, so the model uses its default. Switching to Fable or Opus, or starting with them, changes `off` to `medium`.
+
+rust-claude knows only the latest model in each class: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 4](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)). Every model uses adaptive thinking unless the effort level is `off`, and the effort level controls how much work Claude puts into each reply, thinking included. rust-claude no longer reads the old `thinking_level` key.
 
 Each reply from a known model may use up to 128,000 tokens. Other models get 8,192 tokens, and context use shows as a token count.
 

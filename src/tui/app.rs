@@ -8,9 +8,10 @@ use super::{
     workspace_label,
 };
 use crate::{
-    agent::{EFFORT_LEVELS, Queue, Queued, Stats, take_queued},
+    agent::{DEFAULT_EFFORT, Queue, Queued, Stats, take_queued},
     history,
     images::Image,
+    models,
     skills::{Scope, Skill},
     tools,
 };
@@ -627,11 +628,12 @@ impl App {
     }
 
     pub(super) fn cycle_effort(&mut self) {
-        let index = EFFORT_LEVELS
+        let levels = models::effort_levels(&self.model);
+        let index = levels
             .iter()
             .position(|level| *level == self.effort)
-            .map_or(0, |index| (index + 1) % EFFORT_LEVELS.len());
-        self.effort = EFFORT_LEVELS[index];
+            .map_or(0, |index| (index + 1) % levels.len());
+        self.effort = levels[index];
     }
 
     pub(super) fn input_changed(&mut self) {
@@ -871,7 +873,8 @@ impl App {
 
     /// Returns whether `name` is an effort level.
     pub(super) fn set_effort(&mut self, name: &str) -> bool {
-        match EFFORT_LEVELS.iter().find(|level| **level == name) {
+        let levels = models::effort_levels(&self.model);
+        match levels.iter().find(|level| **level == name) {
             Some(level) => {
                 self.effort = level;
                 self.push(Role::Event, format!("effort: {level}"));
@@ -882,7 +885,7 @@ impl App {
                     Role::Event,
                     format!(
                         "unknown effort level: {name} (options: {})",
-                        EFFORT_LEVELS.join(", ")
+                        levels.join(", ")
                     ),
                 );
                 false
@@ -892,6 +895,9 @@ impl App {
 
     pub(super) fn set_model(&mut self, model: &str) {
         self.model = model.into();
+        if !models::effort_levels(model).contains(&self.effort) {
+            self.effort = DEFAULT_EFFORT;
+        }
         self.push(Role::Event, format!("model: {}", display_model(model)));
     }
 
