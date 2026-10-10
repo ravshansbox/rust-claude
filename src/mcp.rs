@@ -51,7 +51,6 @@ struct ServerConfig {
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct OAuthConfig {
-    client_name: Option<String>,
     client_id: Option<String>,
     client_secret: Option<String>,
 }
@@ -1521,7 +1520,7 @@ mod tests {
         let path = directory.join("mcp.json");
         std::fs::write(
             &path,
-            r#"{ "mcpServers": { "figma": { "url": "https://mcp.figma.com/mcp", "oauth": { "clientName": "Claude Code" } } } }"#,
+            r#"{ "mcpServers": { "figma": { "url": "https://mcp.figma.com/mcp", "oauth": { "clientId": "own" } } } }"#,
         )
         .unwrap();
         for scope in [Scope::Global, Scope::Project] {
@@ -1535,8 +1534,8 @@ mod tests {
                     .1
                     .oauth
                     .as_ref()
-                    .and_then(|oauth| oauth.client_name.as_deref()),
-                Some("Claude Code")
+                    .and_then(|oauth| oauth.client_id.as_deref()),
+                Some("own")
             );
         }
         std::fs::remove_dir_all(&directory).unwrap();
@@ -2239,20 +2238,11 @@ done
         reqwest::get(callback).await.unwrap().text().await.unwrap()
     }
 
-    fn figma_like(url: &str) -> ServerConfig {
-        let mut config = http_config(url);
-        config.oauth = Some(OAuthConfig {
-            client_name: Some("Claude Code".into()),
-            ..OAuthConfig::default()
-        });
-        config
-    }
-
     #[tokio::test]
     async fn signs_in_to_an_http_server_with_oauth() {
         let (url, requests) = oauth_server().await;
         let base = url.trim_end_matches("/mcp");
-        let sign_in = begin_sign_in_with("web", &figma_like(&url)).await.unwrap();
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
         let parameters = query(&sign_in.authorize_url);
         assert!(
             sign_in
@@ -2289,7 +2279,7 @@ done
         assert_eq!(parameters["code_challenge"], challenge);
         let mut mcp = Mcp::default();
         assert_eq!(
-            mcp.add(start("web".into(), Scope::Global, figma_like(&url)).await)
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
                 .status,
             "loaded global MCP server: web (1 tools)"
         );
@@ -2319,9 +2309,12 @@ done
     }
 
     #[tokio::test]
-    async fn registers_as_claude_code_unless_the_config_names_another_client() {
+    async fn registers_as_claude_code_even_when_the_config_names_another_client() {
         let (url, requests) = oauth_server().await;
-        begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+        let config: ServerConfig =
+            serde_json::from_value(json!({ "url": url, "oauth": { "clientName": "rust-claude" } }))
+                .unwrap();
+        begin_sign_in_with("web", &config).await.unwrap();
         assert_eq!(
             requests_for_path(&requests, "/register")[0].body["client_name"],
             "Claude Code"
@@ -2331,18 +2324,7 @@ done
     #[tokio::test]
     async fn reports_failed_sign_ins() {
         let (url, _) = oauth_server().await;
-        let mut named_rust_claude = http_config(&url);
-        named_rust_claude.oauth = Some(OAuthConfig {
-            client_name: Some("rust-claude".into()),
-            ..OAuthConfig::default()
-        });
-        assert_eq!(
-            begin_sign_in_with("web", &named_rust_claude).await.err(),
-            Some(
-                "cannot register rust-claude with the sign-in server: status 403: Forbidden".into()
-            )
-        );
-        let sign_in = begin_sign_in_with("web", &figma_like(&url)).await.unwrap();
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
         let authorize_url = sign_in.authorize_url.clone();
         let finished = tokio::spawn(sign_in.finish());
         let page = visit_callback(&authorize_url, "the-code", Some("forged")).await;
@@ -2351,7 +2333,7 @@ done
             finished.await.unwrap(),
             Err("the sign-in page sent back a different state".into())
         );
-        let sign_in = begin_sign_in_with("web", &figma_like(&url)).await.unwrap();
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
         let authorize_url = sign_in.authorize_url.clone();
         let finished = tokio::spawn(sign_in.finish());
         visit_callback(&authorize_url, "wrong-code", None).await;

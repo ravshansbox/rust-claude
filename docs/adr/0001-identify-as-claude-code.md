@@ -16,7 +16,7 @@ Some MCP sign-in servers only let approved apps register. Figma, for example, tu
 
 rust-claude signs in with Claude Code's OAuth client ID (`src/auth.rs`) and starts the system prompt with Claude Code's identity line (`src/agent.rs`).
 
-rust-claude registers with MCP sign-in servers as `Claude Code` (`src/mcp/oauth.rs`), unless `oauth.clientName` in `mcp.json` names another client.
+rust-claude registers with MCP sign-in servers as `Claude Code` (`src/mcp/oauth.rs`).
 
 We accept the risk to the account and the risk of breaking Anthropic's terms and the terms of each MCP server.
 
