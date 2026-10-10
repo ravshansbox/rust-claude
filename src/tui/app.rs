@@ -348,6 +348,7 @@ impl McpGroup {
 struct McpEntry {
     name: String,
     summary: Option<String>,
+    overridden: bool,
 }
 
 pub(super) struct HistorySearch {
@@ -724,7 +725,7 @@ impl App {
                     let server = group
                         .servers
                         .iter_mut()
-                        .find(|server| server.name == name)?;
+                        .find(|server| server.name == name && !server.overridden)?;
                     Some((index, server))
                 });
             if let Some((index, server)) = found {
@@ -732,29 +733,11 @@ impl App {
                 changed.push(index);
                 continue;
             }
-            let index = match self
-                .mcp_groups
-                .iter()
-                .position(|group| group.scope == scope)
-            {
-                Some(index) => index,
-                None => {
-                    self.mcp_groups.push(McpGroup {
-                        scope,
-                        servers: Vec::new(),
-                        message: None,
-                    });
-                    self.mcp_groups
-                        .sort_by_key(|group| matches!(group.scope, Scope::Project));
-                    self.mcp_groups
-                        .iter()
-                        .position(|group| group.scope == scope)
-                        .unwrap_or_default()
-                }
-            };
+            let index = self.mcp_group(scope);
             self.mcp_groups[index].servers.push(McpEntry {
                 name: name.into(),
                 summary: None,
+                overridden: false,
             });
         }
         for index in 0..self.mcp_groups.len() {
@@ -762,6 +745,47 @@ impl App {
                 self.show_mcp_group(index);
             }
         }
+    }
+
+    /// Lists global servers that project entries override on the global line.
+    pub(super) fn show_overridden_mcp_servers<'a>(
+        &mut self,
+        names: impl IntoIterator<Item = &'a str>,
+    ) {
+        let mut names = names.into_iter().peekable();
+        if names.peek().is_none() {
+            return;
+        }
+        let index = self.mcp_group(Scope::Global);
+        let servers = &mut self.mcp_groups[index].servers;
+        servers.extend(names.map(|name| McpEntry {
+            name: name.into(),
+            summary: Some(format!("{name} (overridden)")),
+            overridden: true,
+        }));
+        servers.sort_by(|first, second| first.name.cmp(&second.name));
+        self.show_mcp_group(index);
+    }
+
+    fn mcp_group(&mut self, scope: Scope) -> usize {
+        if let Some(index) = self
+            .mcp_groups
+            .iter()
+            .position(|group| group.scope == scope)
+        {
+            return index;
+        }
+        self.mcp_groups.push(McpGroup {
+            scope,
+            servers: Vec::new(),
+            message: None,
+        });
+        self.mcp_groups
+            .sort_by_key(|group| matches!(group.scope, Scope::Project));
+        self.mcp_groups
+            .iter()
+            .position(|group| group.scope == scope)
+            .unwrap_or_default()
     }
 
     pub(super) fn finish_mcp_server(&mut self, added: crate::mcp::Added) {
@@ -773,7 +797,7 @@ impl App {
                 let server = group
                     .servers
                     .iter_mut()
-                    .find(|server| server.name == added.name)?;
+                    .find(|server| server.name == added.name && !server.overridden)?;
                 Some((index, server))
             });
         match found {
@@ -1007,6 +1031,42 @@ mod tests {
             .expect(&shown);
         assert!(
             global < project && project < hello && hello < failure,
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn shows_global_mcp_servers_that_project_entries_override() {
+        let mut app = new_app();
+        app.start_mcp_servers([("docs", Scope::Project), ("web", Scope::Global)]);
+        app.show_overridden_mcp_servers(["docs"]);
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains("global MCP servers: docs (overridden), ⠋ web"),
+            "{shown}"
+        );
+        handle_agent_event(mcp_server_loaded("docs", "docs (3 tools)"), &mut app);
+        handle_agent_event(mcp_server_loaded("web", "web (2 tools)"), &mut app);
+        let shown = screen(&mut app);
+        let global = shown
+            .find("loaded global MCP servers: docs (overridden), web (2 tools)")
+            .expect(&shown);
+        let project = shown
+            .find("loaded project MCP servers: docs (3 tools)")
+            .expect(&shown);
+        assert!(global < project, "{shown}");
+        handle_agent_event(
+            UiEvent::McpRestarting {
+                name: "docs".into(),
+                scope: Scope::Project,
+                notice: "signed in to MCP server docs".into(),
+            },
+            &mut app,
+        );
+        let shown = screen(&mut app);
+        assert!(shown.contains("project MCP servers: ⠋ docs"), "{shown}");
+        assert!(
+            shown.contains("loaded global MCP servers: docs (overridden), web (2 tools)"),
             "{shown}"
         );
     }
