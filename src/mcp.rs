@@ -17,6 +17,8 @@ use tokio::{
     sync::{mpsc, oneshot},
 };
 
+mod oauth;
+
 use crate::{
     skills::Scope,
     tools::{self, ProcessGroup},
@@ -43,6 +45,15 @@ struct ServerConfig {
     headers: HashMap<String, String>,
     enabled: Option<bool>,
     timeout: Option<u64>,
+}
+
+/// HTTP servers sign in with OAuth unless their entry sets an
+/// `Authorization` header.
+fn uses_oauth(config: &ServerConfig) -> bool {
+    !config
+        .headers
+        .keys()
+        .any(|name| name.eq_ignore_ascii_case("authorization"))
 }
 
 fn valid_server_name(name: &str) -> bool {
@@ -342,6 +353,7 @@ async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mu
 }
 
 const MAX_ERROR_BODY: usize = 500;
+const NEEDS_SIGN_IN: &str = "needs sign-in";
 const CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
 
 struct PostError {
@@ -364,6 +376,32 @@ struct Http {
     /// The `initialize` request, sent again to start a new session.
     initialize: Mutex<Option<Value>>,
     renewing: tokio::sync::Mutex<()>,
+    /// Set when the server signs in with OAuth.
+    oauth: Option<OAuthSession>,
+}
+
+struct OAuthSession {
+    server_name: String,
+    saved: Mutex<Option<oauth::Saved>>,
+    refreshing: tokio::sync::Mutex<()>,
+}
+
+impl OAuthSession {
+    fn current(&self) -> Option<oauth::Saved> {
+        self.saved.lock().ok().and_then(|saved| saved.clone())
+    }
+
+    fn needs_sign_in(&self, reason: Option<String>) -> PostError {
+        let mut message = format!("{NEEDS_SIGN_IN}: run /mcp login {}", self.server_name);
+        if let Some(reason) = reason {
+            message.push_str(&format!(" (could not renew the sign-in: {reason})"));
+        }
+        PostError {
+            message,
+            transient: false,
+            expired: None,
+        }
+    }
 }
 
 /// Ends the server's session when the connection is dropped.
@@ -380,13 +418,16 @@ impl Drop for HttpSession {
         let (Some(session), Ok(runtime)) = (session, tokio::runtime::Handle::try_current()) else {
             return;
         };
-        let request = self
+        let mut request = self
             .0
             .client
             .delete(&self.0.url)
             .headers(self.0.headers.clone())
             .header("mcp-session-id", session)
             .timeout(Duration::from_secs(1));
+        if let Some(saved) = self.0.oauth.as_ref().and_then(OAuthSession::current) {
+            request = request.bearer_auth(saved.access_token);
+        }
         runtime.spawn(async move {
             let _ = request.send().await;
         });
@@ -498,8 +539,66 @@ impl Http {
         }
     }
 
+    /// The access token to send, renewed when it has expired or after the
+    /// server turned down `rejected`.
+    async fn access_token(&self, rejected: Option<&str>) -> Result<Option<String>, PostError> {
+        let Some(oauth) = &self.oauth else {
+            return Ok(None);
+        };
+        let Some(current) = oauth.current() else {
+            return Ok(None);
+        };
+        if rejected.is_none() && !current.expired() {
+            return Ok(Some(current.access_token));
+        }
+        let _refreshing = oauth.refreshing.lock().await;
+        let Some(current) = oauth.current() else {
+            return Ok(None);
+        };
+        if Some(current.access_token.as_str()) != rejected && !current.expired() {
+            return Ok(Some(current.access_token));
+        }
+        let renewed = oauth::refresh(&self.client, &self.url, &current, rejected)
+            .await
+            .map_err(|error| oauth.needs_sign_in(Some(error)))?;
+        if let Ok(mut saved) = oauth.saved.lock() {
+            *saved = Some(renewed.clone());
+        }
+        Ok(Some(renewed.access_token))
+    }
+
     async fn post(&self, message: &Value) -> Result<reqwest::Response, PostError> {
-        let method = message["method"].as_str().unwrap_or("a reply");
+        let mut rejected = None;
+        loop {
+            let token = self.access_token(rejected.as_deref()).await?;
+            let (response, session) = self.post_once(message, token.as_deref()).await?;
+            let Some(oauth) = &self.oauth else {
+                return self.check(message, response, session).await;
+            };
+            let status = response.status().as_u16();
+            let challenge = response
+                .headers()
+                .get(reqwest::header::WWW_AUTHENTICATE)
+                .and_then(|value| value.to_str().ok())
+                .unwrap_or_default();
+            let unauthorised =
+                status == 401 || (status == 403 && challenge.contains("insufficient_scope"));
+            if !unauthorised {
+                return self.check(message, response, session).await;
+            }
+            if rejected.is_none() && token.is_some() {
+                rejected = token;
+                continue;
+            }
+            return Err(oauth.needs_sign_in(None));
+        }
+    }
+
+    async fn post_once(
+        &self,
+        message: &Value,
+        token: Option<&str>,
+    ) -> Result<(reqwest::Response, Option<String>), PostError> {
         let mut request = self
             .client
             .post(&self.url)
@@ -509,6 +608,9 @@ impl Http {
                 "application/json, text/event-stream",
             )
             .json(message);
+        if let Some(token) = token {
+            request = request.bearer_auth(token);
+        }
         let session = self.session.lock().ok().and_then(|session| session.clone());
         if let Some(session) = &session {
             request = request.header("mcp-session-id", session);
@@ -526,6 +628,18 @@ impl Http {
             transient: true,
             expired: None,
         })?;
+        Ok((response, session))
+    }
+
+    /// Keeps the session the server gave, and turns error statuses into
+    /// errors. `session` is the one the request was sent with.
+    async fn check(
+        &self,
+        message: &Value,
+        response: reqwest::Response,
+        session: Option<String>,
+    ) -> Result<reqwest::Response, PostError> {
+        let method = message["method"].as_str().unwrap_or("a reply");
         if let Some(session) = response
             .headers()
             .get("mcp-session-id")
@@ -692,7 +806,7 @@ impl Http {
 }
 
 impl Connection {
-    fn http(config: &ServerConfig, url: &str) -> Result<Self, String> {
+    fn http(name: &str, config: &ServerConfig, url: &str) -> Result<Self, String> {
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             return Err("url must be an http or https URL".into());
         }
@@ -720,6 +834,11 @@ impl Connection {
             timeout,
             initialize: Mutex::new(None),
             renewing: tokio::sync::Mutex::new(()),
+            oauth: uses_oauth(config).then(|| OAuthSession {
+                server_name: name.to_string(),
+                saved: Mutex::new(oauth::load(url)),
+                refreshing: tokio::sync::Mutex::new(()),
+            }),
         });
         let (writer, messages) = mpsc::unbounded_channel();
         let pending = Arc::new(Pending {
@@ -928,7 +1047,7 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
             );
         }
         (Some("http" | "streamable-http"), _, Some(url)) | (None, None, Some(url)) => {
-            Connection::http(&config, url)?
+            Connection::http(&name, &config, url)?
         }
         (Some("http" | "streamable-http"), _, None) => return Err("url is missing".into()),
         (None | Some("stdio"), Some(command), _) => Connection::spawn(&config, command)?,
@@ -1096,6 +1215,9 @@ impl Mcp {
         let Started { name, result } = started;
         let mut server = match result {
             Ok(server) => server,
+            Err(error) if error.starts_with(NEEDS_SIGN_IN) => {
+                return (Vec::new(), Err(format!("MCP server {name} {error}")));
+            }
             Err(error) => {
                 return (
                     Vec::new(),
@@ -1371,8 +1493,20 @@ done
     #[derive(Clone)]
     struct HttpRequest {
         method: String,
+        path: String,
         headers: HashMap<String, String>,
         body: Value,
+        raw_body: String,
+    }
+
+    impl HttpRequest {
+        fn form(&self) -> HashMap<String, String> {
+            reqwest::Url::parse(&format!("http://form/?{}", self.raw_body))
+                .unwrap()
+                .query_pairs()
+                .into_owned()
+                .collect()
+        }
     }
 
     struct HttpReply {
@@ -1479,7 +1613,9 @@ done
         };
         let head = String::from_utf8_lossy(&data[..header_end]).to_string();
         let mut lines = head.lines();
-        let method = lines.next()?.split(' ').next()?.to_string();
+        let mut request_line = lines.next()?.split(' ');
+        let method = request_line.next()?.to_string();
+        let path = request_line.next()?.to_string();
         let headers: HashMap<String, String> = lines
             .filter_map(|line| line.split_once(':'))
             .map(|(name, value)| (name.trim().to_lowercase(), value.trim().to_string()))
@@ -1498,8 +1634,10 @@ done
         let body = serde_json::from_slice(&data[header_end..]).unwrap_or(Value::Null);
         Some(HttpRequest {
             method,
+            path,
             headers,
             body,
+            raw_body: String::from_utf8_lossy(&data[header_end..]).into_owned(),
         })
     }
 
@@ -1725,14 +1863,14 @@ done
         );
         assert_eq!(requests_for(&requests, "initialize").len(), 3);
         let (url, requests) = http_server(|request| match request.body["method"].as_str() {
-            Some("initialize") => HttpReply::status(401, "sign in first"),
+            Some("initialize") => HttpReply::status(400, "bad request"),
             _ => http_mcp(request),
         })
         .await;
         assert_eq!(
             mcp.add(start("locked".into(), Scope::Global, http_config(&url)).await)
                 .status,
-            "MCP server locked failed: server answered initialize with status 401: sign in first"
+            "MCP server locked failed: server answered initialize with status 400: bad request"
         );
         assert_eq!(requests_for(&requests, "initialize").len(), 1);
     }
@@ -1774,6 +1912,117 @@ done
         assert_eq!(sessions_used("initialize"), ["", ""]);
         assert_eq!(sessions_used("notifications/initialized"), ["s1", "s2"]);
         assert_eq!(sessions_used("tools/call"), ["s1", "s2"]);
+    }
+
+    fn now_millis() -> u128 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis()
+    }
+
+    /// Answers like `http_mcp`, but only with the access token `fresh`, and
+    /// renews the refresh token `r1` at `/token`.
+    fn signed_in_mcp(request: &HttpRequest) -> HttpReply {
+        if request.path == "/token" {
+            let form = request.form();
+            if form.get("grant_type").map(String::as_str) == Some("refresh_token")
+                && form.get("refresh_token").map(String::as_str) == Some("r1")
+                && form.get("client_id").map(String::as_str) == Some("client")
+            {
+                return HttpReply::json(json!({
+                    "access_token": "fresh",
+                    "refresh_token": "r2",
+                    "token_type": "Bearer",
+                    "expires_in": 3600,
+                }));
+            }
+            return HttpReply::status(400, r#"{"error":"invalid_grant"}"#);
+        }
+        if request.headers.get("authorization").map(String::as_str) != Some("Bearer fresh") {
+            return HttpReply::status(401, "")
+                .with_header("www-authenticate", r#"Bearer error="invalid_token""#);
+        }
+        http_mcp(request)
+    }
+
+    fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
+        let token_endpoint = url.replace("/mcp", "/token");
+        oauth::save(
+            url,
+            &oauth::Saved {
+                client_id: "client".into(),
+                client_secret: None,
+                token_endpoint,
+                resource: Some(url.into()),
+                access_token: access_token.into(),
+                refresh_token: Some("r1".into()),
+                expires_at: Some(expires_at),
+            },
+        )
+        .unwrap();
+    }
+
+    #[tokio::test]
+    async fn renews_oauth_tokens_that_an_http_server_turns_down() {
+        let (url, requests) = http_server(signed_in_mcp).await;
+        save_tokens(&url, "stale", now_millis() + 3_600_000);
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
+        let saved = oauth::load(&url).unwrap();
+        assert_eq!(saved.access_token, "fresh");
+        assert_eq!(saved.refresh_token.as_deref(), Some("r2"));
+        let tokens_sent: Vec<String> = requests_for(&requests, "initialize")
+            .iter()
+            .map(|request| request.headers["authorization"].clone())
+            .collect();
+        assert_eq!(tokens_sent, ["Bearer stale", "Bearer fresh"]);
+    }
+
+    #[tokio::test]
+    async fn renews_expired_oauth_tokens_before_sending_them() {
+        let (url, requests) = http_server(signed_in_mcp).await;
+        save_tokens(&url, "stale", now_millis() - 1);
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+        let tokens_sent: Vec<String> = requests_for(&requests, "initialize")
+            .iter()
+            .map(|request| request.headers["authorization"].clone())
+            .collect();
+        assert_eq!(tokens_sent, ["Bearer fresh"]);
+    }
+
+    #[tokio::test]
+    async fn asks_to_sign_in_when_an_http_server_needs_it() {
+        let (url, _) = http_server(signed_in_mcp).await;
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "MCP server web needs sign-in: run /mcp login web"
+        );
+        let (url, _) = http_server(signed_in_mcp).await;
+        let mut config = http_config(&url);
+        config
+            .headers
+            .insert("authorization".into(), "Bearer wrong".into());
+        assert_eq!(
+            mcp.add(start("keyed".into(), Scope::Global, config).await)
+                .status,
+            "MCP server keyed failed: server answered initialize with status 401"
+        );
     }
 
     #[tokio::test]
