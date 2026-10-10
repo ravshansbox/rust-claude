@@ -45,10 +45,14 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         .map_err(|error| format!("failed to read {path}: {error}"))?;
     let mut old_text = old_text.to_string();
     let mut new_text = argument(input, "new_text")?.to_string();
-    if uses_crlf(&content) {
+    let crlf = uses_crlf(&content);
+    if crlf {
         new_text = to_crlf(&new_text);
-        if count_matches(&content, &old_text) == 0 && !old_text.contains('\r') {
-            old_text = to_crlf(&old_text);
+        if old_text.contains('\n') && !old_text.contains('\r') {
+            let converted = to_crlf(&old_text);
+            if count_matches(&content, &converted) > 0 {
+                old_text = converted;
+            }
         }
     }
     match count_matches(&content, &old_text) {
@@ -57,22 +61,20 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         _ if replace_all => {}
         count => return Err(format!("old_text matches {count} times in {path}")),
     }
-    let (content, message) = if replace_all {
-        let count = content.matches(old_text.as_str()).count();
+    // A leading line break matched as the `\n` of a `\r\n` pair takes its `\r`
+    // along, so the CRLF replacement does not leave a stray `\r` behind.
+    let absorb_cr = crlf && old_text.starts_with('\n');
+    let limit = if replace_all { usize::MAX } else { 1 };
+    let (content, count) = replace(&content, &old_text, &new_text, limit, absorb_cr);
+    let message = if replace_all {
         let noun = if count == 1 {
             "replacement"
         } else {
             "replacements"
         };
-        (
-            content.replace(&old_text, &new_text),
-            format!("edited {path} ({count} {noun})"),
-        )
+        format!("edited {path} ({count} {noun})")
     } else {
-        (
-            content.replacen(&old_text, &new_text, 1),
-            format!("edited {path}"),
-        )
+        format!("edited {path}")
     };
     replace_file(path, content)
         .await
@@ -89,6 +91,34 @@ fn uses_crlf(content: &str) -> bool {
 
 fn to_crlf(text: &str) -> String {
     text.replace("\r\n", "\n").replace('\n', "\r\n")
+}
+
+/// Replaces up to `limit` non-overlapping matches, returning the new text and
+/// the number of replacements. With `absorb_cr`, a `\r` right before a match
+/// is replaced too.
+fn replace(
+    content: &str,
+    old_text: &str,
+    new_text: &str,
+    limit: usize,
+    absorb_cr: bool,
+) -> (String, usize) {
+    let mut result = String::with_capacity(content.len());
+    let mut end = 0;
+    let mut count = 0;
+    for (index, matched) in content.match_indices(old_text).take(limit) {
+        let start = if absorb_cr && content[end..index].ends_with('\r') {
+            index - 1
+        } else {
+            index
+        };
+        result.push_str(&content[end..start]);
+        result.push_str(new_text);
+        end = index + matched.len();
+        count += 1;
+    }
+    result.push_str(&content[end..]);
+    (result, count)
 }
 
 fn count_matches(content: &str, pattern: &str) -> usize {
@@ -233,6 +263,43 @@ mod tests {
             Ok(format!("edited {}", file.path().display()))
         );
         assert_eq!(file.content(), "first\r\nsecond\r\ntwo\r\n");
+    }
+
+    #[tokio::test]
+    async fn keeps_crlf_when_old_text_starts_with_line_break() {
+        let file = TemporaryFile::new("crlf-leading-break", "a();\r\n    gone();\r\nb();\r\n");
+        let input = json!({ "path": file.path(), "old_text": "\n    gone();", "new_text": "" });
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {}", file.path().display()))
+        );
+        assert_eq!(file.content(), "a();\r\nb();\r\n");
+
+        let file = TemporaryFile::new("crlf-leading-break-replace", "x\r\nfoo\r\nfoo");
+        let input = json!({
+            "path": file.path(),
+            "old_text": "\nfoo",
+            "new_text": "\nbar",
+            "replace_all": true,
+        });
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {} (2 replacements)", file.path().display()))
+        );
+        assert_eq!(file.content(), "x\r\nbar\r\nbar");
+    }
+
+    #[tokio::test]
+    async fn keeps_crlf_when_only_lf_spelling_of_old_text_matches() {
+        // A mixed file: the CRLF spelling of old_text is missing, so the
+        // edit falls back to the text as given.
+        let file = TemporaryFile::new("crlf-mixed", "a\r\nfoo\nbar\r\n");
+        let input = json!({ "path": file.path(), "old_text": "\nfoo\nbar", "new_text": "" });
+        assert_eq!(
+            call("edit", &input).await,
+            Ok(format!("edited {}", file.path().display()))
+        );
+        assert_eq!(file.content(), "a\r\n");
     }
 
     #[cfg(unix)]
