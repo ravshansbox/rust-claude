@@ -114,7 +114,7 @@ async fn restart_mcp_server(
     };
     let _ = events.send(UiEvent::McpRestarting {
         name,
-        label: server.label.clone(),
+        scope: server.scope,
         notice,
     });
     let _ = requests.send(Request::ReplaceMcpServer(server.started.await));
@@ -302,8 +302,13 @@ async fn run_loop(
     let background_events = event_tx.clone();
     app.queue = agent.queue.clone();
     let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+    app.start_mcp_servers(
+        startup
+            .servers
+            .iter()
+            .map(|server| (server.name.as_str(), server.scope)),
+    );
     for server in startup.servers {
-        app.start_mcp_server(&server.name, &server.label);
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
             let _ = mcp_tx.send(server.started.await);

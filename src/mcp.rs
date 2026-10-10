@@ -1231,13 +1231,16 @@ pub type Starting = std::pin::Pin<Box<dyn Future<Output = Started> + Send>>;
 
 pub struct StartingServer {
     pub name: String,
-    pub label: String,
+    pub scope: Scope,
     pub started: Starting,
 }
 
 pub struct Added {
     pub name: String,
     pub status: String,
+    /// The server's name with its tool count or why it did not load.
+    pub summary: String,
+    pub failed: bool,
     pub diagnostics: Vec<String>,
 }
 
@@ -1250,7 +1253,7 @@ pub struct Startup {
 
 fn starting(name: String, scope: Scope, config: ServerConfig) -> StartingServer {
     StartingServer {
-        label: format!("{scope} MCP server: {name}"),
+        scope,
         started: Box::pin(start(name.clone(), scope, config)),
         name,
     }
@@ -1308,9 +1311,21 @@ impl Mcp {
     pub fn add(&mut self, started: Started) -> Added {
         let name = started.name.clone();
         let (diagnostics, status) = self.add_server(started);
+        let summary = match &status {
+            Ok(_) => {
+                let tools = self.servers.last().map_or(0, |server| server.tools.len());
+                format!("{name} ({tools} tools)")
+            }
+            Err(failed) if failed.starts_with(&format!("MCP server {name} {NEEDS_SIGN_IN}")) => {
+                format!("{name} ({NEEDS_SIGN_IN})")
+            }
+            Err(_) => format!("{name} (failed)"),
+        };
         Added {
             name,
+            failed: status.is_err(),
             status: status.unwrap_or_else(|failed| failed),
+            summary,
             diagnostics,
         }
     }
@@ -2716,6 +2731,26 @@ done
         );
         assert_eq!(added.status, "loaded global MCP server: test (0 tools)");
         assert!(mcp.diagnostics.is_empty());
+    }
+
+    #[tokio::test]
+    async fn sums_up_each_server_in_short() {
+        let mut mcp = Mcp::default();
+        let added = mcp.add(start("test".into(), Scope::Project, echo_server()).await);
+        assert_eq!(
+            (added.summary.as_str(), added.failed),
+            ("test (1 tools)", false)
+        );
+        let added = mcp.add(failed_start("broken", "command is missing"));
+        assert_eq!(
+            (added.summary.as_str(), added.failed),
+            ("broken (failed)", true)
+        );
+        let added = mcp.add(failed_start("figma", "needs sign-in: run /mcp login figma"));
+        assert_eq!(
+            (added.summary.as_str(), added.failed),
+            ("figma (needs sign-in)", true)
+        );
     }
 
     #[tokio::test]
