@@ -544,6 +544,11 @@ impl Agent {
                 usage,
                 retried,
             } = self.request(messages, None, &mut on_event).await?;
+            // A refusal can arrive partway through a reply, so the text so far
+            // is incomplete. Failing throws it away and keeps its tokens.
+            if stop_reason == "refusal" {
+                bail!("the model declined to answer");
+            }
             self.messages.push(json!({
                 "role": "assistant",
                 "content": content,
@@ -685,6 +690,32 @@ mod tests {
         assert_eq!(api.requests().await.len(), 2);
         let usage = agent.stats().usage;
         assert_eq!((usage.input, usage.output), (501, 2));
+    }
+
+    #[tokio::test]
+    async fn discards_a_reply_the_model_declined_partway_through() {
+        let refusal = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 10, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial answer" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
+            json!({ "type": "message_stop" }),
+        ]);
+        let api = MockApi::start(vec![refusal, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let declined = agent.prompt("hi", &[], |_| {}).await;
+        let next = agent.prompt("again", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        let message = declined.unwrap_err().to_string();
+        assert!(message.contains("declined to answer"), "{message}");
+        next.unwrap();
+        let requests = api.requests().await;
+        let resent = requests[1]["messages"].to_string();
+        assert!(!resent.contains("partial answer"), "{resent}");
+        assert!(resent.contains("again"), "{resent}");
+        let usage = agent.stats().usage;
+        assert_eq!((usage.input, usage.output), (11, 6));
     }
 
     #[tokio::test]
