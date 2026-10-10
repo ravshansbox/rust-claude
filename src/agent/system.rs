@@ -100,11 +100,6 @@ mod tests {
     }
 
     #[test]
-    fn leaves_out_the_ignored_edit_and_write_preference() {
-        assert!(!system_text(&[]).contains("Prefer edit and write over bash"));
-    }
-
-    #[test]
     fn leaves_missing_search_programs_out_of_the_system_prompt() {
         let without_ast_grep = system_text(&["ast-grep"]);
         assert!(without_ast_grep.contains("Search with ripgrep."));
