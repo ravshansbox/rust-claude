@@ -252,14 +252,14 @@ mod tests {
         let mut app = new_app();
         for progress in [
             crate::update::Progress::Available("v0.2.0".into()),
-            crate::update::Progress::Ready("v0.2.0".into()),
+            crate::update::Progress::Ready("v0.2.0".into(), std::time::Duration::from_secs(125)),
         ] {
             handle_agent_event(UiEvent::Update(progress), &mut app);
         }
         let shown = screen(&mut app);
         let available = shown.find("update v0.2.0 available").expect(&shown);
         let ready = shown
-            .find("installed v0.2.0, restart rust-claude to use it")
+            .find("installed v0.2.0 in 2m 5s, restart rust-claude to use it")
             .expect(&shown);
         assert!(available < ready, "{shown}");
     }
