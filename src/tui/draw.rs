@@ -2,7 +2,7 @@ use super::{
     App, HistorySearch, Picker, display_model,
     input::{input_cursor, input_rows},
     render::{borrowed_line, theme, wrapped_height},
-    selection::highlight_selection,
+    selection::{highlight_selection, show_copied_notice},
     status::{format_context, format_quota, format_stats},
 };
 use ratatui::{
@@ -103,6 +103,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         conversation_area,
     );
     highlight_selection(app, frame.buffer_mut());
+    show_copied_notice(app, frame.buffer_mut());
     if let Some((view, height, list)) = panel {
         let area = Rect {
             y: chat.y + chat.height - height,
