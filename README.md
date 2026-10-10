@@ -208,6 +208,8 @@ Syntax highlighting in tool calls and in code blocks in replies uses the GitHub 
 | --- | --- |
 | `/compact` | Summarise the conversation to free context |
 | `/context` | Show what fills the context |
+| `/mcp login <server>` | Sign in to an MCP server. See [Signing in to MCP servers](#signing-in-to-mcp-servers) |
+| `/mcp logout <server>` | Remove the saved sign-in for an MCP server and start it again |
 | `/model [id]` | Select a model. The picker shows the latest model in each class. An id must be in the list of available models |
 | `/new` | Start a new session |
 | `/quit` | Quit |
