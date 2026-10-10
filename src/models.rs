@@ -36,6 +36,14 @@ fn find(model: &str) -> Option<&'static Model> {
     MODELS.iter().find(|candidate| candidate.id == model)
 }
 
+pub fn next_known(model: &str) -> &'static str {
+    let index = MODELS
+        .iter()
+        .position(|candidate| candidate.id == model)
+        .map_or(0, |index| (index + 1) % MODELS.len());
+    MODELS[index].id
+}
+
 pub fn context_window(model: &str) -> u64 {
     find(model).map_or(0, |model| model.context_window)
 }
