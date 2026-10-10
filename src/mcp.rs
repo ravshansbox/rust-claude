@@ -39,6 +39,8 @@ struct ServerConfig {
     env: HashMap<String, String>,
     cwd: Option<String>,
     url: Option<String>,
+    #[serde(default)]
+    headers: HashMap<String, String>,
     enabled: Option<bool>,
     timeout: Option<u64>,
 }
@@ -142,6 +144,23 @@ struct Pending {
 }
 
 impl Pending {
+    fn answer(&self, id: u64, result: Result<Value, String>) {
+        let sender = self
+            .senders
+            .lock()
+            .ok()
+            .and_then(|mut senders| senders.remove(&id));
+        if let Some(sender) = sender {
+            let _ = sender.send(result);
+        }
+    }
+
+    fn is_waiting(&self, id: u64) -> bool {
+        self.senders
+            .lock()
+            .is_ok_and(|senders| senders.contains_key(&id))
+    }
+
     fn close(&self) {
         self.closed.store(true, Ordering::SeqCst);
         if let Ok(mut senders) = self.senders.lock() {
@@ -155,7 +174,7 @@ struct PendingGuard<'a> {
     id: u64,
     /// Where to tell the server the request was abandoned; `None` for
     /// `initialize`, which must never be cancelled.
-    writer: Option<&'a mpsc::UnboundedSender<String>>,
+    writer: Option<&'a mpsc::UnboundedSender<Value>>,
 }
 
 impl Drop for PendingGuard<'_> {
@@ -166,22 +185,23 @@ impl Drop for PendingGuard<'_> {
             .lock()
             .is_ok_and(|mut senders| senders.remove(&self.id).is_some());
         if abandoned && let Some(writer) = self.writer {
-            let _ = writer.send(frame(&json!({
+            let _ = writer.send(json!({
                 "jsonrpc": "2.0",
                 "method": "notifications/cancelled",
                 "params": { "requestId": self.id, "reason": "the client stopped waiting" },
-            })));
+            }));
         }
     }
 }
 
 struct Connection {
-    writer: mpsc::UnboundedSender<String>,
+    writer: mpsc::UnboundedSender<Value>,
     pending: Arc<Pending>,
     next_id: AtomicU64,
     stderr: Arc<Mutex<Vec<u8>>>,
     timeout: Duration,
-    _process_group: ServerGroup,
+    _process_group: Option<ServerGroup>,
+    _session: Option<HttpSession>,
 }
 
 /// The server's process group, shared by the connection and the task that
@@ -207,10 +227,11 @@ fn frame(message: &Value) -> String {
 /// cancelled, so the server never sees a line cut off midway.
 async fn write_messages(
     mut stdin: ChildStdin,
-    mut lines: mpsc::UnboundedReceiver<String>,
+    mut messages: mpsc::UnboundedReceiver<Value>,
     pending: Arc<Pending>,
 ) {
-    while let Some(line) = lines.recv().await {
+    while let Some(message) = messages.recv().await {
+        let line = frame(&message);
         if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
             break;
         }
@@ -220,7 +241,7 @@ async fn write_messages(
 
 async fn read_messages(
     stdout: impl tokio::io::AsyncRead + Unpin,
-    writer: mpsc::UnboundedSender<String>,
+    writer: mpsc::UnboundedSender<Value>,
     pending: Arc<Pending>,
 ) {
     let mut stdout = BufReader::new(stdout);
@@ -250,44 +271,43 @@ async fn read_messages(
         let Ok(message) = serde_json::from_slice::<Value>(&line) else {
             continue;
         };
-        let id = &message["id"];
-        if let Some(method) = message["method"].as_str() {
-            if id.is_null() {
-                continue;
-            }
-            let reply = if method == "ping" {
-                json!({ "jsonrpc": "2.0", "id": id, "result": {} })
-            } else {
-                json!({
-                    "jsonrpc": "2.0",
-                    "id": id,
-                    "error": { "code": -32601, "message": format!("method not found: {method}") },
-                })
-            };
-            let _ = writer.send(frame(&reply));
-            continue;
-        }
-        let Some(id) = id.as_u64() else {
-            continue;
-        };
-        let sender = pending
-            .senders
-            .lock()
-            .ok()
-            .and_then(|mut senders| senders.remove(&id));
-        if let Some(sender) = sender {
-            let result = match message.get("error") {
-                Some(error) => Err(format!(
-                    "{} ({})",
-                    error["message"].as_str().unwrap_or("unknown error"),
-                    error["code"]
-                )),
-                None => Ok(message["result"].clone()),
-            };
-            let _ = sender.send(result);
-        }
+        handle_message(&message, &writer, &pending);
     }
     pending.close();
+}
+
+/// Answers a request from the server, or hands a response to the request
+/// waiting for it. Notifications are ignored.
+fn handle_message(message: &Value, writer: &mpsc::UnboundedSender<Value>, pending: &Pending) {
+    let id = &message["id"];
+    if let Some(method) = message["method"].as_str() {
+        if id.is_null() {
+            return;
+        }
+        let reply = if method == "ping" {
+            json!({ "jsonrpc": "2.0", "id": id, "result": {} })
+        } else {
+            json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "error": { "code": -32601, "message": format!("method not found: {method}") },
+            })
+        };
+        let _ = writer.send(reply);
+        return;
+    }
+    let Some(id) = id.as_u64() else {
+        return;
+    };
+    let result = match message.get("error") {
+        Some(error) => Err(format!(
+            "{} ({})",
+            error["message"].as_str().unwrap_or("unknown error"),
+            error["code"]
+        )),
+        None => Ok(message["result"].clone()),
+    };
+    pending.answer(id, result);
 }
 
 async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mutex<Vec<u8>>>) {
@@ -303,7 +323,303 @@ async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mu
     }
 }
 
+const MAX_ERROR_BODY: usize = 500;
+
+/// A Streamable HTTP server. Each message is a POST; the server answers a
+/// request with JSON or an event stream, and other messages with 202.
+struct Http {
+    client: reqwest::Client,
+    url: String,
+    headers: reqwest::header::HeaderMap,
+    session: Mutex<Option<String>>,
+    protocol_version: Mutex<Option<String>>,
+    timeout: Duration,
+}
+
+/// Ends the server's session when the connection is dropped.
+struct HttpSession(Arc<Http>);
+
+impl Drop for HttpSession {
+    fn drop(&mut self) {
+        let session = self
+            .0
+            .session
+            .lock()
+            .ok()
+            .and_then(|session| session.clone());
+        let (Some(session), Ok(runtime)) = (session, tokio::runtime::Handle::try_current()) else {
+            return;
+        };
+        let request = self
+            .0
+            .client
+            .delete(&self.0.url)
+            .headers(self.0.headers.clone())
+            .header("mcp-session-id", session)
+            .timeout(Duration::from_secs(1));
+        runtime.spawn(async move {
+            let _ = request.send().await;
+        });
+    }
+}
+
+fn error_chain(error: &dyn std::error::Error) -> String {
+    let mut text = error.to_string();
+    let mut source = error.source();
+    while let Some(error) = source {
+        text.push_str(&format!(": {error}"));
+        source = error.source();
+    }
+    text
+}
+
+/// Posts messages in order, without waiting for the answers to requests, so
+/// a notification never overtakes the request queued before it.
+async fn post_messages(
+    http: Arc<Http>,
+    mut messages: mpsc::UnboundedReceiver<Value>,
+    writer: mpsc::WeakUnboundedSender<Value>,
+    pending: Arc<Pending>,
+) {
+    while let Some(message) = messages.recv().await {
+        if message["method"].is_string() && !message["id"].is_null() {
+            tokio::spawn(
+                http.clone()
+                    .exchange(message, writer.clone(), pending.clone()),
+            );
+        } else {
+            let _ = http.post(&message).await;
+        }
+    }
+}
+
+impl Http {
+    async fn post(&self, message: &Value) -> Result<reqwest::Response, String> {
+        let method = message["method"].as_str().unwrap_or("a reply");
+        let mut request = self
+            .client
+            .post(&self.url)
+            .headers(self.headers.clone())
+            .header(
+                reqwest::header::ACCEPT,
+                "application/json, text/event-stream",
+            )
+            .json(message);
+        if let Some(session) = self.session.lock().ok().and_then(|session| session.clone()) {
+            request = request.header("mcp-session-id", session);
+        }
+        if let Some(version) = self
+            .protocol_version
+            .lock()
+            .ok()
+            .and_then(|version| version.clone())
+        {
+            request = request.header("mcp-protocol-version", version);
+        }
+        let response = request
+            .send()
+            .await
+            .map_err(|error| format!("cannot reach {}: {}", self.url, error_chain(&error)))?;
+        if let Some(session) = response
+            .headers()
+            .get("mcp-session-id")
+            .and_then(|session| session.to_str().ok())
+            && let Ok(mut current) = self.session.lock()
+        {
+            *current = Some(session.to_string());
+        }
+        let status = response.status();
+        if status.is_success() {
+            return Ok(response);
+        }
+        let body = response.text().await.unwrap_or_default();
+        let body = body.trim();
+        let body: String = body.chars().take(MAX_ERROR_BODY).collect();
+        Err(if body.is_empty() {
+            format!("server answered {method} with status {}", status.as_u16())
+        } else {
+            format!(
+                "server answered {method} with status {}: {body}",
+                status.as_u16()
+            )
+        })
+    }
+
+    async fn exchange(
+        self: Arc<Self>,
+        message: Value,
+        writer: mpsc::WeakUnboundedSender<Value>,
+        pending: Arc<Pending>,
+    ) {
+        let Some(id) = message["id"].as_u64() else {
+            return;
+        };
+        let method = message["method"].as_str().unwrap_or_default().to_string();
+        let handle = |reply: &Value| {
+            if method == "initialize"
+                && reply["id"] == id
+                && let Some(version) = reply["result"]["protocolVersion"].as_str()
+                && let Ok(mut current) = self.protocol_version.lock()
+            {
+                *current = Some(version.to_string());
+            }
+            if let Some(writer) = writer.upgrade() {
+                handle_message(reply, &writer, &pending);
+            }
+        };
+        let replies = self.read_replies(&message, id, &pending, handle);
+        let error = match tokio::time::timeout(self.timeout, replies).await {
+            Ok(Ok(())) => format!("server ended the reply to {method} without answering it"),
+            Ok(Err(error)) => error,
+            Err(_) => return,
+        };
+        pending.answer(id, Err(error));
+    }
+
+    async fn read_replies(
+        &self,
+        message: &Value,
+        id: u64,
+        pending: &Pending,
+        mut handle: impl FnMut(&Value),
+    ) -> Result<(), String> {
+        let method = message["method"].as_str().unwrap_or_default();
+        let mut response = self.post(message).await?;
+        if matches!(response.status().as_u16(), 202 | 204) {
+            return Err(format!("server accepted {method} without a reply"));
+        }
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(';').next())
+            .map(|value| value.trim().to_ascii_lowercase())
+            .unwrap_or_default();
+        let too_long = || format!("server sent a reply longer than {} MiB", MAX_LINE >> 20);
+        let read_error = |error: reqwest::Error| {
+            format!("cannot read the reply to {method}: {}", error_chain(&error))
+        };
+        match content_type.as_str() {
+            "application/json" => {
+                let mut body = Vec::new();
+                while let Some(chunk) = response.chunk().await.map_err(read_error)? {
+                    body.extend_from_slice(&chunk);
+                    if body.len() > MAX_LINE {
+                        return Err(too_long());
+                    }
+                }
+                let body: Value = serde_json::from_slice(&body)
+                    .map_err(|error| format!("server sent invalid JSON: {error}"))?;
+                match body {
+                    Value::Array(replies) => replies.iter().for_each(&mut handle),
+                    reply => handle(&reply),
+                }
+                Ok(())
+            }
+            "text/event-stream" => {
+                let mut buffer = Vec::new();
+                let mut data = Vec::new();
+                let mut is_message = true;
+                while let Some(chunk) = response.chunk().await.map_err(read_error)? {
+                    buffer.extend_from_slice(&chunk);
+                    while let Some(end) = buffer.iter().position(|&byte| byte == b'\n') {
+                        let mut line: Vec<u8> = buffer.drain(..=end).collect();
+                        line.pop();
+                        if line.last() == Some(&b'\r') {
+                            line.pop();
+                        }
+                        if line.is_empty() {
+                            if is_message && let Ok(reply) = serde_json::from_slice::<Value>(&data)
+                            {
+                                handle(&reply);
+                                if !pending.is_waiting(id) {
+                                    return Ok(());
+                                }
+                            }
+                            data.clear();
+                            is_message = true;
+                            continue;
+                        }
+                        let (field, value) = match line.iter().position(|&byte| byte == b':') {
+                            Some(colon) => (&line[..colon], &line[colon + 1..]),
+                            None => (&line[..], &[][..]),
+                        };
+                        let value = value.strip_prefix(b" ").unwrap_or(value);
+                        match field {
+                            b"data" => {
+                                if !data.is_empty() {
+                                    data.push(b'\n');
+                                }
+                                data.extend_from_slice(value);
+                            }
+                            b"event" => is_message = value == b"message",
+                            _ => {}
+                        }
+                        if data.len() > MAX_LINE {
+                            return Err(too_long());
+                        }
+                    }
+                    if buffer.len() > MAX_LINE {
+                        return Err(too_long());
+                    }
+                }
+                Ok(())
+            }
+            other => Err(format!(
+                "server answered {method} with unsupported content type {other:?}"
+            )),
+        }
+    }
+}
+
 impl Connection {
+    fn http(config: &ServerConfig, url: &str) -> Result<Self, String> {
+        if !(url.starts_with("http://") || url.starts_with("https://")) {
+            return Err("url must be an http or https URL".into());
+        }
+        let mut headers = reqwest::header::HeaderMap::new();
+        for (name, value) in &config.headers {
+            let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| format!("invalid header name {name:?}"))?;
+            let value = reqwest::header::HeaderValue::from_str(value)
+                .map_err(|_| format!("invalid value for header {name}"))?;
+            headers.insert(name, value);
+        }
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(30))
+            .build()
+            .map_err(|error| format!("cannot set up HTTP: {error}"))?;
+        let timeout = Duration::from_secs(config.timeout.unwrap_or(DEFAULT_TIMEOUT));
+        let http = Arc::new(Http {
+            client,
+            url: url.to_string(),
+            headers,
+            session: Mutex::new(None),
+            protocol_version: Mutex::new(None),
+            timeout,
+        });
+        let (writer, messages) = mpsc::unbounded_channel();
+        let pending = Arc::new(Pending {
+            senders: Mutex::new(HashMap::new()),
+            closed: AtomicBool::new(false),
+        });
+        tokio::spawn(post_messages(
+            http.clone(),
+            messages,
+            writer.downgrade(),
+            pending.clone(),
+        ));
+        Ok(Self {
+            writer,
+            pending,
+            next_id: AtomicU64::new(1),
+            stderr: Arc::new(Mutex::new(Vec::new())),
+            timeout,
+            _process_group: None,
+            _session: Some(HttpSession(http)),
+        })
+    }
+
     fn spawn(config: &ServerConfig, command: &str) -> Result<Self, String> {
         let home = std::env::var_os("HOME").map(PathBuf::from);
         let mut process = tokio::process::Command::new(expand_home(command, home.as_deref()));
@@ -359,7 +675,8 @@ impl Connection {
             next_id: AtomicU64::new(1),
             stderr: stderr_tail,
             timeout: Duration::from_secs(config.timeout.unwrap_or(DEFAULT_TIMEOUT)),
-            _process_group: ServerGroup(process_group),
+            _process_group: Some(ServerGroup(process_group)),
+            _session: None,
         })
     }
 
@@ -376,14 +693,14 @@ impl Connection {
         }
     }
 
-    fn send(&self, message: &Value) -> Result<(), String> {
+    fn send(&self, message: Value) -> Result<(), String> {
         self.writer
-            .send(frame(message))
+            .send(message)
             .map_err(|_| self.with_stderr("server closed the connection".into()))
     }
 
     fn notify(&self, method: &str) -> Result<(), String> {
-        self.send(&json!({ "jsonrpc": "2.0", "method": method }))
+        self.send(json!({ "jsonrpc": "2.0", "method": method }))
     }
 
     async fn request(&self, method: &str, params: Value) -> Result<Value, String> {
@@ -400,7 +717,7 @@ impl Connection {
         if self.pending.closed.load(Ordering::SeqCst) {
             return Err(self.with_stderr("server closed the connection".into()));
         }
-        self.send(&json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
+        self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
         match tokio::time::timeout(self.timeout, receiver).await {
             Ok(Ok(result)) => result,
             Ok(Err(_)) => Err(self.with_stderr("server closed the connection".into())),
@@ -481,16 +798,20 @@ async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
 }
 
 async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Server, String> {
-    let command = match (config.kind.as_deref(), &config.command, &config.url) {
-        (Some("sse"), _, _) => return Err("the SSE transport is not supported".into()),
-        (Some("http" | "streamable-http"), _, _) | (None, None, Some(_)) => {
-            return Err("HTTP servers are not supported yet".into());
+    let connection = match (config.kind.as_deref(), &config.command, &config.url) {
+        (Some("sse"), _, _) => {
+            return Err(
+                "the SSE transport is not supported; use the server's Streamable HTTP URL".into(),
+            );
         }
-        (None | Some("stdio"), Some(command), _) => command.clone(),
+        (Some("http" | "streamable-http"), _, Some(url)) | (None, None, Some(url)) => {
+            Connection::http(&config, url)?
+        }
+        (Some("http" | "streamable-http"), _, None) => return Err("url is missing".into()),
+        (None | Some("stdio"), Some(command), _) => Connection::spawn(&config, command)?,
         (None | Some("stdio"), None, _) => return Err("command is missing".into()),
         (Some(kind), _, _) => return Err(format!("unknown type {kind:?}")),
     };
-    let connection = Connection::spawn(&config, &command)?;
     let initialize = connection
         .request(
             "initialize",
@@ -918,9 +1239,367 @@ done
             env: HashMap::new(),
             cwd: None,
             url: None,
+            headers: HashMap::new(),
             enabled: None,
             timeout: Some(5),
         }
+    }
+
+    #[derive(Clone)]
+    struct HttpRequest {
+        method: String,
+        headers: HashMap<String, String>,
+        body: Value,
+    }
+
+    struct HttpReply {
+        status: u16,
+        headers: Vec<(String, String)>,
+        body: String,
+    }
+
+    impl HttpReply {
+        fn json(body: Value) -> Self {
+            Self {
+                status: 200,
+                headers: vec![("content-type".into(), "application/json".into())],
+                body: body.to_string(),
+            }
+        }
+
+        fn events(events: &[Value]) -> Self {
+            Self {
+                status: 200,
+                headers: vec![("content-type".into(), "text/event-stream".into())],
+                body: events
+                    .iter()
+                    .map(|event| format!("event: message\ndata: {event}\n\n"))
+                    .collect(),
+            }
+        }
+
+        fn status(status: u16, body: &str) -> Self {
+            Self {
+                status,
+                headers: Vec::new(),
+                body: body.into(),
+            }
+        }
+
+        fn stall() -> Self {
+            Self::status(0, "")
+        }
+
+        fn with_header(mut self, name: &str, value: &str) -> Self {
+            self.headers.push((name.into(), value.into()));
+            self
+        }
+    }
+
+    type Requests = Arc<Mutex<Vec<HttpRequest>>>;
+
+    /// A local HTTP server that answers each request with `handler` and
+    /// records the requests it received.
+    async fn http_server(
+        handler: impl Fn(&HttpRequest) -> HttpReply + Send + Sync + 'static,
+    ) -> (String, Requests) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/mcp", listener.local_addr().unwrap());
+        let requests: Requests = Arc::new(Mutex::new(Vec::new()));
+        let recorded = requests.clone();
+        let handler = Arc::new(handler);
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let handler = handler.clone();
+                let recorded = recorded.clone();
+                tokio::spawn(async move {
+                    let Some(request) = read_http_request(&mut stream).await else {
+                        return;
+                    };
+                    recorded.lock().unwrap().push(request.clone());
+                    let reply = handler(&request);
+                    if reply.status == 0 {
+                        tokio::time::sleep(Duration::from_secs(30)).await;
+                        return;
+                    }
+                    let mut response = format!(
+                        "HTTP/1.1 {} X\r\ncontent-length: {}\r\nconnection: close\r\n",
+                        reply.status,
+                        reply.body.len()
+                    );
+                    for (name, value) in reply.headers {
+                        response.push_str(&format!("{name}: {value}\r\n"));
+                    }
+                    response.push_str("\r\n");
+                    response.push_str(&reply.body);
+                    let _ = stream.write_all(response.as_bytes()).await;
+                    let _ = stream.shutdown().await;
+                });
+            }
+        });
+        (url, requests)
+    }
+
+    async fn read_http_request(stream: &mut tokio::net::TcpStream) -> Option<HttpRequest> {
+        let mut data = Vec::new();
+        let mut chunk = [0u8; 8192];
+        let header_end = loop {
+            if let Some(end) = data.windows(4).position(|window| window == b"\r\n\r\n") {
+                break end + 4;
+            }
+            let read = stream.read(&mut chunk).await.ok()?;
+            if read == 0 {
+                return None;
+            }
+            data.extend_from_slice(&chunk[..read]);
+        };
+        let head = String::from_utf8_lossy(&data[..header_end]).to_string();
+        let mut lines = head.lines();
+        let method = lines.next()?.split(' ').next()?.to_string();
+        let headers: HashMap<String, String> = lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.trim().to_lowercase(), value.trim().to_string()))
+            .collect();
+        let length: usize = headers
+            .get("content-length")
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(0);
+        while data.len() < header_end + length {
+            let read = stream.read(&mut chunk).await.ok()?;
+            if read == 0 {
+                return None;
+            }
+            data.extend_from_slice(&chunk[..read]);
+        }
+        let body = serde_json::from_slice(&data[header_end..]).unwrap_or(Value::Null);
+        Some(HttpRequest {
+            method,
+            headers,
+            body,
+        })
+    }
+
+    /// Answers like a Streamable HTTP server that starts session `s1`.
+    fn http_mcp(request: &HttpRequest) -> HttpReply {
+        let id = &request.body["id"];
+        match request.body["method"].as_str() {
+            Some("initialize") => HttpReply::json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": { "tools": {} },
+                    "serverInfo": { "name": "t", "version": "1" },
+                },
+            }))
+            .with_header("mcp-session-id", "s1"),
+            Some("tools/list") => HttpReply::json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "tools": [{ "name": "echo", "inputSchema": { "type": "object" } }] },
+            })),
+            Some("tools/call") => HttpReply::json(json!({
+                "jsonrpc": "2.0",
+                "id": id,
+                "result": { "content": [{ "type": "text", "text": "pong" }] },
+            })),
+            _ => HttpReply::status(202, ""),
+        }
+    }
+
+    fn http_config(url: &str) -> ServerConfig {
+        ServerConfig {
+            kind: None,
+            command: None,
+            args: Vec::new(),
+            env: HashMap::new(),
+            cwd: None,
+            url: Some(url.into()),
+            headers: HashMap::new(),
+            enabled: None,
+            timeout: Some(5),
+        }
+    }
+
+    fn requests_for(requests: &Requests, method: &str) -> Vec<HttpRequest> {
+        requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|request| request.body["method"] == method)
+            .cloned()
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn calls_http_server_tools() {
+        let (url, requests) = http_server(http_mcp).await;
+        let mut config = http_config(&url);
+        config.kind = Some("http".into());
+        config
+            .headers
+            .insert("Authorization".into(), "Bearer secret".into());
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, config).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
+        let initialize = &requests_for(&requests, "initialize")[0];
+        assert_eq!(initialize.method, "POST");
+        assert_eq!(initialize.headers["authorization"], "Bearer secret");
+        assert_eq!(
+            initialize.headers["accept"],
+            "application/json, text/event-stream"
+        );
+        assert!(!initialize.headers.contains_key("mcp-session-id"));
+        for method in ["notifications/initialized", "tools/list", "tools/call"] {
+            let request = &requests_for(&requests, method)[0];
+            assert_eq!(request.headers["mcp-session-id"], "s1", "{method}");
+            assert_eq!(
+                request.headers["mcp-protocol-version"], "2025-03-26",
+                "{method}"
+            );
+            assert_eq!(request.headers["authorization"], "Bearer secret");
+        }
+    }
+
+    #[tokio::test]
+    async fn reads_http_replies_sent_as_events() {
+        let (url, requests) = http_server(|request| {
+            let id = &request.body["id"];
+            match request.body["method"].as_str() {
+                Some("tools/call") => HttpReply::events(&[
+                    json!({ "jsonrpc": "2.0", "method": "notifications/progress", "params": {} }),
+                    json!({ "jsonrpc": "2.0", "id": "p1", "method": "ping" }),
+                    json!({
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "result": { "content": [{ "type": "text", "text": "streamed" }] },
+                    }),
+                ]),
+                _ => http_mcp(request),
+            }
+        })
+        .await;
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("streamed".into()))
+        );
+        let mut replies = Vec::new();
+        for _ in 0..50 {
+            replies = requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|request| request.body["id"] == "p1")
+                .map(|request| request.body.clone())
+                .collect();
+            if !replies.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!(
+            replies,
+            [json!({ "jsonrpc": "2.0", "id": "p1", "result": {} })]
+        );
+    }
+
+    #[tokio::test]
+    async fn reports_http_errors() {
+        let (url, _) = http_server(|request| match request.body["method"].as_str() {
+            Some("tools/call") => HttpReply::status(202, ""),
+            Some("tools/list") => HttpReply::status(500, "database is down"),
+            _ => http_mcp(request),
+        })
+        .await;
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+                .status,
+            "MCP server web failed: server answered tools/list with status 500: database is down"
+        );
+        let (url, _) = http_server(|request| match request.body["method"].as_str() {
+            Some("tools/call") => HttpReply::status(202, ""),
+            _ => http_mcp(request),
+        })
+        .await;
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Err("server accepted tools/call without a reply".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn times_out_when_an_http_server_does_not_answer() {
+        let (url, _) = http_server(|request| match request.body["method"].as_str() {
+            Some("tools/call") => HttpReply::stall(),
+            _ => http_mcp(request),
+        })
+        .await;
+        let mut config = http_config(&url);
+        config.timeout = Some(1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, config).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Err("tools/call timed out after 1 seconds".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn rejects_unsupported_http_servers() {
+        let mut mcp = Mcp::default();
+        let mut sse = http_config("http://127.0.0.1:1/sse");
+        sse.kind = Some("sse".into());
+        assert_eq!(
+            mcp.add(start("old".into(), Scope::Global, sse).await)
+                .status,
+            "MCP server old failed: the SSE transport is not supported; use the server's Streamable HTTP URL"
+        );
+        assert_eq!(
+            mcp.add(
+                start(
+                    "ftp".into(),
+                    Scope::Global,
+                    http_config("ftp://example.com")
+                )
+                .await
+            )
+            .status,
+            "MCP server ftp failed: url must be an http or https URL"
+        );
+    }
+
+    #[tokio::test]
+    async fn ends_the_http_session_when_dropped() {
+        let (url, requests) = http_server(http_mcp).await;
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        drop(mcp);
+        let mut deleted = Vec::new();
+        for _ in 0..50 {
+            deleted = requests
+                .lock()
+                .unwrap()
+                .iter()
+                .filter(|request| request.method == "DELETE")
+                .map(|request| request.headers["mcp-session-id"].clone())
+                .collect();
+            if !deleted.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        assert_eq!(deleted, ["s1"]);
     }
 
     #[tokio::test]
