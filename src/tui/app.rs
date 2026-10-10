@@ -399,6 +399,9 @@ impl App {
         self.scroll_from_bottom = 0;
     }
 
+    /// Recalls the prompt before. Suggestions for a recalled command or
+    /// `@` stay hidden until the input is edited, so Up and Down keep
+    /// browsing.
     pub(super) fn previous_prompt(&mut self) {
         let index = match self.history_index {
             Some(index) => index.saturating_sub(1),
@@ -408,6 +411,7 @@ impl App {
         self.history_index = Some(index);
         self.input = self.prompt_history[index].clone();
         self.cursor = self.input.len();
+        self.commands_dismissed = true;
     }
 
     pub(super) fn next_prompt(&mut self) {
@@ -422,6 +426,7 @@ impl App {
             self.input.clear();
         }
         self.cursor = self.input.len();
+        self.commands_dismissed = self.history_index.is_some();
     }
 
     pub(super) fn visible_suggestions(&self) -> Option<Suggestions> {
