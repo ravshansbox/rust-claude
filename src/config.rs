@@ -100,8 +100,14 @@ pub fn private_file() -> OpenOptions {
 
 /// Writes a file only the user can read and write, through a temporary file
 /// renamed over it, so readers never see a half-written file and a failed
-/// write keeps the old one.
+/// write keeps the old one. A symlink there stays, and its file is replaced.
 pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    let target = match std::fs::canonicalize(path) {
+        Ok(target) => target,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => path.to_path_buf(),
+        Err(error) => return Err(error),
+    };
+    let path = target.as_path();
     // A file a crash left under the temporary name may let others read it.
     #[cfg(unix)]
     let permissions = {
@@ -175,8 +181,30 @@ pub(crate) fn permissions(path: &Path) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{WRITES, replace_file, test_dir};
+    use super::{WRITES, permissions, replace_file, test_dir, write_private_file};
     use std::sync::atomic::Ordering;
+
+    #[cfg(unix)]
+    #[test]
+    fn saves_through_symlinked_file() {
+        let base =
+            std::env::temp_dir().join(format!("rust-claude-linked-save-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir(&base).unwrap();
+        let target = base.join("dotfiles-settings.json");
+        let link = base.join("settings.json");
+        std::fs::write(&target, "{}").unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let result = write_private_file(&link, b"{\"model\":\"opus\"}");
+        let found = (
+            std::fs::symlink_metadata(&link).unwrap().is_symlink(),
+            std::fs::read_to_string(&target).unwrap(),
+            permissions(&target),
+        );
+        std::fs::remove_dir_all(&base).unwrap();
+        result.unwrap();
+        assert_eq!(found, (true, "{\"model\":\"opus\"}".into(), Some(0o600)));
+    }
 
     /// A file someone links to from the next temporary names is left alone.
     #[cfg(unix)]
