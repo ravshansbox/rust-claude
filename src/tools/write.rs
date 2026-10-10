@@ -201,4 +201,22 @@ mod tests {
         let file_type = std::fs::symlink_metadata(fifo.path()).unwrap().file_type();
         assert!(file_type.is_fifo());
     }
+
+    #[tokio::test]
+    async fn writes_file_with_longest_name() {
+        let directory = TemporaryDir::new("write-long-name");
+        let path = directory.path().join("a".repeat(255));
+        let input = json!({ "path": path, "content": "old" });
+        assert_eq!(
+            call("write", &input).await,
+            Ok(format!("wrote {}", path.display()))
+        );
+        let input = json!({ "path": path, "content": "new" });
+        assert_eq!(
+            call("write", &input).await,
+            Ok(format!("wrote {}", path.display()))
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(directory.entries(), ["a".repeat(255)]);
+    }
 }
