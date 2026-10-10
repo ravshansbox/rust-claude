@@ -138,4 +138,47 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
         assert_eq!(directory.entries(), ["file.txt"]);
     }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writes_all_names_of_hard_linked_file() {
+        let directory = TemporaryDir::new("write-hard-link");
+        let path = directory.path().join("file.txt");
+        let other = directory.path().join("other.txt");
+        std::fs::write(&path, "old").unwrap();
+        std::fs::hard_link(&path, &other).unwrap();
+        let input = json!({ "path": path, "content": "new" });
+        assert_eq!(
+            call("write", &input).await,
+            Ok(format!("wrote {}", path.display()))
+        );
+        assert_eq!(std::fs::read_to_string(&other).unwrap(), "new");
+        assert_eq!(directory.entries(), ["file.txt", "other.txt"]);
+    }
+
+    /// Needs the user to be in a second group, as most users are.
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn keeps_group_of_file() {
+        use std::os::unix::fs::MetadataExt;
+        let directory = TemporaryDir::new("write-group");
+        let path = directory.path().join("file.txt");
+        std::fs::write(&path, "old").unwrap();
+        let current = std::fs::metadata(&path).unwrap().gid();
+        let mut groups = vec![0; 256];
+        // SAFETY: the buffer holds as many groups as the length passed.
+        let count = unsafe { libc::getgroups(groups.len() as i32, groups.as_mut_ptr()) };
+        groups.truncate(count.max(0) as usize);
+        let Some(&group) = groups.iter().find(|&&group| group != current) else {
+            return;
+        };
+        std::os::unix::fs::chown(&path, None, Some(group)).unwrap();
+        let input = json!({ "path": path, "content": "new" });
+        assert_eq!(
+            call("write", &input).await,
+            Ok(format!("wrote {}", path.display()))
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "new");
+        assert_eq!(std::fs::metadata(&path).unwrap().gid(), group);
+    }
 }
