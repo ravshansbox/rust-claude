@@ -515,10 +515,10 @@ mod tests {
         handle_input(Event::Paste("/".into()), &mut app, |_| {});
         let shown = screen(&mut app);
         assert!(shown.contains("Earlier reply"), "{shown}");
-        assert!(shown.contains("/new"), "{shown}");
-        assert!(!shown.contains("/skill:skill03"), "{shown}");
+        assert!(shown.contains("/compact"), "{shown}");
+        assert!(!shown.contains("/skill:skill04"), "{shown}");
         assert!(shown.contains('█'), "{shown}");
-        for _ in 0..36 {
+        for _ in 0..35 {
             press(&mut app, KeyCode::Down);
         }
         let shown = screen(&mut app);

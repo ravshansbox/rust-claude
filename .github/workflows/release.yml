@@ -38,7 +38,7 @@ jobs:
           next=$(git cliff --bumped-version)
           next=${next#v}
           if git rev-parse --quiet --verify "refs/tags/v$next" >/dev/null; then
-            echo "No feat or fix commits since v$next, skipping release"
+            echo "No commits that change the version since v$next, skipping release"
           else
             echo "version=$next" >> "$GITHUB_OUTPUT"
           fi
