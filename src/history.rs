@@ -37,8 +37,22 @@ pub fn history_path() -> Option<PathBuf> {
     Some(crate::config::dir()?.join("history.jsonl"))
 }
 
-pub fn append(path: &Path, entry: &Entry) -> Result<()> {
+/// Locks the history file against other running copies until the returned
+/// file is dropped. The lock is on a file next to it, because trimming
+/// replaces history.jsonl itself.
+fn lock(path: &Path) -> Result<std::fs::File> {
     crate::config::create_private_dir(path.parent().context("invalid history path")?)?;
+    let lock = crate::config::private_file()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path.with_extension("jsonl.lock"))?;
+    lock.lock()?;
+    Ok(lock)
+}
+
+pub fn append(path: &Path, entry: &Entry) -> Result<()> {
+    let _lock = lock(path)?;
     crate::config::private_file()
         .create(true)
         .append(true)
@@ -68,18 +82,22 @@ pub fn load(path: &Path) -> Vec<Entry> {
     entries
 }
 
-/// Drops all but the newest `MAX_ENTRIES` prompts, from `entries` and from
-/// the history file, when there are more.
+/// Drops all but the newest `MAX_ENTRIES` prompts from the history file when
+/// `entries` holds more, and sets `entries` to what the file keeps. It reads
+/// the file again so prompts other running copies sent since are kept.
 pub fn trim(path: &Path, entries: &mut Vec<Entry>) -> Result<()> {
     if entries.len() <= MAX_ENTRIES {
         return Ok(());
     }
-    entries.drain(..entries.len() - MAX_ENTRIES);
+    let _lock = lock(path)?;
+    let mut current = load(path);
+    current.drain(..current.len().saturating_sub(MAX_ENTRIES));
     let mut text = String::new();
-    for entry in entries.iter() {
+    for entry in current.iter() {
         text.push_str(&entry.line()?);
     }
     crate::config::write_private_file(path, text.as_bytes())?;
+    *entries = current;
     Ok(())
 }
 
@@ -177,6 +195,30 @@ mod tests {
                 entries[MAX_ENTRIES - 1].prompt,
                 format!("p{}", MAX_ENTRIES + 4)
             );
+        }
+    }
+
+    #[test]
+    fn keeps_prompts_another_copy_sent_after_loading() {
+        let directory =
+            std::env::temp_dir().join(format!("rust-claude-shared-history-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("history.jsonl");
+        let text: String = (0..MAX_ENTRIES + 5)
+            .map(|index| format!("{{\"prompt\":\"p{index}\",\"cwd\":\"/project\"}}\n"))
+            .collect();
+        std::fs::write(&path, text).unwrap();
+        let mut entries = load(&path);
+        // Another running copy sends a prompt after this one loaded.
+        append(&path, &Entry::here("from other copy")).unwrap();
+        let trimmed = trim(&path, &mut entries);
+        let reloaded = load(&path);
+        std::fs::remove_dir_all(&directory).unwrap();
+        trimmed.unwrap();
+        for entries in [entries, reloaded] {
+            assert_eq!(entries.len(), MAX_ENTRIES);
+            assert_eq!(entries[0].prompt, "p6");
+            assert_eq!(entries[MAX_ENTRIES - 1].prompt, "from other copy");
         }
     }
 
