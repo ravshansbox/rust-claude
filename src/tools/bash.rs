@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub(super) fn definition() -> Value {
     json!({
@@ -23,17 +23,33 @@ pub(super) fn definition() -> Value {
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
-    let timeout = match &input["timeout"] {
-        Value::Null => None,
-        value => match value.as_u64() {
-            Some(seconds) if seconds > 0 => Some(seconds),
-            _ => return Err("timeout must be at least 1".into()),
-        },
-    };
+    let timeout = timeout(input)?;
     let mut command = tokio::process::Command::new("bash");
+    command.args(["-c", argument(input, "command")?]);
+    run_command(command, None, timeout).await
+}
+
+pub(super) fn timeout(input: &Value) -> Result<Option<u64>, String> {
+    match &input["timeout"] {
+        Value::Null => Ok(None),
+        value => match value.as_u64() {
+            Some(seconds) if seconds > 0 => Ok(Some(seconds)),
+            _ => Err("timeout must be at least 1".into()),
+        },
+    }
+}
+
+pub(super) async fn run_command(
+    mut command: tokio::process::Command,
+    stdin: Option<String>,
+    timeout: Option<u64>,
+) -> Result<String, String> {
     command
-        .args(["-c", argument(input, "command")?])
-        .stdin(Stdio::null())
+        .stdin(if stdin.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
@@ -42,6 +58,11 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         .spawn()
         .map_err(|error| format!("failed to run command: {error}"))?;
     let mut process_group = ProcessGroup(child.id());
+    if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
+        tokio::spawn(async move {
+            let _ = pipe.write_all(text.as_bytes()).await;
+        });
+    }
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         return Err("failed to capture command output".into());
     };
