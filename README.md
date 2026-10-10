@@ -343,7 +343,7 @@ While a prompt runs, the session is saved after each finished round of tool call
 
 A session is open in one rust-claude at a time, so two copies never write to the same file. Resuming a session that another running rust-claude has open, with `/resume` or `--continue`, shows an error instead.
 
-Quitting while a prompt runs cancels it and saves the session first. Quitting while `/model` loads the model list stops that request. Requests still waiting when you quit, such as a prompt sent just before, are not started.
+Quitting while a prompt runs cancels it and saves the session first. Quitting while `/model` loads the model list stops that request. Requests still waiting when you quit, such as a prompt sent just before, are not started. Quitting waits at most a second for background work, such as listing files for `@`, reading the Git branch or pasting an image.
 
 A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request. This includes a prompt cancelled before it was sent, for example while the sign-in renews at start. A tool call that was still running or waiting when you cancelled is recorded as cancelled.
 
