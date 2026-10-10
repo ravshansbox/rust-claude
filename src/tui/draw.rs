@@ -404,7 +404,10 @@ mod tests {
     #[test]
     fn keeps_the_conversation_visible_while_picking_a_model() {
         let mut app = app_with_reply();
-        handle_agent_event(UiEvent::Models(Ok(vec!["other-model".into()])), &mut app);
+        handle_agent_event(
+            UiEvent::Models(Ok(vec!["claude-opus-5-5".into()])),
+            &mut app,
+        );
         let shown = screen(&mut app);
         assert!(shown.contains("Earlier reply"), "{shown}");
         assert!(shown.contains("Select model"), "{shown}");
