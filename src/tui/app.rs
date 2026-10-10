@@ -373,6 +373,13 @@ impl App {
         });
     }
 
+    /// Shows the picker in place of the prompt history search, so keys go
+    /// to the list on screen. The input stays as it was.
+    pub(super) fn open_picker(&mut self, picker: Picker) {
+        self.history_search = None;
+        self.picker = Some(picker);
+    }
+
     pub(super) fn scroll_up(&mut self, amount: usize) {
         self.scroll_from_bottom = self
             .scroll_from_bottom

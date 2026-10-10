@@ -240,7 +240,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         act(Action::Compact(app.thinking_level));
                     }
                     "/thinking" if argument.is_empty() => {
-                        app.picker = Some(Picker {
+                        app.open_picker(Picker {
                             kind: PickerKind::Thinking,
                             title: "Select thinking level",
                             items: THINKING_LEVELS
@@ -332,7 +332,10 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
 mod tests {
     use super::{Action, handle_input};
     use crate::images::Image;
-    use crate::tui::{App, UiEvent, handle_agent_event, test_support::new_app};
+    use crate::tui::{
+        App, UiEvent, handle_agent_event,
+        test_support::{new_app, screen},
+    };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 
     #[test]
@@ -492,6 +495,42 @@ mod tests {
         handle_input(control('r'), &mut app, |_| {});
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "elsewhere fix");
+    }
+
+    #[test]
+    fn closes_history_search_when_models_arrive() {
+        let mut app = new_app();
+        app.add_prompt("earlier".into());
+        handle_input(Event::Paste("/model".into()), &mut app, |_| {});
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        assert_eq!(app.status, "loading models");
+        handle_input(Event::Paste("/mo".into()), &mut app, |_| {});
+        handle_input(
+            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
+            &mut app,
+            |_| {},
+        );
+        assert!(screen(&mut app).contains("Prompt history"));
+        let models = vec!["model".to_string(), "other".to_string()];
+        handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Select model"), "{shown}");
+        assert!(!shown.contains("Prompt history"), "{shown}");
+        assert!(!shown.contains("select model"), "{shown}");
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Down)), &mut app, |_| {});
+        let mut chosen = None;
+        handle_input(
+            Event::Key(KeyEvent::from(KeyCode::Enter)),
+            &mut app,
+            |action| {
+                if let Action::SetModel(model) = action {
+                    chosen = Some(model);
+                }
+            },
+        );
+        assert_eq!(chosen.as_deref(), Some("other"));
+        assert!(app.history_search.is_none());
+        assert_eq!(app.input, "/mo");
     }
 
     #[test]

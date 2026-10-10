@@ -55,7 +55,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
                 app.push(Role::Event, "no session to resume");
                 return;
             }
-            app.picker = Some(Picker {
+            app.open_picker(Picker {
                 kind: PickerKind::Session,
                 title: "Resume session",
                 items: sessions
@@ -83,7 +83,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
                 .iter()
                 .position(|model| *model == app.model)
                 .unwrap_or_default();
-            app.picker = Some(Picker {
+            app.open_picker(Picker {
                 kind: PickerKind::Model,
                 title: "Select model",
                 items: models
