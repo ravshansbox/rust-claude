@@ -224,8 +224,7 @@ async fn run() -> Result<()> {
             return interrupted(agent, status).await;
         }
     };
-    result?;
-    printer.finish()?;
+    printer.finish(result)?;
     Ok(())
 }
 

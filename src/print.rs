@@ -113,9 +113,17 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         }
     }
 
-    /// Ends the answer with a newline once the run has finished.
-    pub fn finish(&mut self) -> std::io::Result<()> {
-        writeln!(self.out)
+    /// Ends the answer with a newline once the run has finished. A failed
+    /// run ends the answer it started too, so the error shown next starts
+    /// on its own line.
+    pub fn finish(&mut self, result: anyhow::Result<()>) -> anyhow::Result<()> {
+        let ended = if result.is_ok() || self.printed {
+            writeln!(self.out)
+        } else {
+            Ok(())
+        };
+        result?;
+        Ok(ended?)
     }
 
     fn line(&mut self, text: &str) {
@@ -126,7 +134,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
 #[cfg(test)]
 mod tests {
     use super::Printer;
-    use crate::agent::test_support::{self, MockApi, text_reply, tool_reply};
+    use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
     use serde_json::json;
 
     const ESCAPES: &str = "\x1b]52;c;aGk=\x07\x1b[2J\u{9b}2J\r";
@@ -182,10 +190,10 @@ mod tests {
         let mut printer = Printer::new(&mut out, true, &mut err, true, true);
         let result = agent.prompt("go", &[], |event| printer.event(event)).await;
         printer.flush_reads();
-        printer.finish().unwrap();
+        let finished = printer.finish(result);
         test_support::remove_session(&agent);
         let _ = std::fs::remove_file(&path);
-        result.unwrap();
+        finished.unwrap();
         let out = String::from_utf8(out).unwrap();
         let err = String::from_utf8(err).unwrap();
 
@@ -206,9 +214,40 @@ mod tests {
         let mut out = Vec::new();
         let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false);
         let result = agent.prompt("go", &[], |event| printer.event(event)).await;
-        printer.finish().unwrap();
+        let finished = printer.finish(result);
         test_support::remove_session(&agent);
-        result.unwrap();
+        finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), format!("{answer}\n"));
+    }
+
+    #[tokio::test]
+    async fn ends_an_answer_that_broke_off_before_the_error_is_shown() {
+        let api = MockApi::start(vec![
+            Reply::Events(vec![
+                json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+                json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
+                json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
+            ]),
+            Reply::BadRequest("bad".into()),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut outputs = Vec::new();
+        for _ in 0..2 {
+            let mut out = Vec::new();
+            let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false);
+            let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+            let finished = printer.finish(result);
+            outputs.push((String::from_utf8(out).unwrap(), finished.is_err()));
+        }
+        test_support::remove_session(&agent);
+
+        // The broken-off answer ends its line, so the error starts on its
+        // own; a run that printed nothing adds no blank line.
+        assert_eq!(
+            outputs,
+            [("partial\n".to_string(), true), (String::new(), true)]
+        );
     }
 }
