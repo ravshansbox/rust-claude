@@ -26,7 +26,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push_tool(&name, summary, diff);
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
-            if name == "bash" {
+            if name == "bash" || name == "python" {
                 app.workspace_stale = true;
             }
             if let Some(error) = error {
@@ -438,15 +438,19 @@ mod tests {
 
     #[test]
     fn updates_branch_in_status_line_after_commands() {
-        let finished_tool = || {
+        let finished_tool = |name: &str| {
             UiEvent::Agent(AgentEvent::ToolDone {
-                name: "bash".into(),
+                name: name.into(),
                 error: None,
                 note: None,
             })
         };
         let finished_shell = || UiEvent::Shell("git switch other".into(), Ok(String::new()));
-        for event in [finished_tool(), finished_shell()] {
+        for event in [
+            finished_tool("bash"),
+            finished_tool("python"),
+            finished_shell(),
+        ] {
             let mut app = new_app();
             app.workspace = "folder · stale-branch".into();
             handle_agent_event(event, &mut app);
