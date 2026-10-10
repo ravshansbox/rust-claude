@@ -382,7 +382,7 @@ impl HistorySearch {
 pub(super) enum PickerKind {
     Session,
     Model,
-    Thinking,
+    Effort,
 }
 
 pub(super) struct Picker {
@@ -874,7 +874,7 @@ impl App {
         match EFFORT_LEVELS.iter().find(|level| **level == name) {
             Some(level) => {
                 self.effort = level;
-                self.push(Role::Event, format!("thinking: {level}"));
+                self.push(Role::Event, format!("effort: {level}"));
                 true
             }
             None => {
