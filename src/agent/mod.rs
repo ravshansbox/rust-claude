@@ -891,6 +891,49 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn keeps_the_conversation_cached_after_a_round_with_many_tool_calls() {
+        let mut events = vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "plan", "signature": "sig" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "text", "text": "running" } }),
+            json!({ "type": "content_block_stop", "index": 1 }),
+        ];
+        for index in 2..12 {
+            events.push(json!({ "type": "content_block_start", "index": index, "content_block": { "type": "tool_use", "id": format!("call-{index}"), "name": "bash", "input": { "command": "true" } } }));
+            events.push(json!({ "type": "content_block_stop", "index": index }));
+        }
+        events.push(json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }));
+        let api = MockApi::start(vec![Reply::Events(events), text_reply("done")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let result = agent.prompt("run them all", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 2);
+        let body = &requests[1];
+        let messages = body["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3);
+        let breakpoint = |message: &serde_json::Value| match message["content"].as_array() {
+            Some(blocks) => blocks.last().unwrap()["cache_control"].clone(),
+            None => serde_json::Value::Null,
+        };
+        let ephemeral = json!({ "type": "ephemeral" });
+        // The prompt ended the first request, where its cache entry was written.
+        assert_eq!(breakpoint(&messages[0]), ephemeral);
+        assert_eq!(breakpoint(&messages[2]), ephemeral);
+        assert!(
+            body.to_string().matches("cache_control").count() <= 4,
+            "{body}"
+        );
+        for block in messages[1]["content"].as_array().unwrap() {
+            if block["type"] == "thinking" {
+                assert_eq!(block.get("cache_control"), None);
+            }
+        }
+    }
+
     #[test]
     fn parses_shell_messages() {
         let text = shell_message("ls -a", "a\nb\n");
