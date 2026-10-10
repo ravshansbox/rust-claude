@@ -29,6 +29,15 @@ pub fn read_image() -> Result<Option<Vec<u8>>> {
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));
+    // Remove the file however this returns, including a helper timing out
+    // after writing part of it.
+    struct RemoveOnDrop<'a>(&'a std::path::Path);
+    impl Drop for RemoveOnDrop<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0);
+        }
+    }
+    let _remove = RemoveOnDrop(&path);
     for class in ["PNGf", "TIFF"] {
         let status = output(
             Command::new("osascript")
@@ -53,9 +62,7 @@ pub fn read_image() -> Result<Option<Vec<u8>>> {
         )?
         .status;
         if status.success() {
-            let data = std::fs::read(&path);
-            let _ = std::fs::remove_file(&path);
-            return Ok(Some(data?));
+            return Ok(Some(std::fs::read(&path)?));
         }
     }
     Ok(None)
