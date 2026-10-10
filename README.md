@@ -113,6 +113,7 @@ MCP:
 - MCP servers started in the background in the interface
 - `~/` expansion, `env`, `cwd`, `timeout` and `enabled` options
 - Paginated tool lists, `ping` replies, and server error output shown in errors
+- A server that sends the same page of its tool list twice fails with an error instead of loading forever
 - Clear errors for HTTP and SSE servers, which are not supported yet
 
 Other:
