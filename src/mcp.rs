@@ -988,6 +988,50 @@ done
     }
 
     #[tokio::test]
+    async fn answers_server_requests_and_follows_tool_list_pages() {
+        let log = std::env::temp_dir().join(format!("mcp-replies-{}", std::process::id()));
+        let _ = std::fs::remove_file(&log);
+        let cases = r#"    *'"result"'*|*'"error"'*) printf '%s\n' "$line" >> 'LOG' ;;
+    *'"cursor"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"second"}]}}\n' "$id" ;;
+    *'"tools/list"'*)
+      printf '{"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"hi"}}\n'
+      printf '{"jsonrpc":"2.0","id":"p1","method":"ping"}\n'
+      printf '{"jsonrpc":"2.0","id":%s,"method":"sampling/createMessage","params":{}}\n' "$id"
+      printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"echo"}],"nextCursor":"next"}}\n' "$id" ;;"#
+            .replace("LOG", &log.display().to_string());
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("test".into(), Scope::Project, server_with(&cases, ":")).await),
+            ["loaded project MCP server: test (2 tools)"]
+        );
+        let names: Vec<Value> = mcp
+            .definitions()
+            .map(|definition| definition["name"].clone())
+            .collect();
+        assert_eq!(names, ["mcp__test__echo", "mcp__test__second"]);
+        let replies: Vec<Value> = std::fs::read_to_string(&log)
+            .unwrap()
+            .lines()
+            .map(|line| serde_json::from_str(line).unwrap())
+            .collect();
+        let _ = std::fs::remove_file(&log);
+        assert_eq!(
+            replies,
+            [
+                json!({ "jsonrpc": "2.0", "id": "p1", "result": {} }),
+                json!({
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "error": {
+                        "code": -32601,
+                        "message": "method not found: sampling/createMessage",
+                    },
+                }),
+            ]
+        );
+    }
+
+    #[tokio::test]
     async fn calls_stdio_server_tools() {
         let mut mcp = Mcp::default();
         mcp.add(start("test".into(), Scope::Project, echo_server()).await);
