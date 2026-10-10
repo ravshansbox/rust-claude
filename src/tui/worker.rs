@@ -56,7 +56,7 @@ pub(super) async fn agent_task(
     events: mpsc::UnboundedSender<UiEvent>,
 ) {
     // Stop renewing the sign-in on quit or Esc. Esc means the user cancelled
-    // the request waiting behind the renewal, so drop it when it comes up.
+    // the request waiting behind the renewal, so cancel it when it comes up.
     let mut cancelled = false;
     let mut quota = tokio::select! {
         result = agent.quota_request() => result.ok().map(tokio::spawn),
@@ -91,7 +91,11 @@ pub(super) async fn agent_task(
         }
         if cancelled && is_cancellable(&request) {
             cancelled = false;
-            let _ = events.send(UiEvent::Cancelled(Ok(())));
+            let result = match &request {
+                Request::Prompt(prompt, images, _) => agent.cancel_unsent(prompt, images),
+                _ => Ok(()),
+            };
+            let _ = events.send(UiEvent::Cancelled(result));
             continue;
         }
         if let Request::Shell(command) = request {
@@ -337,6 +341,7 @@ mod tests {
     #[tokio::test]
     async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
         let (agent, _api) = agent_renewing_sign_in().await;
+        let session_id = agent.session.id.clone();
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
         let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
@@ -348,12 +353,18 @@ mod tests {
             .unwrap();
         cancel_tx.send(()).unwrap();
         let cancelled = wait_for_event(&mut event_rx, |event| {
-            matches!(event, UiEvent::Cancelled(_))
+            matches!(event, UiEvent::Cancelled(Ok(())))
         })
         .await;
         quit(request_tx, cancel_tx);
         worker.abort();
+        let session = crate::config::dir()
+            .map(|dir| dir.join("sessions").join(format!("{session_id}.jsonl")))
+            .unwrap();
+        let saved = std::fs::read_to_string(&session).unwrap_or_default();
+        let _ = std::fs::remove_file(&session);
         assert!(cancelled);
+        assert!(saved.contains("hello"), "session file: {saved:?}");
     }
 
     async fn wait_for_event(
