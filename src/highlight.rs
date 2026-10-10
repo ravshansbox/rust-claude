@@ -101,6 +101,7 @@ pub fn highlight_tool(
     let syntax = match name {
         "edit" | "write" => syntax_for_path(summary),
         "python" => syntax_set().find_syntax_by_extension("py")?,
+        "bash" => syntax_set().find_syntax_by_extension("sh")?,
         _ => return None,
     };
     Some(highlight_body(syntax, body, dark))

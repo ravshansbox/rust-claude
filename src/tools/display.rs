@@ -2,9 +2,8 @@ use serde_json::Value;
 
 pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
-        "bash" => "command",
         "read" | "write" | "edit" => "path",
-        "python" => return String::new(),
+        "bash" | "python" => return String::new(),
         _ => return input.to_string(),
     };
     let value = input[key].as_str().unwrap_or_default().to_string();
@@ -74,6 +73,9 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     }
     if name == "python" {
         return code_preview(input["code"].as_str()?);
+    }
+    if name == "bash" {
+        return code_preview(input["command"].as_str()?);
     }
     if name != "edit" {
         return None;
@@ -225,6 +227,16 @@ mod tests {
     fn keeps_last_line_unchanged_when_lines_are_appended_without_newline() {
         let input = json!({ "path": "a", "old_text": "foo()", "new_text": "foo()\nbar()" });
         assert_eq!(diff("edit", &input), Some(" foo()\n+bar()".into()));
+    }
+
+    #[test]
+    fn shows_bash_command_as_code() {
+        let input = json!({ "command": "for x in a b; do\n    echo $x\ndone" });
+        assert_eq!(summary("bash", &input), "");
+        assert_eq!(
+            diff("bash", &input),
+            Some(" for x in a b; do\n  echo $x\n done".into())
+        );
     }
 
     #[test]
