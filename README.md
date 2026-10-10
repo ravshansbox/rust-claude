@@ -386,7 +386,7 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
 ```
 
 - `command` is a single executable and `args` its arguments. `env` sets environment variables and `cwd` the working folder. A leading `~/` in `command`, an argument or `cwd` names the home folder.
-- `timeout` sets the time limit for each request in seconds, at least 1 (default 60).
+- `timeout` sets the time limit for each request in seconds, at least 1 (default 60). When a request times out, or you press Esc during a tool call, rust-claude tells the server to stop working on it.
 - `enabled: false` keeps an entry without connecting to it.
 - `type` is optional. When present, it must be `stdio`. HTTP and SSE servers are not supported yet.
 - Server names may only contain letters, digits, `_` and `-`.

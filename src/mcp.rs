@@ -133,12 +133,24 @@ impl Pending {
 struct PendingGuard<'a> {
     pending: &'a Pending,
     id: u64,
+    /// Where to tell the server the request was abandoned; `None` for
+    /// `initialize`, which must never be cancelled.
+    writer: Option<&'a mpsc::UnboundedSender<String>>,
 }
 
 impl Drop for PendingGuard<'_> {
     fn drop(&mut self) {
-        if let Ok(mut senders) = self.pending.senders.lock() {
-            senders.remove(&self.id);
+        let abandoned = self
+            .pending
+            .senders
+            .lock()
+            .is_ok_and(|mut senders| senders.remove(&self.id).is_some());
+        if abandoned && let Some(writer) = self.writer {
+            let _ = writer.send(frame(&json!({
+                "jsonrpc": "2.0",
+                "method": "notifications/cancelled",
+                "params": { "requestId": self.id, "reason": "the client stopped waiting" },
+            })));
         }
     }
 }
@@ -324,6 +336,7 @@ impl Connection {
         let _guard = PendingGuard {
             pending: &self.pending,
             id,
+            writer: (method != "initialize").then_some(&self.writer),
         };
         if self.pending.closed.load(Ordering::SeqCst) {
             return Err(self.with_stderr("server closed the connection".into()));
@@ -751,16 +764,23 @@ mod tests {
     }
 
     fn server_answering_calls_with(call: &str) -> ServerConfig {
+        server_with("", call)
+    }
+
+    /// A bash server; `cases` are extra `case` arms tried before the defaults.
+    fn server_with(cases: &str, call: &str) -> ServerConfig {
         let script = r#"
 while IFS= read -r line; do
   id=$(printf '%s' "$line" | sed -n 's/.*"id":\([0-9]*\).*/\1/p')
   case "$line" in
+CASES
     *'"initialize"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"t","version":"1"}}}\n' "$id" ;;
     *'"tools/list"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"echo","inputSchema":{"type":"object"}}]}}\n' "$id" ;;
     *'"tools/call"'*) CALL ;;
   esac
 done
 "#
+        .replace("CASES", cases)
         .replace("CALL", call);
         ServerConfig {
             kind: None,
@@ -786,6 +806,41 @@ done
                 "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
             ))
         );
+    }
+
+    #[tokio::test]
+    async fn tells_the_server_when_a_call_times_out() {
+        let log = std::env::temp_dir().join(format!("mcp-cancel-{}", std::process::id()));
+        let _ = std::fs::remove_file(&log);
+        let mut config = server_with(
+            &format!(
+                r#"    *'"notifications/cancelled"'*) printf '%s\n' "$line" >> '{}' ;;"#,
+                log.display()
+            ),
+            ":",
+        );
+        config.timeout = Some(1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        assert!(
+            mcp.call("mcp__test__echo", &json!({}))
+                .await
+                .unwrap()
+                .is_err()
+        );
+        let mut logged = String::new();
+        for _ in 0..50 {
+            logged = std::fs::read_to_string(&log).unwrap_or_default();
+            if !logged.is_empty() {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        let _ = std::fs::remove_file(&log);
+        let message: Value = serde_json::from_str(logged.trim()).unwrap();
+        assert_eq!(message["method"], "notifications/cancelled");
+        assert_eq!(message["params"]["requestId"], 3);
+        assert!(message["params"]["reason"].is_string());
     }
 
     #[tokio::test]
