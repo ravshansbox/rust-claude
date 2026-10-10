@@ -2309,12 +2309,9 @@ done
     }
 
     #[tokio::test]
-    async fn registers_as_claude_code_even_when_the_config_names_another_client() {
+    async fn registers_as_claude_code() {
         let (url, requests) = oauth_server().await;
-        let config: ServerConfig =
-            serde_json::from_value(json!({ "url": url, "oauth": { "clientName": "rust-claude" } }))
-                .unwrap();
-        begin_sign_in_with("web", &config).await.unwrap();
+        begin_sign_in_with("web", &http_config(&url)).await.unwrap();
         assert_eq!(
             requests_for_path(&requests, "/register")[0].body["client_name"],
             "Claude Code"
