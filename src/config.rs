@@ -113,6 +113,9 @@ pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     replace_file(path, contents, private_file(), permissions)
 }
 
+/// Counts temporary files this process made, to give each a new name.
+static WRITES: AtomicUsize = AtomicUsize::new(0);
+
 /// Writes a file through a temporary file in the same folder, created with
 /// `options` and given `permissions`, then renamed over it, so readers never
 /// see a half-written file and a failed write keeps the old one.
@@ -122,27 +125,31 @@ pub fn replace_file(
     mut options: OpenOptions,
     permissions: Option<std::fs::Permissions>,
 ) -> std::io::Result<()> {
-    static WRITES: AtomicUsize = AtomicUsize::new(0);
-    let mut name = path.file_name().unwrap_or_default().to_os_string();
-    name.push(format!(
-        ".{}.{}.tmp",
-        std::process::id(),
-        WRITES.fetch_add(1, Ordering::Relaxed)
-    ));
-    let temporary = path.with_file_name(name);
-    let written = options
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(&temporary)
-        .and_then(|mut file| {
-            if let Some(permissions) = permissions {
-                file.set_permissions(permissions)?;
-            }
-            file.write_all(contents)?;
-            file.sync_all()?;
-            std::fs::rename(&temporary, path)
-        });
+    options.write(true).create_new(true);
+    // A new name each time, so a file or link someone else put at the
+    // name is never opened.
+    let (temporary, mut file) = loop {
+        let mut name = path.file_name().unwrap_or_default().to_os_string();
+        name.push(format!(
+            ".{}.{}.tmp",
+            std::process::id(),
+            WRITES.fetch_add(1, Ordering::Relaxed)
+        ));
+        let temporary = path.with_file_name(name);
+        match options.open(&temporary) {
+            Ok(file) => break (temporary, file),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        }
+    };
+    let written = (|| {
+        if let Some(permissions) = permissions {
+            file.set_permissions(permissions)?;
+        }
+        file.write_all(contents)?;
+        file.sync_all()?;
+        std::fs::rename(&temporary, path)
+    })();
     if written.is_err() {
         let _ = std::fs::remove_file(&temporary);
     }
@@ -160,7 +167,36 @@ pub(crate) fn permissions(path: &Path) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::test_dir;
+    use super::{WRITES, replace_file, test_dir};
+    use std::sync::atomic::Ordering;
+
+    /// A file someone links to from the next temporary names is left alone.
+    #[cfg(unix)]
+    #[test]
+    fn does_not_follow_symlinks_at_temporary_names() {
+        let base = std::env::temp_dir().join(format!("rust-claude-planted-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir(&base).unwrap();
+        let victim = base.join("victim");
+        std::fs::write(&victim, "secret").unwrap();
+        let path = base.join("file.log");
+        let next = WRITES.load(Ordering::Relaxed);
+        for counter in next..next + 64 {
+            let planted = base.join(format!("file.log.{}.{counter}.tmp", std::process::id()));
+            std::os::unix::fs::symlink(&victim, planted).unwrap();
+        }
+        let result = replace_file(&path, b"new", std::fs::OpenOptions::new(), None);
+        let found = (
+            std::fs::read_to_string(&victim).unwrap(),
+            std::fs::read_to_string(&path).ok(),
+            std::fs::symlink_metadata(&path)
+                .map(|metadata| metadata.is_symlink())
+                .ok(),
+        );
+        std::fs::remove_dir_all(&base).unwrap();
+        result.unwrap();
+        assert_eq!(found, ("secret".into(), Some("new".into()), Some(false)));
+    }
 
     #[test]
     fn removes_test_folders_of_exited_processes() {
