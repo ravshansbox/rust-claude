@@ -42,10 +42,9 @@ impl Agent {
             "tools": tool_definitions(&self.mcp),
             "messages": messages,
         });
-        if let (Some(object), Value::Object(settings)) = (
-            body.as_object_mut(),
-            models::thinking_settings(self.thinking_level),
-        ) {
+        if let (Some(object), Value::Object(settings)) =
+            (body.as_object_mut(), models::thinking_settings(self.effort))
+        {
             object.extend(settings);
         }
         if let Some(tool_choice) = tool_choice {

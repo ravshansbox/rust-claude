@@ -4,7 +4,7 @@ use super::{
         next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
     },
 };
-use crate::{agent::THINKING_LEVELS, images::Image, models, skills};
+use crate::{agent::EFFORT_LEVELS, images::Image, models, skills};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
 
 pub(super) enum Action {
@@ -95,7 +95,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         act(Action::Resume(value));
                     }
                     PickerKind::Thinking => {
-                        app.set_thinking_level(&value);
+                        app.set_effort(&value);
                     }
                     PickerKind::Model => {
                         app.set_model(&value);
@@ -209,7 +209,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         }
         (KeyCode::Esc, _) => return true,
         (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => return true,
-        (KeyCode::BackTab, _) => app.cycle_thinking_level(),
+        (KeyCode::BackTab, _) => app.cycle_effort(),
         (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
             let model = models::next_known(&app.model);
             app.set_model(model);
@@ -268,24 +268,24 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     }
                     "/compact" => {
                         app.start(Activity::Compacting);
-                        act(Action::Compact(app.thinking_level));
+                        act(Action::Compact(app.effort));
                     }
-                    "/thinking" if argument.is_empty() => {
+                    "/effort" if argument.is_empty() => {
                         app.open_picker(Picker {
                             kind: PickerKind::Thinking,
-                            title: "Select thinking level",
-                            items: THINKING_LEVELS
+                            title: "Select effort level",
+                            items: EFFORT_LEVELS
                                 .iter()
                                 .map(|level| (level.to_string(), level.to_string()))
                                 .collect(),
-                            selected: THINKING_LEVELS
+                            selected: EFFORT_LEVELS
                                 .iter()
-                                .position(|level| *level == app.thinking_level)
+                                .position(|level| *level == app.effort)
                                 .unwrap_or_default(),
                         });
                     }
-                    "/thinking" => {
-                        if !app.set_thinking_level(argument) {
+                    "/effort" => {
+                        if !app.set_effort(argument) {
                             app.restore_input(prompt);
                         }
                     }
@@ -332,7 +332,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         app.remember(&prompt);
                         app.start(Activity::Working);
                         let images = app.take_images(&prompt);
-                        act(Action::Submit(prompt, images, app.thinking_level));
+                        act(Action::Submit(prompt, images, app.effort));
                     }
                     command => {
                         app.push(Role::Event, format!("unknown command: {command}"));
@@ -345,7 +345,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             app.remember(&prompt);
             app.start(Activity::Working);
             let images = app.take_images(&prompt);
-            act(Action::Submit(prompt, images, app.thinking_level));
+            act(Action::Submit(prompt, images, app.effort));
         }
         (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
             app.cursor = previous_word_start(&app.input, app.cursor);
@@ -465,13 +465,13 @@ mod tests {
     }
 
     #[test]
-    fn keeps_typed_text_after_an_unknown_command_or_thinking_level() {
+    fn keeps_typed_text_after_an_unknown_command_or_effort_level() {
         for (typed, error) in [
             (
                 "/Users/me/proj/main.rs fails, fix it",
                 "unknown command: /Users/me/proj/main.rs",
             ),
-            ("/thinking loud", "unknown thinking level: loud"),
+            ("/effort loud", "unknown effort level: loud"),
         ] {
             let mut app = new_app();
             handle_input(Event::Paste(typed.into()), &mut app, |_| {});
@@ -486,7 +486,7 @@ mod tests {
             );
             assert_eq!(app.input, typed);
             assert_eq!(app.cursor, typed.len());
-            assert_eq!(app.thinking_level, "medium");
+            assert_eq!(app.effort, "medium");
         }
     }
 
@@ -561,13 +561,13 @@ mod tests {
         let names = [
             "/compact",
             "/context",
+            "/effort",
             "/mcp",
             "/model",
             "/new",
             "/quit",
             "/resume",
             "/skill:lint",
-            "/thinking",
         ];
         let positions: Vec<usize> = names
             .iter()
@@ -652,7 +652,7 @@ mod tests {
         let key = |code| Event::Key(KeyEvent::from(code));
         handle_input(key(KeyCode::Up), &mut app, |_| {});
         handle_input(key(KeyCode::Tab), &mut app, |_| {});
-        assert_eq!(app.input, "/thinking");
+        assert_eq!(app.input, "/resume");
         app.input.clear();
         app.cursor = 0;
         handle_input(Event::Paste("/".into()), &mut app, |_| {});
