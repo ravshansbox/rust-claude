@@ -37,6 +37,12 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
+        UiEvent::McpServer(added) => {
+            app.finish_mcp_server(&added.name, added.status);
+            for diagnostic in added.diagnostics {
+                app.push(Role::Event, diagnostic);
+            }
+        }
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {

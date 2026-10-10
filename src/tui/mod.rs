@@ -222,9 +222,10 @@ async fn run_loop(
     app.queue = agent.queue.clone();
     let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
     for server in startup.servers {
+        app.start_mcp_server(&server.name, &server.label);
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
-            let _ = mcp_tx.send(server.await);
+            let _ = mcp_tx.send(server.started.await);
         });
     }
     drop(mcp_tx);
@@ -255,8 +256,8 @@ async fn run_loop(
                 }
                 dirty = false;
             }
-            _ = spinner.tick(), if app.busy() => {
-                app.spinner_frame = app.spinner_frame.wrapping_add(1);
+            _ = spinner.tick(), if app.animating() => {
+                app.tick_spinner();
                 dirty = true;
             }
             event = terminal_events.next() => {
