@@ -357,6 +357,8 @@ Newer models only use thinking from earlier replies while the system prompt, too
 
 rust-claude also compacts automatically when the context is 80% full: before sending a new prompt, and after each round of tool calls. A prompt sent at that point, or queued during that round, is kept word for word after the summary. Models that rust-claude doesn't know have no known context window, so they only compact with `/compact`.
 
+A round of tool calls can take the conversation past the context window, and the API then refuses to read it. When that happens during compaction, rust-claude shows a notice and asks for the summary again with each tool output cut to its first 2,000 characters, then to 200. The session file still keeps the full output.
+
 `/context` shows how many tokens each part of the context uses: the system prompt, instructions, skills, built-in tools, MCP tools and messages, and how much of the context window is free. Each part is estimated from its length, then scaled so that the parts add up to the context use on the status line. That figure comes from the token count of the last reply, plus an estimate for anything added since. Images are not counted.
 
 `/resume` reads each session only up to its first prompt to build the list. A session that starts with a `!` command shows that command, such as `!ls`, as its preview. A session that is damaged before its first prompt is left out of the list. Resuming a session that is damaged later in the file keeps the messages before the damage, as after a crash. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
