@@ -94,7 +94,18 @@ fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let (command, options) = parse_arguments(std::env::args().skip(1).collect())?;
+    let arguments = std::env::args_os()
+        .skip(1)
+        .map(|argument| {
+            argument.into_string().map_err(|argument| {
+                anyhow::anyhow!(
+                    "argument is not valid UTF-8: {}\n{USAGE}",
+                    argument.to_string_lossy()
+                )
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let (command, options) = parse_arguments(arguments)?;
     if let Some(config_dir) = &options.config_dir {
         config::set_dir(config_dir.into());
     }
