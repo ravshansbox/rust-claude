@@ -210,7 +210,7 @@ mod tests {
         let plain = without_colours(&err);
         assert!(!has_controls(&plain), "control characters in {plain:?}");
         assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
-        assert!(plain.contains("bash printf"), "{plain:?}");
+        assert!(plain.contains("bash\n printf"), "{plain:?}");
         assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
     }
 
@@ -243,6 +243,34 @@ mod tests {
             definition.matches("\x1b[38;2;").count() > 1,
             "{definition:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn highlights_bash_commands() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "bash",
+                json!({ "command": "echo \"$HOME\" | wc -c" }),
+            ),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut err = Vec::new();
+        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true);
+        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+        let finished = printer.finish(result);
+        test_support::remove_session(&agent);
+        finished.unwrap();
+        let err = String::from_utf8(err).unwrap();
+        let plain = without_colours(&err);
+        assert!(
+            plain.contains("bash\n echo \"$HOME\" | wc -c\n"),
+            "{plain:?}"
+        );
+        let command = err.lines().find(|line| line.contains("echo")).unwrap();
+        assert!(command.matches("\x1b[38;2;").count() > 1, "{command:?}");
     }
 
     #[tokio::test]

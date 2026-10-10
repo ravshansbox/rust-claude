@@ -314,6 +314,28 @@ mod tests {
     }
 
     #[test]
+    fn highlights_bash_commands() {
+        let input = serde_json::json!({ "command": "echo \"$HOME\" | wc -c" });
+        let message = tool_message(
+            "bash",
+            crate::tools::summary("bash", &input),
+            crate::tools::diff("bash", &input),
+        );
+        let lines = render_message(Role::Tool, &message, 40);
+        let texts: Vec<String> = lines
+            .iter()
+            .map(|line| line.to_string().trim_end().to_string())
+            .collect();
+        assert_eq!(texts, [" bash", " echo \"$HOME\" | wc -c"]);
+        let colours: std::collections::HashSet<_> = lines[1]
+            .spans
+            .iter()
+            .filter_map(|span| span.style.fg)
+            .collect();
+        assert!(colours.len() > 1, "{:?}", lines[1]);
+    }
+
+    #[test]
     fn fits_assistant_table_to_width() {
         let text = "| Name | Description |\n| --- | --- |\n| alpha | a fairly long description that needs wrapping |";
         let lines = render_message(Role::Assistant, text, 30);
