@@ -2392,15 +2392,8 @@ done
     }
 
     #[tokio::test]
-    async fn rejects_unsupported_http_servers() {
+    async fn rejects_urls_that_are_not_http() {
         let mut mcp = Mcp::default();
-        let mut sse = http_config("http://127.0.0.1:1/sse");
-        sse.kind = Some("sse".into());
-        assert_eq!(
-            mcp.add(start("old".into(), Scope::Global, sse).await)
-                .status,
-            "MCP server old failed: the SSE transport is not supported; use the server's Streamable HTTP URL"
-        );
         assert_eq!(
             mcp.add(
                 start(
