@@ -79,6 +79,17 @@ impl Rendered {
         }
         self.height = self.heights.iter().sum();
     }
+
+    /// Wraps the same lines to a new width.
+    fn rewrap(&mut self, width: u16) {
+        self.width = width;
+        self.heights = self
+            .lines
+            .iter()
+            .map(|line| wrapped_height(line, width))
+            .collect();
+        self.height = self.heights.iter().sum();
+    }
 }
 
 impl ChatMessage {
@@ -88,8 +99,15 @@ impl ChatMessage {
 
     /// Renders the text if it changed. A streaming reply keeps the lines of
     /// its closed code blocks and what comes before them, since highlighting
-    /// code is slow, and renders only what follows.
+    /// code is slow, and renders only what follows. A new width keeps the
+    /// lines of messages that look the same at every width.
     pub(super) fn render(&mut self, width: u16) {
+        if let Some(rendered) = &mut self.rendered
+            && rendered.width != width
+            && !depends_on_width(self.role, &self.text)
+        {
+            rendered.rewrap(width);
+        }
         if self
             .rendered
             .as_ref()
@@ -126,6 +144,29 @@ impl ChatMessage {
     pub(super) fn height(&self) -> usize {
         self.rendered.as_ref().map_or(0, |rendered| rendered.height)
     }
+}
+
+/// Whether the message's lines change with the width: user messages are
+/// padded to it and replies fit their tables to it.
+fn depends_on_width(role: Role, text: &str) -> bool {
+    match role {
+        Role::User => true,
+        Role::Assistant => has_table(text),
+        Role::Thinking | Role::Tool | Role::Event => false,
+    }
+}
+
+/// Whether the markdown may hold a table, by looking for a line that could
+/// be its delimiter row, such as `| --- | :-: |`, also inside a quote.
+fn has_table(text: &str) -> bool {
+    text.lines().any(|line| {
+        let row = line.trim_start_matches(|c: char| c == '>' || c.is_whitespace());
+        row.contains('|')
+            && row.contains('-')
+            && row
+                .chars()
+                .all(|c| matches!(c, '|' | '-' | ':') || c.is_whitespace())
+    })
 }
 
 /// Bytes of markdown up to the end of its last closed code block whose
@@ -641,13 +682,14 @@ pub(super) fn image_marker(number: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{App, Role};
+    use super::{App, ChatMessage, Role};
     use crate::agent::AgentEvent;
     use crate::tui::{
         UiEvent, handle_agent_event, handle_input,
         test_support::{new_app, screen},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent};
+    use ratatui::text::Line;
 
     #[test]
     fn greets_with_open_question() {
@@ -738,5 +780,58 @@ mod tests {
         };
         assert_eq!(rendered(&streamed), rendered(&whole));
         assert_eq!(screen(&mut streamed), shown);
+    }
+
+    #[test]
+    fn rerenders_only_width_dependent_messages_on_resize() {
+        let messages = [
+            (
+                Role::Tool,
+                "edit src/main.rs\n-fn old() {}\n+fn new() { println!(\"a line long enough to wrap\"); }",
+                false,
+            ),
+            (Role::Event, "an event line long enough to wrap", false),
+            (Role::Thinking, "thinking about something long", false),
+            (
+                Role::Assistant,
+                "Some text\n\n```rust\nfn main() { println!(\"hi there\"); }\n```\n",
+                false,
+            ),
+            (Role::User, "a prompt", true),
+            (
+                Role::Assistant,
+                "Table:\n\n| a | b |\n| --- | --- |\n| one two three four | five six seven |\n",
+                true,
+            ),
+            (
+                Role::Assistant,
+                "> | a | b |\n> |:-:|---|\n> | one two three four | five six seven |\n",
+                true,
+            ),
+        ];
+        for (role, text, depends_on_width) in messages {
+            let message = || ChatMessage {
+                role,
+                text: text.into(),
+                rendered: None,
+            };
+            let mut resized = message();
+            resized.render(60);
+            resized.render(20);
+            let mut fresh = message();
+            fresh.render(20);
+            let (resized, fresh) = (resized.rendered.unwrap(), fresh.rendered.unwrap());
+            assert_eq!(resized.lines, fresh.lines, "{text}");
+            assert_eq!(resized.heights, fresh.heights, "{text}");
+            assert_eq!(resized.height, fresh.height, "{text}");
+
+            let mut marked = message();
+            marked.render(60);
+            marked.rendered.as_mut().unwrap().lines[0] = Line::raw("cached");
+            marked.render(20);
+            let rendered = marked.rendered.unwrap();
+            let kept = rendered.lines[0] == Line::raw("cached");
+            assert_eq!(kept, !depends_on_width, "{text}");
+        }
     }
 }
