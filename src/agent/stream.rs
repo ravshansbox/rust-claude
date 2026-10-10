@@ -26,7 +26,7 @@ impl Agent {
         tool_choice: Option<&Value>,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Response> {
-        let token = self.credentials.access_token(&self.http).await?;
+        let mut token = self.credentials.access_token(&self.http).await?;
         if let Some(notice) = self.credentials.take_renewal_notice() {
             on_event(AgentEvent::Notice(notice));
         }
@@ -56,22 +56,35 @@ impl Agent {
             body["thinking"]["block_binding"] = json!({ "prefix_mismatch_behavior": "drop_block" });
             beta = "oauth-2025-04-20,thinking-binding-controls-2026-08-01";
         }
-        let response = self
-            .http
-            .post(format!("{}/v1/messages", self.api_base))
-            .bearer_auth(token)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", beta)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|error| {
-                if error.is_connect() || error.is_timeout() || error.is_request() {
-                    retryable(error, None)
-                } else {
-                    error.into()
-                }
-            })?;
+        // The API may turn down a token before it expires, as when the
+        // sign-in was revoked; renewing it is then worth one more try.
+        let mut renewed = false;
+        let response = loop {
+            let response = self
+                .http
+                .post(format!("{}/v1/messages", self.api_base))
+                .bearer_auth(&token)
+                .header("anthropic-version", "2023-06-01")
+                .header("anthropic-beta", beta)
+                .json(&body)
+                .send()
+                .await
+                .map_err(|error| {
+                    if error.is_connect() || error.is_timeout() || error.is_request() {
+                        retryable(error, None)
+                    } else {
+                        error.into()
+                    }
+                })?;
+            if response.status() != reqwest::StatusCode::UNAUTHORIZED || renewed {
+                break response;
+            }
+            token = self.credentials.renew_rejected(&self.http, &token).await?;
+            renewed = true;
+            if let Some(notice) = self.credentials.take_renewal_notice() {
+                on_event(AgentEvent::Notice(notice));
+            }
+        };
         self.quota.update_from_headers(response.headers());
         if !response.status().is_success() {
             let status = response.status();

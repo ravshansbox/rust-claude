@@ -15,6 +15,8 @@ pub(crate) enum Reply {
     BadRequest(String),
     /// A 529 overloaded error, to retry at once, whose body breaks off.
     CutOffOverloaded,
+    /// A 401 `authentication_error`, as for a sign-in the API turned down.
+    Unauthorized,
 }
 
 pub(crate) fn text_reply(text: &str) -> Reply {
@@ -156,6 +158,18 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
                 .await;
         }
         Some(Reply::BadRequest(message)) => bad_request(stream, &message).await,
+        Some(Reply::Unauthorized) => {
+            let body = json!({
+                "type": "error",
+                "error": { "type": "authentication_error", "message": "invalid bearer token" },
+            })
+            .to_string();
+            let response = format!(
+                "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes()).await;
+        }
         None => bad_request(stream, "no scripted reply").await,
     }
 }
