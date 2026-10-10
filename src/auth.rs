@@ -73,6 +73,16 @@ impl std::fmt::Display for Unusable {
 
 impl std::error::Error for Unusable {}
 
+/// Held by each renewal until it has saved what it got, so quitting can wait
+/// for it.
+static RENEWING: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
+/// Waits up to `limit` for running renewals to finish. Exiting the process
+/// during one could lose new tokens after the endpoint has spent ours.
+pub async fn finish_renewal(limit: Duration) {
+    let _ = tokio::time::timeout(limit, RENEWING.write()).await;
+}
+
 impl Credentials {
     /// Signs in again only when the saved sign-in cannot be used. Other
     /// errors, such as no network or a server error while renewing, are
@@ -108,6 +118,7 @@ impl Credentials {
         let http = http.clone();
         let mut credentials = self.clone();
         *self = tokio::spawn(async move {
+            let _renewing = RENEWING.read().await;
             // Without the lock, renewing still works; copies just may not
             // take turns.
             let _lock = lock_credentials().await.ok();
@@ -327,7 +338,7 @@ async fn request_tokens(
 
 #[cfg(test)]
 mod tests {
-    use super::{Credentials, credentials_path, exchange_code, parse_pasted_code};
+    use super::{Credentials, credentials_path, exchange_code, finish_renewal, parse_pasted_code};
     use crate::agent::retry::retry_delay;
     use serde_json::{Value, json};
     use std::sync::Arc;
@@ -602,6 +613,56 @@ mod tests {
             (saved.access.as_str(), saved.refresh.as_str()),
             ("access from first", "first+")
         );
+    }
+
+    #[tokio::test]
+    async fn quitting_waits_for_a_renewal_to_be_saved() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("first", true).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let prompt = tokio::spawn(async {
+            let mut credentials = expired("first");
+            credentials.access_token(&reqwest::Client::new()).await
+        });
+        endpoint.arrived.notified().await;
+        prompt.abort();
+        let _ = prompt.await;
+        let release = endpoint.release.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            release.notify_one();
+        });
+        finish_renewal(std::time::Duration::from_secs(5)).await;
+        let saved = std::fs::read_to_string(&path);
+        let _ = std::fs::remove_file(&path);
+        let saved: Credentials =
+            serde_json::from_str(&saved.expect("auth.json not saved")).unwrap();
+        assert_eq!(saved.refresh, "first+");
+    }
+
+    #[tokio::test]
+    async fn quitting_stops_waiting_for_a_renewal_that_hangs() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("first", true).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let prompt = tokio::spawn(async {
+            let mut credentials = expired("first");
+            credentials.access_token(&reqwest::Client::new()).await
+        });
+        endpoint.arrived.notified().await;
+        let waited = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            finish_renewal(std::time::Duration::from_millis(100)),
+        )
+        .await;
+        endpoint.release.notify_one();
+        let _ = prompt.await;
+        let _ = std::fs::remove_file(&path);
+        assert!(waited.is_ok(), "kept waiting for the renewal");
     }
 
     #[tokio::test]
