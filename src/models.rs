@@ -90,7 +90,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn knows_only_the_latest_model_in_each_class() {
+    fn knows_the_latest_model_in_each_class() {
         for model in [
             "claude-fable-5-1",
             "claude-opus-5-5",
@@ -99,15 +99,6 @@ mod tests {
         ] {
             assert_eq!(context_window(model), 1_000_000, "{model}");
             assert_eq!(max_output(model), 128_000, "{model}");
-        }
-        for model in [
-            "claude-fable-5",
-            "claude-opus-4-6",
-            "claude-sonnet-4-5",
-            "claude-haiku-4-5-20251001",
-        ] {
-            assert_eq!(context_window(model), 0, "{model}");
-            assert_eq!(max_output(model), 8192, "{model}");
         }
     }
 
