@@ -7,7 +7,7 @@ use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
 mod context;
-mod retry;
+pub(crate) mod retry;
 mod stream;
 mod system;
 #[cfg(test)]

@@ -18,7 +18,7 @@ impl std::fmt::Display for Retryable {
 
 impl std::error::Error for Retryable {}
 
-pub(super) fn retryable(message: impl ToString, retry_after: Option<Duration>) -> anyhow::Error {
+pub(crate) fn retryable(message: impl ToString, retry_after: Option<Duration>) -> anyhow::Error {
     Retryable {
         message: message.to_string(),
         retry_after,
@@ -26,7 +26,7 @@ pub(super) fn retryable(message: impl ToString, retry_after: Option<Duration>) -
     .into()
 }
 
-pub(super) fn retry_delay(error: &anyhow::Error, attempt: u32) -> Option<Duration> {
+pub(crate) fn retry_delay(error: &anyhow::Error, attempt: u32) -> Option<Duration> {
     let error = error.downcast_ref::<Retryable>()?;
     if attempt >= MAX_RETRIES {
         return None;
