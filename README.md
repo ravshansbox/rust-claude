@@ -200,6 +200,8 @@ Markdown tables in replies wrap their cells to fit the window width.
 
 Edit tool calls show a diff, and write tool calls show the first 10 lines of the new file. Both use syntax highlighting based on the file extension. Removed lines have a red background and added lines have a green background. To save room, indentation is shown as one space per level, with each tab counting as one level. Python tool calls show all their code with Python syntax highlighting, and Bash tool calls show their command below the tool name with Bash syntax highlighting. Both use the same compact indentation.
 
+Syntax highlighting uses the GitHub High Contrast colours from [github-nvim-theme](https://github.com/projekt0n/github-nvim-theme): GitHub Dark High Contrast on a dark terminal and GitHub Light High Contrast on a light one. The themes are in [assets/themes](assets/themes).
+
 ## Commands
 
 | Command | Action |
@@ -456,4 +458,4 @@ Every push to `main` runs these checks and then makes a release if needed. The c
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The syntax highlighting themes use colours from github-nvim-theme, also MIT. See [assets/themes/LICENSE-github-nvim-theme](assets/themes/LICENSE-github-nvim-theme).
