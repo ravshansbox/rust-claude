@@ -44,7 +44,7 @@ impl Agent {
         });
         if let (Some(object), Value::Object(settings)) = (
             body.as_object_mut(),
-            models::thinking_settings(&self.model, self.thinking_level),
+            models::thinking_settings(self.thinking_level),
         ) {
             object.extend(settings);
         }
