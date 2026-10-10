@@ -59,6 +59,24 @@ fn expand_home(text: &str, home: Option<&Path>) -> String {
     }
 }
 
+/// Replaces each `${NAME}` with the environment variable `NAME`.
+fn expand_variables(text: &str) -> Result<String, String> {
+    let mut expanded = String::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("${") {
+        expanded.push_str(&rest[..start]);
+        let after = &rest[start + 2..];
+        let Some(end) = after.find('}') else {
+            break;
+        };
+        let name = &after[..end];
+        expanded.push_str(&std::env::var(name).map_err(|_| name.to_string())?);
+        rest = &after[end + 1..];
+    }
+    expanded.push_str(rest);
+    Ok(expanded)
+}
+
 fn read_config(
     path: &Path,
     scope: Scope,
@@ -579,11 +597,13 @@ impl Connection {
         }
         let mut headers = reqwest::header::HeaderMap::new();
         for (name, value) in &config.headers {
-            let name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+            let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
                 .map_err(|_| format!("invalid header name {name:?}"))?;
-            let value = reqwest::header::HeaderValue::from_str(value)
+            let value = expand_variables(value)
+                .map_err(|variable| format!("header {name} uses {variable}, which is not set"))?;
+            let value = reqwest::header::HeaderValue::from_str(&value)
                 .map_err(|_| format!("invalid value for header {name}"))?;
-            headers.insert(name, value);
+            headers.insert(header_name, value);
         }
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(30))
@@ -1552,6 +1572,32 @@ done
         assert_eq!(
             mcp.call("mcp__web__echo", &json!({})).await,
             Some(Err("tools/call timed out after 1 seconds".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn expands_environment_variables_in_http_headers() {
+        let (url, requests) = http_server(http_mcp).await;
+        let mut config = http_config(&url);
+        config
+            .headers
+            .insert("X-Home".into(), "home=${HOME}, cost=$5".into());
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, config).await);
+        let initialize = &requests_for(&requests, "initialize")[0];
+        assert_eq!(
+            initialize.headers["x-home"],
+            format!("home={}, cost=$5", std::env::var("HOME").unwrap())
+        );
+        let mut config = http_config(&url);
+        config.headers.insert(
+            "Authorization".into(),
+            "Bearer ${RUST_CLAUDE_UNSET_TOKEN}".into(),
+        );
+        assert_eq!(
+            mcp.add(start("unset".into(), Scope::Global, config).await)
+                .status,
+            "MCP server unset failed: header Authorization uses RUST_CLAUDE_UNSET_TOKEN, which is not set"
         );
     }
 

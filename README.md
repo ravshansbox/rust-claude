@@ -409,14 +409,14 @@ rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io
     },
     "docs": {
       "url": "https://example.com/mcp",
-      "headers": { "Authorization": "Bearer your-token" }
+      "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" }
     }
   }
 }
 ```
 
 - `command` is a single executable and `args` its arguments. `env` sets environment variables and `cwd` the working folder. A leading `~/` in `command`, an argument or `cwd` names the home folder.
-- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. rust-claude keeps the session the server gives it and ends the session when it quits. Sign-in with OAuth is not supported yet.
+- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. `${NAME}` in a header value is replaced with the environment variable `NAME`; the server fails to connect if it is not set. A project `mcp.json` can use this too, so it can send your environment variables to a server it chooses. rust-claude keeps the session the server gives it and ends the session when it quits. Sign-in with OAuth is not supported yet.
 - `timeout` sets the time limit for each request in seconds, at least 1 (default 60). When a request times out, or you press Esc during a tool call, rust-claude tells the server to stop working on it.
 - `enabled: false` keeps an entry without connecting to it.
 - `type` is optional. When present, it must be `stdio`, `http` or `streamable-http`. Without `type`, an entry with `url` and no `command` is an HTTP server. The older SSE transport (`sse`) is not supported; use the server's Streamable HTTP URL.
