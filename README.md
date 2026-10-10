@@ -135,7 +135,7 @@ curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-claude/main/instal
 
 **Upgrade or reinstall:** run the same command again.
 
-**Updates:** when the interface starts, rust-claude checks the [latest release](https://github.com/ravshansbox/rust-claude/releases/latest) in the background, at most once an hour. If it is newer, rust-claude shows `update v0.2.0 available`, then `downloading v0.2.0` and `building v0.2.0`, and builds and installs it with `cargo install` while you keep working. When it is done, it shows `installed v0.2.0, restart rust-claude to use it`. If `cargo` is not on `PATH`, it shows a warning instead. A failed build shows the first error from cargo. A failed check, for example when offline, shows nothing. Debug builds, such as from `cargo run`, and builds from `main` (`v0.0.0`) do not check. To turn the check off, set `check_for_updates` to `false` in `settings.json`.
+**Updates:** when the interface starts, rust-claude checks the [latest release](https://github.com/ravshansbox/rust-claude/releases/latest) in the background, every time. If it is newer, rust-claude shows `update v0.2.0 available`, then `downloading v0.2.0` and `building v0.2.0`, and builds and installs it with `cargo install` while you keep working. When it is done, it shows `installed v0.2.0, restart rust-claude to use it`. If `cargo` is not on `PATH`, it shows a warning instead. A failed build shows the first error from cargo. A failed check, for example when offline, shows nothing. Debug builds, such as from `cargo run`, and builds from `main` (`v0.0.0`) do not check. To turn the check off, set `check_for_updates` to `false` in `settings.json`.
 
 **Uninstall:**
 
