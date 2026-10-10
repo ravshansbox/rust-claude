@@ -426,6 +426,7 @@ Architecture decision records are in [docs/adr](docs/adr):
 - [1. Identify as Claude Code](docs/adr/0001-identify-as-claude-code.md)
 - [2. Run tools without approval](docs/adr/0002-run-tools-without-approval.md)
 - [3. Start project MCP servers without approval](docs/adr/0003-start-project-mcp-servers-without-approval.md)
+- [4. Offer only the latest model in each class](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)
 
 ## Development
 
