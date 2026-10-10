@@ -40,6 +40,57 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("missing argument: {key}"))
 }
 
+/// Replaces the file at `path`, or the file a symlink there points to, in one
+/// step, keeping the permissions of the file it replaces. In a folder where
+/// no temporary file can be created, it writes the file in place instead.
+async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
+    let path = std::path::PathBuf::from(path);
+    tokio::task::spawn_blocking(move || {
+        let (target, permissions) = match std::fs::canonicalize(&path) {
+            Ok(target) => {
+                // Refuses a file the user made read-only, as writing in place would.
+                let file = std::fs::OpenOptions::new().write(true).open(&target)?;
+                let permissions = file.metadata()?.permissions();
+                (target, Some(permissions))
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                (dangling_target(path), None)
+            }
+            Err(error) => return Err(error),
+        };
+        let mut options = std::fs::OpenOptions::new();
+        #[cfg(unix)]
+        if let Some(permissions) = &permissions {
+            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+            options.mode(permissions.mode() & 0o777);
+        }
+        match crate::config::replace_file(&target, contents.as_bytes(), options, permissions) {
+            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+                std::fs::write(&target, contents)
+            }
+            result => result,
+        }
+    })
+    .await
+    .map_err(std::io::Error::other)?
+}
+
+/// Follows symlinks at a path that does not exist yet to the file they would
+/// create, so writing it keeps the links.
+fn dangling_target(mut path: std::path::PathBuf) -> std::path::PathBuf {
+    // Stops at a loop of links, as the system does.
+    for _ in 0..40 {
+        let Ok(link) = std::fs::read_link(&path) else {
+            break;
+        };
+        path = match path.parent() {
+            Some(parent) => parent.join(link),
+            None => link,
+        };
+    }
+    path
+}
+
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
     match name {
         "bash" => bash::run(input).await,

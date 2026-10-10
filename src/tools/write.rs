@@ -1,4 +1,4 @@
-use super::argument;
+use super::{argument, replace_file};
 use serde_json::{Value, json};
 
 pub(super) fn definition() -> Value {
@@ -26,7 +26,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
             .await
             .map_err(|error| format!("failed to write {path}: {error}"))?;
     }
-    tokio::fs::write(path, content)
+    replace_file(path, content.to_string())
         .await
         .map(|_| format!("wrote {path}"))
         .map_err(|error| format!("failed to write {path}: {error}"))
@@ -34,7 +34,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
 
 #[cfg(test)]
 mod tests {
-    use crate::tools::call;
+    use crate::tools::{call, test_support::TemporaryDir};
     use serde_json::json;
 
     #[tokio::test]
@@ -60,5 +60,82 @@ mod tests {
         let _ = std::fs::remove_dir_all(&directory);
         assert_eq!(result, Err("missing argument: content".into()));
         assert!(!created);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn replaces_target_of_symlink_and_keeps_its_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = TemporaryDir::new("write-symlink");
+        let target = directory.path().join("script.sh");
+        let link = directory.path().join("link.sh");
+        std::fs::write(&target, "echo old\n").unwrap();
+        std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o750)).unwrap();
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let input = json!({ "path": link, "content": "echo new\n" });
+        assert_eq!(
+            call("write", &input).await,
+            Ok(format!("wrote {}", link.display()))
+        );
+        assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "echo new\n");
+        let mode = std::fs::metadata(&target).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o750);
+        assert_eq!(directory.entries(), ["link.sh", "script.sh"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn writes_file_in_read_only_folder() {
+        let directory = TemporaryDir::new("write-read-only");
+        let path = directory.path().join("file.txt");
+        std::fs::write(&path, "old").unwrap();
+        // The file stays writable, but no file can be added next to it.
+        directory.set_mode(0o500);
+        let input = json!({ "path": path, "content": "new" });
+        let result = call("write", &input).await;
+        let content = std::fs::read_to_string(&path).unwrap();
+        let entries = directory.entries();
+        directory.set_mode(0o700);
+        assert_eq!(result, Ok(format!("wrote {}", path.display())));
+        assert_eq!(content, "new");
+        assert_eq!(entries, ["file.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn creates_target_of_dangling_symlink() {
+        let directory = TemporaryDir::new("write-dangling");
+        let link = directory.path().join("link.txt");
+        std::os::unix::fs::symlink("target.txt", &link).unwrap();
+        let input = json!({ "path": link, "content": "new" });
+        assert_eq!(
+            call("write", &input).await,
+            Ok(format!("wrote {}", link.display()))
+        );
+        assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
+        let target = directory.path().join("target.txt");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
+        assert_eq!(directory.entries(), ["link.txt", "target.txt"]);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn refuses_read_only_file() {
+        use std::os::unix::fs::PermissionsExt;
+        let directory = TemporaryDir::new("write-read-only-file");
+        let path = directory.path().join("file.txt");
+        std::fs::write(&path, "old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+        let input = json!({ "path": path, "content": "new" });
+        let result = call("write", &input).await;
+        assert!(
+            result.as_ref().is_err_and(
+                |error| error.starts_with(&format!("failed to write {}: ", path.display()))
+            ),
+            "{result:?}"
+        );
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
+        assert_eq!(directory.entries(), ["file.txt"]);
     }
 }

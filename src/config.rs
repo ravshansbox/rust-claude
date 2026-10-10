@@ -102,6 +102,26 @@ pub fn private_file() -> OpenOptions {
 /// renamed over it, so readers never see a half-written file and a failed
 /// write keeps the old one.
 pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+    // A file a crash left under the temporary name may let others read it.
+    #[cfg(unix)]
+    let permissions = {
+        use std::os::unix::fs::PermissionsExt;
+        Some(std::fs::Permissions::from_mode(0o600))
+    };
+    #[cfg(not(unix))]
+    let permissions = None;
+    replace_file(path, contents, private_file(), permissions)
+}
+
+/// Writes a file through a temporary file in the same folder, created with
+/// `options` and given `permissions`, then renamed over it, so readers never
+/// see a half-written file and a failed write keeps the old one.
+pub fn replace_file(
+    path: &Path,
+    contents: &[u8],
+    mut options: OpenOptions,
+    permissions: Option<std::fs::Permissions>,
+) -> std::io::Result<()> {
     static WRITES: AtomicUsize = AtomicUsize::new(0);
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(format!(
@@ -110,17 +130,14 @@ pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
         WRITES.fetch_add(1, Ordering::Relaxed)
     ));
     let temporary = path.with_file_name(name);
-    let written = private_file()
+    let written = options
         .write(true)
         .create(true)
         .truncate(true)
         .open(&temporary)
         .and_then(|mut file| {
-            // A file a crash left under this name may let others read it.
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            if let Some(permissions) = permissions {
+                file.set_permissions(permissions)?;
             }
             file.write_all(contents)?;
             file.sync_all()?;
