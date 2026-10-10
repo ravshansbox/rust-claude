@@ -60,7 +60,7 @@ async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
                 (target, Some(metadata))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                (dangling_target(path), None)
+                (crate::config::dangling_target(path), None)
             }
             Err(error) => return Err(error),
         };
@@ -99,22 +99,6 @@ async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
     })
     .await
     .map_err(std::io::Error::other)?
-}
-
-/// Follows symlinks at a path that does not exist yet to the file they would
-/// create, so writing it keeps the links.
-fn dangling_target(mut path: std::path::PathBuf) -> std::path::PathBuf {
-    // Stops at a loop of links, as the system does.
-    for _ in 0..40 {
-        let Ok(link) = std::fs::read_link(&path) else {
-            break;
-        };
-        path = match path.parent() {
-            Some(parent) => parent.join(link),
-            None => link,
-        };
-    }
-    path
 }
 
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
