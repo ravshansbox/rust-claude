@@ -348,6 +348,8 @@ struct PostError {
     message: String,
     /// A network failure, or a status that may clear up on its own.
     transient: bool,
+    /// The session the server no longer knows.
+    expired: Option<String>,
 }
 
 /// A Streamable HTTP server. Each message is a POST; the server answers a
@@ -359,6 +361,9 @@ struct Http {
     session: Mutex<Option<String>>,
     protocol_version: Mutex<Option<String>>,
     timeout: Duration,
+    /// The `initialize` request, sent again to start a new session.
+    initialize: Mutex<Option<Value>>,
+    renewing: tokio::sync::Mutex<()>,
 }
 
 /// Ends the server's session when the connection is dropped.
@@ -419,19 +424,77 @@ async fn post_messages(
 }
 
 impl Http {
-    /// Posts `message`, trying `initialize` again after a transient failure.
-    async fn post_retrying(&self, message: &Value) -> Result<reqwest::Response, String> {
+    /// Posts a request. Tries `initialize` again after a transient failure,
+    /// and starts a new session once when the server says it has expired.
+    async fn post_request(&self, message: &Value) -> Result<reqwest::Response, String> {
         let mut delays = CONNECT_RETRY_DELAYS.iter();
+        let mut renewed = false;
         loop {
-            match self.post(message).await {
+            let error = match self.post(message).await {
                 Ok(response) => return Ok(response),
-                Err(error) => match delays.next() {
-                    Some(delay) if error.transient && message["method"] == "initialize" => {
-                        tokio::time::sleep(*delay).await;
-                    }
-                    _ => return Err(error.message),
-                },
+                Err(error) => error,
+            };
+            if let Some(expired) = error.expired.filter(|_| !renewed) {
+                renewed = true;
+                self.renew(&expired).await?;
+                continue;
             }
+            match delays.next() {
+                Some(delay) if error.transient && message["method"] == "initialize" => {
+                    tokio::time::sleep(*delay).await;
+                }
+                _ => return Err(error.message),
+            }
+        }
+    }
+
+    async fn renew(&self, expired: &str) -> Result<(), String> {
+        let _renewing = self.renewing.lock().await;
+        let current = self.session.lock().ok().and_then(|session| session.clone());
+        if current.as_deref() != Some(expired) {
+            return Ok(());
+        }
+        let initialize = self
+            .initialize
+            .lock()
+            .ok()
+            .and_then(|initialize| initialize.clone())
+            .ok_or("session expired before it started")?;
+        for value in [&self.session, &self.protocol_version] {
+            if let Ok(mut value) = value.lock() {
+                *value = None;
+            }
+        }
+        let failed = |error: String| format!("cannot start a new session: {error}");
+        let response = self
+            .post(&initialize)
+            .await
+            .map_err(|error| failed(error.message))?;
+        let mut answered = false;
+        self.read_body(response, "initialize", |reply| {
+            if reply["id"] != initialize["id"] {
+                return false;
+            }
+            answered = reply["result"].is_object();
+            self.negotiated(reply);
+            true
+        })
+        .await
+        .map_err(failed)?;
+        if !answered {
+            return Err(failed("server did not accept initialize".into()));
+        }
+        self.post(&json!({ "jsonrpc": "2.0", "method": "notifications/initialized" }))
+            .await
+            .map_err(|error| failed(error.message))?;
+        Ok(())
+    }
+
+    fn negotiated(&self, reply: &Value) {
+        if let Some(version) = reply["result"]["protocolVersion"].as_str()
+            && let Ok(mut current) = self.protocol_version.lock()
+        {
+            *current = Some(version.to_string());
         }
     }
 
@@ -446,7 +509,8 @@ impl Http {
                 "application/json, text/event-stream",
             )
             .json(message);
-        if let Some(session) = self.session.lock().ok().and_then(|session| session.clone()) {
+        let session = self.session.lock().ok().and_then(|session| session.clone());
+        if let Some(session) = &session {
             request = request.header("mcp-session-id", session);
         }
         if let Some(version) = self
@@ -460,6 +524,7 @@ impl Http {
         let response = request.send().await.map_err(|error| PostError {
             message: format!("cannot reach {}: {}", self.url, error_chain(&error)),
             transient: true,
+            expired: None,
         })?;
         if let Some(session) = response
             .headers()
@@ -488,6 +553,7 @@ impl Http {
         Err(PostError {
             message,
             transient: status == 408 || status == 429 || (status >= 500 && status != 501),
+            expired: session.filter(|_| status == 404),
         })
     }
 
@@ -501,19 +567,24 @@ impl Http {
             return;
         };
         let method = message["method"].as_str().unwrap_or_default().to_string();
+        if method == "initialize"
+            && let Ok(mut initialize) = self.initialize.lock()
+        {
+            *initialize = Some(message.clone());
+        }
         let handle = |reply: &Value| {
-            if method == "initialize"
-                && reply["id"] == id
-                && let Some(version) = reply["result"]["protocolVersion"].as_str()
-                && let Ok(mut current) = self.protocol_version.lock()
-            {
-                *current = Some(version.to_string());
+            if method == "initialize" && reply["id"] == id {
+                self.negotiated(reply);
             }
             if let Some(writer) = writer.upgrade() {
                 handle_message(reply, &writer, &pending);
             }
+            !pending.is_waiting(id)
         };
-        let replies = self.read_replies(&message, id, &pending, handle);
+        let replies = async {
+            let response = self.post_request(&message).await?;
+            self.read_body(response, &method, handle).await
+        };
         let error = match tokio::time::timeout(self.timeout, replies).await {
             Ok(Ok(())) => format!("server ended the reply to {method} without answering it"),
             Ok(Err(error)) => error,
@@ -522,15 +593,14 @@ impl Http {
         pending.answer(id, Err(error));
     }
 
-    async fn read_replies(
+    /// Reads the messages in the server's reply to a request and hands each
+    /// to `handle`, until `handle` says it has what it waited for.
+    async fn read_body(
         &self,
-        message: &Value,
-        id: u64,
-        pending: &Pending,
-        mut handle: impl FnMut(&Value),
+        mut response: reqwest::Response,
+        method: &str,
+        mut handle: impl FnMut(&Value) -> bool,
     ) -> Result<(), String> {
-        let method = message["method"].as_str().unwrap_or_default();
-        let mut response = self.post_retrying(message).await?;
         if matches!(response.status().as_u16(), 202 | 204) {
             return Err(format!("server accepted {method} without a reply"));
         }
@@ -557,8 +627,12 @@ impl Http {
                 let body: Value = serde_json::from_slice(&body)
                     .map_err(|error| format!("server sent invalid JSON: {error}"))?;
                 match body {
-                    Value::Array(replies) => replies.iter().for_each(&mut handle),
-                    reply => handle(&reply),
+                    Value::Array(replies) => replies.iter().for_each(|reply| {
+                        handle(reply);
+                    }),
+                    reply => {
+                        handle(&reply);
+                    }
                 }
                 Ok(())
             }
@@ -575,12 +649,11 @@ impl Http {
                             line.pop();
                         }
                         if line.is_empty() {
-                            if is_message && let Ok(reply) = serde_json::from_slice::<Value>(&data)
+                            if is_message
+                                && let Ok(reply) = serde_json::from_slice::<Value>(&data)
+                                && handle(&reply)
                             {
-                                handle(&reply);
-                                if !pending.is_waiting(id) {
-                                    return Ok(());
-                                }
+                                return Ok(());
                             }
                             data.clear();
                             is_message = true;
@@ -645,6 +718,8 @@ impl Connection {
             session: Mutex::new(None),
             protocol_version: Mutex::new(None),
             timeout,
+            initialize: Mutex::new(None),
+            renewing: tokio::sync::Mutex::new(()),
         });
         let (writer, messages) = mpsc::unbounded_channel();
         let pending = Arc::new(Pending {
@@ -1339,6 +1414,7 @@ done
         }
 
         fn with_header(mut self, name: &str, value: &str) -> Self {
+            self.headers.retain(|(existing, _)| existing != name);
             self.headers.push((name.into(), value.into()));
             self
         }
@@ -1659,6 +1735,45 @@ done
             "MCP server locked failed: server answered initialize with status 401: sign in first"
         );
         assert_eq!(requests_for(&requests, "initialize").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn starts_a_new_http_session_when_the_old_one_expires() {
+        let sessions = Arc::new(AtomicU64::new(0));
+        let issued = sessions.clone();
+        let (url, requests) = http_server(move |request| {
+            let session = request.headers.get("mcp-session-id").map(String::as_str);
+            match request.body["method"].as_str() {
+                Some("initialize") => {
+                    let number = issued.fetch_add(1, Ordering::SeqCst) + 1;
+                    http_mcp(request).with_header("mcp-session-id", &format!("s{number}"))
+                }
+                Some("tools/call") if session == Some("s1") => HttpReply::status(404, ""),
+                _ => http_mcp(request),
+            }
+        })
+        .await;
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
+        let sessions_used = |method: &str| -> Vec<String> {
+            requests_for(&requests, method)
+                .iter()
+                .map(|request| {
+                    request
+                        .headers
+                        .get("mcp-session-id")
+                        .cloned()
+                        .unwrap_or_default()
+                })
+                .collect()
+        };
+        assert_eq!(sessions_used("initialize"), ["", ""]);
+        assert_eq!(sessions_used("notifications/initialized"), ["s1", "s2"]);
+        assert_eq!(sessions_used("tools/call"), ["s1", "s2"]);
     }
 
     #[tokio::test]
