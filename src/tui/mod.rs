@@ -335,6 +335,7 @@ async fn run_loop(
 
     let mut worker_stopped = false;
     let result = loop {
+        let copied_until = app.copied_until;
         tokio::select! {
             joined = &mut worker => {
                 worker_stopped = true;
@@ -349,6 +350,11 @@ async fn run_loop(
                     break Err(error.into());
                 }
                 dirty = false;
+            }
+            _ = tokio::time::sleep_until(copied_until.unwrap_or_else(std::time::Instant::now).into()),
+                if copied_until.is_some() => {
+                app.copied_until = None;
+                dirty = true;
             }
             _ = spinner.tick(), if app.animating() => {
                 app.tick_spinner();
