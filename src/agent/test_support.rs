@@ -16,12 +16,17 @@ pub(crate) enum Reply {
 }
 
 pub(crate) fn text_reply(text: &str) -> Reply {
+    stopped_reply(text, "end_turn")
+}
+
+/// A text reply that ends with `stop_reason`.
+pub(crate) fn stopped_reply(text: &str, stop_reason: &str) -> Reply {
     Reply::Events(vec![
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": text } }),
         json!({ "type": "content_block_stop", "index": 0 }),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": stop_reason }, "usage": { "output_tokens": 1 } }),
         json!({ "type": "message_stop" }),
     ])
 }
