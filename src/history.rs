@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     path::{Path, PathBuf},
 };
 
@@ -53,11 +53,27 @@ fn lock(path: &Path) -> Result<std::fs::File> {
 
 pub fn append(path: &Path, entry: &Entry) -> Result<()> {
     let _lock = lock(path)?;
-    crate::config::private_file()
+    let mut file = crate::config::private_file()
         .create(true)
         .append(true)
-        .open(path)?
-        .write_all(entry.line()?.as_bytes())?;
+        .read(true)
+        .open(path)?;
+    let length = file.metadata()?.len();
+    let mut line = entry.line()?;
+    // Start on a new line after a line an earlier write cut short.
+    if length > 0 {
+        let mut last = [0];
+        file.seek(SeekFrom::Start(length - 1))?;
+        file.read_exact(&mut last)?;
+        if last != *b"\n" {
+            line.insert(0, '\n');
+        }
+    }
+    if let Err(error) = file.write_all(line.as_bytes()) {
+        // Remove a partly written line, so the next prompt starts on a new line.
+        let _ = file.set_len(length);
+        return Err(error.into());
+    }
     Ok(())
 }
 
@@ -165,6 +181,24 @@ mod tests {
             .append(true)
             .open(&path)
             .and_then(|mut file| std::io::Write::write_all(&mut file, b"{\"prompt\":\"caf\xc3\n"))
+            .unwrap();
+        append(&path, &Entry::here("two")).unwrap();
+        let entries = load(&path);
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        assert_eq!(prompts(&entries), ["one", "two"]);
+    }
+
+    #[test]
+    fn keeps_a_prompt_sent_after_a_line_cut_short_before_its_end() {
+        let path = std::env::temp_dir().join(format!(
+            "rust-claude-unended-history-{}/history.jsonl",
+            std::process::id()
+        ));
+        append(&path, &Entry::here("one")).unwrap();
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .and_then(|mut file| std::io::Write::write_all(&mut file, b"{\"prompt\":\"cut"))
             .unwrap();
         append(&path, &Entry::here("two")).unwrap();
         let entries = load(&path);
