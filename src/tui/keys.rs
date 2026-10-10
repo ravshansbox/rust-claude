@@ -892,6 +892,40 @@ mod tests {
     }
 
     #[test]
+    fn picks_the_file_named_exactly_before_longer_paths() {
+        let mut app = new_app();
+        app.set_files(
+            0,
+            vec![
+                "crates/foo/src/lib.rs".into(),
+                "crates/src/lib.rs.bak".into(),
+                "src/lib.rs".into(),
+                "src/lib.rs.orig".into(),
+            ],
+        );
+        handle_input(Event::Paste("explain @SRC/lib".into()), &mut app, |_| {});
+        let items: Vec<String> = app
+            .visible_suggestions()
+            .unwrap()
+            .items
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect();
+        assert_eq!(
+            items,
+            [
+                "src/lib.rs",
+                "src/lib.rs.orig",
+                "crates/foo/src/lib.rs",
+                "crates/src/lib.rs.bak"
+            ]
+        );
+        handle_input(Event::Paste(".rs".into()), &mut app, |_| {});
+        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        assert_eq!(app.input, "explain @src/lib.rs ");
+    }
+
+    #[test]
     fn pastes_multiple_lines_without_submitting() {
         let mut app = new_app();
         let mut submitted = false;
