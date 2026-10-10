@@ -110,7 +110,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::ImagePasted(Ok(Some(image))) => app.attach_image(image),
         UiEvent::ImagePasted(Ok(None)) => app.push(Role::Event, "no image in the clipboard"),
         UiEvent::ImagePasted(Err(error)) => {
-            app.push(Role::Event, format!("failed to paste image: {error}"));
+            app.push(Role::Event, format!("failed to paste image: {error:#}"));
         }
         UiEvent::Files(generation, files) => app.set_files(generation, files),
         UiEvent::Workspace(label) => app.workspace = label,
@@ -407,5 +407,29 @@ mod tests {
             assert!(!app.workspace_stale, "{name}");
             assert!(screen(&mut app).contains("folder · branch"), "{name}");
         }
+    }
+
+    #[test]
+    fn shows_why_resuming_a_session_failed() {
+        let mut app = new_app();
+        let error = anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+            .context("reading /sessions/x.jsonl");
+        handle_agent_event(UiEvent::Resumed(Err(error)), &mut app);
+        assert_eq!(
+            app.messages.last().unwrap().text,
+            "error: reading /sessions/x.jsonl: permission denied"
+        );
+    }
+
+    #[test]
+    fn shows_why_pasting_an_image_failed() {
+        let mut app = new_app();
+        let error = crate::images::prepare(b"not an image".to_vec()).unwrap_err();
+        handle_agent_event(UiEvent::ImagePasted(Err(error)), &mut app);
+        let text = &app.messages.last().unwrap().text;
+        assert!(
+            text.starts_with("failed to paste image: unsupported image format: "),
+            "{text}"
+        );
     }
 }
