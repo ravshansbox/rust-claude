@@ -195,3 +195,25 @@ fn reads_sign_in_and_mcp_servers_from_config_dir() {
     );
     assert!(home_untouched);
 }
+
+#[test]
+fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
+    use std::os::unix::ffi::OsStrExt;
+
+    let setup = Setup::new("non-utf8");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+        .args(["-p", "hello", "--image"])
+        .arg(std::ffi::OsStr::from_bytes(b"photo-\xff.png"))
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&setup.root);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("usage:"), "{stderr}");
+}
