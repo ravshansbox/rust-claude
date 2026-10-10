@@ -10,6 +10,8 @@ pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/quit", "quit"),
 ];
 
+/// Commands and skill commands starting with the input, with the one named
+/// exactly by the input first, so Enter runs it rather than a longer name.
 pub(super) fn command_matches(input: &str, skills: &[Skill]) -> Vec<(String, String)> {
     if !input.starts_with('/') || input.contains(char::is_whitespace) {
         return Vec::new();
@@ -31,8 +33,12 @@ pub(super) fn command_matches(input: &str, skills: &[Skill]) -> Vec<(String, Str
             ),
         )
     });
-    commands
+    let mut matches: Vec<(String, String)> = commands
         .chain(skill_commands)
         .filter(|(name, _)| name.starts_with(input))
-        .collect()
+        .collect();
+    if let Some(exact) = matches.iter().position(|(name, _)| name == input) {
+        matches[..=exact].rotate_right(1);
+    }
+    matches
 }
