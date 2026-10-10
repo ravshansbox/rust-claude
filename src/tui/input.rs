@@ -19,6 +19,16 @@ fn shown_width(grapheme: &str) -> usize {
     shown(grapheme).width()
 }
 
+/// Text with each tab shown as spaces, as in the input box, since ratatui
+/// skips control characters.
+pub(super) fn expand_tabs(text: String) -> String {
+    if text.contains('\t') {
+        text.replace('\t', TAB)
+    } else {
+        text
+    }
+}
+
 fn starts_new_row(grapheme: &str, grapheme_width: usize, row_width: usize, width: usize) -> bool {
     if grapheme == "\n" {
         row_width >= width
