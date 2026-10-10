@@ -24,7 +24,7 @@ Model and thinking:
 
 - `/model` picker with the models available to your account
 - `/model <id>`, which checks the id before switching
-- Known context windows, output limits and thinking modes for each model
+- Known context windows and output limits for the latest model in each class
 - Thinking levels with `/thinking`, `/thinking <level>` and Shift+Tab
 - Thinking text shown in the conversation
 - Model and thinking level saved to `~/.rust-claude/settings.json`
@@ -282,9 +282,9 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 
 Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
-Most models use adaptive thinking, with the level sent as the effort. Opus 4.6 and Sonnet 4.6 do not support `xhigh`, so they get `high` instead. Haiku 4.5, Sonnet 4.5 and Opus 4.5 do not support adaptive thinking, so the level sets a thinking budget instead: 4,000 tokens for `low`, 16,000 for `medium`, 32,000 for `high`, and one token less than the output limit for `xhigh` and `max`. Opus 4.5 also gets the effort for `low`, `medium` and `high`. Models that rust-claude doesn't know use adaptive thinking.
+rust-claude knows only the latest model in each class: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 4](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)). Every model uses adaptive thinking, with the level sent as the effort.
 
-Each reply may use up to the model's full output limit (64,000 or 128,000 tokens). Models that rust-claude doesn't know get 8,192 tokens.
+Each reply from a known model may use up to 128,000 tokens. Other models get 8,192 tokens, and context use shows as a token count.
 
 Options take priority over the settings file and apply to that run only. They work in the interface and in print mode. rust-claude does not check the `--model` id, so an unknown id fails on the first request.
 
