@@ -226,7 +226,17 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
     std::io::stdin().read_line(&mut input)?;
 
     let code = parse_pasted_code(&input, &state)?;
+    exchange_code(http, code, &state, &verifier).await
+}
 
+/// Trades the pasted code for tokens and saves them. The code works only
+/// once, so the new tokens are kept even when auth.json cannot take them.
+async fn exchange_code(
+    http: &reqwest::Client,
+    code: &str,
+    state: &str,
+    verifier: &str,
+) -> Result<Credentials> {
     let credentials = request_tokens(
         http,
         json!({
@@ -239,7 +249,9 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
         }),
     )
     .await?;
-    credentials.save()?;
+    if let Err(error) = credentials.save() {
+        eprintln!("Signed in, but could not save the sign-in to auth.json: {error:#}\n");
+    }
     Ok(credentials)
 }
 
@@ -306,7 +318,7 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
 
 #[cfg(test)]
 mod tests {
-    use super::{Credentials, credentials_path, parse_pasted_code};
+    use super::{Credentials, credentials_path, exchange_code, parse_pasted_code};
     use crate::agent::retry::retry_delay;
     use serde_json::{Value, json};
     use std::sync::Arc;
@@ -497,6 +509,22 @@ mod tests {
             .unwrap_err();
         assert_eq!(retry_delay(&error, 0), None);
         assert!(error.to_string().contains("sign in again"), "{error}");
+    }
+
+    #[tokio::test]
+    async fn keeps_a_new_sign_in_that_could_not_be_saved() {
+        let _lock = AUTH_FILE.lock().await;
+        answer_token_requests(
+            "200 OK",
+            json!({ "access_token": "new", "refresh_token": "next", "expires_in": 3600 }),
+        )
+        .await;
+        let path = credentials_path().unwrap();
+        // A folder in the way of auth.json makes saving fail.
+        std::fs::create_dir_all(&path).unwrap();
+        let credentials = exchange_code(&reqwest::Client::new(), "code", "state", "verifier").await;
+        let _ = std::fs::remove_dir_all(&path);
+        assert_eq!(credentials.unwrap().access, "new");
     }
 
     #[tokio::test]
