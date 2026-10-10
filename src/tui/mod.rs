@@ -39,6 +39,57 @@ use std::{
     time::{Duration, SystemTime},
 };
 use tokio::{sync::mpsc, time::MissedTickBehavior};
+
+/// Opens `url` in the default browser, if there is one.
+fn open_in_browser(url: &str) {
+    let program = if cfg!(target_os = "macos") {
+        "open"
+    } else {
+        "xdg-open"
+    };
+    let child = tokio::process::Command::new(program)
+        .arg(url)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
+    if let Ok(mut child) = child {
+        tokio::spawn(async move {
+            let _ = child.wait().await;
+        });
+    }
+}
+
+/// Signs in to the MCP server `name` in the browser, then starts it again.
+async fn sign_in_to_mcp_server(
+    name: String,
+    events: mpsc::UnboundedSender<UiEvent>,
+    requests: mpsc::UnboundedSender<Request>,
+) {
+    let notice = |text: String| {
+        let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(text)));
+    };
+    let sign_in = match mcp::begin_sign_in(&name).await {
+        Ok(sign_in) => sign_in,
+        Err(error) => return notice(format!("MCP sign-in to {name} failed: {error}")),
+    };
+    notice(format!(
+        "opening the sign-in page for MCP server {name}; if it does not open, visit {}",
+        sign_in.authorize_url
+    ));
+    open_in_browser(&sign_in.authorize_url);
+    if let Err(error) = sign_in.finish().await {
+        return notice(format!("MCP sign-in to {name} failed: {error}"));
+    }
+    let Some(server) = mcp::restart(&name) else {
+        return notice(format!("signed in to MCP server {name}"));
+    };
+    let _ = events.send(UiEvent::McpSignedIn {
+        name,
+        label: server.label.clone(),
+    });
+    let _ = requests.send(Request::ReplaceMcpServer(server.started.await));
+}
 use worker::{Request, UiEvent, agent_task, quit};
 
 pub fn dark_theme() -> bool {
@@ -204,6 +255,7 @@ async fn run_loop(
     }
     app.skills = agent.skills.skills.clone();
     let startup = mcp::startup();
+    app.mcp_sign_in_servers = startup.sign_in_servers.clone();
     for diagnostic in &startup.diagnostics {
         app.push(Role::Event, diagnostic.to_string());
     }
@@ -311,6 +363,13 @@ async fn run_loop(
                     }
                     Action::ListModels => {
                         let _ = request_tx.send(Request::ListModels);
+                    }
+                    Action::McpSignIn(name) => {
+                        tokio::spawn(sign_in_to_mcp_server(
+                            name,
+                            background_events.clone(),
+                            request_tx.clone(),
+                        ));
                     }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());

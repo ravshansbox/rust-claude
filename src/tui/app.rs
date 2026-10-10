@@ -300,6 +300,7 @@ pub(super) struct App {
     pub(super) history_index: Option<usize>,
     pub(super) reads: tools::ReadGroup,
     pub(super) skills: Vec<Skill>,
+    pub(super) mcp_sign_in_servers: Vec<String>,
     pub(super) images: Vec<(usize, Image)>,
     pub(super) image_count: usize,
     pub(super) queue: Queue,
@@ -386,6 +387,7 @@ impl App {
             history_index: None,
             reads: tools::ReadGroup::default(),
             skills: Vec::new(),
+            mcp_sign_in_servers: Vec::new(),
             images: Vec::new(),
             image_count: 0,
             queue: Queue::default(),
@@ -543,7 +545,7 @@ impl App {
         if self.commands_dismissed {
             return None;
         }
-        let commands = command_matches(&self.input, &self.skills);
+        let commands = command_matches(&self.input, &self.skills, &self.mcp_sign_in_servers);
         if !commands.is_empty() {
             return Some(Suggestions {
                 start: 0,
@@ -838,6 +840,37 @@ mod tests {
             .expect(&shown);
         let loaded = shown.find("loaded AGENTS.md").expect(&shown);
         assert!(name < loaded, "{shown}");
+    }
+
+    #[test]
+    fn shows_a_signed_in_server_loading_again() {
+        let mut app = new_app();
+        handle_agent_event(
+            UiEvent::McpSignedIn {
+                name: "figma".into(),
+                label: "global MCP server: figma".into(),
+            },
+            &mut app,
+        );
+        let texts: Vec<&str> = app
+            .messages
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(texts[texts.len() - 2], "signed in to MCP server figma");
+        assert!(texts[texts.len() - 1].ends_with("loading global MCP server: figma"));
+        handle_agent_event(
+            UiEvent::McpServer(crate::mcp::Added {
+                name: "figma".into(),
+                status: "loaded global MCP server: figma (5 tools)".into(),
+                diagnostics: Vec::new(),
+            }),
+            &mut app,
+        );
+        assert_eq!(
+            app.messages.last().unwrap().text,
+            "loaded global MCP server: figma (5 tools)"
+        );
     }
 
     #[test]
