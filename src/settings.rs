@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub model: Option<String>,
     pub thinking_level: Option<String>,
+    pub check_for_updates: Option<bool>,
 }
 
 fn settings_path() -> Result<PathBuf> {

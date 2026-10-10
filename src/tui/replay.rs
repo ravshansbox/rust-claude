@@ -43,6 +43,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
                 app.push(Role::Event, diagnostic);
             }
         }
+        UiEvent::Update(progress) => app.push(Role::Event, progress.message()),
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {
@@ -234,6 +235,23 @@ mod tests {
         let last = app.messages.last().unwrap();
         assert!(matches!(last.role, Role::User));
         assert_eq!(last.text, "next");
+    }
+
+    #[test]
+    fn shows_update_progress() {
+        let mut app = new_app();
+        for progress in [
+            crate::update::Progress::Available("v0.2.0".into()),
+            crate::update::Progress::Ready("v0.2.0".into()),
+        ] {
+            handle_agent_event(UiEvent::Update(progress), &mut app);
+        }
+        let shown = screen(&mut app);
+        let available = shown.find("update v0.2.0 available").expect(&shown);
+        let ready = shown
+            .find("installed v0.2.0, restart rust-claude to use it")
+            .expect(&shown);
+        assert!(available < ready, "{shown}");
     }
 
     #[test]
