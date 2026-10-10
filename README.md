@@ -163,6 +163,8 @@ Run one prompt and print the answer with `-p` or `--print`. The argument after i
 rust-claude -p "explain src/main.rs"
 ```
 
+In print mode, `/skill:name` runs a skill as in the interface. Other commands, such as `/compact`, are not available there; their text is sent as the prompt.
+
 Send images with the prompt with `--image <path>`. Repeat it for more images:
 
 ```sh
