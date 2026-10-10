@@ -84,14 +84,31 @@ impl FileList {
         Self { paths, lowercase }
     }
 
+    /// Paths containing the query, ignoring case: the path equal to it
+    /// first, then paths starting with it, then the rest, so Enter picks
+    /// the file the user typed out in full.
     pub(super) fn matches(&self, query: &str) -> Vec<String> {
         let query = query.to_lowercase();
-        self.paths
-            .iter()
-            .zip(&self.lowercase)
-            .filter(|(_, lowercase)| lowercase.contains(&query))
+        let mut exact = Vec::new();
+        let mut prefix = Vec::new();
+        let mut rest = Vec::new();
+        for (path, lowercase) in self.paths.iter().zip(&self.lowercase) {
+            if *lowercase == query {
+                exact.push(path);
+            } else if lowercase.starts_with(&query) {
+                if prefix.len() < MAX_MATCHES {
+                    prefix.push(path);
+                }
+            } else if lowercase.contains(&query) && rest.len() < MAX_MATCHES {
+                rest.push(path);
+            }
+        }
+        exact
+            .into_iter()
+            .chain(prefix)
+            .chain(rest)
             .take(MAX_MATCHES)
-            .map(|(path, _)| path.clone())
+            .cloned()
             .collect()
     }
 }
