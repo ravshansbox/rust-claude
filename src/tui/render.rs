@@ -304,7 +304,7 @@ mod tests {
             .iter()
             .map(|line| line.to_string().trim_end().to_string())
             .collect();
-        assert_eq!(texts, [" python", " def f():", "     return 1"]);
+        assert_eq!(texts, [" python", " def f():", "  return 1"]);
         let colours: std::collections::HashSet<_> = lines[1]
             .spans
             .iter()
