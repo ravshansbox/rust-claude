@@ -229,6 +229,12 @@ async fn run_loop(
         });
     }
     drop(mcp_tx);
+    if let Some(updater) = crate::update::Updater::for_this_build(&Settings::load()) {
+        let events = background_events.clone();
+        tokio::spawn(updater.run(move |progress| {
+            let _ = events.send(UiEvent::Update(progress));
+        }));
+    }
     let mut worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = tokio::time::interval(REDRAW_INTERVAL);

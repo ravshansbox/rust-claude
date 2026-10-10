@@ -23,6 +23,7 @@ pub(super) enum UiEvent {
     Files(u64, Vec<String>),
     Workspace(String),
     McpServer(Added),
+    Update(crate::update::Progress),
 }
 
 pub(super) enum Request {

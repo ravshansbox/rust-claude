@@ -13,6 +13,7 @@ mod settings;
 mod skills;
 mod tools;
 mod tui;
+mod update;
 
 use std::{io::IsTerminal, time::Duration};
 

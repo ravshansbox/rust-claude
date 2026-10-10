@@ -136,6 +136,8 @@ This downloads the source of the latest [release](https://github.com/ravshansbox
 
 **Upgrade or reinstall:** run the same commands again.
 
+**Updates:** when the interface starts, rust-claude checks the [latest release](https://github.com/ravshansbox/rust-claude/releases/latest) in the background, at most once an hour. If it is newer, rust-claude shows `update v0.2.0 available`, then `downloading v0.2.0` and `building v0.2.0`, and builds and installs it with `cargo install` while you keep working. When it is done, it shows `installed v0.2.0, restart rust-claude to use it`. If `cargo` is not on `PATH`, it shows a warning instead. A failed build shows the first error from cargo. A failed check, for example when offline, shows nothing. Builds from `main` (`v0.0.0`) do not check. To turn the check off, set `check_for_updates` to `false` in `settings.json`.
+
 **Uninstall:**
 
 ```sh
@@ -276,6 +278,7 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 | --- | --- | --- | --- |
 | Model | `--model <id>` | `model` | `claude-opus-5-5` |
 | Thinking level | `--thinking <level>` | `thinking_level` | `medium` |
+| Check for updates | | `check_for_updates` | `true` |
 
 Thinking levels: `low`, `medium`, `high`, `xhigh`, `max`.
 
