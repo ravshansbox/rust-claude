@@ -406,19 +406,18 @@ fn tool_definition(qualified_name: &str, tool: &Value) -> Value {
 
 async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
     let mut tools = Vec::new();
-    let mut cursor = Value::Null;
+    let mut cursors = std::collections::HashSet::new();
+    let mut params = json!({});
     loop {
-        let params = if cursor.is_null() {
-            json!({})
-        } else {
-            json!({ "cursor": cursor })
-        };
         let result = connection.request("tools/list", params).await?;
         tools.extend(result["tools"].as_array().into_iter().flatten().cloned());
-        cursor = result["nextCursor"].clone();
-        if !cursor.is_string() {
+        let Some(cursor) = result["nextCursor"].as_str() else {
             return Ok(tools);
+        };
+        if !cursors.insert(cursor.to_string()) {
+            return Err(format!("tools/list repeated the cursor {cursor:?}"));
         }
+        params = json!({ "cursor": cursor });
     }
 }
 
@@ -946,5 +945,23 @@ done
             ]
         );
         assert!(mcp.diagnostics.is_empty());
+    }
+
+    #[tokio::test]
+    async fn fails_when_the_server_repeats_a_tool_list_cursor() {
+        let config = server_with(
+            r#"    *'"tools/list"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[],"nextCursor":"again"}}\n' "$id" ;;"#,
+            ":",
+        );
+        let started = tokio::time::timeout(
+            Duration::from_secs(10),
+            start("test".into(), Scope::Project, config),
+        )
+        .await
+        .expect("tools/list did not stop");
+        assert_eq!(
+            Mcp::default().add(started),
+            ["MCP server test failed: tools/list repeated the cursor \"again\""]
+        );
     }
 }
