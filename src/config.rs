@@ -130,16 +130,22 @@ pub fn replace_file(
     prepare: impl FnOnce(&std::fs::File) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
     options.write(true).create_new(true);
+    // Only the start of the name, so the temporary name stays within the
+    // longest name a folder allows.
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let mut end = name.len().min(64);
+    while !name.is_char_boundary(end) {
+        end -= 1;
+    }
+    let prefix = &name[..end];
     // A new name each time, so a file or link someone else put at the
     // name is never opened.
     let (temporary, mut file) = loop {
-        let mut name = path.file_name().unwrap_or_default().to_os_string();
-        name.push(format!(
-            ".{}.{}.tmp",
+        let temporary = path.with_file_name(format!(
+            "{prefix}.{}.{}.tmp",
             std::process::id(),
             WRITES.fetch_add(1, Ordering::Relaxed)
         ));
-        let temporary = path.with_file_name(name);
         match options.open(&temporary) {
             Ok(file) => break (temporary, file),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
