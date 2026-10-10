@@ -310,6 +310,7 @@ async fn run_loop(
             .iter()
             .map(|server| (server.name.as_str(), server.scope)),
     );
+    app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
     for server in startup.servers {
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
