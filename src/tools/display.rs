@@ -89,6 +89,7 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     };
     let old_text = terminated(input["old_text"].as_str()?);
     let new_text = terminated(input["new_text"].as_str()?);
+    let unit = indent_unit(old_text.lines().chain(new_text.lines()));
     let diff = similar::TextDiff::from_lines(&old_text, &new_text);
     let lines: Vec<String> = diff
         .iter_all_changes()
@@ -100,7 +101,7 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
             };
             format!(
                 "{sign}{}",
-                change.value().trim_end_matches('\n').trim_start()
+                compact_indent(change.value().trim_end_matches('\n'), unit)
             )
         })
         .collect();
@@ -108,8 +109,38 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
 }
 
 fn code_preview(code: &str) -> Option<String> {
-    let lines: Vec<String> = code.lines().map(|line| format!(" {line}")).collect();
+    let unit = indent_unit(code.lines());
+    let lines: Vec<String> = code
+        .lines()
+        .map(|line| format!(" {}", compact_indent(line, unit)))
+        .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+fn leading_spaces(line: &str) -> usize {
+    line.trim_start_matches('\t')
+        .chars()
+        .take_while(|character| *character == ' ')
+        .count()
+}
+
+fn indent_unit<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
+    lines
+        .filter(|line| !line.trim().is_empty())
+        .map(leading_spaces)
+        .filter(|spaces| *spaces > 0)
+        .min()
+        .unwrap_or(1)
+}
+
+fn compact_indent(line: &str, unit: usize) -> String {
+    let content = line.trim_start();
+    if content.is_empty() {
+        return String::new();
+    }
+    let tabs = line.len() - line.trim_start_matches('\t').len();
+    let levels = tabs + leading_spaces(line).div_ceil(unit);
+    format!("{}{content}", " ".repeat(levels))
 }
 
 fn write_preview(content: &str) -> Option<String> {
@@ -117,10 +148,11 @@ fn write_preview(content: &str) -> Option<String> {
     if lines.is_empty() {
         return None;
     }
+    let unit = indent_unit(lines.iter().copied());
     let mut preview: Vec<String> = lines
         .iter()
         .take(WRITE_PREVIEW_LINES)
-        .map(|line| format!(" {}", line.trim_start()))
+        .map(|line| format!(" {}", compact_indent(line, unit)))
         .collect();
     let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
     if remaining > 0 {
@@ -196,24 +228,32 @@ mod tests {
     }
 
     #[test]
-    fn shows_all_python_code_with_its_indentation() {
-        let code = format!("def f():\n    return 1\n{}", "pass\n".repeat(20));
+    fn shows_all_python_code_with_one_space_per_indentation_level() {
+        let code = format!(
+            "def f():\n    if x:\n        return 1\n{}",
+            "pass\n".repeat(20)
+        );
         let input = json!({ "code": code });
         assert_eq!(summary("python", &input), "");
         assert_eq!(
             diff("python", &input),
-            Some(format!(" def f():\n     return 1{}", "\n pass".repeat(20)))
+            Some(format!(
+                " def f():\n  if x:\n   return 1{}",
+                "\n pass".repeat(20)
+            ))
         );
     }
 
     #[test]
-    fn trims_leading_spaces_in_previews() {
-        let edit = json!({ "path": "a", "old_text": "    a\n\tb\n", "new_text": "    a\n  c\n" });
-        assert_eq!(diff("edit", &edit), Some(" a\n-b\n+c".into()));
-        let write = json!({ "path": "a", "content": "fn main() {\n    body\n}\n" });
+    fn keeps_one_space_per_indentation_level_in_previews() {
+        let edit = json!({ "path": "a", "old_text": "a\n    b\n", "new_text": "a\n        c\n" });
+        assert_eq!(diff("edit", &edit), Some(" a\n- b\n+  c".into()));
+        let tabs = json!({ "path": "a", "old_text": "a\n\tb\n", "new_text": "a\n\t\tc\n" });
+        assert_eq!(diff("edit", &tabs), Some(" a\n- b\n+  c".into()));
+        let write = json!({ "path": "a", "content": "fn main() {\n  if x {\n    body\n  }\n}\n" });
         assert_eq!(
             diff("write", &write),
-            Some(" fn main() {\n body\n }".into())
+            Some(" fn main() {\n  if x {\n   body\n  }\n }".into())
         );
     }
 }

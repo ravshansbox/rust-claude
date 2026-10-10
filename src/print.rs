@@ -235,7 +235,7 @@ mod tests {
         let err = String::from_utf8(err).unwrap();
         let plain = without_colours(&err);
         assert!(
-            plain.contains("python\n def f():\n     return 1\n print(f())\n"),
+            plain.contains("python\n def f():\n  return 1\n print(f())\n"),
             "{plain:?}"
         );
         let definition = err.lines().find(|line| line.contains("def")).unwrap();
