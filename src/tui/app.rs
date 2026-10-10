@@ -361,7 +361,7 @@ pub(super) struct Picker {
 
 impl App {
     pub(super) fn new(model: &str, thinking_level: &'static str, stats: Stats) -> Self {
-        Self {
+        let mut app = Self {
             input: String::new(),
             cursor: 0,
             messages: Vec::new(),
@@ -393,7 +393,12 @@ impl App {
             history_file: None,
             history_search: None,
             mcp_loading: Vec::new(),
-        }
+        };
+        app.push(
+            Role::Event,
+            concat!("rust-claude v", env!("CARGO_PKG_VERSION")),
+        );
+        app
     }
 
     pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
@@ -824,6 +829,18 @@ mod tests {
     }
 
     #[test]
+    fn shows_name_and_version_before_start_up_lines() {
+        let mut app = new_app();
+        app.push(Role::Event, "loaded AGENTS.md");
+        let shown = screen(&mut app);
+        let name = shown
+            .find(&format!("rust-claude v{}", env!("CARGO_PKG_VERSION")))
+            .expect(&shown);
+        let loaded = shown.find("loaded AGENTS.md").expect(&shown);
+        assert!(name < loaded, "{shown}");
+    }
+
+    #[test]
     fn shows_mcp_servers_loading_then_replaces_each_line_once_loaded() {
         let mut app = new_app();
         app.start_mcp_server("docs", "project MCP server: docs");
@@ -903,7 +920,7 @@ mod tests {
         app.push_tool("read", "a.rs".into(), None);
         app.push(Role::Event, "read failed: missing");
         app.push_tool("read", "c.rs".into(), None);
-        let texts: Vec<&str> = app.messages[..]
+        let texts: Vec<&str> = app.messages[1..]
             .iter()
             .map(|message| message.text.as_str())
             .collect();
