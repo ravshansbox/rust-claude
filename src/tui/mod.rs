@@ -85,39 +85,62 @@ type PanicHook = dyn Fn(&PanicHookInfo<'_>) + Send + Sync;
 /// terminal. ratatui's hook would restore the terminal from the panicking
 /// thread, and the interface could then draw over the shell and the message.
 /// The interface notices a crashed agent, restores the terminal itself, and
-/// then prints the held messages.
-struct HeldPanics {
-    messages: Arc<Mutex<Vec<String>>>,
+/// then drops this, which writes the held messages to `output`. A panic on the
+/// interface thread goes to ratatui's hook, which restores the terminal before
+/// unwinding drops this.
+struct HeldPanics<W: Write> {
+    /// `None` once released, so later panics go to the previous hook.
+    messages: Arc<Mutex<Option<Vec<String>>>>,
     previous: Arc<PanicHook>,
+    output: W,
 }
 
-impl HeldPanics {
+impl<W: Write> HeldPanics<W> {
     /// Panics on the calling thread still go to the previous hook.
-    fn install() -> Self {
-        let messages = Arc::new(Mutex::new(Vec::new()));
+    fn install(output: W) -> Self {
+        let messages = Arc::new(Mutex::new(Some(Vec::new())));
         let previous: Arc<PanicHook> = Arc::from(std::panic::take_hook());
         let interface = std::thread::current().id();
         let held = messages.clone();
         let hook = previous.clone();
         std::panic::set_hook(Box::new(move |info| {
             let thread = std::thread::current();
-            if thread.id() == interface {
-                hook(info);
-            } else {
-                held.lock()
-                    .unwrap_or_else(PoisonError::into_inner)
-                    .push(panic_message(&thread, info));
+            if thread.id() != interface {
+                let mut held = held.lock().unwrap_or_else(PoisonError::into_inner);
+                if let Some(held) = held.as_mut() {
+                    held.push(panic_message(&thread, info));
+                    return;
+                }
             }
+            hook(info);
         }));
-        Self { messages, previous }
+        Self {
+            messages,
+            previous,
+            output,
+        }
     }
+}
 
-    /// Puts the previous hook back and returns the held messages.
-    fn release(self) -> Vec<String> {
-        let previous = self.previous;
-        drop(std::panic::take_hook());
-        std::panic::set_hook(Box::new(move |info| previous(info)));
-        std::mem::take(&mut self.messages.lock().unwrap_or_else(PoisonError::into_inner))
+impl<W: Write> Drop for HeldPanics<W> {
+    /// Writes the held messages and passes later panics to the previous hook.
+    fn drop(&mut self) {
+        let messages = self
+            .messages
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+            .unwrap_or_default();
+        // The hook can't be changed while this thread unwinds; the installed
+        // one passes panics on once the messages are taken.
+        if !std::thread::panicking() {
+            let previous = self.previous.clone();
+            drop(std::panic::take_hook());
+            std::panic::set_hook(Box::new(move |info| previous(info)));
+        }
+        for message in messages {
+            let _ = writeln!(self.output, "{message}");
+        }
     }
 }
 
@@ -133,28 +156,22 @@ fn panic_message(thread: &std::thread::Thread, info: &PanicHookInfo<'_>) -> Stri
     }
 }
 
-fn print_panics(held: HeldPanics) {
-    for message in held.release() {
-        eprintln!("{message}");
-    }
-}
-
 pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
     THEME.get_or_init(Theme::detect);
     let mut terminal = ratatui::init();
-    let held = HeldPanics::install();
+    let held = HeldPanics::install(std::io::stderr());
     let modes = match InputModes::enable(std::io::stdout()) {
         Ok(modes) => modes,
         Err(error) => {
             ratatui::restore();
-            print_panics(held);
+            drop(held);
             return Err(error.into());
         }
     };
     let result = run_loop(&mut terminal, agent, stop).await;
     drop(modes);
     ratatui::restore();
-    print_panics(held);
+    drop(held);
     result
 }
 
@@ -400,6 +417,10 @@ fn display_model(model: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::{HeldPanics, InputModes};
+    use std::sync::{Mutex, PoisonError};
+
+    /// Tests that change the process-wide panic hook take turns.
+    static PANIC_HOOK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn turns_input_modes_off_after_a_panic() {
@@ -422,23 +443,69 @@ mod tests {
         );
     }
 
-    #[test]
-    fn holds_panics_from_other_threads_until_released() {
-        let held = HeldPanics::install();
+    /// Panics on a thread named "agent" while the interface holds panics.
+    fn agent_panics() {
         let result = std::thread::Builder::new()
             .name("agent".into())
             .spawn(|| panic!("the agent broke"))
             .unwrap()
             .join();
         assert!(result.is_err());
-        let messages = held.release();
+    }
+
+    fn shows_agent_panic(output: &[u8]) -> bool {
         // Other tests may panic on their own threads meanwhile.
+        let output = String::from_utf8_lossy(output);
+        output.contains("thread 'agent' panicked at src/tui/mod.rs:")
+            && output.contains("the agent broke\n")
+    }
+
+    #[test]
+    fn holds_panics_from_other_threads_until_released() {
+        let _turn = PANIC_HOOK.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut output = Vec::new();
+        let held = HeldPanics::install(&mut output);
+        agent_panics();
+        drop(held);
         assert!(
-            messages.iter().any(|message| {
-                message.starts_with("thread 'agent' panicked at ")
-                    && message.contains("the agent broke")
-            }),
-            "{messages:?}"
+            shows_agent_panic(&output),
+            "{}",
+            String::from_utf8_lossy(&output)
+        );
+    }
+
+    #[test]
+    fn shows_held_panics_and_passes_on_later_ones_after_the_interface_panics() {
+        static SEEN: Mutex<Vec<String>> = Mutex::new(Vec::new());
+        let _turn = PANIC_HOOK.lock().unwrap_or_else(PoisonError::into_inner);
+        std::panic::set_hook(Box::new(|info| {
+            SEEN.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .push(info.to_string());
+        }));
+        let mut output = Vec::new();
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let _held = HeldPanics::install(&mut output);
+            agent_panics();
+            panic!("the interface broke");
+        }));
+        assert!(result.is_err());
+        let _ = std::thread::spawn(|| panic!("a later crash")).join();
+        drop(std::panic::take_hook());
+        assert!(
+            shows_agent_panic(&output),
+            "{}",
+            String::from_utf8_lossy(&output)
+        );
+        let seen = SEEN.lock().unwrap_or_else(PoisonError::into_inner);
+        assert!(
+            seen.iter()
+                .any(|message| message.contains("the interface broke")),
+            "{seen:?}"
+        );
+        assert!(
+            seen.iter().any(|message| message.contains("a later crash")),
+            "{seen:?}"
         );
     }
 }
