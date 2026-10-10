@@ -48,6 +48,7 @@ Reliability:
 - Requests that get no data for 5 minutes, or cannot connect within 30 seconds, fail and are retried instead of hanging
 - Timed-out commands stopped with all their background processes
 - Optional `timeout` for `bash`
+- Commands run without the terminal, so password prompts fail instead of hanging
 - Command output capped at 20,000 bytes as it arrives
 
 Tools:
@@ -362,7 +363,7 @@ The agent can use these tools:
 
 The agent can also use tools from [MCP servers](#mcp-servers).
 
-`bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice.
+`bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice. `bash` and `!` commands and MCP servers run without the terminal, so programs that prompt on it, such as `sudo`, `ssh` or `git` asking for a password, fail at once instead of waiting for input.
 
 Consecutive `read` calls show as one line with the paths separated by commas, for example `read src/main.rs (2), README.md`. A number in brackets shows how many times a file was read. A read with `offset` or `limit` shows its line range, for example `src/tools.rs:325-354`, or `src/tools.rs:325-` when only `offset` is given. A failed read starts a new line. In print mode, the line is printed when the next tool, text or notice arrives.
 
