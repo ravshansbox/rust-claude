@@ -41,17 +41,18 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 }
 
 /// Replaces the file at `path`, or the file a symlink there points to, in one
-/// step, keeping the permissions of the file it replaces. In a folder where
-/// no temporary file can be created, it writes the file in place instead.
+/// step, keeping the permissions and group of the file it replaces. In a
+/// folder where no temporary file can be created, and for a file with other
+/// hard links or another owner, it writes the file in place instead.
 async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
-        let (target, permissions) = match std::fs::canonicalize(&path) {
+        let (target, metadata) = match std::fs::canonicalize(&path) {
             Ok(target) => {
                 // Refuses a file the user made read-only, as writing in place would.
                 let file = std::fs::OpenOptions::new().write(true).open(&target)?;
-                let permissions = file.metadata()?.permissions();
-                (target, Some(permissions))
+                let metadata = file.metadata()?;
+                (target, Some(metadata))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
                 (dangling_target(path), None)
@@ -60,11 +61,31 @@ async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
         };
         let mut options = std::fs::OpenOptions::new();
         #[cfg(unix)]
-        if let Some(permissions) = &permissions {
-            use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-            options.mode(permissions.mode() & 0o777);
+        if let Some(metadata) = &metadata {
+            use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
+            // A new file would split the hard links, or belong to this user.
+            // SAFETY: geteuid has no preconditions.
+            if metadata.nlink() > 1 || metadata.uid() != unsafe { libc::geteuid() } {
+                return std::fs::write(&target, contents);
+            }
+            options.mode(metadata.mode() & 0o777);
         }
-        match crate::config::replace_file(&target, contents.as_bytes(), options, permissions) {
+        let prepare = |file: &std::fs::File| {
+            let Some(metadata) = &metadata else {
+                return Ok(());
+            };
+            // Keeps the group; a group the user is not in is refused, so the
+            // file is written in place.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::MetadataExt;
+                if file.metadata()?.gid() != metadata.gid() {
+                    std::os::unix::fs::fchown(file, None, Some(metadata.gid()))?;
+                }
+            }
+            file.set_permissions(metadata.permissions())
+        };
+        match crate::config::replace_file(&target, contents.as_bytes(), options, prepare) {
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
                 std::fs::write(&target, contents)
             }

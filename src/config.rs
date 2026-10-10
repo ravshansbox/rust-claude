@@ -110,20 +110,24 @@ pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
     };
     #[cfg(not(unix))]
     let permissions = None;
-    replace_file(path, contents, private_file(), permissions)
+    replace_file(path, contents, private_file(), |file| match permissions {
+        Some(permissions) => file.set_permissions(permissions),
+        None => Ok(()),
+    })
 }
 
 /// Counts temporary files this process made, to give each a new name.
 static WRITES: AtomicUsize = AtomicUsize::new(0);
 
 /// Writes a file through a temporary file in the same folder, created with
-/// `options` and given `permissions`, then renamed over it, so readers never
-/// see a half-written file and a failed write keeps the old one.
+/// `options` and handed to `prepare` before it is written, then renamed over
+/// it, so readers never see a half-written file and a failed write keeps the
+/// old one.
 pub fn replace_file(
     path: &Path,
     contents: &[u8],
     mut options: OpenOptions,
-    permissions: Option<std::fs::Permissions>,
+    prepare: impl FnOnce(&std::fs::File) -> std::io::Result<()>,
 ) -> std::io::Result<()> {
     options.write(true).create_new(true);
     // A new name each time, so a file or link someone else put at the
@@ -143,9 +147,7 @@ pub fn replace_file(
         }
     };
     let written = (|| {
-        if let Some(permissions) = permissions {
-            file.set_permissions(permissions)?;
-        }
+        prepare(&file)?;
         file.write_all(contents)?;
         file.sync_all()?;
         std::fs::rename(&temporary, path)
@@ -185,7 +187,7 @@ mod tests {
             let planted = base.join(format!("file.log.{}.{counter}.tmp", std::process::id()));
             std::os::unix::fs::symlink(&victim, planted).unwrap();
         }
-        let result = replace_file(&path, b"new", std::fs::OpenOptions::new(), None);
+        let result = replace_file(&path, b"new", std::fs::OpenOptions::new(), |_| Ok(()));
         let found = (
             std::fs::read_to_string(&victim).unwrap(),
             std::fs::read_to_string(&path).ok(),
