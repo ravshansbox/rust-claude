@@ -354,7 +354,6 @@ fn read_messages(bytes: &[u8]) -> SavedSession {
     let mut starts = Vec::new();
     let mut marker_at = None;
     let mut length = 0;
-    let mut damaged = false;
     for line in bytes.split_inclusive(|byte| *byte == b'\n') {
         if line.trim_ascii().is_empty() {
             length += line.len();
@@ -370,14 +369,12 @@ fn read_messages(bytes: &[u8]) -> SavedSession {
                 }
                 length += line.len();
             }
-            _ => {
-                damaged = true;
-                break;
-            }
+            _ => break,
         }
     }
-    // The API rejects tool calls without results, which a round cut short leaves.
-    if damaged && messages.last().is_some_and(has_tool_calls) {
+    // The API rejects tool calls without results, which a round cut short
+    // leaves, even when the cut falls between lines.
+    if messages.last().is_some_and(has_tool_calls) {
         messages.pop();
         length = starts.pop().unwrap_or_default();
     }
@@ -588,6 +585,27 @@ mod tests {
         let loaded = Session::load(&id);
         std::fs::remove_file(&path).unwrap();
         assert_eq!(loaded.unwrap().1, messages[..1]);
+    }
+
+    #[test]
+    fn drops_tool_call_whose_results_were_not_written() {
+        let messages = vec![
+            json!({ "role": "user", "content": "run it" }),
+            json!({ "role": "assistant", "content": [
+                { "type": "tool_use", "id": "t1", "name": "bash", "input": {} },
+            ] }),
+        ];
+        let (id, path) = save_new(&messages);
+        let mut more = messages[..1].to_vec();
+        more.push(json!({ "role": "user", "content": "again" }));
+        let resumed = Session::load(&id).and_then(|(mut resumed, loaded)| {
+            resumed.save(&more)?;
+            Ok(loaded)
+        });
+        let reloaded = Session::load(&id);
+        std::fs::remove_file(&path).unwrap();
+        assert_eq!(resumed.unwrap(), messages[..1]);
+        assert_eq!(reloaded.unwrap().1, more);
     }
 
     #[cfg(unix)]
