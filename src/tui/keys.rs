@@ -839,6 +839,29 @@ mod tests {
     }
 
     #[test]
+    fn browses_prompt_history_past_a_recalled_command() {
+        let mut app = new_app();
+        app.files = Some(vec!["src/main.rs".into()]);
+        for prompt in ["first", "/compact", "read @src", "hello"] {
+            app.add_prompt(prompt.into());
+        }
+        let press = |app: &mut App, code| {
+            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
+            app.input.clone()
+        };
+        assert_eq!(press(&mut app, KeyCode::Up), "hello");
+        assert_eq!(press(&mut app, KeyCode::Up), "read @src");
+        assert_eq!(press(&mut app, KeyCode::Up), "/compact");
+        assert_eq!(press(&mut app, KeyCode::Up), "first");
+        assert_eq!(press(&mut app, KeyCode::Down), "/compact");
+        assert_eq!(press(&mut app, KeyCode::Down), "read @src");
+        assert_eq!(press(&mut app, KeyCode::Down), "hello");
+        assert_eq!(press(&mut app, KeyCode::Up), "read @src");
+        assert_eq!(press(&mut app, KeyCode::Backspace), "read @sr");
+        assert!(app.visible_suggestions().is_some());
+    }
+
+    #[test]
     fn sends_pasted_images_whose_markers_remain() {
         let mut app = new_app();
         let mut pasting = false;
