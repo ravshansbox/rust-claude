@@ -60,22 +60,40 @@ fn now_millis() -> u128 {
         .as_millis()
 }
 
+/// The saved sign-in cannot be used any more, so only signing in again helps:
+/// auth.json is not valid, or the token endpoint turned the request down.
+#[derive(Debug)]
+struct Unusable(String);
+
+impl std::fmt::Display for Unusable {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for Unusable {}
+
 impl Credentials {
+    /// Signs in again only when the saved sign-in cannot be used. Other
+    /// errors, such as no network or a server error while renewing, are
+    /// returned, so the saved sign-in is kept for the next try.
     pub async fn load_or_login(http: &reqwest::Client) -> Result<Self> {
         let Ok(text) = std::fs::read_to_string(credentials_path()?) else {
             return login(http).await;
         };
         match Self::load_and_refresh(&text, http).await {
             Ok(credentials) => Ok(credentials),
-            Err(error) => {
+            Err(error) if error.is::<Unusable>() => {
                 eprintln!("Saved sign-in is not usable ({error}). Sign in again.\n");
                 login(http).await
             }
+            Err(error) => Err(error),
         }
     }
 
     async fn load_and_refresh(text: &str, http: &reqwest::Client) -> Result<Self> {
-        let mut credentials: Self = serde_json::from_str(text)?;
+        let mut credentials: Self =
+            serde_json::from_str(text).map_err(|error| Unusable(error.to_string()))?;
         if now_millis() >= credentials.expires {
             credentials.renew(http).await?;
         }
@@ -249,7 +267,16 @@ async fn request_tokens(http: &reqwest::Client, body: Value) -> Result<Credentia
     let status = response.status();
     let text = response.text().await?;
     if !status.is_success() {
-        bail!("token request failed ({status}): {text}");
+        let message = format!("token request failed ({status}): {text}");
+        // Other client errors, such as invalid_grant, mean the endpoint
+        // turned the request down; a timeout or rate limit may pass.
+        if status.is_client_error()
+            && status != reqwest::StatusCode::REQUEST_TIMEOUT
+            && status != reqwest::StatusCode::TOO_MANY_REQUESTS
+        {
+            return Err(Unusable(message).into());
+        }
+        bail!(message);
     }
     let data: Value = serde_json::from_str(&text)?;
     let credentials = Credentials {
@@ -353,17 +380,39 @@ mod tests {
                             Some(body) => ("200 OK", body),
                             None => ("400 Bad Request", json!({ "error": "invalid_grant" })),
                         };
-                        let body = body.to_string();
-                        let response = format!(
-                            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                            body.len()
-                        );
-                        let _ = stream.write_all(response.as_bytes()).await;
+                        respond(&mut stream, status, &body).await;
                     });
                 }
             });
             endpoint
         }
+    }
+
+    /// A token endpoint that gives every request the same answer.
+    async fn answer_token_requests(status: &'static str, body: Value) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        *TOKEN_URL.lock().await = Some(format!(
+            "http://{}/v1/oauth/token",
+            listener.local_addr().unwrap()
+        ));
+        tokio::spawn(async move {
+            while let Ok((mut stream, _)) = listener.accept().await {
+                let body = body.clone();
+                tokio::spawn(async move {
+                    read_body(&mut stream).await;
+                    respond(&mut stream, status, &body).await;
+                });
+            }
+        });
+    }
+
+    async fn respond(stream: &mut TcpStream, status: &str, body: &Value) {
+        let body = body.to_string();
+        let response = format!(
+            "HTTP/1.1 {status}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
     }
 
     async fn read_body(stream: &mut TcpStream) -> Value {
@@ -391,6 +440,25 @@ mod tests {
     fn expired(refresh: &str) -> Credentials {
         serde_json::from_value(json!({ "access": "old", "refresh": refresh, "expires": 0 }))
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn keeps_the_saved_sign_in_when_the_token_endpoint_is_down() {
+        let _lock = AUTH_FILE.lock().await;
+        answer_token_requests("503 Service Unavailable", json!({ "error": "overloaded" })).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let saved = json!({ "access": "old", "refresh": "first", "expires": 0 }).to_string();
+        std::fs::write(&path, &saved).unwrap();
+        let result = Credentials::load_or_login(&reqwest::Client::new()).await;
+        let after = std::fs::read_to_string(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+        let error = format!(
+            "{:#}",
+            result.err().expect("signed in without the endpoint")
+        );
+        assert!(error.contains("503"), "{error}");
+        assert_eq!(after, saved);
     }
 
     #[tokio::test]
