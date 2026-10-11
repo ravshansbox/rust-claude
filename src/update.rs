@@ -278,8 +278,10 @@ impl Updater {
         let reason = stderr
             .lines()
             .find(|line| line.starts_with("error"))
-            .map(str::to_string)
-            .unwrap_or_else(|| format!("cargo install exited with {}", output.status));
+            .map_or_else(
+                || format!("cargo install exited with {}", output.status),
+                str::to_string,
+            );
         anyhow::bail!(reason)
     }
 

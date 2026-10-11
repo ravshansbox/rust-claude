@@ -367,17 +367,19 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
     let name = frontmatter["name"]
         .as_str()
         .filter(|name| !name.is_empty())
-        .map(String::from)
-        .unwrap_or_else(|| {
-            let fallback = if is_declared_skill {
-                base_dir.file_name()
-            } else {
-                path.file_stem()
-            };
-            fallback
-                .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_default()
-        });
+        .map_or_else(
+            || {
+                let fallback = if is_declared_skill {
+                    base_dir.file_name()
+                } else {
+                    path.file_stem()
+                };
+                fallback
+                    .map(|name| name.to_string_lossy().into_owned())
+                    .unwrap_or_default()
+            },
+            String::from,
+        );
     diagnostics.extend(validate_name(&name).into_iter().map(&warning));
     let Some(description) = description else {
         return (None, diagnostics);
