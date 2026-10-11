@@ -5,8 +5,6 @@ use serde::Deserialize;
 
 pub const RELEASES_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/latest";
-const RELEASE_TAG_URL: &str =
-    "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/tags/";
 const ASSET: &str = "rust-coding-agent.zip";
 const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
 const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
@@ -69,8 +67,6 @@ fn format_took(took: std::time::Duration) -> String {
 struct Release {
     tag_name: String,
     #[serde(default)]
-    body: Option<String>,
-    #[serde(default)]
     assets: Vec<Asset>,
 }
 
@@ -83,7 +79,6 @@ struct Asset {
 pub struct Updater {
     pub http: reqwest::Client,
     pub releases_url: String,
-    pub release_tag_url: String,
     pub current_version: &'static str,
     pub cargo: Option<PathBuf>,
     pub rustc: Option<PathBuf>,
@@ -108,7 +103,6 @@ impl Updater {
         Some(Self {
             http: reqwest::Client::new(),
             releases_url: RELEASES_URL.into(),
-            release_tag_url: RELEASE_TAG_URL.into(),
             current_version: env!("CARGO_PKG_VERSION"),
             cargo: find_on_path("cargo", std::env::var_os("PATH")),
             rustc: find_on_path("rustc", std::env::var_os("PATH")),
@@ -198,32 +192,6 @@ impl Updater {
             }
             Err(failure) => report(failure),
         }
-    }
-
-    /// The notes of this release when `last_version` is older, or `None`
-    /// when it is not, the notes are empty or the check fails.
-    pub async fn whats_new(&self, last_version: &str) -> Option<String> {
-        let current = parse_version(self.current_version)?;
-        if current == [0, 0, 0] || parse_version(last_version)? >= current {
-            return None;
-        }
-        let tag = format!("v{}", self.current_version);
-        let release: Release = self
-            .http
-            .get(format!("{}{tag}", self.release_tag_url))
-            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .send()
-            .await
-            .ok()?
-            .error_for_status()
-            .ok()?
-            .json()
-            .await
-            .ok()?;
-        let body = release.body?;
-        let body = body.trim();
-        (!body.is_empty()).then(|| format!("what's new in {tag}:\n{body}"))
     }
 
     async fn latest_release(&self) -> Result<Release> {
@@ -525,7 +493,6 @@ mod tests {
         Updater {
             http: reqwest::Client::new(),
             releases_url: format!("{base}/latest"),
-            release_tag_url: format!("{base}/tags/"),
             current_version: "0.1.0",
             cargo,
             rustc: None,
@@ -535,73 +502,6 @@ mod tests {
                 .join(format!("rust-coding-agent-updates-{}", std::process::id())),
             public_key: TEST_PUBLIC_KEY,
         }
-    }
-
-    /// Serves the releases tagged v0.2.0 and v0.3.0, and a 404 for others.
-    async fn serve_releases() -> String {
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let base = format!("http://{}", listener.local_addr().unwrap());
-        tokio::spawn(async move {
-            while let Ok((mut stream, _)) = listener.accept().await {
-                let mut data = Vec::new();
-                let mut chunk = [0u8; 4096];
-                while !data.windows(4).any(|window| window == b"\r\n\r\n") {
-                    match stream.read(&mut chunk).await {
-                        Ok(0) | Err(_) => break,
-                        Ok(read) => data.extend_from_slice(&chunk[..read]),
-                    }
-                }
-                let request = String::from_utf8_lossy(&data).to_string();
-                let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
-                let (status, body) = match path.as_str() {
-                    "/tags/v0.3.0" => (
-                        "200 OK",
-                        serde_json::json!({ "tag_name": "v0.3.0", "body": "- add a picker\n- fix a crash\n" }),
-                    ),
-                    "/tags/v0.2.0" => (
-                        "200 OK",
-                        serde_json::json!({ "tag_name": "v0.2.0", "body": "" }),
-                    ),
-                    _ => (
-                        "404 Not Found",
-                        serde_json::json!({ "message": "Not Found" }),
-                    ),
-                };
-                let body = body.to_string();
-                let head = format!(
-                    "HTTP/1.1 {status}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-                    body.len()
-                );
-                let _ = stream.write_all(head.as_bytes()).await;
-                let _ = stream.write_all(body.as_bytes()).await;
-            }
-        });
-        base
-    }
-
-    async fn whats_new(current_version: &'static str, last_version: &str) -> Option<String> {
-        let base = serve_releases().await;
-        let mut updater = updater(&base, None);
-        updater.current_version = current_version;
-        updater.whats_new(last_version).await
-    }
-
-    #[tokio::test]
-    async fn shows_the_notes_of_this_release_after_an_update() {
-        assert_eq!(
-            whats_new("0.3.0", "0.1.0").await.as_deref(),
-            Some("what's new in v0.3.0:\n- add a picker\n- fix a crash")
-        );
-    }
-
-    #[tokio::test]
-    async fn shows_nothing_new_without_a_newer_version() {
-        assert_eq!(whats_new("0.3.0", "0.3.0").await, None);
-        assert_eq!(whats_new("0.3.0", "0.4.0").await, None);
-        assert_eq!(whats_new("0.0.0", "0.1.0").await, None);
-        assert_eq!(whats_new("0.3.0", "not a version").await, None);
-        assert_eq!(whats_new("0.2.0", "0.1.0").await, None);
-        assert_eq!(whats_new("0.2.1", "0.1.0").await, None);
     }
 
     #[tokio::test]

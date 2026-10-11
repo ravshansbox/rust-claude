@@ -12,7 +12,6 @@ pub struct Settings {
     pub effort: Option<String>,
     pub check_for_updates: Option<bool>,
     pub notifications: Option<bool>,
-    pub last_version: Option<String>,
     #[serde(flatten)]
     pub extra: serde_json::Map<String, serde_json::Value>,
 }

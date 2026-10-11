@@ -27,7 +27,6 @@ pub(super) enum UiEvent {
         notice: String,
     },
     Update(crate::update::Progress),
-    WhatsNew(String),
     /// A background command finished, and a turn starts with this message.
     Background(String),
 }
