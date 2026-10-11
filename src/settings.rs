@@ -33,7 +33,7 @@ impl Settings {
 
     /// Applies `change` to settings.json, keeping the settings it leaves
     /// alone. Fails instead of replacing a file it cannot read.
-    pub fn update(change: impl FnOnce(&mut Settings)) -> Result<()> {
+    pub fn update(change: impl FnOnce(&mut Self)) -> Result<()> {
         update_file(&settings_path()?, change)
     }
 }

@@ -28,8 +28,8 @@ pub(crate) fn is_failure(reply: &str) -> bool {
 type Callback = Box<dyn FnMut(AgentEvent) + Send>;
 
 impl Agent {
-    fn subagent(&self) -> Result<Agent> {
-        Ok(Agent {
+    fn subagent(&self) -> Result<Self> {
+        Ok(Self {
             http: self.http.clone(),
             api_base: self.api_base.clone(),
             credentials: self.credentials.clone(),

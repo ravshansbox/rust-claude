@@ -32,8 +32,8 @@ pub enum Scope {
 impl fmt::Display for Scope {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(match self {
-            Scope::Global => "global",
-            Scope::Project => "project",
+            Self::Global => "global",
+            Self::Project => "project",
         })
     }
 }
@@ -54,10 +54,10 @@ pub enum Diagnostic {
 impl fmt::Display for Diagnostic {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Diagnostic::Warning { path, message } => {
+            Self::Warning { path, message } => {
                 write!(formatter, "skill warning: {}: {message}", path.display())
             }
-            Diagnostic::Collision {
+            Self::Collision {
                 name,
                 winner,
                 loser,

@@ -169,7 +169,7 @@ impl Session {
         latest_in_folder(&sessions_directory()?, &current_folder())
     }
 
-    pub fn load(id: &str) -> Result<(Session, Vec<Value>)> {
+    pub fn load(id: &str) -> Result<(Self, Vec<Value>)> {
         let path = sessions_directory()?.join(format!("{id}.jsonl"));
         let mut file = open_locked(&path, false)?;
         let mut bytes = Vec::new();
@@ -185,7 +185,7 @@ impl Session {
         if file.metadata()?.len() > length {
             file.set_len(length)?;
         }
-        let session = Session {
+        let session = Self {
             id: id.to_string(),
             saved: messages.len(),
             drops_mismatched_thinking,

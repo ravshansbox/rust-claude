@@ -13,7 +13,7 @@ pub struct Usage {
 }
 
 impl Usage {
-    pub(super) fn add(&mut self, other: Usage) {
+    pub(super) fn add(&mut self, other: Self) {
         self.input += other.input;
         self.cache_read += other.cache_read;
         self.cache_write += other.cache_write;
@@ -24,7 +24,7 @@ impl Usage {
     /// Stores a reply's usage with that of its retried attempts nested
     /// under `retried`, which only totals count: the context size and speed
     /// come from the attempt that produced the reply.
-    pub(super) fn to_json_with_retried(self, retried: Usage) -> Value {
+    pub(super) fn to_json_with_retried(self, retried: Self) -> Value {
         let mut value = json!(self);
         if retried.input + retried.output + retried.cache_read + retried.cache_write > 0 {
             value["retried"] = json!(retried);
