@@ -402,7 +402,7 @@ mod tests {
             .iter()
             .map(|line| line.to_string().trim_end().to_string())
             .collect();
-        assert_eq!(texts, [" bash", " echo \"$HOME\" | wc -c"]);
+        assert_eq!(texts, [" bash", "echo \"$HOME\" | wc -c"]);
         let colours: std::collections::HashSet<_> = lines[1]
             .spans
             .iter()

@@ -229,7 +229,7 @@ mod tests {
         let plain = without_colours(&err);
         assert!(!has_controls(&plain), "control characters in {plain:?}");
         assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
-        assert!(plain.contains("bash\n printf"), "{plain:?}");
+        assert!(plain.contains("bash\nprintf"), "{plain:?}");
         assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
     }
 
@@ -278,7 +278,7 @@ mod tests {
         let err = String::from_utf8(err).unwrap();
         let plain = without_colours(&err);
         assert!(
-            plain.contains("bash\n echo \"$HOME\" | wc -c\n"),
+            plain.contains("bash\necho \"$HOME\" | wc -c\n"),
             "{plain:?}"
         );
         let command = err.lines().find(|line| line.contains("echo")).unwrap();
