@@ -36,12 +36,16 @@ fn sessions_directory() -> Result<PathBuf> {
         .join("sessions"))
 }
 
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 fn new_uuid() -> Result<String> {
     let mut bytes = [0u8; 16];
     getrandom::fill(&mut bytes).map_err(|error| anyhow::anyhow!("{error}"))?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let hex: String = bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+    let hex = hex(&bytes);
     Ok(format!(
         "{}-{}-{}-{}-{}",
         &hex[0..8],
@@ -118,10 +122,7 @@ impl Session {
     pub fn save_image(&self, image: &Image) -> Result<Value> {
         let directory = sessions_directory()?.join(&self.id);
         crate::config::create_private_dir(&directory)?;
-        let hash: String = Sha256::digest(&image.data)[..8]
-            .iter()
-            .map(|byte| format!("{byte:02x}"))
-            .collect();
+        let hash = hex(&Sha256::digest(&image.data)[..8]);
         let file = format!("{hash}.{}", image.extension());
         let path = directory.join(&file);
         // Images are written whole through a temporary file, so a file of
