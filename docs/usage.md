@@ -195,7 +195,7 @@ Newer models only use thinking from earlier replies while the system prompt, too
 
 rust-coding-agent also compacts automatically when the context is 80% full: before sending a new prompt, and after each round of tool calls. A prompt sent at that point, or queued during that round, is kept word for word after the summary. If automatic compaction fails, rust-coding-agent shows the error as a notice and sends the request without compacting.
 
-A round of tool calls can take the conversation past the context window, and the API then refuses to read it. When that happens during compaction, rust-coding-agent shows a notice and asks for the summary again with each tool output cut to its first 2,000 characters, then to 200. The session file still keeps the full output.
+A round of tool calls can take the conversation past the context window, and the API then refuses to read it. When a request is refused this way, rust-coding-agent compacts the conversation and sends the request once more. If compaction fails, the prompt fails with both errors. When the refusal happens during compaction, rust-coding-agent shows a notice and asks for the summary again with each tool output cut to its first 2,000 characters, then to 200. The session file still keeps the full output.
 
 Context use on the status line is the token count the API reported for the last reply. rust-coding-agent never estimates it, so it is hidden until the first reply of a session, and again after compaction until the next reply. Automatic compaction uses the same count, so tool results and prompts added since the last reply are not included until the next reply.
 
