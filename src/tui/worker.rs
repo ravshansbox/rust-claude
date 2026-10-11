@@ -205,6 +205,7 @@ mod tests {
         mcp,
     };
     use serde_json::json;
+    use std::time::Duration;
     use tokio::sync::mpsc;
 
     fn agent() -> Agent {
@@ -257,9 +258,9 @@ mod tests {
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
         request_tx.send(Request::Shell("sleep 30".into())).unwrap();
         let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         quit(request_tx, cancel_tx);
-        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
+        let stopped = tokio::time::timeout(Duration::from_secs(5), worker).await;
         remove_session(&session_id);
         assert!(stopped.is_ok());
     }
@@ -290,9 +291,9 @@ mod tests {
         let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
         let (event_tx, _event_rx) = mpsc::unbounded_channel();
         let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         quit(request_tx, cancel_tx);
-        let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
+        let stopped = tokio::time::timeout(Duration::from_secs(5), worker).await;
         assert!(stopped.is_ok());
     }
 
@@ -306,7 +307,7 @@ mod tests {
         let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
         let (event_tx, mut event_rx) = mpsc::unbounded_channel();
         let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        tokio::time::sleep(Duration::from_millis(200)).await;
         request_tx
             .send(Request::Prompt("hello".into(), Vec::new(), "off"))
             .unwrap();
@@ -338,7 +339,7 @@ mod tests {
             }
             false
         };
-        tokio::time::timeout(std::time::Duration::from_secs(5), wait)
+        tokio::time::timeout(Duration::from_secs(5), wait)
             .await
             .unwrap_or(false)
     }
