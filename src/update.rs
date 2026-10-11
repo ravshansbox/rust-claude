@@ -169,7 +169,7 @@ impl Updater {
             let signature_url = asset_url(SIGNATURE_ASSET)?;
             report(Progress::Downloading(version.clone()));
             let started = std::time::Instant::now();
-            self.download(&url, &signature_url, &folder)
+            self.download(&url, &signature_url, &version, &folder)
                 .await
                 .map_err(|error| {
                     Progress::DownloadFailed(
@@ -254,18 +254,25 @@ impl Updater {
 
     /// Downloads the zip and unpacks it, once its signature shows it was
     /// made with the release key.
-    async fn download(&self, url: &str, signature_url: &str, folder: &Path) -> Result<()> {
+    async fn download(
+        &self,
+        url: &str,
+        signature_url: &str,
+        version: &str,
+        folder: &Path,
+    ) -> Result<()> {
         let bytes = self.fetch(url).await?;
         let signature = self.fetch(signature_url).await?;
-        let valid = minisign_verify::PublicKey::from_base64(self.public_key)
+        let signed_as = minisign_verify::PublicKey::from_base64(self.public_key)
             .and_then(|key| {
                 let signature =
                     minisign_verify::Signature::decode(&String::from_utf8_lossy(&signature))?;
-                key.verify(&bytes, &signature, false)
+                key.verify(&bytes, &signature, false)?;
+                Ok(signature.trusted_comment().to_string())
             })
-            .is_ok();
-        if !valid {
-            anyhow::bail!("the signature of {ASSET} is not valid");
+            .map_err(|_| anyhow::anyhow!("the signature of {ASSET} is not valid"))?;
+        if signed_as != format!("rust-coding-agent {version}") {
+            anyhow::bail!("{ASSET} is signed as {signed_as}, not {version}");
         }
         let target = folder.to_path_buf();
         tokio::task::spawn_blocking(move || {
@@ -419,7 +426,7 @@ mod tests {
         buffer.into_inner()
     }
 
-    const TEST_PUBLIC_KEY: &str = "RWTE6351OTBrADV+7c6L94WA91b3tgiK798OqhdvvifKH+0mA+XZv4aE";
+    const TEST_PUBLIC_KEY: &str = "RWSKhh96XMkv/ZkVrv3kVbTFGimqZdjSWovAPitGSQ6P6pMv5/H9UytL";
     const SIGNED_ZIP: &[u8] = include_bytes!("../tests/fixtures/update/rust-coding-agent.zip");
     const SIGNATURE: &[u8] =
         include_bytes!("../tests/fixtures/update/rust-coding-agent.zip.minisig");
@@ -717,6 +724,21 @@ mod tests {
         assert!(
             last.starts_with("download failed after ")
                 && last.ends_with("s: the signature of rust-coding-agent.zip is not valid"),
+            "{shown:?}"
+        );
+        assert!(!dir.join("cargo.log").exists());
+    }
+
+    #[tokio::test]
+    async fn refuses_a_release_signed_for_another_version() {
+        let dir = temp_dir("other-version");
+        let (base, _) = github("v0.3.0").await;
+        let cargo = fake_cargo(&dir, 0);
+        let shown = run(updater(&base, Some(cargo))).await;
+        assert!(
+            shown.last().unwrap().ends_with(
+                "s: rust-coding-agent.zip is signed as rust-coding-agent v0.2.0, not v0.3.0"
+            ),
             "{shown:?}"
         );
         assert!(!dir.join("cargo.log").exists());
