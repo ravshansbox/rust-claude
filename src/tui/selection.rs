@@ -94,8 +94,8 @@ impl App {
     fn prefixed_rows(&self, start: usize, end: usize) -> Vec<bool> {
         let mut prefixed = vec![false; end - start + 1];
         let mut top = 0;
-        for message in &self.messages {
-            let first = top + 1;
+        for (index, message) in self.messages.iter().enumerate() {
+            let first = top + self.gap_before(index);
             top = first + message.height();
             if matches!(message.role, Role::User) {
                 for row in first.max(start)..top.min(end + 1) {

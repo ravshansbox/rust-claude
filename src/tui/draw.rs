@@ -110,11 +110,11 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         ..chat
     };
 
-    // Each message starts with a blank line, one row high.
     let wrapped_line_count: usize = app
         .messages
         .iter()
-        .map(|message| 1 + message.height())
+        .enumerate()
+        .map(|(index, message)| app.gap_before(index) + message.height())
         .sum::<usize>()
         + status_lines(app)
             .iter()
@@ -266,9 +266,9 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
     let mut skipped = 0;
     let mut first_message = 0;
     while let Some(message) = app.messages.get(first_message)
-        && skipped + 1 + message.height() <= top
+        && skipped + app.gap_before(first_message) + message.height() <= top
     {
-        skipped += 1 + message.height();
+        skipped += app.gap_before(first_message) + message.height();
         first_message += 1;
     }
     // Wrapping lines is slow, so skip the whole lines above the view in the
@@ -280,21 +280,28 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
         .and_then(|message| message.rendered.as_ref())
         && top > skipped
     {
-        let (rows_skipped, rows) = rendered.rows_from(top - skipped - 1);
-        skipped += 1 + rows_skipped;
+        let gap = app.gap_before(first_message);
+        let (rows_skipped, rows) = rendered.rows_from(top - skipped - gap);
+        skipped += gap + rows_skipped;
         first_rows = Some(rows);
     }
     let rest = first_message + usize::from(first_rows.is_some());
     let rows = first_rows
         .into_iter()
         .flatten()
-        .chain(app.messages[rest..].iter().flat_map(|message| {
-            let rendered = message
-                .rendered
+        .chain(
+            app.messages[rest..]
                 .iter()
-                .flat_map(|rendered| rendered.rows_from(0).1);
-            std::iter::once((Line::default(), 1)).chain(rendered)
-        }))
+                .enumerate()
+                .flat_map(move |(offset, message)| {
+                    let rendered = message
+                        .rendered
+                        .iter()
+                        .flat_map(|rendered| rendered.rows_from(0).1);
+                    std::iter::repeat_n((Line::default(), 1), app.gap_before(rest + offset))
+                        .chain(rendered)
+                }),
+        )
         .chain(status_lines.into_iter().zip(status_heights));
     let mut lines = Vec::new();
     let mut filled = 0;
@@ -444,6 +451,30 @@ mod tests {
     }
 
     #[test]
+    fn shows_notices_in_a_row_without_blank_rows_between_them() {
+        let mut app = crate::tui::test_support::new_app();
+        app.push(Role::Event, "first notice");
+        app.push(Role::Event, "second notice");
+        app.push(Role::Assistant, "reply");
+        app.push(Role::Event, "last notice");
+        let shown = screen(&mut app);
+        let rows: Vec<&str> = shown.lines().map(str::trim_end).collect();
+        assert!(rows[0].starts_with("Rust Coding Agent v"), "{shown}");
+        assert_eq!(
+            rows[1..7],
+            [
+                "first notice",
+                "second notice",
+                "",
+                "reply",
+                "",
+                "last notice"
+            ],
+            "{shown}"
+        );
+    }
+
+    #[test]
     fn shows_a_reply_without_a_marker_or_indent() {
         let mut app = crate::tui::test_support::new_app();
         app.push(Role::Assistant, "alpha beta gamma delta\n\nsecond part");
@@ -492,7 +523,7 @@ mod tests {
         };
         let all = rows(0, 200);
         let total = all.iter().rposition(|row| !row.trim().is_empty()).unwrap() + 1;
-        assert!(total > 40, "{all:?}");
+        assert!(total > 35, "{all:?}");
         for top in 0..total {
             let end = (top + 5).min(all.len());
             assert_eq!(rows(top, 5)[..end - top], all[top..end], "from row {top}");
@@ -578,17 +609,17 @@ mod tests {
     #[test]
     fn shows_the_end_of_a_conversation_longer_than_65535_lines() {
         let mut app = app_with_reply();
-        for number in 0..40_000 {
+        for number in 0..70_000 {
             app.push(Role::Event, format!("event {number}"));
         }
         let shown = screen(&mut app);
-        assert!(shown.contains("event 39999"), "{shown}");
+        assert!(shown.contains("event 69999"), "{shown}");
         press(&mut app, KeyCode::Home);
         let shown = screen(&mut app);
         assert!(shown.contains("Earlier reply"), "{shown}");
         press(&mut app, KeyCode::PageDown);
         let shown = screen(&mut app);
-        assert!(shown.contains("event 10"), "{shown}");
+        assert!(shown.contains("event 20"), "{shown}");
     }
 
     #[test]
