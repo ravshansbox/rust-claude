@@ -478,27 +478,25 @@ mod tests {
     /// A stand-in for cargo that records its arguments and whether the
     /// folder after `--path` holds the unpacked Cargo.toml.
     fn fake_cargo(dir: &Path, exit_code: i32) -> PathBuf {
-        let cargo = dir.join("cargo");
         let log = dir.join("cargo.log");
-        std::fs::write(
-            &cargo,
+        write_script(
+            dir.join("cargo"),
             format!(
                 "#!/bin/sh\necho \"$@\" > '{log}'\nfor last; do :; done\ngrep -q 'version = \"0.2.0\"' \"$last/Cargo.toml\" && echo unpacked >> '{log}'\necho 'error: could not compile' >&2\nexit {exit_code}\n",
                 log = log.display()
             ),
         )
-        .unwrap();
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&cargo, std::fs::Permissions::from_mode(0o755)).unwrap();
-        cargo
     }
 
     fn fake_rustc(dir: &Path, version: &str) -> PathBuf {
-        let rustc = dir.join("rustc");
-        std::fs::write(&rustc, format!("#!/bin/sh\necho '{version}'\n")).unwrap();
+        write_script(dir.join("rustc"), format!("#!/bin/sh\necho '{version}'\n"))
+    }
+
+    fn write_script(path: PathBuf, script: String) -> PathBuf {
+        std::fs::write(&path, script).unwrap();
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&rustc, std::fs::Permissions::from_mode(0o755)).unwrap();
-        rustc
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
     }
 
     async fn run(updater: Updater) -> Vec<String> {
