@@ -417,10 +417,11 @@ fn unescape_xml(text: &str) -> Cow<'_, str> {
 }
 
 pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
-    let visible: Vec<&Skill> = skills
+    let mut visible: Vec<&Skill> = skills
         .iter()
         .filter(|skill| !skill.disable_model_invocation)
         .collect();
+    visible.sort_by_key(|skill| skill.scope == Scope::Project);
     if visible.is_empty() {
         return None;
     }
@@ -824,6 +825,15 @@ mod tests {
         ));
         assert!(!prompt.contains("hidden"));
         assert_eq!(format_for_prompt(&skills[1..]), None);
+    }
+
+    #[test]
+    fn lists_global_skills_before_project_ones_in_prompt() {
+        let mut project = skill("project", Path::new("/skills/project"), false);
+        project.scope = Scope::Project;
+        let global = skill("global", Path::new("/skills/global"), false);
+        let prompt = format_for_prompt(&[project, global]).unwrap();
+        assert!(prompt.find("<name>global").unwrap() < prompt.find("<name>project").unwrap());
     }
 
     #[test]
