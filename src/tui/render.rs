@@ -126,6 +126,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
         .map(owned_line)
         .collect(),
         Role::Thinking => text
+            .trim_end_matches('\n')
             .lines()
             .map(|line| Line::styled(expand_tabs(line.to_string()), thinking_style()))
             .collect(),
@@ -515,6 +516,15 @@ mod tests {
         let write = shown(Role::Tool, "write main.go\n+\treturn");
         assert_eq!(write[1], "+    return");
         assert_eq!(shown(Role::Event, "\tnote"), ["    note"]);
+    }
+
+    #[test]
+    fn leaves_out_blank_lines_at_the_end_of_thinking() {
+        let lines: Vec<String> = render_message(Role::Thinking, "one\n\ntwo.\n\n", 40)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
+        assert_eq!(lines, ["one", "", "two."]);
     }
 
     #[test]
