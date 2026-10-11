@@ -31,7 +31,7 @@ In the interface, rust-coding-agent starts all servers in the background, so you
 
 ## Signing in to MCP servers
 
-An HTTP server without an `Authorization` header in its entry signs in with OAuth. When it needs sign-in, its entry shows `figma (needs sign-in)`. Run `/mcp login figma` to sign in.
+An HTTP server without an `Authorization` header in its entry signs in with OAuth. When it needs sign-in, its entry shows `figma (needs sign-in)`. Run `/mcp login figma` to sign in. Print mode shows the same `figma (needs sign-in)` on standard error.
 
 Type `/mcp login <server>` in the interface. After `/mcp `, the command list offers `login` and `logout`, and after either one the names of the HTTP servers that sign in with OAuth. rust-coding-agent finds the server's sign-in server, registers with it unless `oauth.clientId` is set, and opens the sign-in page in your browser (`open` on macOS, `xdg-open` elsewhere). It also shows the link, in case the browser does not open. It refuses to sign in when the MCP server's URL, or the sign-in server's sign-in page or token address, does not start with `https://`, other than `http://` addresses on this computer, such as `localhost` or `127.0.0.1`. It also refuses sign-in details that name another server as the `resource` (the server's URL, its origin or a parent path are fine), or a sign-in server whose metadata names another `issuer`, so a server cannot get a sign-in meant for another service. The page sends the browser back to `http://127.0.0.1:<port>/callback`, where rust-coding-agent waits for up to 5 minutes. rust-coding-agent then starts the server again with the new sign-in, and its entry shows the spinner again. You can keep working while it waits.
 
