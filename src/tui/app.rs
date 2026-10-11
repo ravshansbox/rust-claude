@@ -607,10 +607,7 @@ impl App {
         reads.add(summary);
         let text = tool_message(name, reads.summary(), None);
         match self.messages.last_mut() {
-            Some(last) if merge => {
-                last.text = text;
-                last.rendered = None;
-            }
+            Some(last) if merge => last.replace(text),
             _ => self.push(Role::Tool, text),
         }
         self.reads = reads;
