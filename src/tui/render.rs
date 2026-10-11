@@ -212,13 +212,14 @@ pub(crate) fn ansi_thinking(text: &str) -> String {
 }
 
 fn sgr(style: Style) -> String {
+    use std::fmt::Write;
     let mut codes = String::new();
     if let Some(Color::Rgb(red, green, blue)) = style.bg {
-        codes.push_str(&format!("\x1b[48;2;{red};{green};{blue}m"));
+        let _ = write!(codes, "\x1b[48;2;{red};{green};{blue}m");
     }
     match style.fg {
         Some(Color::Rgb(red, green, blue)) => {
-            codes.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"));
+            let _ = write!(codes, "\x1b[38;2;{red};{green};{blue}m");
         }
         Some(Color::DarkGray) => codes.push_str("\x1b[90m"),
         _ => {}
