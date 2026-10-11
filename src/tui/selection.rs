@@ -181,7 +181,12 @@ mod tests {
         test_support::{app_with_reply, screen},
     };
     use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
-    use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Modifier};
+    use ratatui::{
+        Terminal,
+        backend::TestBackend,
+        buffer::{Buffer, Cell},
+        style::Modifier,
+    };
 
     fn mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) {
         let event = Event::Mouse(MouseEvent {
@@ -228,7 +233,7 @@ mod tests {
             .content()
             .iter()
             .filter(|cell| cell.modifier.contains(Modifier::REVERSED))
-            .map(|cell| cell.symbol())
+            .map(Cell::symbol)
             .collect()
     }
 
