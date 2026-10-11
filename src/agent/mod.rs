@@ -1495,10 +1495,10 @@ mod tests {
         let result = agent
             .prompt("search", &[], |event| match event {
                 AgentEvent::ToolStart { name, summary, .. } => {
-                    lines.push(format!("{name} {summary}"))
+                    lines.push(format!("{name} {summary}"));
                 }
                 AgentEvent::ToolDone { name, error, note } => {
-                    lines.push(format!("{name} {error:?} {note:?}"))
+                    lines.push(format!("{name} {error:?} {note:?}"));
                 }
                 AgentEvent::Text(delta) => text.push_str(&delta),
                 _ => {}

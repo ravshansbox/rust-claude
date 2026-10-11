@@ -468,7 +468,7 @@ mod tests {
             handle_input(Event::Paste(typed.into()), &mut app, |_| {});
             let mut acted = false;
             press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
-                acted = true
+                acted = true;
             });
             assert!(!acted && !app.busy(), "{typed}");
             assert!(
@@ -725,7 +725,7 @@ mod tests {
         queue_while_working(&mut app, "first");
         let mut cancelled = false;
         press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
-            cancelled |= matches!(action, Action::Cancel)
+            cancelled |= matches!(action, Action::Cancel);
         });
         assert!(cancelled);
         handle_agent_event(UiEvent::Done(Ok(())), &mut app);
@@ -819,7 +819,7 @@ mod tests {
         let mut acted = false;
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
         press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
-            acted = true
+            acted = true;
         });
         assert!(!acted && !app.busy());
         let shown = screen(&mut app);
@@ -908,7 +908,7 @@ mod tests {
         assert_eq!(app.activity, Some(Activity::Running));
         let mut cancelled = false;
         press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
-            cancelled |= matches!(action, Action::Cancel)
+            cancelled |= matches!(action, Action::Cancel);
         });
         assert!(cancelled);
         handle_agent_event(
@@ -1034,7 +1034,7 @@ mod tests {
         press(&mut app, KeyCode::Down);
         let mut submitted = false;
         press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
-            submitted = true
+            submitted = true;
         });
         assert!(!submitted);
         assert_eq!(app.input, "read @src/main.rs ");
