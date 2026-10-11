@@ -273,8 +273,9 @@ impl Agent {
                         && definition["name"] != tools::background::STOP
                 });
                 for definition in list.iter_mut() {
-                    if let Some(properties) =
-                        definition["input_schema"]["properties"].as_object_mut()
+                    if let Some(properties) = definition
+                        .pointer_mut("/input_schema/properties")
+                        .and_then(Value::as_object_mut)
                     {
                         properties.remove(tools::background::RUN_IN_BACKGROUND);
                     }
