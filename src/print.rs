@@ -126,7 +126,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
     fn task_line(&mut self, task: usize, text: &str) {
         self.flush_reads();
         for line in text.lines() {
-            self.line(&format!("  [{}] {line}", task + 1));
+            self.line(&format!("  [agent {}] {line}", task + 1));
         }
     }
 
@@ -363,7 +363,7 @@ mod tests {
         finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "done\n");
         let err = String::from_utf8(err).unwrap();
-        let expected = "agent sequential, 2 tasks\n  [1] say hi\n  [2] say bye\n  [2] This task failed: 400 Bad Request: ";
+        let expected = "agent sequential, 2 tasks\n  [agent 1] say hi\n  [agent 2] say bye\n  [agent 2] This task failed: 400 Bad Request: ";
         assert!(err.starts_with(expected), "{err}");
     }
 }

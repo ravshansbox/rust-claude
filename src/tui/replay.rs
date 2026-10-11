@@ -728,10 +728,14 @@ mod tests {
         start_tasks(&mut app);
         assert_eq!(
             texts(&app),
-            ["agent parallel, 2 tasks", "[1] say hi", "[2] list files",]
+            [
+                "agent parallel, 2 tasks",
+                "[agent 1] say hi",
+                "[agent 2] list files",
+            ]
         );
         let screen = screen(&mut app);
-        assert!(screen.contains("[1]  say hi"), "{screen}");
+        assert!(screen.contains("[agent 1]  say hi"), "{screen}");
     }
 
     #[test]
@@ -777,8 +781,8 @@ mod tests {
             texts(&live),
             [
                 "agent parallel, 2 tasks",
-                "[1] say hi",
-                "[2] list files\n  This task failed: 400 Bad Request",
+                "[agent 1] say hi",
+                "[agent 2] list files\n  This task failed: 400 Bad Request",
             ]
         );
         assert_eq!(texts(&replayed), texts(&live));

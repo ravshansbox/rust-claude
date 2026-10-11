@@ -7,7 +7,7 @@ use crate::agent;
 pub(super) type Tasks = HashMap<usize, usize>;
 
 fn header(task: usize, description: &str) -> String {
-    format!("[{}] {description}", task + 1)
+    format!("[agent {}] {description}", task + 1)
 }
 
 /// The task, with the first line of why it failed or did not run.
