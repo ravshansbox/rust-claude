@@ -256,6 +256,9 @@ async fn first_json(
 }
 
 async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discovered, String> {
+    if !secure_endpoint(server_url) {
+        return Err(format!("the MCP server does not use HTTPS: {server_url}"));
+    }
     let url = reqwest::Url::parse(server_url).map_err(|error| error.to_string())?;
     let probe = client
         .post(server_url)
@@ -300,6 +303,16 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             .to_string(),
         None => url.origin().ascii_serialization(),
     };
+    let resource = resource_metadata
+        .as_ref()
+        .and_then(|metadata| metadata["resource"].as_str());
+    if let Some(resource) = resource
+        && !covers(resource, &url)
+    {
+        return Err(format!(
+            "the sign-in metadata of {server_url} is for another server: {resource}"
+        ));
+    }
     let issuer_url = reqwest::Url::parse(&issuer)
         .map_err(|error| format!("invalid sign-in server {issuer:?}: {error}"))?;
     let mut metadata_urls = vec![
@@ -319,6 +332,14 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
     else {
         return Err(format!("cannot find the sign-in server for {server_url}"));
     };
+    if resource_metadata.is_some()
+        && let Some(named) = server_metadata["issuer"].as_str()
+        && named.trim_end_matches('/') != issuer.trim_end_matches('/')
+    {
+        return Err(format!(
+            "the sign-in server {issuer} names another issuer: {named}"
+        ));
+    }
     for kind in ["authorization", "token"] {
         let endpoint = server_metadata[format!("{kind}_endpoint")]
             .as_str()
@@ -345,12 +366,20 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             .unwrap_or_default(),
         token_endpoint: text(&server_metadata["token_endpoint"]).unwrap_or_default(),
         registration_endpoint: text(&server_metadata["registration_endpoint"]),
-        resource: resource_metadata
-            .as_ref()
-            .and_then(|metadata| text(&metadata["resource"]))
-            .unwrap_or_else(|| server_url.to_string()),
+        resource: resource.unwrap_or(server_url).to_string(),
         scope,
     })
+}
+
+/// Whether `resource` is `url`, or its origin or a parent path of it.
+fn covers(resource: &str, url: &reqwest::Url) -> bool {
+    let Ok(resource) = reqwest::Url::parse(resource) else {
+        return false;
+    };
+    let parent = resource.path().trim_end_matches('/');
+    let path = url.path();
+    resource.origin() == url.origin()
+        && (path.trim_end_matches('/') == parent || path.starts_with(&format!("{parent}/")))
 }
 
 fn secure_endpoint(endpoint: &str) -> bool {
