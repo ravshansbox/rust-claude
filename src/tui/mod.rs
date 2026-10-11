@@ -284,7 +284,7 @@ async fn run_loop(
     let startup = mcp::startup();
     app.mcp_sign_in_servers = startup.sign_in_servers.clone();
     for diagnostic in &startup.diagnostics {
-        app.push(Role::Event, diagnostic.to_string());
+        app.push(Role::Event, diagnostic.clone());
     }
     app.load_history(history::history_path());
     if !agent.messages().is_empty() {
