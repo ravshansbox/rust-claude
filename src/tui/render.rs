@@ -112,6 +112,7 @@ impl tui_markdown::StyleSheet for MarkdownStyleSheet {
 }
 
 pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
+    let text = &crate::highlight::strip_controls(text);
     match role {
         Role::User => user_message_lines(text, width as usize),
         Role::Assistant => tui_markdown::from_str_with_options(
@@ -542,6 +543,20 @@ mod tests {
         let write = shown(Role::Tool, "write main.go\n+\treturn");
         assert_eq!(write[1], "+    return");
         assert_eq!(shown(Role::Event, "\tnote"), ["    note"]);
+    }
+
+    #[test]
+    fn leaves_out_control_characters_from_shell_output_and_replies() {
+        let tool = render_message(Role::Tool, "! ls\n\x1b[31mred\x1b[0m\r", 20);
+        let tool: Vec<String> = tool.iter().map(|line| line.to_string()).collect();
+        assert_eq!(tool[1], format!("{:20}", "[31mred[0m"));
+        for role in [Role::Assistant, Role::Thinking, Role::Event, Role::User] {
+            for line in render_message(role, "hi \x1b[31mred\x07", 20) {
+                let rows = indented_rows(&line, 20, REPLY_MARKER);
+                let text: String = rows.iter().map(|row| row.to_string()).collect();
+                assert!(!text.contains(['\x1b', '\x07']), "{text:?}");
+            }
+        }
     }
 
     #[test]
