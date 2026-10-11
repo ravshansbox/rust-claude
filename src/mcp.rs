@@ -851,7 +851,7 @@ impl Connection {
             renewing: tokio::sync::Mutex::new(()),
             oauth: uses_oauth(config).then(|| OAuthSession {
                 server_name: name.to_string(),
-                saved: Mutex::new(oauth::load(url)),
+                saved: Mutex::new(oauth::load_for(url, config.oauth.as_ref())),
                 refreshing: tokio::sync::Mutex::new(()),
             }),
         });
@@ -2155,6 +2155,7 @@ done
                 access_token: access_token.into(),
                 refresh_token: Some("r1".into()),
                 expires_at: Some(expires_at),
+                secret_from_config: false,
             },
         )
         .unwrap();
@@ -2182,6 +2183,28 @@ done
             .map(|request| request.headers["authorization"].clone())
             .collect();
         assert_eq!(tokens_sent, ["Bearer stale", "Bearer fresh"]);
+    }
+
+    #[tokio::test]
+    async fn sends_the_client_secret_from_the_config_when_renewing() {
+        let (url, requests) = http_server(signed_in_mcp).await;
+        save_tokens(&url, "stale", crate::auth::now_millis() - 1);
+        let mut config = http_config(&url);
+        config.oauth = Some(OAuthConfig {
+            client_id: Some("client".into()),
+            client_secret: Some("own-secret".into()),
+        });
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, config).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+        let token_form = requests_for_path(&requests, "/token")[0].form();
+        assert_eq!(token_form["client_secret"], "own-secret");
+        let file =
+            std::fs::read_to_string(crate::config::dir().unwrap().join("mcp-auth.json")).unwrap();
+        assert!(!file.contains("own-secret"), "{file}");
     }
 
     #[tokio::test]
@@ -2487,6 +2510,28 @@ done
         let sign_in = begin_sign_in_with("web", &config).await.unwrap();
         assert_eq!(query(&sign_in.authorize_url)["client_id"], "own");
         assert!(requests_for_path(&requests, "/register").is_empty());
+    }
+
+    #[tokio::test]
+    async fn does_not_save_the_client_secret_from_the_config() {
+        let (url, requests) = oauth_server().await;
+        let mut config = http_config(&url);
+        config.oauth = Some(OAuthConfig {
+            client_id: Some("own".into()),
+            client_secret: Some("own-secret".into()),
+        });
+        let sign_in = begin_sign_in_with("web", &config).await.unwrap();
+        let authorize_url = sign_in.authorize_url.clone();
+        let finished = tokio::spawn(sign_in.finish());
+        visit_callback(&authorize_url, "the-code", None).await;
+        assert_eq!(finished.await.unwrap(), Ok(()));
+        assert_eq!(
+            requests_for_path(&requests, "/token")[0].form()["client_secret"],
+            "own-secret"
+        );
+        let file =
+            std::fs::read_to_string(crate::config::dir().unwrap().join("mcp-auth.json")).unwrap();
+        assert!(!file.contains("own-secret"), "{file}");
     }
 
     #[tokio::test]
