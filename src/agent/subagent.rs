@@ -561,13 +561,30 @@ mod tests {
         ])
         .await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let mut prompt = Box::pin(agent.prompt("go", &[], |_| {}));
-        let _ = tokio::time::timeout(Duration::from_millis(500), &mut prompt).await;
+        let one_done = std::cell::Cell::new(false);
+        let mut prompt = Box::pin(agent.prompt("go", &[], |event| {
+            if matches!(event, AgentEvent::TaskDone { reply: Ok(_), .. }) {
+                one_done.set(true);
+            }
+        }));
+        let ready = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                tokio::select! {
+                    _ = &mut prompt => return false,
+                    _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                        if one_done.get() && api.requests().await.len() == 3 {
+                            return true;
+                        }
+                    }
+                }
+            }
+        })
+        .await;
         drop(prompt);
         let cancelled = agent.cancel(0);
         test_support::remove_session(&agent);
         cancelled.unwrap();
-        assert_eq!(api.requests().await.len(), 3);
+        assert_eq!(ready, Ok(true));
         assert_eq!(agent.stats().usage.input, 2);
     }
 }
