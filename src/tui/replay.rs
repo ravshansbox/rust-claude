@@ -4,6 +4,7 @@ use crate::{
     skills, tools,
 };
 use serde_json::Value;
+use std::collections::HashMap;
 
 pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
     match event {
@@ -141,7 +142,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
 }
 
 pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
-    let results: std::collections::HashMap<&str, (&Value, bool)> = messages
+    let results: HashMap<&str, (&Value, bool)> = messages
         .iter()
         .filter(|message| message["role"] == "user")
         .flat_map(|message| message["content"].as_array().into_iter().flatten())
