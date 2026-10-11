@@ -1975,20 +1975,16 @@ done
             mcp.call("mcp__web__echo", &json!({})).await,
             Some(Ok("streamed".into()))
         );
-        let mut replies = Vec::new();
-        for _ in 0..50 {
-            replies = requests
+        let replies = || -> Vec<Value> {
+            requests
                 .lock()
                 .unwrap()
                 .iter()
                 .filter(|request| request.body["id"] == "p1")
                 .map(|request| request.body.clone())
-                .collect();
-            if !replies.is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
+                .collect()
+        };
+        let replies = eventually(replies, |replies| !replies.is_empty()).await;
         assert_eq!(
             replies,
             [json!({ "jsonrpc": "2.0", "id": "p1", "result": {} })]
@@ -2534,20 +2530,16 @@ done
         let mut mcp = Mcp::default();
         mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
         drop(mcp);
-        let mut deleted = Vec::new();
-        for _ in 0..50 {
-            deleted = requests
+        let deleted = || -> Vec<String> {
+            requests
                 .lock()
                 .unwrap()
                 .iter()
                 .filter(|request| request.method == "DELETE")
                 .map(|request| request.headers["mcp-session-id"].clone())
-                .collect();
-            if !deleted.is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
+                .collect()
+        };
+        let deleted = eventually(deleted, |deleted| !deleted.is_empty()).await;
         assert_eq!(deleted, ["s1"]);
     }
 
@@ -2615,20 +2607,26 @@ done
         drop(mcp);
     }
 
+    async fn eventually<T>(mut value: impl FnMut() -> T, done: impl Fn(&T) -> bool) -> T {
+        for _ in 1..50 {
+            let current = value();
+            if done(&current) {
+                return current;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+        value()
+    }
+
     async fn wait_until_gone(pid: &str) -> String {
-        let mut listed = String::new();
-        for _ in 0..50 {
+        let listed = || {
             let output = std::process::Command::new("ps")
                 .args(["-o", "stat=", "-p", pid])
                 .output()
                 .unwrap();
-            listed = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if listed.is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
-        listed
+            String::from_utf8_lossy(&output.stdout).trim().to_string()
+        };
+        eventually(listed, String::is_empty).await
     }
 
     #[tokio::test]
@@ -2667,14 +2665,8 @@ done
                 .unwrap()
                 .is_err()
         );
-        let mut logged = String::new();
-        for _ in 0..50 {
-            logged = std::fs::read_to_string(&log).unwrap_or_default();
-            if !logged.is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(100)).await;
-        }
+        let read = || std::fs::read_to_string(&log).unwrap_or_default();
+        let logged = eventually(read, |logged| !logged.is_empty()).await;
         let _ = std::fs::remove_file(&log);
         let message: Value = serde_json::from_str(logged.trim()).unwrap();
         assert_eq!(message["method"], "notifications/cancelled");
