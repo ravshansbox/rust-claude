@@ -19,7 +19,7 @@ Command line:
 - Print mode (`-p` / `--print`) to run one prompt and print the answer
 - `--image <path>` to send images in print mode
 - `-c` / `--continue` to continue the latest session in the current folder
-- Syntax-highlighted tool calls on standard error in print mode
+- Tool calls and thinking on standard error in print mode, shown as in the interface
 - `--config-dir <path>` to keep sign-in, settings, sessions and other files in another folder
 - Help with `-h` / `--help`
 
@@ -184,7 +184,7 @@ Send images with the prompt with `--image <path>`. Repeat it for more images:
 rust-coding-agent -p "what is wrong in this screenshot?" --image error.png
 ```
 
-In print mode, tool calls go to standard error. When standard error is a terminal, they look as they do in the interface, with the same colours and syntax highlighting. rust-coding-agent removes control characters other than newline and tab, such as escape sequences that clear the screen or set the clipboard, from the tool calls, tool errors, notices and MCP messages it shows, and from the answer when standard output is a terminal. A piped answer is written byte for byte.
+In print mode, tool calls and thinking go to standard error. When standard error is a terminal, they look as they do in the interface, with the same colours and syntax highlighting, and thinking is grey and in italics. A blank line separates each tool call, thinking block, notice and part of the answer, as in the interface. When standard output and standard error are both a terminal, these blank lines go to standard error, so standard output holds only the answer. rust-coding-agent removes control characters other than newline and tab, such as escape sequences that clear the screen or set the clipboard, from the tool calls, tool errors, notices and MCP messages it shows, and from the answer when standard output is a terminal. A piped answer is written byte for byte.
 
 Press Ctrl+C in print mode to stop. rust-coding-agent stops running commands and MCP servers, saves the session with the prompt marked as cancelled, waits up to 5 seconds for a sign-in renewal in progress to be saved, prints `cancelled` to standard error and exits with status 130. Closing the terminal (SIGHUP) or `kill` (SIGTERM) stops it the same way, with status 129 or 143. In the interactive mode they quit as if you had pressed Ctrl+D, so running commands and MCP servers are stopped too. While rust-coding-agent asks for the sign-in code or renews the sign-in at start, they stop it in both modes: it waits up to 5 seconds for the renewal to be saved, prints `cancelled` and exits with status 130, 129 or 143.
 
@@ -447,7 +447,7 @@ The input, output and cache tokens that subagents use count towards the totals o
 
 In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Once the subagent calls a tool, the number of tool calls so far follows, such as `[agent 1] list files · 3 tool calls`. After its first reply, the subagent's own context use and stats follow, in the same form as on the status line, such as `[agent 1] list files · 3 tool calls · 4%/1m · ↑312 ↓71k R7m W472k CH98% 107t/s`. They update while it works and stay after it finishes. Nothing else a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way, but without the number of tool calls or stats, because subagent conversations are not saved.
 
-In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows its number and description when it starts, such as `  [agent 1] say hi`. When it finishes, its number of tool calls follows, such as `  [agent 1] 3 tool calls`. If a task fails or does not run, the first line of why follows that, starting with the task number.
+In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows one line when it finishes, as in the interface: its number, description, number of tool calls and stats, such as `[agent 1] say hi · 3 tool calls · 12%/200k · ↑4 ↓338`. If a task fails or does not run, the first line of why follows on the next line.
 
 ## MCP servers
 

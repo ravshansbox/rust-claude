@@ -123,7 +123,8 @@ async fn restart_mcp_server(
 }
 use worker::{Request, UiEvent, agent_task, quit};
 
-pub(crate) use render::{ansi_tool_lines, tool_message};
+pub(crate) use render::{ansi_thinking, ansi_tool_lines, tool_message};
+pub(crate) use tasks::finished_task;
 
 /// Whether the terminal has a dark theme, and its background if it says.
 pub fn terminal_theme() -> (bool, Option<crate::highlight::Colour>) {
