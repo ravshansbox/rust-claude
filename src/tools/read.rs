@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT, argument, truncate};
+use super::{MAX_OUTPUT, argument, number, truncate};
 use serde_json::{Value, json};
 use std::{
     fs::File,
@@ -24,20 +24,8 @@ pub(super) fn definition() -> Value {
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
     let path = argument(input, "path")?;
-    let offset = match &input["offset"] {
-        Value::Null => 1,
-        value => match value.as_u64() {
-            Some(offset) => offset.max(1) as usize,
-            None => return Err("offset must be at least 1".into()),
-        },
-    };
-    let limit = match &input["limit"] {
-        Value::Null => usize::MAX,
-        value => match value.as_u64() {
-            Some(limit) if limit > 0 => limit as usize,
-            _ => return Err("limit must be at least 1".into()),
-        },
-    };
+    let offset = number(input, "offset", 0)?.map_or(1, |offset| offset.max(1) as usize);
+    let limit = number(input, "limit", 1)?.map_or(usize::MAX, |limit| limit as usize);
     let metadata = tokio::fs::metadata(path)
         .await
         .map_err(|error| format!("failed to read {path}: {error}"))?;

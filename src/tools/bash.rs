@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT, argument, truncate};
+use super::{MAX_OUTPUT, argument, number, truncate};
 use serde_json::{Value, json};
 use std::{
     process::Stdio,
@@ -23,20 +23,10 @@ pub(super) fn definition() -> Value {
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
-    let timeout = timeout(input)?;
+    let timeout = number(input, "timeout", 1)?;
     let mut command = tokio::process::Command::new("bash");
     command.args(["-c", argument(input, "command")?]);
     run_command(command, None, timeout).await
-}
-
-pub(super) fn timeout(input: &Value) -> Result<Option<u64>, String> {
-    match &input["timeout"] {
-        Value::Null => Ok(None),
-        value => match value.as_u64() {
-            Some(seconds) if seconds > 0 => Ok(Some(seconds)),
-            _ => Err("timeout must be at least 1".into()),
-        },
-    }
 }
 
 pub(super) async fn run_command(
