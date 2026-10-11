@@ -7,7 +7,7 @@ use super::{
 };
 use ratatui::{
     Frame,
-    layout::{Constraint, Direction, Layout, Rect},
+    layout::{Constraint, Layout, Rect},
     style::{Style, Stylize},
     text::{Line, Span, Text},
     widgets::{
@@ -49,14 +49,12 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let footer_height = footer_paragraph
         .line_count(frame.area().width)
         .min(u16::MAX as usize) as u16;
-    let [chat, input, footer] = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
-            Constraint::Min(1),
-            Constraint::Length(input_lines.len().min(u16::MAX as usize - 2) as u16 + 2),
-            Constraint::Length(footer_height),
-        ])
-        .areas(frame.area());
+    let [chat, input, footer] = Layout::vertical([
+        Constraint::Min(1),
+        Constraint::Length(input_lines.len().min(u16::MAX as usize - 2) as u16 + 2),
+        Constraint::Length(footer_height),
+    ])
+    .areas(frame.area());
 
     for message in &mut app.messages {
         message.render(chat.width);
