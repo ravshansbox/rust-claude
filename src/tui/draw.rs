@@ -227,12 +227,30 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
         skipped += 1 + message.height();
         first_message += 1;
     }
-    let rows = app.messages[first_message..]
-        .iter()
-        .flat_map(|message| {
-            let rendered = message.rendered.iter().flat_map(|rendered| rendered.rows());
+    // Wrapping lines is slow, so skip the whole lines above the view in the
+    // first visible message.
+    let mut first_rows = None;
+    if let Some(rendered) = app
+        .messages
+        .get(first_message)
+        .and_then(|message| message.rendered.as_ref())
+        && top > skipped
+    {
+        let (rows_skipped, rows) = rendered.rows_from(top - skipped - 1);
+        skipped += 1 + rows_skipped;
+        first_rows = Some(rows);
+    }
+    let rest = first_message + usize::from(first_rows.is_some());
+    let rows = first_rows
+        .into_iter()
+        .flatten()
+        .chain(app.messages[rest..].iter().flat_map(|message| {
+            let rendered = message
+                .rendered
+                .iter()
+                .flat_map(|rendered| rendered.rows_from(0).1);
             std::iter::once((Line::default(), 1)).chain(rendered)
-        })
+        }))
         .chain(status_lines.into_iter().zip(status_heights));
     let mut lines = Vec::new();
     let mut filled = 0;
@@ -406,6 +424,35 @@ mod tests {
         let rows = rows_from(&shown, "● Before");
         assert!(rows.contains(&"  code"), "{shown}");
         assert!(rows.contains(&"  After"), "{shown}");
+    }
+
+    #[test]
+    fn shows_the_same_rows_from_any_scroll_position() {
+        use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+        let mut app = crate::tui::test_support::new_app();
+        let words: String = (0..30).map(|number| format!("word{number:02} ")).collect();
+        app.push(Role::Event, "first event");
+        app.push(Role::Assistant, format!("{words}\n\n{words}\n\nend"));
+        app.push(Role::Event, format!("{words}last"));
+        let width = 20;
+        screen_of_width(&mut app, width);
+        let rows = |top: usize, height: u16| {
+            let area = Rect::new(0, 0, width, height);
+            let mut buffer = Buffer::empty(area);
+            super::conversation(&app, width, top, height).render(area, &mut buffer);
+            buffer
+                .content()
+                .chunks(width as usize)
+                .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+                .collect::<Vec<_>>()
+        };
+        let all = rows(0, 200);
+        let total = all.iter().rposition(|row| !row.trim().is_empty()).unwrap() + 1;
+        assert!(total > 40, "{all:?}");
+        for top in 0..total {
+            let end = (top + 5).min(all.len());
+            assert_eq!(rows(top, 5)[..end - top], all[top..end], "from row {top}");
+        }
     }
 
     #[test]

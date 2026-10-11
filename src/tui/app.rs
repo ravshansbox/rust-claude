@@ -111,23 +111,41 @@ impl Rendered {
         }
     }
 
-    /// Each row as shown, with the rows it takes once wrapped.
-    pub(super) fn rows(&self) -> Box<dyn Iterator<Item = (Line<'_>, usize)> + '_> {
-        if self.indented {
-            Box::new(self.lines.iter().enumerate().flat_map(|(index, line)| {
-                let prefix = if index == 0 { REPLY_MARKER } else { INDENT };
-                indented_rows(line, self.width, prefix)
-                    .into_iter()
-                    .map(|row| (row, 1))
-            }))
+    /// Each row as shown, with the rows it takes once wrapped, from the line
+    /// that holds row `from`. Also gives the rows of the lines left out.
+    pub(super) fn rows_from(
+        &self,
+        from: usize,
+    ) -> (usize, Box<dyn Iterator<Item = (Line<'_>, usize)> + '_>) {
+        let mut skipped = 0;
+        let mut first = 0;
+        while let Some(height) = self.heights.get(first)
+            && skipped + height <= from
+        {
+            skipped += height;
+            first += 1;
+        }
+        let lines = self.lines.iter().zip(self.heights.iter().copied());
+        let rows: Box<dyn Iterator<Item = _>> = if self.indented {
+            Box::new(
+                lines
+                    .enumerate()
+                    .skip(first)
+                    .flat_map(|(index, (line, _))| {
+                        let prefix = if index == 0 { REPLY_MARKER } else { INDENT };
+                        indented_rows(line, self.width, prefix)
+                            .into_iter()
+                            .map(|row| (row, 1))
+                    }),
+            )
         } else {
             Box::new(
-                self.lines
-                    .iter()
-                    .map(borrowed_line)
-                    .zip(self.heights.iter().copied()),
+                lines
+                    .skip(first)
+                    .map(|(line, height)| (borrowed_line(line), height)),
             )
-        }
+        };
+        (skipped, rows)
     }
 }
 
