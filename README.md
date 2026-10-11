@@ -221,7 +221,7 @@ Syntax highlighting in tool calls and in code blocks in replies uses the GitHub 
 
 Typing `/` lists the commands and skill commands that start with the input, in alphabetical order. A command typed out in full comes first. The list shows up to 10 at a time, and a longer list scrolls as you move through it, with a scrollbar on the right. Up on the first item moves to the last, and Down on the last moves to the first.
 
-An unknown command or effort level shows an error and leaves the text in the input, so you can edit it.
+An unknown command, effort level or skill shows an error and leaves the text in the input, so you can edit it.
 
 The `/resume`, `/model` and `/effort` pickers open in a box above the input. The box shows up to 10 items, and the conversation stays visible above it. A longer list scrolls as you move through it, with a scrollbar on the right. Esc or Ctrl+C closes a picker and keeps the text in the input.
 

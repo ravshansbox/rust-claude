@@ -321,13 +321,14 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         }
                     },
                     _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
-                        if app.skills.iter().any(|skill| skill.name == name) {
-                            app.push(Role::Event, format!("[skill] {name}"));
-                            if !arguments.is_empty() {
-                                app.push(Role::User, arguments);
-                            }
-                        } else {
-                            app.push(Role::User, prompt.clone());
+                        if !app.skills.iter().any(|skill| skill.name == name) {
+                            app.push(Role::Event, format!("unknown skill: {name}"));
+                            app.restore_input(prompt);
+                            return false;
+                        }
+                        app.push(Role::Event, format!("[skill] {name}"));
+                        if !arguments.is_empty() {
+                            app.push(Role::User, arguments);
                         }
                         app.remember(&prompt);
                         app.start(Activity::Working);
@@ -472,6 +473,7 @@ mod tests {
                 "unknown command: /Users/me/proj/main.rs",
             ),
             ("/effort loud", "unknown effort level: loud"),
+            ("/skill:missing fix it", "unknown skill: missing"),
         ] {
             let mut app = new_app();
             handle_input(Event::Paste(typed.into()), &mut app, |_| {});
