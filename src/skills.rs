@@ -326,18 +326,16 @@ fn validate_name(name: &str) -> Vec<String> {
 }
 
 fn validate_description(description: Option<&str>) -> Vec<String> {
-    match description {
-        Some(description) if !description.trim().is_empty() => {
-            let length = description.chars().count();
-            if length > MAX_DESCRIPTION_LENGTH {
-                vec![format!(
-                    "description exceeds {MAX_DESCRIPTION_LENGTH} characters ({length})"
-                )]
-            } else {
-                Vec::new()
-            }
-        }
-        _ => vec!["description is required".into()],
+    let Some(description) = description else {
+        return vec!["description is required".into()];
+    };
+    let length = description.chars().count();
+    if length > MAX_DESCRIPTION_LENGTH {
+        vec![format!(
+            "description exceeds {MAX_DESCRIPTION_LENGTH} characters ({length})"
+        )]
+    } else {
+        Vec::new()
     }
 }
 
@@ -356,9 +354,10 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
         Err(error) if is_declared_skill => return (None, vec![warning(error.to_string())]),
         Err(_) => return (None, Vec::new()),
     };
-    let description = frontmatter["description"].as_str();
-    let has_description = description.is_some_and(|description| !description.trim().is_empty());
-    if !is_declared_skill && !has_description {
+    let description = frontmatter["description"]
+        .as_str()
+        .filter(|description| !description.trim().is_empty());
+    if !is_declared_skill && description.is_none() {
         return (None, Vec::new());
     }
     let base_dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
@@ -381,7 +380,7 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
                 .unwrap_or_default()
         });
     diagnostics.extend(validate_name(&name).into_iter().map(&warning));
-    let Some(description) = description.filter(|_| has_description) else {
+    let Some(description) = description else {
         return (None, diagnostics);
     };
     let skill = Skill {
