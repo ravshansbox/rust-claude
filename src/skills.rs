@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 const MAX_NAME_LENGTH: usize = 64;
 const MAX_DESCRIPTION_LENGTH: usize = 1024;
@@ -295,7 +295,7 @@ fn parse_frontmatter(content: &str) -> Result<Value> {
         .transpose()?;
     Ok(value
         .filter(|value| !value.is_null())
-        .unwrap_or_else(|| Value::Object(Default::default())))
+        .unwrap_or_else(|| json!({})))
 }
 
 fn validate_name(name: &str) -> Vec<String> {
