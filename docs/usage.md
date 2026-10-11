@@ -49,7 +49,7 @@ Sessions hold whole conversations and tool output, so rust-coding-agent creates 
 
 Show help with `-h` or `--help`. An unknown option, or an argument that is not valid UTF-8 text, stops rust-coding-agent with the usage line.
 
-The interface starts with the name and version, such as `rust-coding-agent v0.1.0`, above the start-up lines. Builds from `main` show `v0.0.0`.
+The interface starts with the name and version, such as `Rust Coding Agent v0.1.0`, above the start-up lines. Builds from `main` show `v0.0.0`.
 
 Markdown tables in replies wrap their cells to fit the window width.
 
