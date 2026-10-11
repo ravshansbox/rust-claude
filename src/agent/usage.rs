@@ -69,7 +69,7 @@ pub struct Stats {
     pub usage: Usage,
     pub cache_hit_rate: Option<f64>,
     pub tokens_per_second: Option<f64>,
-    pub context_tokens: u64,
+    pub context_tokens: Option<u64>,
     pub context_window: u64,
     pub quota: Quota,
 }

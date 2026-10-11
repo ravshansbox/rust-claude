@@ -526,7 +526,7 @@ mod tests {
         assert!(shown.contains("/compact"), "{shown}");
         assert!(!shown.contains("/skill:skill03"), "{shown}");
         assert!(shown.contains('█'), "{shown}");
-        for _ in 0..37 {
+        for _ in 0..36 {
             press(&mut app, KeyCode::Down);
         }
         let shown = screen(&mut app);

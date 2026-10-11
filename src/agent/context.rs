@@ -119,101 +119,24 @@ fn mark_last_block(message: &mut Value) {
     }
 }
 
-pub(super) fn estimate_tokens(message: &Value) -> u64 {
-    (characters(&message["content"]) as u64).div_ceil(4)
-}
-
-fn characters(content: &Value) -> usize {
-    match content {
-        Value::String(text) => text.chars().count(),
-        Value::Array(blocks) => blocks
-            .iter()
-            .map(|block| match block["type"].as_str().unwrap_or_default() {
-                "text" => block["text"].as_str().unwrap_or_default().chars().count(),
-                "thinking" => block["thinking"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .chars()
-                    .count(),
-                "tool_use" => {
-                    block["name"].as_str().unwrap_or_default().chars().count()
-                        + block["input"].to_string().chars().count()
-                }
-                "tool_result" => characters(&block["content"]),
-                _ => 0,
-            })
-            .sum(),
-        _ => 0,
-    }
-}
-
-pub(super) fn estimate_prompt_tokens(system: &[Value], tools: &Value) -> u64 {
-    let characters: usize = system
-        .iter()
-        .map(|block| block["text"].as_str().unwrap_or_default().chars().count())
-        .sum::<usize>()
-        + tools.to_string().chars().count();
-    (characters as u64).div_ceil(4)
-}
-
-pub(super) fn estimate_text_tokens(text: &str) -> u64 {
-    (text.chars().count() as u64).div_ceil(4)
-}
-
-pub(super) fn scale_parts(parts: Vec<(&'static str, u64)>, total: u64) -> Vec<(&'static str, u64)> {
-    let estimated: u64 = parts.iter().map(|(_, tokens)| tokens).sum();
-    if estimated == 0 {
-        return parts;
-    }
-    parts
-        .into_iter()
-        .map(|(name, tokens)| {
-            let scaled = (tokens as f64 * total as f64 / estimated as f64).round();
-            (name, scaled as u64)
-        })
-        .collect()
-}
-
-pub struct ContextUse {
-    pub parts: Vec<(&'static str, u64)>,
-    pub total: u64,
-    pub window: u64,
-}
-
-pub(super) fn context_tokens(messages: &[Value], system_tokens: u64) -> u64 {
-    let last_usage = messages
-        .iter()
-        .enumerate()
-        .rev()
-        .find_map(|(index, message)| {
-            if message["role"] != "assistant" || message.get("stop_reason").is_some() {
-                return None;
-            }
-            let usage = Usage::from_json(&message["usage"]);
-            let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
-            (tokens > 0).then_some((index, tokens))
-        });
-    let (start, usage_tokens) =
-        last_usage.map_or((0, system_tokens), |(index, tokens)| (index + 1, tokens));
-    usage_tokens + messages[start..].iter().map(estimate_tokens).sum::<u64>()
+pub(super) fn context_tokens(messages: &[Value]) -> Option<u64> {
+    messages.iter().rev().find_map(|message| {
+        if message["role"] != "assistant" || message.get("stop_reason").is_some() {
+            return None;
+        }
+        let usage = Usage::from_json(&message["usage"]);
+        let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
+        (tokens > 0).then_some(tokens)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        active_messages, context_tokens, has_uncompacted, scale_parts, shorten_tool_results,
+        active_messages, context_tokens, has_uncompacted, shorten_tool_results,
         with_cache_breakpoint,
     };
     use serde_json::json;
-
-    #[test]
-    fn scales_context_parts_to_total() {
-        assert_eq!(
-            scale_parts(vec![("a", 10), ("b", 30)], 80),
-            vec![("a", 20), ("b", 60)]
-        );
-        assert_eq!(scale_parts(vec![("a", 0)], 80), vec![("a", 0)]);
-    }
 
     #[test]
     fn replaces_compacted_messages_with_summary() {
@@ -292,7 +215,7 @@ mod tests {
     }
 
     #[test]
-    fn counts_context_from_last_usage_and_trailing_messages() {
+    fn counts_context_from_the_last_reply_only() {
         let messages = vec![
             json!({ "role": "user", "content": "hello" }),
             json!({
@@ -308,13 +231,13 @@ mod tests {
             }),
             json!({ "role": "user", "content": "12345678" }),
         ];
-        assert_eq!(context_tokens(&messages, 50), 137);
+        assert_eq!(context_tokens(&messages), Some(135));
     }
 
     #[test]
-    fn estimates_context_without_usage() {
+    fn has_no_context_count_before_a_reply() {
         let messages = vec![json!({ "role": "user", "content": "12345" })];
-        assert_eq!(context_tokens(&messages, 50), 52);
+        assert_eq!(context_tokens(&messages), None);
     }
 
     #[test]
@@ -339,21 +262,5 @@ mod tests {
                 { "type": "text", "text": "abc" },
             ])
         );
-    }
-
-    #[test]
-    fn estimates_tool_results_made_of_text_blocks() {
-        let result = |content| {
-            json!({
-                "role": "user",
-                "content": [{ "type": "tool_result", "tool_use_id": "1", "content": content }],
-            })
-        };
-        let blocks = result(json!([
-            { "type": "text", "text": "12345678" },
-            { "type": "text", "text": "abcdefgh" },
-        ]));
-        assert_eq!(context_tokens(&[blocks], 0), 4);
-        assert_eq!(context_tokens(&[result(json!("12345678abcdefgh"))], 0), 4);
     }
 }

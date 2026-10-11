@@ -1,5 +1,5 @@
 use crate::{
-    agent::{Agent, AgentEvent, ContextUse},
+    agent::{Agent, AgentEvent},
     images::Image,
     mcp::{Added, Started},
     session::SessionSummary,
@@ -19,7 +19,6 @@ pub(super) enum UiEvent {
     ModelChecked(Result<String>),
     ImagePasted(Result<Option<Image>>),
     Shell(String, Result<String>),
-    Context(ContextUse),
     Files(u64, Vec<String>),
     Workspace(String),
     McpServer(Added),
@@ -42,7 +41,6 @@ pub(super) enum Request {
     CheckModel(String),
     NewSession,
     ListModels,
-    Context,
     ReplaceMcpServer(Started),
 }
 
@@ -122,10 +120,6 @@ pub(super) async fn agent_task(
             Request::Prompt(prompt, images, effort) => (Some((prompt, images)), effort),
             Request::Compact(effort) => (None, effort),
             Request::Shell(_) => continue,
-            Request::Context => {
-                let _ = events.send(UiEvent::Context(agent.context_use()));
-                continue;
-            }
             Request::ReplaceMcpServer(started) => {
                 let _ = events.send(UiEvent::McpServer(agent.mcp.replace(started)));
                 let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));

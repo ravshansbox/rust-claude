@@ -249,7 +249,6 @@ pub(super) enum Activity {
     Cancelling,
     Resuming,
     StartingNewSession,
-    MeasuringContext,
     LoadingSessions,
 }
 
@@ -283,7 +282,6 @@ impl std::fmt::Display for Activity {
             Self::Cancelling => "cancelling",
             Self::Resuming => "resuming",
             Self::StartingNewSession => "starting new session",
-            Self::MeasuringContext => "measuring context",
             Self::LoadingSessions => "loading sessions",
         })
     }

@@ -3,7 +3,6 @@ use crate::skills::Skill;
 pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
     ("/compact", "summarise the conversation to free context"),
-    ("/context", "show what fills the context"),
     ("/mcp", "sign in to or out of an MCP server"),
     ("/resume", "resume a previous session"),
     ("/model", "select model"),
