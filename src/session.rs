@@ -1,4 +1,5 @@
 use std::{
+    fmt::Write as _,
     fs::{File, TryLockError},
     io::{Read, Write},
     path::{Path, PathBuf},
@@ -37,7 +38,12 @@ fn sessions_directory() -> Result<PathBuf> {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+    bytes
+        .iter()
+        .fold(String::with_capacity(bytes.len() * 2), |mut hex, byte| {
+            let _ = write!(hex, "{byte:02x}");
+            hex
+        })
 }
 
 fn new_uuid() -> Result<String> {
