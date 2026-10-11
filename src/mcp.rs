@@ -2401,6 +2401,29 @@ done
         assert_eq!(finished.await.unwrap(), Ok(()));
     }
 
+    #[tokio::test]
+    async fn refuses_sign_in_endpoints_without_https() {
+        let base = Arc::new(Mutex::new(String::new()));
+        let shared = base.clone();
+        let (url, _) = http_server(move |request| {
+            let base = shared.lock().unwrap().clone();
+            if request.path == "/.well-known/oauth-authorization-server/auth" {
+                return HttpReply::json(json!({
+                    "authorization_endpoint": "https://sign-in.example/authorize",
+                    "token_endpoint": "http://sign-in.example/token",
+                    "registration_endpoint": format!("{base}/register"),
+                }));
+            }
+            oauth_mcp(&base, request)
+        })
+        .await;
+        *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
+        assert_eq!(
+            begin_sign_in_with("web", &http_config(&url)).await.err(),
+            Some("the sign-in server's token endpoint does not use HTTPS: http://sign-in.example/token".into())
+        );
+    }
+
     fn requests_for_path(requests: &Requests, path: &str) -> Vec<HttpRequest> {
         requests
             .lock()
