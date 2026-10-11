@@ -425,14 +425,8 @@ async fn run_loop(
                     Action::SetModel(model) => {
                         let _ = request_tx.send(Request::SetModel(model));
                     }
-                    Action::CheckModel(model) => {
-                        let _ = request_tx.send(Request::CheckModel(model));
-                    }
                     Action::NewSession => {
                         let _ = request_tx.send(Request::NewSession);
-                    }
-                    Action::ListModels => {
-                        let _ = request_tx.send(Request::ListModels);
                     }
                     Action::McpSignIn(name) => {
                         tokio::spawn(sign_in_to_mcp_server(

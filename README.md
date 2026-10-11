@@ -25,10 +25,10 @@ Command line:
 
 Model, effort and thinking:
 
-- `/model` picker with the latest model in each class available to your account: Fable, Opus, Sonnet and Haiku
-- `/model <id>`, which checks the id before switching
-- Ctrl+P to switch between the latest models: Fable, Opus, Sonnet, Haiku
-- Known context windows and output limits for the latest model in each class
+- Four models: Fable, Opus, Sonnet and Haiku
+- `/model` picker and `/model <id>` to switch between them
+- Ctrl+P to switch to the next model: Fable, Opus, Sonnet, Haiku
+- Known context windows and output limits for each model
 - Effort levels with `/effort`, `/effort <level>` and Shift+Tab, and `off` to turn thinking off on Sonnet and Haiku
 - Thinking text shown in the conversation
 - Model and effort level saved to `~/.rust-coding-agent/settings.json`
@@ -226,7 +226,7 @@ Syntax highlighting in tool calls and in code blocks in replies uses the GitHub 
 | `/compact` | Summarise the conversation to free context |
 | `/mcp login <server>` | Sign in to an MCP server. See [Signing in to MCP servers](#signing-in-to-mcp-servers) |
 | `/mcp logout <server>` | Remove the saved sign-in for an MCP server and start it again |
-| `/model [id]` | Select a model. The picker shows the latest model in each class. An id must be in the list of available models |
+| `/model [id]` | Select a model. The id must be one of the four models rust-coding-agent knows |
 | `/new` | Start a new session |
 | `/quit` | Quit |
 | `/resume` | Resume a previous session |
@@ -255,7 +255,7 @@ In the interface, rust-coding-agent saves each prompt you send, including `!` co
 | --- | --- |
 | Enter | Send prompt, or queue it while the agent works |
 | Shift+Enter / Alt+Enter | Add a new line |
-| Esc | Cancel the running prompt or model lookup, or quit when idle |
+| Esc | Cancel the running prompt, or quit when idle |
 | Ctrl+C | Clear input, or quit when input is empty. In a picker or prompt search, close it |
 | Ctrl+D | Quit when input is empty |
 | Ctrl+V | Paste an image from the clipboard |
@@ -289,7 +289,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 ## Status line
 
-The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, the number of subagents running while any run (for example `2 agents`), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 CH99% 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`, or as a token count for a model with no known context window.
+The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, the number of subagents running while any run (for example `2 agents`), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 CH99% 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-coding-agent loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 1h16m` or `7d 81% 3d`. When the first unit is 2 or more, only that unit is shown, rounded to the nearest, so `2h40m` shows as `3h`.
 
@@ -310,11 +310,11 @@ Effort levels: `off`, `low`, `medium`, `high`, `xhigh`, `max`.
 
 `off` turns thinking off and is offered only on Sonnet and Haiku, because Fable and Opus cannot turn thinking off. On Sonnet it turns off thinking before the reply, but Claude still writes short updates between tool calls. With `off`, rust-coding-agent sends no effort level, so the model uses its default. Switching to Fable or Opus, or starting with them, changes `off` to `medium`.
 
-rust-coding-agent knows only the latest model in each class: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 4](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)). Every model uses adaptive thinking unless the effort level is `off`, and the effort level controls how much work Claude puts into each reply, thinking included. rust-coding-agent no longer reads the old `thinking_level` key.
+rust-coding-agent accepts only four models: `claude-fable-5-1`, `claude-opus-5-5`, `claude-sonnet-5-5` and `claude-haiku-5-5` (see [ADR 5](docs/adr/0005-accept-only-the-listed-models.md)). Every model uses adaptive thinking unless the effort level is `off`, and the effort level controls how much work Claude puts into each reply, thinking included. rust-coding-agent no longer reads the old `thinking_level` key.
 
-Each reply from a known model may use up to 128,000 tokens. Other models get 8,192 tokens, and context use shows as a token count.
+Each reply may use up to 128,000 tokens.
 
-Options take priority over the settings file and apply to that run only. They work in the interface and in print mode. rust-coding-agent does not check the `--model` id, so an unknown id fails on the first request.
+Options take priority over the settings file and apply to that run only. They work in the interface and in print mode. `--model` with any other id fails with an error before rust-coding-agent signs in. If `settings.json` holds any other model, for example one saved by an older version, rust-coding-agent shows a warning and uses `claude-opus-5-5`.
 
 An unknown effort level prints a warning to standard error and uses `medium`.
 
@@ -384,7 +384,7 @@ While a prompt runs, the session is saved after each finished round of tool call
 
 A session is open in one rust-coding-agent at a time, so two copies never write to the same file. Resuming a session that another running rust-coding-agent has open, with `/resume` or `--continue`, shows an error instead.
 
-Quitting while a prompt runs cancels it and saves the session first. Quitting while `/model` loads the model list stops that request. Requests still waiting when you quit, such as a prompt sent just before, are not started. Quitting waits at most a second for background work, such as listing files for `@`, reading the Git branch or pasting an image.
+Quitting while a prompt runs cancels it and saves the session first. Requests still waiting when you quit, such as a prompt sent just before, are not started. Quitting waits at most a second for background work, such as listing files for `@`, reading the Git branch or pasting an image.
 
 A cancelled or failed prompt stays in the session with its finished tool calls, so the model sees them in the next request. This includes a prompt cancelled before it was sent, for example while the sign-in renews at start. A tool call that was still running or waiting when you cancelled is recorded as cancelled.
 
@@ -396,7 +396,7 @@ Newer models only use thinking from earlier replies while the system prompt, too
 
 `/compact` asks the model to summarise the conversation. Later requests send the summary in place of the earlier messages. The session file keeps the full conversation and a compaction entry that holds the summary. A resumed session shows the earlier messages, then a `compacted conversation` notice. Esc cancels a running compaction. If the summary is cut off, or the model declines to write it, compaction fails with an error and the conversation stays as it was.
 
-rust-coding-agent also compacts automatically when the context is 80% full: before sending a new prompt, and after each round of tool calls. A prompt sent at that point, or queued during that round, is kept word for word after the summary. If automatic compaction fails, rust-coding-agent shows the error as a notice and sends the request without compacting. Models that rust-coding-agent doesn't know have no known context window, so they only compact with `/compact`.
+rust-coding-agent also compacts automatically when the context is 80% full: before sending a new prompt, and after each round of tool calls. A prompt sent at that point, or queued during that round, is kept word for word after the summary. If automatic compaction fails, rust-coding-agent shows the error as a notice and sends the request without compacting.
 
 A round of tool calls can take the conversation past the context window, and the API then refuses to read it. When that happens during compaction, rust-coding-agent shows a notice and asks for the summary again with each tool output cut to its first 2,000 characters, then to 200. The session file still keeps the full output.
 
@@ -497,7 +497,8 @@ Architecture decision records are in [docs/adr](docs/adr):
 - [1. Identify as Claude Code](docs/adr/0001-identify-as-claude-code.md)
 - [2. Run tools without approval](docs/adr/0002-run-tools-without-approval.md)
 - [3. Start project MCP servers without approval](docs/adr/0003-start-project-mcp-servers-without-approval.md)
-- [4. Offer only the latest model in each class](docs/adr/0004-offer-only-the-latest-model-in-each-class.md)
+- [4. Offer only the latest model in each class](docs/adr/0004-offer-only-the-latest-model-in-each-class.md) (superseded by ADR 5)
+- [5. Accept only the listed models](docs/adr/0005-accept-only-the-listed-models.md)
 
 ## Development
 

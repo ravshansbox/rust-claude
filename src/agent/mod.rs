@@ -216,29 +216,6 @@ impl Agent {
         Ok(messages)
     }
 
-    pub async fn list_models(&mut self) -> Result<Vec<String>> {
-        let token = self.credentials.access_token(&self.http).await?;
-        let response = self
-            .http
-            .get(format!("{}/v1/models?limit=1000", self.api_base))
-            .bearer_auth(token)
-            .header("anthropic-version", "2023-06-01")
-            .header("anthropic-beta", "oauth-2025-04-20")
-            .send()
-            .await?;
-        if !response.status().is_success() {
-            let status = response.status();
-            bail!("{status}: {}", response.text().await?);
-        }
-        let body: Value = response.json().await?;
-        Ok(body["data"]
-            .as_array()
-            .into_iter()
-            .flatten()
-            .filter_map(|model| model["id"].as_str().map(str::to_string))
-            .collect())
-    }
-
     pub async fn quota_request(
         &mut self,
     ) -> Result<impl Future<Output = Result<Quota>> + Send + 'static> {

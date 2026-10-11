@@ -1,7 +1,7 @@
-use super::{Activity, App, Picker, PickerKind, Role, display_model, time_ago, worker::UiEvent};
+use super::{Activity, App, Picker, PickerKind, Role, time_ago, worker::UiEvent};
 use crate::{
     agent::{AgentEvent, parse_shell_message},
-    models, skills, tools,
+    skills, tools,
 };
 use serde_json::Value;
 
@@ -117,27 +117,6 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::NewSession(result) => app.finish(result, |app, ()| {
             app.clear_session();
             app.push(Role::Event, "new session");
-        }),
-        UiEvent::ModelChecked(result) => app.finish(result, |app, model| app.set_model(&model)),
-        UiEvent::Models(result) => app.finish(result, |app, models| {
-            let models = models::latest_in_each_class(models);
-            if models.is_empty() {
-                app.push(Role::Event, "no models available");
-                return;
-            }
-            let selected = models
-                .iter()
-                .position(|model| *model == app.model)
-                .unwrap_or_default();
-            app.open_picker(Picker {
-                kind: PickerKind::Model,
-                title: "Select model",
-                items: models
-                    .into_iter()
-                    .map(|model| (model.clone(), display_model(&model).to_string()))
-                    .collect(),
-                selected,
-            });
         }),
         UiEvent::Shell(command, result) => {
             app.workspace_stale = true;
@@ -423,39 +402,6 @@ mod tests {
                 env!("CARGO_PKG_VERSION"),
                 " · update v0.2.0 available · downloading"
             )),
-            "{shown}"
-        );
-    }
-
-    #[test]
-    fn offers_only_the_latest_model_in_each_class() {
-        let mut app = new_app();
-        let models = [
-            "claude-haiku-4-5-20251001",
-            "claude-sonnet-5-5",
-            "claude-opus-4-6",
-            "claude-haiku-5-5",
-            "claude-fable-5",
-            "claude-opus-5-5",
-            "claude-opus-4-5-20251101",
-            "claude-fable-5-1",
-            "claude-sonnet-4-5",
-        ];
-        handle_agent_event(
-            UiEvent::Models(Ok(models.map(String::from).to_vec())),
-            &mut app,
-        );
-        let shown = screen(&mut app);
-        let rows: Vec<&str> = shown
-            .lines()
-            .skip_while(|line| !line.starts_with("Select model"))
-            .skip(1)
-            .take_while(|line| !line.starts_with('─'))
-            .map(str::trim)
-            .collect();
-        assert_eq!(
-            rows,
-            ["fable-5-1", "opus-5-5", "sonnet-5-5", "haiku-5-5"],
             "{shown}"
         );
     }

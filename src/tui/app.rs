@@ -347,8 +347,6 @@ pub(super) enum Activity {
     Working,
     Compacting,
     Running,
-    LoadingModels,
-    CheckingModel,
     Cancelling,
     Resuming,
     StartingNewSession,
@@ -358,14 +356,7 @@ pub(super) enum Activity {
 impl Activity {
     /// Whether Esc can stop it.
     pub(super) fn can_cancel(self) -> bool {
-        matches!(
-            self,
-            Self::Working
-                | Self::Compacting
-                | Self::Running
-                | Self::LoadingModels
-                | Self::CheckingModel
-        )
+        matches!(self, Self::Working | Self::Compacting | Self::Running)
     }
 
     /// Whether prompts sent meanwhile are queued for the model.
@@ -380,8 +371,6 @@ impl std::fmt::Display for Activity {
             Self::Working => "working",
             Self::Compacting => "compacting",
             Self::Running => "running",
-            Self::LoadingModels => "loading models",
-            Self::CheckingModel => "checking model",
             Self::Cancelling => "cancelling",
             Self::Resuming => "resuming",
             Self::StartingNewSession => "starting new session",
