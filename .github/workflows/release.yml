@@ -51,8 +51,11 @@ jobs:
             echo "version=$next" >> "$GITHUB_OUTPUT"
           fi
       - if: steps.version.outputs.version
+        run: sudo apt-get update && sudo apt-get install --yes minisign
+      - if: steps.version.outputs.version
         env:
           GH_TOKEN: ${{ github.token }}
+          MINISIGN_KEY: ${{ secrets.MINISIGN_KEY }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           git cliff --unreleased --tag "v$VERSION" --strip all > notes.md
@@ -60,4 +63,9 @@ jobs:
           sed -i "/^name = \"rust-coding-agent\"$/{n;s/^version = .*/version = \"$VERSION\"/}" Cargo.lock
           git -c user.name=release -c user.email=release@localhost commit --quiet --all --message "chore(release): v$VERSION"
           git archive --format=zip --prefix=rust-coding-agent/ --output=rust-coding-agent.zip HEAD
-          gh release create "v$VERSION" rust-coding-agent.zip --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md
+          (umask 077 && printf '%s\n' "$MINISIGN_KEY" > "$RUNNER_TEMP/minisign.key")
+          minisign -S -s "$RUNNER_TEMP/minisign.key" -m rust-coding-agent.zip -t "rust-coding-agent v$VERSION" < /dev/null
+          rm "$RUNNER_TEMP/minisign.key"
+          minisign -V -P RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8 -m rust-coding-agent.zip
+          sed -n 2p rust-coding-agent.zip.minisig | grep -q '^RU'
+          gh release create "v$VERSION" rust-coding-agent.zip rust-coding-agent.zip.minisig --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md
