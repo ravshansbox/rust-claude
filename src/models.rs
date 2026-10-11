@@ -98,19 +98,12 @@ pub fn thinking_settings(model: &str, level: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{effort_levels, thinking_settings};
+    use super::{effort_levels, known, thinking_settings};
     use serde_json::json;
-
-    const MODELS: [&str; 4] = [
-        "claude-fable-5-1",
-        "claude-opus-5-5",
-        "claude-sonnet-5-5",
-        "claude-haiku-5-5",
-    ];
 
     #[test]
     fn uses_adaptive_thinking_with_the_level_as_effort() {
-        for model in MODELS.into_iter().chain(["claude-x"]) {
+        for model in known().chain(["claude-x"]) {
             for level in ["low", "medium", "high", "xhigh", "max"] {
                 assert_eq!(
                     thinking_settings(model, level),
