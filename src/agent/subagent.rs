@@ -12,6 +12,11 @@ use crate::{
 };
 
 const NOT_RUN: &str = "This task did not run, because an earlier task failed.";
+const FAILED: &str = "This task failed: ";
+
+pub(crate) fn is_failure(reply: &str) -> bool {
+    reply.starts_with(FAILED) || reply == NOT_RUN
+}
 
 type Callback = Box<dyn FnMut(AgentEvent) + Send>;
 
@@ -116,7 +121,7 @@ impl Agent {
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
         Box::pin(async move {
             let _ = events.send(AgentEvent::TaskStart { task, description });
-            let reply = self.run_subagent(prompt, task, events.clone()).await;
+            let reply = self.run_subagent(prompt, events.clone()).await;
             let _ = events.send(AgentEvent::TaskDone {
                 task,
                 reply: reply.clone(),
@@ -128,10 +133,9 @@ impl Agent {
     async fn run_subagent(
         &self,
         prompt: String,
-        task: usize,
         events: mpsc::UnboundedSender<AgentEvent>,
     ) -> Result<String, String> {
-        let failed = |error: anyhow::Error| format!("This task failed: {error:#}");
+        let failed = |error: anyhow::Error| format!("{FAILED}{error:#}");
         let mut child = self.subagent().map_err(failed)?;
         let usage = self.subagent_usage.clone();
         let slot = usage.lock().map_or(0, |mut slots| {
@@ -150,17 +154,6 @@ impl Agent {
             if let AgentEvent::Stats(stats) = &event {
                 count(stats.usage);
                 let _ = events.send(event);
-            } else if matches!(
-                event,
-                AgentEvent::Text(_)
-                    | AgentEvent::ToolStart { .. }
-                    | AgentEvent::ToolDone { .. }
-                    | AgentEvent::Notice(_)
-            ) {
-                let _ = events.send(AgentEvent::Task {
-                    task,
-                    event: Box::new(event),
-                });
             }
         });
         if let Err(error) = child.run(&prompt, &[], callback).await {
@@ -409,7 +402,6 @@ mod tests {
     fn describe(event: AgentEvent) -> Option<String> {
         Some(match event {
             AgentEvent::TaskStart { task, description } => format!("{task} start {description}"),
-            AgentEvent::Task { task, event } => format!("{task} {}", describe(*event)?),
             AgentEvent::TaskDone { task, reply } => {
                 format!("{task} done {}", reply.unwrap_or_else(|error| error))
             }
@@ -424,7 +416,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reports_what_each_subagent_does() {
+    async fn reports_only_when_each_subagent_starts_and_finishes() {
         let api = MockApi::start(vec![
             tool_reply(
                 "call-1",
@@ -459,12 +451,8 @@ mod tests {
             [
                 "tool agent",
                 "0 start say hi",
-                "0 tool bash",
-                "0 tool done bash None",
-                "0 text hi",
                 "0 done hi",
                 "1 start say bye",
-                "1 text bye",
                 "1 done bye",
             ]
         );

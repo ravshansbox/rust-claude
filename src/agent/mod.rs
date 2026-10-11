@@ -10,6 +10,7 @@ mod context;
 pub(crate) mod retry;
 mod stream;
 mod subagent;
+pub(crate) use subagent::is_failure;
 mod system;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -71,11 +72,6 @@ pub enum AgentEvent {
     TaskStart {
         task: usize,
         description: String,
-    },
-    /// Text, a tool call or a notice from the subagent working on `task`.
-    Task {
-        task: usize,
-        event: Box<AgentEvent>,
     },
     /// The subagent on `task` finished with `reply`, or failed or did not
     /// run, as the error tells the main agent.
