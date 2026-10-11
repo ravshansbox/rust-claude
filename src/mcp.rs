@@ -1304,16 +1304,28 @@ pub fn startup() -> Startup {
 impl Mcp {
     pub async fn load() -> Self {
         let startup = startup();
+        let servers = startup.servers.into_iter().map(|pending| pending.started);
+        let started = futures::future::join_all(servers).await;
+        Self::from_started(startup.diagnostics, started)
+    }
+
+    fn from_started(diagnostics: Vec<String>, started: impl IntoIterator<Item = Started>) -> Self {
         let mut mcp = Self {
             servers: Vec::new(),
-            diagnostics: startup.diagnostics,
+            diagnostics,
         };
-        let servers = startup.servers.into_iter().map(|pending| pending.started);
-        for started in futures::future::join_all(servers).await {
+        for started in started {
+            let name = started.name.clone();
             let (diagnostics, status) = mcp.add_server(started);
             mcp.diagnostics.extend(diagnostics);
             if let Err(failed) = status {
-                mcp.diagnostics.push(failed);
+                mcp.diagnostics.push(
+                    if failed.starts_with(&format!("MCP server {name} {NEEDS_SIGN_IN}")) {
+                        format!("{name} ({NEEDS_SIGN_IN})")
+                    } else {
+                        failed
+                    },
+                );
             }
         }
         mcp
@@ -2941,6 +2953,25 @@ done
         );
         assert_eq!(added.status, "loaded global MCP server: test (0 tools)");
         assert!(mcp.diagnostics.is_empty());
+    }
+
+    #[test]
+    fn shortens_the_load_notice_for_servers_that_need_sign_in() {
+        let mcp = Mcp::from_started(
+            vec!["MCP: invalid mcp.json".into()],
+            [
+                failed_start("figma", "needs sign-in: run /mcp login figma"),
+                failed_start("broken", "command is missing"),
+            ],
+        );
+        assert_eq!(
+            mcp.diagnostics,
+            [
+                "MCP: invalid mcp.json",
+                "figma (needs sign-in)",
+                "MCP server broken failed: command is missing"
+            ]
+        );
     }
 
     #[tokio::test]
