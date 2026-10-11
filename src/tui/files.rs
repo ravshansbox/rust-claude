@@ -61,14 +61,9 @@ fn walk(root: &Path, limit: usize) -> Vec<String> {
 
 pub(super) fn file_query(input: &str, cursor: usize) -> Option<(usize, &str)> {
     let before = &input[..cursor];
-    let start = before
-        .char_indices()
-        .rev()
-        .find(|(_, character)| character.is_whitespace())
-        .map_or(0, |(index, character)| index + character.len_utf8());
-    before[start..]
-        .strip_prefix('@')
-        .map(|query| (start, query))
+    let word = before.rsplit(char::is_whitespace).next().unwrap_or(before);
+    word.strip_prefix('@')
+        .map(|query| (cursor - word.len(), query))
 }
 
 /// The repository paths offered after `@`, with their lowercase forms worked
