@@ -158,6 +158,8 @@ pub struct Agent {
     pub session: Session,
     pub queue: Queue,
     pub missing_programs: Vec<&'static str>,
+    /// Tokens used by each subagent started since the last tool results.
+    subagent_usage: Arc<Mutex<Vec<Usage>>>,
     /// Whether this agent runs a task for another agent. A subagent cannot
     /// start subagents, and its conversation is not saved.
     subagent: bool,
@@ -181,6 +183,7 @@ impl Agent {
             session: Session::new()?,
             queue: Queue::default(),
             missing_programs: missing_search_programs(std::env::var_os("PATH")),
+            subagent_usage: Arc::default(),
             subagent: false,
         })
     }
@@ -258,8 +261,10 @@ impl Agent {
     }
 
     pub fn stats(&self) -> Stats {
+        let mut usage = total_usage(&self.messages);
+        usage.add(self.running_subagent_usage());
         Stats {
-            usage: total_usage(&self.messages),
+            usage,
             cache_hit_rate: cache_hit_rate(&self.messages),
             tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(
@@ -309,6 +314,14 @@ impl Agent {
             total: stats.context_tokens,
             window: stats.context_window,
         }
+    }
+
+    fn running_subagent_usage(&self) -> Usage {
+        let mut total = Usage::default();
+        if let Ok(slots) = self.subagent_usage.lock() {
+            slots.iter().for_each(|usage| total.add(*usage));
+        }
+        total
     }
 
     fn tool_definitions(&self) -> Value {
@@ -372,8 +385,15 @@ impl Agent {
             }));
         }
         if !results.is_empty() {
-            self.messages
-                .push(json!({ "role": "user", "content": results }));
+            let mut message = json!({ "role": "user", "content": results });
+            let usage = self.running_subagent_usage();
+            if usage.input + usage.output + usage.cache_read + usage.cache_write > 0 {
+                message["usage"] = usage.to_json();
+            }
+            self.messages.push(message);
+        }
+        if let Ok(mut slots) = self.subagent_usage.lock() {
+            slots.clear();
         }
     }
 
