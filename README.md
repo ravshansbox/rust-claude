@@ -311,7 +311,7 @@ Changing the model or effort level in the interface saves only the setting you c
 
 rust-claude adds `AGENTS.md` from your home folder and from the current directory to the system prompt.
 
-The system prompt tells the model to put questions to the user in bold and give each one lettered options, with the recommended option marked. Questions are numbered when there is more than one.
+The system prompt tells the model to put questions to the user in bold and letter the options, with the recommended option first and marked. Questions are numbered when there is more than one.
 
 The system prompt also tells the model to search code with `ast-grep`, and to fall back to `ripgrep` for plain text, comments, strings and files `ast-grep` cannot parse. Both run through the `bash` tool. At start, rust-claude looks for `ast-grep` and `rg` on `PATH`. For each one it cannot find, it shows a warning such as `rg not found on PATH`, in the interface or on standard error in print mode, and leaves that program out of the system prompt.
 
