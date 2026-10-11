@@ -1,5 +1,4 @@
 use serde_json::{Value, json};
-use std::cmp::Reverse;
 
 const DEFAULT_MAX_OUTPUT: u64 = 8192;
 
@@ -41,6 +40,23 @@ fn find(model: &str) -> Option<&'static Model> {
     MODELS.iter().find(|candidate| candidate.id == model)
 }
 
+pub const DEFAULT: &str = "claude-opus-5-5";
+
+pub fn known() -> impl Iterator<Item = &'static str> {
+    MODELS.iter().map(|model| model.id)
+}
+
+pub fn is_known(model: &str) -> bool {
+    find(model).is_some()
+}
+
+pub fn unknown(model: &str) -> String {
+    format!(
+        "unknown model: {model} (options: {})",
+        known().collect::<Vec<_>>().join(", ")
+    )
+}
+
 pub fn next_known(model: &str) -> &'static str {
     let index = MODELS
         .iter()
@@ -78,31 +94,6 @@ pub fn thinking_settings(model: &str, level: &str) -> Value {
         "thinking": { "type": "adaptive", "display": "summarized" },
         "output_config": { "effort": level },
     })
-}
-
-const CLASSES: [&str; 4] = ["fable", "opus", "sonnet", "haiku"];
-
-pub fn latest_in_each_class(models: Vec<String>) -> Vec<String> {
-    CLASSES
-        .iter()
-        .filter_map(|class| {
-            let prefix = format!("claude-{class}-");
-            models
-                .iter()
-                .filter_map(|model| Some((model, model.strip_prefix(&prefix)?)))
-                .max_by_key(|(_, version)| {
-                    let parts: Vec<&str> = version.split('-').collect();
-                    let dated = parts.iter().any(|part| part.len() == 8);
-                    let numbers: Vec<u64> = parts
-                        .iter()
-                        .filter(|part| part.len() != 8)
-                        .filter_map(|part| part.parse().ok())
-                        .collect();
-                    (numbers, Reverse(dated))
-                })
-                .map(|(model, _)| model.clone())
-        })
-        .collect()
 }
 
 #[cfg(test)]

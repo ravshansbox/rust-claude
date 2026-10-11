@@ -227,6 +227,29 @@ fn continuing_without_a_session_fails_before_asking_to_sign_in() {
 }
 
 #[test]
+fn rejects_a_model_that_is_not_in_the_list_before_asking_to_sign_in() {
+    let setup = Setup::new("unknown-model");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+
+    let output = setup
+        .run(&["--model", "claude-opus-4-5", "-p", "hello"])
+        .wait_with_output()
+        .unwrap();
+    let _ = std::fs::remove_dir_all(&setup.root);
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains(
+            "unknown model: claude-opus-4-5 (options: claude-fable-5-1, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5)"
+        ),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("sign in"), "{stderr}");
+}
+
+#[test]
 fn ctrl_c_while_the_sign_in_renews_at_start_waits_for_the_renewal() {
     let setup = Setup::new("renewal-interrupt");
     let auth = setup.home.join(".rust-coding-agent/auth.json");

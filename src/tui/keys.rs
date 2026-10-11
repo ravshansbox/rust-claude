@@ -1,5 +1,5 @@
 use super::{
-    Activity, App, Picker, PickerKind, Role,
+    Activity, App, Picker, PickerKind, Role, display_model,
     input::{
         next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
     },
@@ -15,9 +15,7 @@ pub(super) enum Action {
     ListSessions,
     Resume(String),
     SetModel(String),
-    CheckModel(String),
     NewSession,
-    ListModels,
     McpSignIn(String),
     McpSignOut(String),
     Cancel,
@@ -277,12 +275,24 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         }
                     }
                     "/model" if argument.is_empty() => {
-                        app.start(Activity::LoadingModels);
-                        act(Action::ListModels);
+                        app.open_picker(Picker {
+                            kind: PickerKind::Model,
+                            title: "Select model",
+                            items: models::known()
+                                .map(|model| (model.to_string(), display_model(model).to_string()))
+                                .collect(),
+                            selected: models::known()
+                                .position(|model| model == app.model)
+                                .unwrap_or_default(),
+                        });
+                    }
+                    "/model" if models::is_known(argument) => {
+                        app.set_model(argument);
+                        act(Action::SetModel(argument.to_string()));
                     }
                     "/model" => {
-                        app.start(Activity::CheckingModel);
-                        act(Action::CheckModel(argument.to_string()));
+                        app.push(Role::Event, models::unknown(argument));
+                        app.restore_input(prompt);
                     }
                     "/resume" => {
                         app.start(Activity::LoadingSessions);
@@ -413,18 +423,23 @@ mod tests {
     }
 
     #[test]
-    fn checks_model_before_selecting_it() {
+    fn switches_to_a_listed_model_by_id() {
         let mut app = new_app();
-        handle_input(Event::Paste("/model other".into()), &mut app, |_| {});
-        let mut checked = None;
+        handle_input(
+            Event::Paste("/model claude-haiku-5-5".into()),
+            &mut app,
+            |_| {},
+        );
+        let mut chosen = None;
         press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
-            if let Action::CheckModel(model) = action {
-                checked = Some(model);
+            if let Action::SetModel(model) = action {
+                chosen = Some(model);
             }
         });
-        assert_eq!(checked.as_deref(), Some("other"));
-        assert_eq!(app.model, "model");
-        assert!(app.busy());
+        assert_eq!(chosen.as_deref(), Some("claude-haiku-5-5"));
+        assert_eq!(app.model, "claude-haiku-5-5");
+        assert!(!app.busy());
+        assert!(screen(&mut app).contains("model: haiku-5-5"));
     }
 
     #[test]
@@ -435,6 +450,10 @@ mod tests {
                 "unknown command: /Users/me/proj/main.rs",
             ),
             ("/effort loud", "unknown effort level: loud"),
+            (
+                "/model claude-opus-4-5",
+                "unknown model: claude-opus-4-5 (options: claude-fable-5-1, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5)",
+            ),
             ("/skill:missing fix it", "unknown skill: missing"),
         ] {
             let mut app = new_app();
@@ -510,21 +529,6 @@ mod tests {
         press(&mut app, KeyCode::Enter);
         assert_eq!(app.effort, "high");
         assert_eq!(app.messages.last().unwrap().text, "effort: high");
-    }
-
-    #[test]
-    fn esc_cancels_model_loading() {
-        for activity in [Activity::LoadingModels, Activity::CheckingModel] {
-            let mut app = new_app();
-            app.start(activity);
-            let mut cancelled = false;
-            let quit = press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
-                cancelled |= matches!(action, Action::Cancel);
-            });
-            assert!(!quit && cancelled, "{activity}");
-            handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
-            assert!(!app.busy());
-        }
     }
 
     fn queue_while_working(app: &mut App, prompt: &str) {
@@ -803,24 +807,27 @@ mod tests {
     }
 
     #[test]
-    fn closes_history_search_when_models_arrive() {
+    fn offers_only_the_listed_models_in_the_model_picker() {
         let mut app = new_app();
-        app.add_prompt("earlier".into());
+        let mut acted = false;
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
-        press(&mut app, KeyCode::Enter);
-        assert_eq!(app.activity, Some(Activity::LoadingModels));
-        handle_input(Event::Paste("/mo".into()), &mut app, |_| {});
-        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
-        assert!(screen(&mut app).contains("Prompt history"));
-        let models = vec![
-            "claude-opus-5-5".to_string(),
-            "claude-sonnet-5-5".to_string(),
-        ];
-        handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
+            acted = true
+        });
+        assert!(!acted && !app.busy());
         let shown = screen(&mut app);
-        assert!(shown.contains("Select model"), "{shown}");
-        assert!(!shown.contains("Prompt history"), "{shown}");
-        assert!(!shown.contains("select model"), "{shown}");
+        let rows: Vec<&str> = shown
+            .lines()
+            .skip_while(|line| !line.starts_with("Select model"))
+            .skip(1)
+            .take_while(|line| !line.starts_with('─'))
+            .map(str::trim)
+            .collect();
+        assert_eq!(
+            rows,
+            ["fable-5-1", "opus-5-5", "sonnet-5-5", "haiku-5-5"],
+            "{shown}"
+        );
         press(&mut app, KeyCode::Down);
         let mut chosen = None;
         press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
@@ -828,9 +835,7 @@ mod tests {
                 chosen = Some(model);
             }
         });
-        assert_eq!(chosen.as_deref(), Some("claude-sonnet-5-5"));
-        assert!(app.history_search.is_none());
-        assert_eq!(app.input, "/mo");
+        assert_eq!(chosen.as_deref(), Some("claude-opus-5-5"));
     }
 
     #[test]
@@ -1048,12 +1053,6 @@ mod tests {
         press_with(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, |_| {});
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
         press(&mut app, KeyCode::Enter);
-        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
-        let models = vec![
-            "claude-opus-5-5".to_string(),
-            "claude-sonnet-5-5".to_string(),
-        ];
-        handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
         assert!(screen(&mut app).contains("Select model"));
         assert!(!press_with(
             &mut app,
@@ -1062,7 +1061,6 @@ mod tests {
             |_| {}
         ));
         assert!(!screen(&mut app).contains("Select model"));
-        assert_eq!(app.input, "draft");
         assert_eq!(app.model, "model");
     }
 

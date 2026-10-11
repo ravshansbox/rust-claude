@@ -96,6 +96,20 @@ fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
     Ok((command, options))
 }
 
+fn choose_model(saved: Option<String>) -> (String, Option<String>) {
+    match saved {
+        Some(model) if !models::is_known(&model) => (
+            models::DEFAULT.into(),
+            Some(format!(
+                "{}, using {}",
+                models::unknown(&model),
+                models::DEFAULT
+            )),
+        ),
+        saved => (saved.unwrap_or_else(|| models::DEFAULT.into()), None),
+    }
+}
+
 fn choose_effort(model: &str, name: &str) -> (&'static str, Option<String>) {
     let levels = models::effort_levels(model);
     match levels.iter().find(|level| **level == name) {
@@ -141,6 +155,11 @@ async fn run() -> Result<()> {
     if let Some(config_dir) = &options.config_dir {
         config::set_dir(config_dir.into());
     }
+    if let Some(model) = &options.model
+        && !models::is_known(model)
+    {
+        bail!(models::unknown(model));
+    }
     let (print_prompt, image_paths) = match command {
         Command::Help => {
             println!("A small coding agent for the terminal.\n\n{USAGE}\n\n{OPTIONS}");
@@ -178,10 +197,13 @@ async fn run() -> Result<()> {
         status = stop.recv() => return stopped(status).await,
     };
     let settings = settings::Settings::load();
-    let model = options
-        .model
-        .or(settings.model)
-        .unwrap_or_else(|| "claude-opus-5-5".into());
+    let model = options.model.unwrap_or_else(|| {
+        let (model, warning) = choose_model(settings.model);
+        if let Some(warning) = warning {
+            eprintln!("{warning}");
+        }
+        model
+    });
     let effort = options.effort.or(settings.effort);
     let mut agent = agent::Agent::new(http, credentials, model)?;
     if let Some(id) = resume_id {
@@ -300,7 +322,7 @@ async fn stopped(status: i32) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Command, Options, choose_effort, parse_arguments};
+    use super::{Command, Options, choose_effort, choose_model, parse_arguments};
 
     fn parse_with_options(arguments: &[&str]) -> Option<(Command, Options)> {
         parse_arguments(
@@ -420,6 +442,25 @@ mod tests {
                 "medium",
                 Some(
                     "unknown effort level: loud (options: low, medium, high, xhigh, max), using medium"
+                        .into()
+                )
+            )
+        );
+    }
+
+    #[test]
+    fn uses_the_default_model_when_the_saved_one_is_not_in_the_list() {
+        assert_eq!(
+            choose_model(Some("claude-haiku-5-5".into())),
+            ("claude-haiku-5-5".into(), None)
+        );
+        assert_eq!(choose_model(None), ("claude-opus-5-5".into(), None));
+        assert_eq!(
+            choose_model(Some("claude-opus-4-5".into())),
+            (
+                "claude-opus-5-5".into(),
+                Some(
+                    "unknown model: claude-opus-4-5 (options: claude-fable-5-1, claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5), using claude-opus-5-5"
                         .into()
                 )
             )
