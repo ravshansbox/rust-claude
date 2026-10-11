@@ -222,6 +222,9 @@ fn sgr(style: Style) -> String {
         Some(Color::DarkGray) => codes.push_str("\x1b[90m"),
         _ => {}
     }
+    if style.add_modifier.contains(ratatui::style::Modifier::BOLD) {
+        codes.push_str("\x1b[1m");
+    }
     if style
         .add_modifier
         .contains(ratatui::style::Modifier::ITALIC)
@@ -306,7 +309,7 @@ fn tool_header(first: &str, theme: Theme) -> Line<'static> {
         _ => first.split_once(' ').unwrap_or((first, "")),
     };
     Line::from(vec![
-        Span::styled(format!(" {name} "), theme.highlight_style()),
+        Span::styled(format!(" {name} "), theme.highlight_style().bold()),
         Span::raw(format!(" {rest}")),
     ])
 }
@@ -612,6 +615,26 @@ mod tests {
             .map(|part| part.split_once(['m', 'K']).map_or(part, |(_, text)| text))
             .collect();
         assert_eq!(text, "+a]52;c;aGk=b[2Jc");
+    }
+
+    #[test]
+    fn shows_the_tool_name_in_bold() {
+        let lines = render_message(Role::Tool, "bash ls", 20);
+        assert_eq!(lines[0].spans[0].content, " bash ");
+        assert!(
+            lines[0].spans[0]
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD)
+        );
+        assert!(
+            !lines[0].spans[1]
+                .style
+                .add_modifier
+                .contains(ratatui::style::Modifier::BOLD)
+        );
+        let line = &ansi_tool_lines("bash ls", true, None, None)[0];
+        assert!(line.contains("\x1b[1m bash "), "{line:?}");
     }
 
     #[test]
