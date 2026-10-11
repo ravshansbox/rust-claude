@@ -94,13 +94,13 @@ Input and editing:
 Display:
 
 - Your prompts shown after `❯` on grey rows
-- Markdown replies after `●`, indented by two columns, with tables wrapped to the window width
+- Markdown replies, with tables wrapped to the window width
 - Inline code in replies shown in blue
 - Tabs in replies, tool output and `!` command output shown as four spaces
 - Light and dark theme detection
 - Mouse wheel scrolling
 - When scrolled up, a `↓ Bottom (End)` button above the prompt, on the right of the spinner line; click it to jump to the bottom
-- Drag over the conversation to quote text. Releasing the button adds it to the input at the cursor, on a new line, with `> ` before each screen row and a blank line after. The `●` and `❯` markers and the indent of prompts and replies are left out
+- Drag over the conversation to quote text. Releasing the button adds it to the input at the cursor, on a new line, with `> ` before each screen row and a blank line after. The `❯` marker and the indent of prompts are left out
 - To copy text, use your terminal's own selection by holding a key while you drag: Shift in most terminals, Option in iTerm2
 - The view stays still while you read earlier text and a reply streams
 - Spinner with status text
