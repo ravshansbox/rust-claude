@@ -56,9 +56,8 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 diff,
             } => {
                 self.separate = self.printed;
-                if self.line_open {
+                if std::mem::take(&mut self.line_open) {
                     let _ = writeln!(self.err);
-                    self.line_open = false;
                 }
                 if name == "read" && diff.is_none() {
                     self.reads.add(summary);
@@ -91,9 +90,8 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 ..
             } => {
                 self.flush_reads();
-                if self.line_open {
+                if std::mem::take(&mut self.line_open) {
                     let _ = writeln!(self.err);
-                    self.line_open = false;
                 }
                 self.line(&format!("{name} failed: {error}"));
             }
