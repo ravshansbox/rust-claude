@@ -2,8 +2,7 @@ use std::path::{Path, PathBuf};
 
 pub(super) const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
-pub(super) const SYSTEM_PROMPT: &str = r#"You are rust-coding-agent, a small coding agent running in a terminal.
-Use your tools to inspect and change the project in the current working directory.
+pub(super) const SYSTEM_PROMPT: &str = r#"Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
 Use plain English (ISO 24495-1)."#;
 
@@ -64,5 +63,10 @@ mod tests {
         assert!(!text.contains("ripgrep"));
         assert!(!text.contains("bold"));
         assert!(!text.contains("Letter the options"));
+    }
+
+    #[test]
+    fn leaves_the_second_identity_line_out_of_the_system_prompt() {
+        assert!(!SYSTEM_PROMPT.contains("You are rust-coding-agent"));
     }
 }
