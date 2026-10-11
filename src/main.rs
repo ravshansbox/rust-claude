@@ -305,7 +305,7 @@ impl StopSignals {
 }
 
 /// How long stopping waits for a sign-in renewal to be saved.
-const RENEWAL_WAIT: std::time::Duration = std::time::Duration::from_secs(5);
+const RENEWAL_WAIT: Duration = Duration::from_secs(5);
 
 async fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
     drop(agent);
