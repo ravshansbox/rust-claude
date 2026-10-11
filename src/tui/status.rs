@@ -95,9 +95,9 @@ fn format_tokens(count: u64) -> String {
     if count < 1_000.0 {
         count.to_string()
     } else if (count / 1_000.0).round() < 1_000.0 {
-        format!("{}K", (count / 1_000.0).round())
+        format!("{}k", (count / 1_000.0).round())
     } else {
-        format!("{}M", (count / 1_000_000.0).round())
+        format!("{}m", (count / 1_000_000.0).round())
     }
 }
 
@@ -131,7 +131,7 @@ mod tests {
             tokens_per_second: Some(42.0),
             ..stats_with(Quota::default())
         };
-        assert_eq!(format_stats(&stats), "↑4 ↓338 R6K W88 CH99% TS42");
+        assert_eq!(format_stats(&stats), "↑4 ↓338 R6k W88 CH99% TS42");
     }
 
     #[test]
@@ -169,9 +169,9 @@ mod tests {
     fn shows_context_tokens_without_a_percentage_for_an_unknown_window() {
         let mut stats = stats_with(Quota::default());
         stats.context_tokens = Some(12_000);
-        assert_eq!(format_context(&stats), "12K");
+        assert_eq!(format_context(&stats), "12k");
         stats.context_window = 200_000;
-        assert_eq!(format_context(&stats), "6%/200K");
+        assert_eq!(format_context(&stats), "6%/200k");
     }
 
     #[test]
@@ -185,12 +185,12 @@ mod tests {
     fn formats_tokens() {
         assert_eq!(format_tokens(0), "0");
         assert_eq!(format_tokens(999), "999");
-        assert_eq!(format_tokens(1_000), "1K");
-        assert_eq!(format_tokens(2_500), "3K");
-        assert_eq!(format_tokens(12_345), "12K");
-        assert_eq!(format_tokens(999_499), "999K");
-        assert_eq!(format_tokens(999_500), "1M");
-        assert_eq!(format_tokens(1_500_000), "2M");
-        assert_eq!(format_tokens(12_345_678), "12M");
+        assert_eq!(format_tokens(1_000), "1k");
+        assert_eq!(format_tokens(2_500), "3k");
+        assert_eq!(format_tokens(12_345), "12k");
+        assert_eq!(format_tokens(999_499), "999k");
+        assert_eq!(format_tokens(999_500), "1m");
+        assert_eq!(format_tokens(1_500_000), "2m");
+        assert_eq!(format_tokens(12_345_678), "12m");
     }
 }
