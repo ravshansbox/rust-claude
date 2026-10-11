@@ -33,7 +33,7 @@ impl Agent {
 #[cfg(test)]
 mod tests {
     use super::super::test_support::{self, MockApi, text_reply, tool_reply};
-    use crate::tools::test_support::TemporaryFile;
+    use crate::tools::test_support::{TemporaryFile, is_running};
     use serde_json::{Value, json};
     use std::time::Duration;
 
@@ -133,11 +133,6 @@ mod tests {
             tool_result(&requests[3])
         );
         assert!(!agent.has_background());
-        let alive = std::process::Command::new("kill")
-            .args(["-0", pid.trim()])
-            .status()
-            .unwrap()
-            .success();
-        assert!(!alive, "process {pid} still running");
+        assert!(!is_running(&pid), "process {pid} still running");
     }
 }

@@ -1,5 +1,16 @@
 use std::path::{Path, PathBuf};
 
+/// Whether the process is alive. A zombie, killed but not yet reaped,
+/// counts as stopped.
+pub(crate) fn is_running(pid: &str) -> bool {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "stat=", "-p", pid.trim()])
+        .output()
+        .unwrap();
+    let state = String::from_utf8_lossy(&output.stdout);
+    !state.trim().is_empty() && !state.trim_start().starts_with('Z')
+}
+
 pub(crate) struct TemporaryFile(PathBuf);
 
 impl TemporaryFile {
