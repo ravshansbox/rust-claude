@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    fmt::Write,
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
@@ -477,7 +478,7 @@ impl OAuthSession {
     fn needs_sign_in(&self, reason: Option<String>) -> PostError {
         let mut message = format!("{NEEDS_SIGN_IN}: run /mcp login {}", self.server_name);
         if let Some(reason) = reason {
-            message.push_str(&format!(" (could not renew the sign-in: {reason})"));
+            let _ = write!(message, " (could not renew the sign-in: {reason})");
         }
         PostError {
             message,
