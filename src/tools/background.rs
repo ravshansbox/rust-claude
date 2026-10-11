@@ -129,7 +129,7 @@ pub fn display(message: &str) -> Option<(String, Option<String>)> {
 #[cfg(test)]
 mod tests {
     use super::{Background, message, parse_message};
-    use crate::tools::test_support::TemporaryFile;
+    use crate::tools::test_support::{TemporaryFile, is_running};
     use serde_json::json;
 
     #[test]
@@ -158,15 +158,7 @@ mod tests {
         }
         drop(background);
         std::thread::sleep(std::time::Duration::from_millis(200));
-        let state = std::process::Command::new("ps")
-            .args(["-o", "stat=", "-p", pid.trim()])
-            .output()
-            .unwrap();
-        let state = String::from_utf8_lossy(&state.stdout);
-        assert!(
-            state.trim().is_empty() || state.starts_with('Z'),
-            "process {pid} still running: {state}"
-        );
+        assert!(!is_running(&pid), "process {pid} still running");
     }
 
     #[test]
