@@ -53,7 +53,7 @@ async fn lock_credentials() -> Result<File> {
     }
 }
 
-fn now_millis() -> u128 {
+pub(crate) fn now_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
@@ -247,7 +247,7 @@ impl Credentials {
 async fn login(http: &reqwest::Client) -> Result<Credentials> {
     let verifier = random_token()?;
     let state = random_token()?;
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let challenge = pkce_challenge(&verifier);
 
     let url = reqwest::Url::parse_with_params(
         AUTHORIZE_URL,
@@ -304,10 +304,14 @@ async fn exchange_code(
     Ok(credentials)
 }
 
-fn random_token() -> Result<String> {
+pub(crate) fn random_token() -> Result<String> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random).map_err(|error| anyhow::anyhow!("{error}"))?;
     Ok(URL_SAFE_NO_PAD.encode(random))
+}
+
+pub(crate) fn pkce_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
 }
 
 /// Splits the `code#state` text the callback page shows and checks the
