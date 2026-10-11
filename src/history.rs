@@ -152,6 +152,11 @@ mod tests {
         std::fs::write(path, text).unwrap();
     }
 
+    fn append_raw(path: &std::path::Path, bytes: &[u8]) {
+        let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
+        std::io::Write::write_all(&mut file, bytes).unwrap();
+    }
+
     fn prompts(entries: &[Entry]) -> Vec<&str> {
         entries.iter().map(|entry| entry.prompt.as_str()).collect()
     }
@@ -162,13 +167,7 @@ mod tests {
         for prompt in ["one", "two", "one", "three"] {
             append(&path, &Entry::here(prompt)).unwrap();
         }
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .and_then(|mut file| {
-                std::io::Write::write_all(&mut file, b"not json\n{\"prompt\":\"x\",\"cwd\":1}\n")
-            })
-            .unwrap();
+        append_raw(&path, b"not json\n{\"prompt\":\"x\",\"cwd\":1}\n");
         let (text, entries) = (
             std::fs::read_to_string(&path).unwrap(),
             newest_unique(&load(&path)),
@@ -184,11 +183,7 @@ mod tests {
     fn keeps_history_after_a_line_cut_short_inside_a_character() {
         let path = history_file("cut-");
         append(&path, &Entry::here("one")).unwrap();
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .and_then(|mut file| std::io::Write::write_all(&mut file, b"{\"prompt\":\"caf\xc3\n"))
-            .unwrap();
+        append_raw(&path, b"{\"prompt\":\"caf\xc3\n");
         append(&path, &Entry::here("two")).unwrap();
         let entries = load(&path);
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
@@ -199,11 +194,7 @@ mod tests {
     fn keeps_a_prompt_sent_after_a_line_cut_short_before_its_end() {
         let path = history_file("unended-");
         append(&path, &Entry::here("one")).unwrap();
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .and_then(|mut file| std::io::Write::write_all(&mut file, b"{\"prompt\":\"cut"))
-            .unwrap();
+        append_raw(&path, b"{\"prompt\":\"cut");
         append(&path, &Entry::here("two")).unwrap();
         let entries = load(&path);
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
