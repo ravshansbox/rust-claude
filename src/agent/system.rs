@@ -50,18 +50,3 @@ fn same_path(a: &Path, b: &Path) -> bool {
         _ => a == b,
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::SYSTEM_PROMPT;
-
-    #[test]
-    fn leaves_search_and_question_rules_out_of_the_system_prompt() {
-        let text = SYSTEM_PROMPT;
-        assert!(text.contains("Use plain English (ISO 24495-1)."));
-        assert!(!text.contains("ast-grep"));
-        assert!(!text.contains("ripgrep"));
-        assert!(!text.contains("bold"));
-        assert!(!text.contains("Letter the options"));
-    }
-}

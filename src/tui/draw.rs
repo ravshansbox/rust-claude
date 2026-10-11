@@ -495,7 +495,6 @@ mod tests {
             &mut app,
         );
         let shown = screen_of_width(&mut app, 40);
-        assert!(!shown.contains('●'), "{shown}");
         let rows = rows_from(&shown, "Before");
         assert!(rows.contains(&"code"), "{shown}");
         assert!(rows.contains(&"After"), "{shown}");

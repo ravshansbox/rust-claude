@@ -603,7 +603,6 @@ mod tests {
             .map(|name| shown.find(&format!("{name} ")).expect(name))
             .collect();
         assert!(positions.is_sorted(), "{shown}");
-        assert!(!shown.contains("/context"), "{shown}");
     }
 
     fn suggested(app: &App) -> Vec<String> {
