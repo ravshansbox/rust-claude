@@ -543,6 +543,13 @@ pub(crate) mod tests {
         path
     }
 
+    fn credentials_file(saved: &str) -> std::path::PathBuf {
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, saved).unwrap();
+        path
+    }
+
     fn expired(refresh: &str) -> Credentials {
         serde_json::from_value(json!({ "access": "old", "refresh": refresh, "expires": 0 }))
             .unwrap()
@@ -552,10 +559,8 @@ pub(crate) mod tests {
     async fn keeps_the_saved_sign_in_when_the_token_endpoint_is_down() {
         let _lock = AUTH_FILE.lock().await;
         answer_overloaded().await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let saved = json!({ "access": "old", "refresh": "first", "expires": 0 }).to_string();
-        std::fs::write(&path, &saved).unwrap();
+        let path = credentials_file(&saved);
         let result = Credentials::load_or_login(&reqwest::Client::new()).await;
         let after = std::fs::read_to_string(&path).unwrap();
         let _ = std::fs::remove_file(&path);
@@ -790,14 +795,10 @@ pub(crate) mod tests {
     async fn uses_a_sign_in_another_instance_renewed_after_the_api_turned_ours_down() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("refresh", false).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(
-            &path,
-            json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_001u64 })
+        let path = credentials_file(
+            &json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_001u64 })
                 .to_string(),
-        )
-        .unwrap();
+        );
         let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
         let result = agent.prompt("hi", &[], |_| {}).await;
@@ -838,13 +839,9 @@ pub(crate) mod tests {
     async fn running_copies_renew_one_at_a_time() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("first", false).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(
-            &path,
-            json!({ "access": "old", "refresh": "first", "expires": 0 }).to_string(),
-        )
-        .unwrap();
+        let path = credentials_file(
+            &json!({ "access": "old", "refresh": "first", "expires": 0 }).to_string(),
+        );
         let http = reqwest::Client::new();
         let (mut one, mut other) = (expired("first"), expired("first"));
         let (token, other_token) = tokio::join!(one.access_token(&http), other.access_token(&http));
@@ -857,14 +854,10 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn uses_a_sign_in_another_instance_renewed_after_startup() {
         let _lock = AUTH_FILE.lock().await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(
-            &path,
-            json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
+        let path = credentials_file(
+            &json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
                 .to_string(),
-        )
-        .unwrap();
+        );
         let read_at_startup =
             json!({ "access": "old", "refresh": "spent", "expires": 0 }).to_string();
         let credentials =
@@ -876,14 +869,10 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn uses_a_token_another_instance_renewed() {
         let _lock = AUTH_FILE.lock().await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(
-            &path,
-            json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
+        let path = credentials_file(
+            &json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
                 .to_string(),
-        )
-        .unwrap();
+        );
         let mut credentials: Credentials =
             serde_json::from_value(json!({ "access": "old", "refresh": "spent", "expires": 0 }))
                 .unwrap();
@@ -896,10 +885,8 @@ pub(crate) mod tests {
     async fn uses_a_sign_in_without_expiry_another_instance_renewed() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("spent", false).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let renewed = json!({ "access": "renewed", "refresh": "new", "expires": u64::MAX });
-        std::fs::write(&path, renewed.to_string()).unwrap();
+        let path = credentials_file(&renewed.to_string());
         let mut credentials: Credentials = serde_json::from_value(
             json!({ "access": "old", "refresh": "spent", "expires": u64::MAX }),
         )
@@ -920,10 +907,8 @@ pub(crate) mod tests {
         use std::os::unix::fs::PermissionsExt;
 
         let _lock = AUTH_FILE.lock().await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let old = json!({ "access": "old", "refresh": "old", "expires": 1 }).to_string();
-        std::fs::write(&path, &old).unwrap();
+        let path = credentials_file(&old);
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         let mut reader = std::fs::File::open(&path).unwrap();
 
