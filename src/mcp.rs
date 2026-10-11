@@ -190,6 +190,7 @@ fn read_configs(config_dir: Option<&Path>, cwd: &Path) -> (Configs, Vec<String>,
     (configs, overridden, diagnostics)
 }
 
+#[derive(Default)]
 struct Pending {
     senders: Mutex<HashMap<u64, oneshot::Sender<Result<Value, String>>>>,
     closed: AtomicBool,
@@ -864,10 +865,7 @@ impl Connection {
             }),
         });
         let (writer, messages) = mpsc::unbounded_channel();
-        let pending = Arc::new(Pending {
-            senders: Mutex::new(HashMap::new()),
-            closed: AtomicBool::new(false),
-        });
+        let pending = Arc::new(Pending::default());
         tokio::spawn(post_messages(
             http.clone(),
             messages,
@@ -918,10 +916,7 @@ impl Connection {
             return Err("failed to capture server input and output".into());
         };
         let (writer, lines) = mpsc::unbounded_channel();
-        let pending = Arc::new(Pending {
-            senders: Mutex::new(HashMap::new()),
-            closed: AtomicBool::new(false),
-        });
+        let pending = Arc::new(Pending::default());
         let stderr_tail = Arc::new(Mutex::new(Vec::new()));
         tokio::spawn(write_messages(stdin, lines, pending.clone()));
         tokio::spawn(read_messages(stdout, writer.clone(), pending.clone()));
