@@ -8,7 +8,7 @@ Accepted
 
 ## Context
 
-A project can list MCP servers in `.rust-coding-agent/mcp.json`. Stdio servers are commands, so opening a project with this file runs them.
+A project can list MCP servers in `.rust-coding-agent/mcp.json`. Stdio servers are commands, and so is an HTTP server's `headersHelper`, so opening a project with this file runs them.
 
 ## Decision
 

@@ -12,13 +12,18 @@ rust-coding-agent connects to [Model Context Protocol](https://modelcontextproto
     "docs": {
       "url": "https://example.com/mcp",
       "headers": { "Authorization": "Bearer ${DOCS_TOKEN}" }
+    },
+    "github": {
+      "url": "https://api.githubcopilot.com/mcp/",
+      "headersHelper": "gh auth token | jq -Rc '{Authorization: (\"Bearer \" + .)}'"
     }
   }
 }
 ```
 
 - `command` is a single executable and `args` its arguments. `env` sets environment variables and `cwd` the working folder. A leading `~/` in `command`, an argument or `cwd` names the home folder.
-- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. `${NAME}` in a header value is replaced with the environment variable `NAME`; the server fails to connect if it is not set. A project `mcp.json` can use this too, so it can send your environment variables to a server it chooses. If connecting fails because the server cannot be reached or answers with status 408, 429 or 5xx (other than 501), rust-coding-agent tries twice more, after 0.25 and 1 second. rust-coding-agent keeps the session the server gives it and ends the session when it quits. If the server says the session has expired (status 404), rust-coding-agent starts a new one and sends the request once more. A server without an `Authorization` header signs in with OAuth; see [Signing in to MCP servers](#signing-in-to-mcp-servers).
+- `url` is the address of a Streamable HTTP server and must start with `http://` or `https://`. `headers` sets extra request headers, such as `Authorization`. `${NAME}` in a header value is replaced with the environment variable `NAME`; the server fails to connect if it is not set. A project `mcp.json` can use this too, so it can send your environment variables to a server it chooses. If connecting fails because the server cannot be reached or answers with status 408, 429 or 5xx (other than 501), rust-coding-agent tries twice more, after 0.25 and 1 second. rust-coding-agent keeps the session the server gives it and ends the session when it quits. If the server says the session has expired (status 404), rust-coding-agent starts a new one and sends the request once more. A server without an `Authorization` header or `headersHelper` signs in with OAuth; see [Signing in to MCP servers](#signing-in-to-mcp-servers).
+- `headersHelper` is a shell command that prints a JSON object of header names and values, as in Claude Code. rust-coding-agent runs it with `sh -c` each time it connects, including when it starts a new session, and sends its headers on top of `headers`. It sets `CLAUDE_CODE_MCP_SERVER_NAME` and `CLAUDE_CODE_MCP_SERVER_URL`, so one command can serve several servers. If the server answers a request with status 401, rust-coding-agent runs the command once more and sends the request again. The server fails to connect if the command takes longer than 10 seconds, exits with an error or prints anything else. `${NAME}` is not replaced, but the shell expands `$NAME`. A project `mcp.json` can set this too, and rust-coding-agent runs it without asking (see [ADR 3](adr/0003-start-project-mcp-servers-without-approval.md)).
 - `oauth` sets how rust-coding-agent signs in to an HTTP server. `clientId` and `clientSecret` name a client you registered yourself, so rust-coding-agent does not register; `${NAME}` in `clientSecret` is replaced with the environment variable `NAME`. rust-coding-agent reads `clientSecret` from `mcp.json` each time it starts the server and does not save it in `mcp-auth.json`.
 - `timeout` sets the time limit for each request in seconds, at least 1 (default 60). When a request times out, or you press Esc during a tool call, rust-coding-agent tells the server to stop working on it.
 - `enabled: false` keeps an entry without connecting to it.
@@ -31,7 +36,7 @@ In the interface, rust-coding-agent starts all servers in the background, so you
 
 ## Signing in to MCP servers
 
-An HTTP server without an `Authorization` header in its entry signs in with OAuth. When it needs sign-in, its entry shows `figma (needs sign-in)`. Run `/mcp login figma` to sign in. Print mode shows the same `figma (needs sign-in)` on standard error.
+An HTTP server without an `Authorization` header or `headersHelper` in its entry signs in with OAuth. When it needs sign-in, its entry shows `figma (needs sign-in)`. Run `/mcp login figma` to sign in. Print mode shows the same `figma (needs sign-in)` on standard error.
 
 Type `/mcp login <server>` in the interface. After `/mcp `, the command list offers `login` and `logout`, and after either one the names of the HTTP servers that sign in with OAuth. rust-coding-agent finds the server's sign-in server, registers with it unless `oauth.clientId` is set, and opens the sign-in page in your browser (`open` on macOS, `xdg-open` elsewhere). It also shows the link, in case the browser does not open. It refuses to sign in when the MCP server's URL, or the sign-in server's sign-in page or token address, does not start with `https://`, other than `http://` addresses on this computer, such as `localhost` or `127.0.0.1`. It also refuses sign-in details that name another server as the `resource` (the server's URL, its origin or a parent path are fine), or a sign-in server whose metadata names another `issuer`, so a server cannot get a sign-in meant for another service. The page sends the browser back to `http://127.0.0.1:<port>/callback`, where rust-coding-agent waits for up to 5 minutes. rust-coding-agent then starts the server again with the new sign-in, and its entry shows the spinner again. You can keep working while it waits.
 
