@@ -44,6 +44,17 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
         .ok_or_else(|| format!("missing argument: {key}"))
 }
 
+fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
+    match &input[key] {
+        Value::Null => Ok(None),
+        value => value
+            .as_u64()
+            .filter(|number| *number >= min)
+            .map(Some)
+            .ok_or_else(|| format!("{key} must be at least 1")),
+    }
+}
+
 /// Replaces the file at `path`, or the file a symlink there points to, in one
 /// step, keeping the permissions and group of the file it replaces. In a
 /// folder where no temporary file can be created, and for a file with other
