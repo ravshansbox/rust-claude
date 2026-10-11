@@ -84,8 +84,19 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         None
     };
     let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
+    let pinned_lines = if app.scroll_from_bottom > 0 {
+        status_lines(app).into_iter().skip(1).collect()
+    } else {
+        Vec::new()
+    };
+    let pinned_height = pinned_lines
+        .iter()
+        .map(|line| wrapped_height(line, chat.width))
+        .sum::<usize>()
+        .min((chat.height - panel_height).saturating_sub(1) as usize)
+        as u16;
     let conversation_area = Rect {
-        height: chat.height - panel_height,
+        height: chat.height - panel_height - pinned_height,
         ..chat
     };
 
@@ -113,6 +124,14 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         conversation_area,
     );
     highlight_selection(app, frame.buffer_mut());
+    frame.render_widget(
+        Paragraph::new(pinned_lines).wrap(Wrap { trim: false }),
+        Rect {
+            y: conversation_area.y + conversation_area.height,
+            height: pinned_height,
+            ..chat
+        },
+    );
     if let Some((view, height, list)) = panel {
         let area = Rect {
             y: chat.y + chat.height - height,
@@ -463,6 +482,32 @@ mod tests {
         assert_eq!(held_scroll_from_bottom(1, 15, 20), 6);
         assert_eq!(held_scroll_from_bottom(6, 20, 18), 4);
         assert_eq!(held_scroll_from_bottom(1, 15, 10), 0);
+    }
+
+    #[test]
+    fn keeps_the_spinner_and_queued_prompts_visible_when_scrolled_up() {
+        let mut app = app_with_reply();
+        for number in 0..100 {
+            app.push(Role::Event, format!("event {number}"));
+        }
+        app.start(crate::tui::Activity::Working);
+        handle_input(Event::Paste("later".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        screen(&mut app);
+        press(&mut app, KeyCode::Home);
+        let shown = screen(&mut app);
+        assert!(shown.contains("Earlier reply"), "{shown}");
+        let rows: Vec<&str> = shown.lines().map(str::trim_end).collect();
+        let spinner = rows
+            .iter()
+            .position(|row| row.ends_with(" working"))
+            .unwrap_or_else(|| panic!("{shown}"));
+        assert_eq!(rows[spinner + 1], "queued: later", "{shown}");
+        assert!(rows[spinner + 2].starts_with('─'), "{shown}");
+        press(&mut app, KeyCode::End);
+        let shown = screen(&mut app);
+        assert_eq!(shown.matches(" working").count(), 1, "{shown}");
+        assert!(shown.contains("event 99"), "{shown}");
     }
 
     #[test]
