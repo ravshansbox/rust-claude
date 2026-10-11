@@ -55,7 +55,7 @@ rust-coding-agent looks for skills in these places, in this order:
 
 A folder that holds `SKILL.md` is a skill, and rust-coding-agent does not look inside it for more skills. Other folders are searched for `SKILL.md` files. Markdown files with a `description` also load as skills when they sit directly in a `.rust-coding-agent/skills/` folder, or below the top level of an `.agents/skills/` folder. Hidden folders, `node_modules` and paths listed in `.gitignore`, `.ignore` or `.fdignore` are skipped. As in Git, the patterns in an ignore file apply relative to the folder that holds it. Symlinked folders are followed, but each folder is searched only once, so a symlink loop does not stall the search.
 
-The system prompt lists each skill's name, description and file path. The model reads the full file with `read` when a task matches the description. Set `disable-model-invocation: true` in the frontmatter to leave a skill out of the system prompt.
+The system prompt lists each skill's name, description and file path, global skills first. The model reads the full file with `read` when a task matches the description. Set `disable-model-invocation: true` in the frontmatter to leave a skill out of the system prompt.
 
 Type `/skill:name` to run a skill yourself. It sends the skill's instructions to the model, followed by any text after the name. That text can start on the same line or on the next one. The conversation shows `[skill] name` in place of the instructions. Tab completes skill commands and marks each one as `[global]` or `[project]`. A command typed out in full comes first in the list, so `/skill:pdf` and Enter runs `pdf` even when `pdf-tools` also matches.
 
