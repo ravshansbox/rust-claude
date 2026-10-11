@@ -30,7 +30,7 @@ const STDERR_TAIL: usize = 4_000;
 const MAX_LINE: usize = 32 << 20;
 const MAX_TOOL_NAME: usize = 64;
 
-#[derive(Deserialize)]
+#[derive(Default, Deserialize)]
 struct ServerConfig {
     #[serde(rename = "type")]
     kind: Option<String>,
@@ -1712,16 +1712,10 @@ done
         .replace("CASES", cases)
         .replace("CALL", call);
         ServerConfig {
-            kind: None,
             command: Some("bash".into()),
             args: vec!["-c".into(), script],
-            env: HashMap::new(),
-            cwd: None,
-            url: None,
-            headers: HashMap::new(),
-            oauth: None,
-            enabled: None,
             timeout: Some(5),
+            ..Default::default()
         }
     }
 
@@ -1906,16 +1900,9 @@ done
 
     fn http_config(url: &str) -> ServerConfig {
         ServerConfig {
-            kind: None,
-            command: None,
-            args: Vec::new(),
-            env: HashMap::new(),
-            cwd: None,
             url: Some(url.into()),
-            headers: HashMap::new(),
-            oauth: None,
-            enabled: None,
             timeout: Some(5),
+            ..Default::default()
         }
     }
 
