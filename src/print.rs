@@ -367,7 +367,7 @@ mod tests {
         let plain = without_colours(&err);
         assert!(!has_controls(&plain), "control characters in {plain:?}");
         assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
-        assert!(plain.contains(" bash \nprintf"), "{plain:?}");
+        assert!(plain.contains(" bash  printf"), "{plain:?}");
         assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
     }
 
@@ -416,7 +416,7 @@ mod tests {
         let err = String::from_utf8(err).unwrap();
         let plain = without_colours(&err);
         assert!(
-            plain.contains(" bash \necho \"$HOME\" | wc -c\n"),
+            plain.contains(" bash  echo \"$HOME\" | wc -c\n"),
             "{plain:?}"
         );
         let command = err.lines().find(|line| line.contains("echo")).unwrap();
@@ -442,7 +442,7 @@ mod tests {
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         printer.finish(result).unwrap();
         let err = String::from_utf8(err).unwrap();
-        let lines: Vec<&str> = err.lines().take(2).collect();
+        let lines: Vec<&str> = err.lines().take(1).collect();
         assert!(
             lines[0].starts_with("\x1b[0m\x1b[48;2;50;50;50m\x1b[38;2;220;220;220m\x1b[1m bash "),
             "{lines:?}"
@@ -454,8 +454,8 @@ mod tests {
             );
         }
         assert_eq!(
-            without_colours(&err).lines().take(2).collect::<Vec<_>>(),
-            [" bash ", "echo hi"]
+            without_colours(&err).lines().take(1).collect::<Vec<_>>(),
+            [" bash  echo hi"]
         );
     }
 

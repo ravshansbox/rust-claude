@@ -278,7 +278,8 @@ fn tool_lines(text: &str, theme: Theme, background: Option<Colour>) -> Vec<Line<
         None => (text, None),
     };
     let (name, path) = first.split_once(' ').unwrap_or((first, ""));
-    let mut lines = vec![tool_header(first, theme)];
+    let (header, joins) = tool_header(first, theme);
+    let mut lines = vec![header];
     let dark = matches!(theme, Theme::Dark);
     if let Some(body) = body {
         match crate::highlight::highlight_tool(name, path, body, dark) {
@@ -293,6 +294,10 @@ fn tool_lines(text: &str, theme: Theme, background: Option<Colour>) -> Vec<Line<
             ),
         }
     }
+    if joins && lines.len() > 1 {
+        let next = lines.remove(1);
+        lines[0].spans.extend(next.spans);
+    }
     let style = theme.tool_style(background);
     lines
         .into_iter()
@@ -303,15 +308,16 @@ fn tool_lines(text: &str, theme: Theme, background: Option<Colour>) -> Vec<Line<
         .collect()
 }
 
-fn tool_header(first: &str, theme: Theme) -> Line<'static> {
+fn tool_header(first: &str, theme: Theme) -> (Line<'static>, bool) {
     let (name, rest) = match first.split_once("] ") {
         Some((name, rest)) if name.starts_with('[') => (&first[..=name.len()], rest),
         _ => first.split_once(' ').unwrap_or((first, "")),
     };
-    Line::from(vec![
+    let line = Line::from(vec![
         Span::styled(format!(" {name} "), theme.highlight_style().bold()),
         Span::raw(format!(" {rest}")),
-    ])
+    ]);
+    (line, rest.is_empty())
 }
 
 fn highlighted_line(line: crate::highlight::HighlightedLine, dark: bool) -> Line<'static> {
@@ -575,13 +581,26 @@ mod tests {
             .iter()
             .map(|line| line.to_string().trim_end().to_string())
             .collect();
-        assert_eq!(texts, [" bash", "echo \"$HOME\" | wc -c"]);
-        let colours: std::collections::HashSet<_> = lines[1]
+        assert_eq!(texts, [" bash  echo \"$HOME\" | wc -c"]);
+        let colours: std::collections::HashSet<_> = lines[0]
             .spans
             .iter()
             .filter_map(|span| span.style.fg)
             .collect();
-        assert!(colours.len() > 1, "{:?}", lines[1]);
+        assert!(colours.len() > 1, "{:?}", lines[0]);
+    }
+
+    #[test]
+    fn keeps_later_lines_of_a_multi_line_command_below_the_tool_name() {
+        let message = tool_message("bash", String::new(), Some("cd src\nls".into()));
+        let texts: Vec<String> = render_message(Role::Tool, &message, 40)
+            .iter()
+            .map(|line| line.to_string().trim_end().to_string())
+            .collect();
+        assert_eq!(texts, [" bash  cd src", "ls"]);
+        let printed = ansi_tool_lines(&message, true, None, None);
+        assert_eq!(printed.len(), 2, "{printed:?}");
+        assert!(printed[0].contains("cd"), "{printed:?}");
     }
 
     #[test]
