@@ -98,10 +98,10 @@ pub fn trim(path: &Path, entries: &mut Vec<Entry>) -> Result<()> {
     let _lock = lock(path)?;
     let mut current = load(path);
     current.drain(..current.len().saturating_sub(MAX_ENTRIES));
-    let mut text = String::new();
-    for entry in current.iter() {
-        text.push_str(&entry.line()?);
-    }
+    let text = current
+        .iter()
+        .map(Entry::line)
+        .collect::<Result<String>>()?;
     crate::config::write_private_file(path, text.as_bytes())?;
     *entries = current;
     Ok(())
