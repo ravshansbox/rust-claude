@@ -1,4 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::{Duration, Instant},
+};
 
 use anyhow::{Context, Result};
 use serde::Deserialize;
@@ -15,12 +18,12 @@ pub enum Progress {
     Available(String),
     CargoMissing(String),
     Downloading(String),
-    Downloaded(String, std::time::Duration),
+    Downloaded(String, Duration),
     Building(String),
-    Built(String, std::time::Duration),
+    Built(String, Duration),
     Ready(String),
-    DownloadFailed(String, String, std::time::Duration),
-    BuildFailed(String, String, std::time::Duration),
+    DownloadFailed(String, String, Duration),
+    BuildFailed(String, String, Duration),
     Failed(String, String),
 }
 
@@ -55,7 +58,7 @@ impl Progress {
     }
 }
 
-fn format_took(took: std::time::Duration) -> String {
+fn format_took(took: Duration) -> String {
     let seconds = took.as_secs();
     match seconds / 60 {
         0 => format!("{seconds}s"),
@@ -162,7 +165,7 @@ impl Updater {
             let url = asset_url(ASSET)?;
             let signature_url = asset_url(SIGNATURE_ASSET)?;
             report(Progress::Downloading(version.clone()));
-            let started = std::time::Instant::now();
+            let started = Instant::now();
             self.download(&url, &signature_url, &version, &folder)
                 .await
                 .map_err(|error| {
@@ -174,7 +177,7 @@ impl Updater {
                 })?;
             report(Progress::Downloaded(version.clone(), started.elapsed()));
             report(Progress::Building(version.clone()));
-            let started = std::time::Instant::now();
+            let started = Instant::now();
             self.build(cargo, &folder).await.map_err(|error| {
                 Progress::BuildFailed(version.clone(), format!("{error:#}"), started.elapsed())
             })?;
