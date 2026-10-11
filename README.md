@@ -1,6 +1,6 @@
 # Rust Coding Agent
 
-A small coding agent for the terminal, written in Rust. It talks to Claude and can run shell commands and read, write and edit files in the current directory.
+A small coding agent for the terminal, written in Rust. It sends your requests to Anthropic's Claude models and can run shell commands and read, write and edit files in the current directory.
 
 ## Features
 
