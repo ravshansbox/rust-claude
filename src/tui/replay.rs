@@ -272,11 +272,14 @@ mod tests {
     fn adds_each_update_step_to_the_version_line() {
         let mut app = new_app();
         app.push(Role::Event, "loaded AGENTS.md");
+        let seconds = std::time::Duration::from_secs;
         for progress in [
             crate::update::Progress::Available("v0.2.0".into()),
             crate::update::Progress::Downloading("v0.2.0".into()),
+            crate::update::Progress::Downloaded("v0.2.0".into(), seconds(3)),
             crate::update::Progress::Building("v0.2.0".into()),
-            crate::update::Progress::Ready("v0.2.0".into(), std::time::Duration::from_secs(125)),
+            crate::update::Progress::Built("v0.2.0".into(), seconds(125)),
+            crate::update::Progress::Ready("v0.2.0".into()),
         ] {
             handle_agent_event(UiEvent::Update(progress), &mut app);
         }
@@ -285,12 +288,37 @@ mod tests {
             .find(concat!(
                 "rust-claude v",
                 env!("CARGO_PKG_VERSION"),
-                " · update v0.2.0 available · downloading · building",
-                " · installed in 2m 5s, restart rust-claude to use it"
+                " · update v0.2.0 available · downloaded in 3s · built in 2m 5s",
+                " · installed, restart rust-claude to use it"
             ))
             .expect(&shown);
         assert!(
             version < shown.find("loaded AGENTS.md").expect(&shown),
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn replaces_the_failed_step_with_why_it_failed() {
+        let mut app = new_app();
+        let seconds = std::time::Duration::from_secs;
+        for progress in [
+            crate::update::Progress::Available("v0.2.0".into()),
+            crate::update::Progress::Downloading("v0.2.0".into()),
+            crate::update::Progress::Downloaded("v0.2.0".into(), seconds(3)),
+            crate::update::Progress::Building("v0.2.0".into()),
+            crate::update::Progress::BuildFailed("v0.2.0".into(), "error: x".into(), seconds(70)),
+        ] {
+            handle_agent_event(UiEvent::Update(progress), &mut app);
+        }
+        let shown = screen_of_width(&mut app, 160);
+        assert!(
+            shown.contains(concat!(
+                "rust-claude v",
+                env!("CARGO_PKG_VERSION"),
+                " · update v0.2.0 available · downloaded in 3s",
+                " · build failed after 1m 10s: error: x"
+            )),
             "{shown}"
         );
     }
