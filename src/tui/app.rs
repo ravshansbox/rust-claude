@@ -317,6 +317,7 @@ pub(super) struct App {
     pub(super) prompt_history: Vec<String>,
     pub(super) history_index: Option<usize>,
     pub(super) reads: tools::ReadGroup,
+    pub(super) tasks: super::tasks::Tasks,
     pub(super) skills: Vec<Skill>,
     pub(super) mcp_sign_in_servers: Vec<String>,
     pub(super) images: Vec<(usize, Image)>,
@@ -424,6 +425,7 @@ impl App {
             prompt_history: Vec::new(),
             history_index: None,
             reads: tools::ReadGroup::default(),
+            tasks: super::tasks::Tasks::default(),
             skills: Vec::new(),
             mcp_sign_in_servers: Vec::new(),
             images: Vec::new(),
@@ -468,6 +470,12 @@ impl App {
             text: text.into(),
             rendered: None,
         });
+    }
+
+    pub(super) fn set_message_text(&mut self, index: usize, text: String) {
+        if let Some(message) = self.messages.get_mut(index) {
+            message.replace(text);
+        }
     }
 
     pub(super) fn push_tool(&mut self, name: &str, summary: String, diff: Option<String>) {

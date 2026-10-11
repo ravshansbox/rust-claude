@@ -23,6 +23,9 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             summary,
             diff,
         }) => {
+            if name == tools::agent::NAME {
+                app.tasks.clear();
+            }
             app.push_tool(&name, summary, diff);
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
@@ -37,9 +40,13 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
-        UiEvent::Agent(
-            AgentEvent::TaskStart { .. } | AgentEvent::Task { .. } | AgentEvent::TaskDone { .. },
-        ) => {}
+        UiEvent::Agent(AgentEvent::TaskStart { task, description }) => {
+            app.start_task(task, &description);
+        }
+        UiEvent::Agent(AgentEvent::Task { task, event }) => app.task_event(task, &event),
+        UiEvent::Agent(AgentEvent::TaskDone { task, reply }) => {
+            app.finish_task(task, reply.as_deref().unwrap_or_else(|error| error));
+        }
         UiEvent::McpRestarting {
             name,
             scope,
@@ -143,7 +150,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
 }
 
 pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
-    let results: std::collections::HashMap<&str, (&str, bool)> = messages
+    let results: std::collections::HashMap<&str, (&Value, bool)> = messages
         .iter()
         .filter(|message| message["role"] == "user")
         .flat_map(|message| message["content"].as_array().into_iter().flatten())
@@ -151,10 +158,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
         .filter_map(|block| {
             Some((
                 block["tool_use_id"].as_str()?,
-                (
-                    block["content"].as_str().unwrap_or_default(),
-                    block["is_error"] == true,
-                ),
+                (&block["content"], block["is_error"] == true),
             ))
         })
         .collect();
@@ -188,10 +192,24 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                     );
                     match block["id"].as_str().and_then(|id| results.get(id)) {
                         Some((error, true)) => {
+                            let error = error.as_str().unwrap_or_default();
                             app.push(Role::Event, format!("{name} failed: {error}"));
                         }
+                        Some((Value::Array(replies), false)) if name == tools::agent::NAME => {
+                            let descriptions = block["input"]["tasks"]
+                                .as_array()
+                                .into_iter()
+                                .flatten()
+                                .map(|task| task["description"].as_str().unwrap_or_default());
+                            let replies = replies
+                                .iter()
+                                .map(|reply| reply["text"].as_str().unwrap_or_default());
+                            app.push_finished_tasks(descriptions.zip(replies));
+                        }
                         Some((result, false)) => {
-                            if let Some(note) = tools::note(name, result) {
+                            if let Some(note) =
+                                tools::note(name, result.as_str().unwrap_or_default())
+                            {
                                 app.push(Role::Event, format!("{name}: {note}"));
                             }
                         }
@@ -538,5 +556,157 @@ mod tests {
             text.starts_with("failed to paste image: unsupported image format: "),
             "{text}"
         );
+    }
+
+    fn task_event(task: usize, event: AgentEvent) -> UiEvent {
+        UiEvent::Agent(AgentEvent::Task {
+            task,
+            event: Box::new(event),
+        })
+    }
+
+    fn agent_input() -> serde_json::Value {
+        json!({
+            "mode": "parallel",
+            "tasks": [
+                { "description": "say hi", "prompt": "say hi" },
+                { "description": "list files", "prompt": "list the files" },
+            ],
+        })
+    }
+
+    fn start_tasks(app: &mut App) {
+        let input = agent_input();
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::ToolStart {
+                name: "agent".into(),
+                summary: tools::summary("agent", &input),
+                diff: tools::diff("agent", &input),
+            }),
+            app,
+        );
+        for (task, description) in ["say hi", "list files"].into_iter().enumerate() {
+            handle_agent_event(
+                UiEvent::Agent(AgentEvent::TaskStart {
+                    task,
+                    description: description.into(),
+                }),
+                app,
+            );
+        }
+    }
+
+    fn texts(app: &App) -> Vec<String> {
+        app.messages[1..]
+            .iter()
+            .map(|message| message.text.clone())
+            .collect()
+    }
+
+    #[test]
+    fn shows_the_last_lines_of_each_subagent_while_it_works() {
+        let mut app = new_app();
+        start_tasks(&mut app);
+        handle_agent_event(
+            task_event(0, AgentEvent::Text("line 1\nline 2\n\nline 3".into())),
+            &mut app,
+        );
+        let bash = json!({ "command": "ls\nwc -l" });
+        handle_agent_event(
+            task_event(
+                1,
+                AgentEvent::ToolStart {
+                    name: "bash".into(),
+                    summary: tools::summary("bash", &bash),
+                    diff: tools::diff("bash", &bash),
+                },
+            ),
+            &mut app,
+        );
+        handle_agent_event(
+            task_event(
+                1,
+                AgentEvent::ToolDone {
+                    name: "bash".into(),
+                    error: Some("exit status 1\nmore".into()),
+                    note: None,
+                },
+            ),
+            &mut app,
+        );
+        handle_agent_event(
+            task_event(
+                0,
+                AgentEvent::Text(" continues\nline 4\nline 5\nline 6".into()),
+            ),
+            &mut app,
+        );
+        handle_agent_event(
+            task_event(0, AgentEvent::Notice("retrying in 1s".into())),
+            &mut app,
+        );
+        assert_eq!(
+            texts(&app),
+            [
+                "agent parallel, 2 tasks",
+                "[1] say hi\n  line 3 continues\n  line 4\n  line 5\n  line 6\n  retrying in 1s",
+                "[2] list files\n  bash ls\n  bash failed: exit status 1",
+            ]
+        );
+        let screen = screen(&mut app);
+        assert!(screen.contains("[1]  say hi"), "{screen}");
+        assert!(screen.contains("  line 3 continues"), "{screen}");
+    }
+
+    #[test]
+    fn shows_the_start_of_each_final_reply_live_and_replayed() {
+        let reply: String = (1..=12).map(|line| format!("reply {line}\n")).collect();
+        let failure = "This task failed: 400 Bad Request";
+        let mut live = new_app();
+        start_tasks(&mut live);
+        handle_agent_event(task_event(0, AgentEvent::Text("working".into())), &mut live);
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::TaskDone {
+                task: 0,
+                reply: Ok(reply.clone()),
+            }),
+            &mut live,
+        );
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::TaskDone {
+                task: 1,
+                reply: Err(failure.into()),
+            }),
+            &mut live,
+        );
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::ToolDone {
+                name: "agent".into(),
+                error: None,
+                note: None,
+            }),
+            &mut live,
+        );
+        let mut replayed = new_app();
+        replay_messages(
+            &mut replayed,
+            &[
+                json!({ "role": "assistant", "content": [{ "type": "tool_use", "id": "1", "name": "agent", "input": agent_input() }] }),
+                json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "1", "content": [
+                    { "type": "text", "text": reply },
+                    { "type": "text", "text": failure },
+                ], "is_error": false }] }),
+            ],
+        );
+        let first_ten: String = (1..=10).map(|line| format!("\n  reply {line}")).collect();
+        assert_eq!(
+            texts(&live),
+            [
+                "agent parallel, 2 tasks".to_string(),
+                format!("[1] say hi{first_ten}\n  …"),
+                format!("[2] list files\n  {failure}"),
+            ]
+        );
+        assert_eq!(texts(&replayed), texts(&live));
     }
 }

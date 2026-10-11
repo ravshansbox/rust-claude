@@ -61,6 +61,7 @@ Tools:
 - Diff preview for `edit` and first-lines preview for `write`
 - Syntax highlighting in those previews
 - Consecutive `read` calls grouped on one line, with counts and line ranges
+- `agent` runs tasks in subagents, at the same time or one after another, with live progress
 
 Status line:
 
@@ -413,6 +414,8 @@ The `agent` tool takes a list of tasks, each with a short `description` and a `p
 - `sequential` runs them one after another, and adds each task's final reply to the next task's prompt. If a task fails, the tasks after it do not run
 
 Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run.
+
+In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[1] list files`. While a subagent works, its task shows the last 5 lines of its text, tool calls, failures and notices, and scrolls as it works. When it finishes, these lines are replaced by the first 10 lines of its final reply, followed by `…` when the reply is longer, or by why it failed or did not run. A resumed session shows each task with the start of its final reply.
 
 In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each line from a subagent starts with its task number, such as `  [1] `: the task's description when it starts, its tool calls, failures and notices, and `done` or why it failed or did not run. A subagent's text is not printed.
 

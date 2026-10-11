@@ -8,6 +8,7 @@ mod render;
 mod replay;
 mod selection;
 mod status;
+mod tasks;
 #[cfg(test)]
 mod test_support;
 mod worker;
