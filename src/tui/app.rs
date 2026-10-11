@@ -333,6 +333,7 @@ pub(super) struct App {
     pub(super) conversation_top: usize,
     /// When the notice that text was copied goes away.
     pub(super) copied_until: Option<Instant>,
+    version_line: String,
     version_message: Option<usize>,
 }
 
@@ -436,18 +437,21 @@ impl App {
             conversation_area: Rect::default(),
             conversation_top: 0,
             copied_until: None,
+            version_line: VERSION_LINE.into(),
             version_message: None,
         };
-        app.show_version("");
+        app.show_version();
         app
     }
 
     pub(super) fn show_update(&mut self, progress: &crate::update::Progress) {
-        self.show_version(&format!(" · {}", progress.message()));
+        self.version_line.push_str(" · ");
+        self.version_line.push_str(&progress.message());
+        self.show_version();
     }
 
-    fn show_version(&mut self, suffix: &str) {
-        let text = format!("{VERSION_LINE}{suffix}");
+    fn show_version(&mut self) {
+        let text = self.version_line.clone();
         match self.version_message {
             Some(message) => self.messages[message].replace(text),
             None => {

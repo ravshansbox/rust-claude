@@ -22,20 +22,17 @@ impl Progress {
     pub fn message(&self) -> String {
         match self {
             Self::Available(version) => format!("update {version} available"),
-            Self::CargoMissing(version) => {
-                format!("cargo not found on PATH, install Rust to update to {version}")
+            Self::CargoMissing(_) => "cargo not found on PATH, install Rust to update".into(),
+            Self::Downloading(_) => "downloading".into(),
+            Self::Building(_) => "building".into(),
+            Self::Ready(_, took) => format!(
+                "installed in {}, restart rust-claude to use it",
+                format_took(*took)
+            ),
+            Self::Failed(_, error, None) => format!("failed: {error}"),
+            Self::Failed(_, error, Some(took)) => {
+                format!("failed after {}: {error}", format_took(*took))
             }
-            Self::Downloading(version) => format!("downloading {version}"),
-            Self::Building(version) => format!("building {version}"),
-            Self::Ready(version, took) => format!(
-                "installed {version} in {}, restart rust-claude to use it",
-                format_took(*took)
-            ),
-            Self::Failed(version, error, None) => format!("update to {version} failed: {error}"),
-            Self::Failed(version, error, Some(took)) => format!(
-                "update to {version} failed after {}: {error}",
-                format_took(*took)
-            ),
         }
     }
 }
@@ -379,15 +376,11 @@ mod tests {
         let shown = run(updater(&base, Some(cargo))).await;
         assert_eq!(
             shown[..3],
-            [
-                "update v0.2.0 available",
-                "downloading v0.2.0",
-                "building v0.2.0",
-            ]
+            ["update v0.2.0 available", "downloading", "building",]
         );
         assert_eq!(shown.len(), 4, "{shown:?}");
         assert!(
-            shown[3].starts_with("installed v0.2.0 in ")
+            shown[3].starts_with("installed in ")
                 && shown[3].ends_with("s, restart rust-claude to use it"),
             "{shown:?}"
         );
@@ -450,8 +443,7 @@ mod tests {
         let shown = run(updater(&base, Some(cargo))).await;
         let last = shown.last().unwrap();
         assert!(
-            last.starts_with("update to v0.2.0 failed after ")
-                && last.ends_with("s: error: could not compile"),
+            last.starts_with("failed after ") && last.ends_with("s: error: could not compile"),
             "{shown:?}"
         );
     }
@@ -461,17 +453,11 @@ mod tests {
         let ready = |seconds| {
             Progress::Ready("v0.2.0".into(), std::time::Duration::from_secs(seconds)).message()
         };
-        assert_eq!(
-            ready(0),
-            "installed v0.2.0 in 0s, restart rust-claude to use it"
-        );
-        assert_eq!(
-            ready(42),
-            "installed v0.2.0 in 42s, restart rust-claude to use it"
-        );
+        assert_eq!(ready(0), "installed in 0s, restart rust-claude to use it");
+        assert_eq!(ready(42), "installed in 42s, restart rust-claude to use it");
         assert_eq!(
             ready(125),
-            "installed v0.2.0 in 2m 5s, restart rust-claude to use it"
+            "installed in 2m 5s, restart rust-claude to use it"
         );
         assert_eq!(
             Progress::Failed(
@@ -480,11 +466,11 @@ mod tests {
                 Some(std::time::Duration::from_secs(70))
             )
             .message(),
-            "update to v0.2.0 failed after 1m 10s: error: x"
+            "failed after 1m 10s: error: x"
         );
         assert_eq!(
             Progress::Failed("v0.2.0".into(), "no zip".into(), None).message(),
-            "update to v0.2.0 failed: no zip"
+            "failed: no zip"
         );
     }
 
@@ -496,7 +482,7 @@ mod tests {
             shown,
             [
                 "update v0.2.0 available",
-                "cargo not found on PATH, install Rust to update to v0.2.0",
+                "cargo not found on PATH, install Rust to update",
             ]
         );
         assert_eq!(requests.lock().unwrap().len(), 1);
