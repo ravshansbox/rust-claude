@@ -232,9 +232,15 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
 }
 
 fn append_reply(app: &mut App, text: &str) {
-    match app.messages.last_mut() {
-        Some(last) if matches!(last.role, Role::Assistant) => last.append(text),
-        _ => app.push(Role::Assistant, text),
+    if !app
+        .messages
+        .last()
+        .is_some_and(|last| matches!(last.role, Role::Assistant))
+    {
+        app.push(Role::Assistant, "");
+    }
+    if let Some(last) = app.messages.last_mut() {
+        last.append(text);
     }
 }
 

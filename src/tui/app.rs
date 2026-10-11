@@ -44,6 +44,9 @@ pub(super) struct ChatMessage {
     pub(super) role: Role,
     pub(super) text: String,
     pub(super) rendered: Option<Rendered>,
+    /// Whether text is still streaming in, so the reply may be rendered in
+    /// parts that split at blank lines.
+    pub(super) streaming: bool,
 }
 
 pub(super) struct Rendered {
@@ -171,6 +174,15 @@ fn group_text(spinner_frame: usize, group: &McpGroup) -> String {
 impl ChatMessage {
     pub(super) fn append(&mut self, text: &str) {
         self.text.push_str(text);
+        self.streaming = true;
+    }
+
+    /// Renders a reply rendered in parts again as a whole, so a link defined
+    /// further down also shows in the parts before it.
+    fn finish_streaming(&mut self) {
+        if std::mem::take(&mut self.streaming) {
+            self.rendered = None;
+        }
     }
 
     fn replace(&mut self, text: String) {
@@ -204,7 +216,7 @@ impl ChatMessage {
         rendered.heights.truncate(rendered.finished_lines);
         if matches!(self.role, Role::Assistant) {
             let start = rendered.finished_text;
-            let finished = start + finished_markdown_len(&self.text[start..]);
+            let finished = start + finished_markdown_len(&self.text[start..], self.streaming);
             if finished > start {
                 rendered.extend(render_message(
                     self.role,
@@ -251,18 +263,38 @@ fn has_table(text: &str) -> bool {
 }
 
 /// Bytes of markdown up to the end of its last closed code block whose
-/// opening fence starts the line. Nothing after it changes how the text
-/// before it renders.
-fn finished_markdown_len(text: &str) -> usize {
+/// opening fence starts the line, or up to its last whole line of plain
+/// text that starts a block after a blank line. Nothing after it changes how
+/// the text before it renders, except a link defined further down, which
+/// shows once the reply finishes.
+fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
     let mut finished = 0;
     // Whether `hard_line_breaks` sees a fence open, by its simpler rule.
     let mut in_fence = false;
     // The fence character and length of the open code block that starts the line.
     let mut open: Option<(char, usize)> = None;
+    // HTML can hold blank lines, so after it only code blocks end a part.
+    let mut html = false;
+    let mut after_blank = false;
     let mut end = 0;
     for line in text.split_inclusive('\n') {
+        let start = end;
         end += line.len();
         let trimmed = line.trim_start();
+        if in_fence || open.is_some() {
+            after_blank = false;
+        } else {
+            html |= trimmed.starts_with('<') && line.len() - trimmed.len() <= 3;
+            if paragraphs
+                && after_blank
+                && !html
+                && line.ends_with('\n')
+                && starts_plain_block(line)
+            {
+                finished = start;
+            }
+            after_blank = trimmed.is_empty();
+        }
         let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
             continue;
         };
@@ -289,6 +321,23 @@ fn finished_markdown_len(text: &str) -> usize {
         }
     }
     finished
+}
+
+/// Whether the line starts a block of its own at the left edge: not
+/// indented, not a list item and not HTML.
+fn starts_plain_block(line: &str) -> bool {
+    let Some(first) = line.chars().next() else {
+        return false;
+    };
+    let marker_end = |rest: &str| rest.is_empty() || rest.starts_with([' ', '\t', '\n']);
+    if first.is_whitespace() || first == '<' {
+        return false;
+    }
+    if matches!(first, '-' | '*' | '+') && marker_end(&line[1..]) {
+        return false;
+    }
+    let digits = line.bytes().take_while(u8::is_ascii_digit).count();
+    !(digits > 0 && line[digits..].starts_with(['.', ')']) && marker_end(&line[digits + 1..]))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -523,10 +572,14 @@ impl App {
 
     pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
         self.reads.clear();
+        if let Some(last) = self.messages.last_mut() {
+            last.finish_streaming();
+        }
         self.messages.push(ChatMessage {
             role,
             text: text.into(),
             rendered: None,
+            streaming: false,
         });
     }
 
@@ -1015,6 +1068,9 @@ impl App {
     }
 
     pub(super) fn finish<T>(&mut self, result: Result<T>, on_success: impl FnOnce(&mut Self, T)) {
+        if let Some(last) = self.messages.last_mut() {
+            last.finish_streaming();
+        }
         match result {
             Ok(value) => on_success(self, value),
             Err(error) => self.push(Role::Event, format!("error: {error:#}")),
@@ -1281,6 +1337,38 @@ mod tests {
     }
 
     #[test]
+    fn keeps_finished_paragraphs_of_a_streaming_reply() {
+        let mut app = new_app();
+        let stream = |app: &mut App, text: &str| {
+            handle_agent_event(UiEvent::Agent(AgentEvent::Text(text.into())), app);
+            screen(app);
+        };
+        stream(&mut app, "First paragraph.\n\nSecond\n");
+        let rendered = app.messages.last_mut().unwrap().rendered.as_mut().unwrap();
+        rendered.lines[0] = Line::raw("cached");
+        stream(&mut app, " paragraph goes on");
+        let rendered = app.messages.last().unwrap().rendered.as_ref().unwrap();
+        assert_eq!(rendered.lines[0], Line::raw("cached"));
+    }
+
+    #[test]
+    fn renders_a_finished_reply_the_same_as_the_whole_reply() {
+        let reply = "See [docs].\n\nMore text.\n\n[docs]: https://example.com\n";
+        let mut streamed = new_app();
+        let characters: Vec<char> = reply.chars().collect();
+        for chunk in characters.chunks(3) {
+            let text: String = chunk.iter().collect();
+            handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut streamed);
+            screen(&mut streamed);
+        }
+        handle_agent_event(UiEvent::Done(Ok(())), &mut streamed);
+        let mut whole = new_app();
+        whole.push(Role::Assistant, reply);
+        handle_agent_event(UiEvent::Done(Ok(())), &mut whole);
+        assert_eq!(screen(&mut streamed), screen(&mut whole));
+    }
+
+    #[test]
     fn rerenders_only_width_dependent_messages_on_resize() {
         let messages = [
             (
@@ -1312,6 +1400,7 @@ mod tests {
                 role,
                 text: text.into(),
                 rendered: None,
+                streaming: false,
             };
             let mut resized = message();
             resized.render(60);
