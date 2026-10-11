@@ -55,8 +55,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
         run: |
+          git cliff --unreleased --tag "v$VERSION" --strip all > notes.md
           sed -i "0,/^version = .*/s//version = \"$VERSION\"/" Cargo.toml
           sed -i "/^name = \"rust-claude\"$/{n;s/^version = .*/version = \"$VERSION\"/}" Cargo.lock
           git -c user.name=release -c user.email=release@localhost commit --quiet --all --message "chore(release): v$VERSION"
           git archive --format=zip --prefix=rust-claude/ --output=rust-claude.zip HEAD
-          gh release create "v$VERSION" rust-claude.zip --target "$GITHUB_SHA" --title "v$VERSION" --generate-notes
+          gh release create "v$VERSION" rust-claude.zip --target "$GITHUB_SHA" --title "v$VERSION" --notes-file notes.md
