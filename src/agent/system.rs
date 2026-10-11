@@ -6,7 +6,7 @@ const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
 Put questions to the user in bold.
-Give each question lettered options, and mark the recommended one. Number the questions when there is more than one."#;
+Letter the options. Put the recommended one first and mark it. Number the questions when there is more than one."#;
 
 const SEARCH_PROGRAMS: [&str; 2] = ["ast-grep", "rg"];
 
@@ -96,7 +96,7 @@ mod tests {
     #[test]
     fn tells_the_model_how_to_format_questions() {
         assert!(system_text(&[]).contains(
-            "Give each question lettered options, and mark the recommended one. Number the questions when there is more than one."
+            "Letter the options. Put the recommended one first and mark it. Number the questions when there is more than one."
         ));
     }
 
