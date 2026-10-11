@@ -22,16 +22,36 @@ fn header(task: usize, description: &str) -> String {
 
 impl Task {
     fn line(&self, task: usize) -> String {
-        let mut parts = vec![header(task, &self.description)];
-        if self.tool_calls > 0 {
-            parts.push(tools::agent::tool_calls(self.tool_calls));
-        }
-        if let Some(stats) = &self.stats {
-            parts.extend([format_context(stats), format_stats(stats)]);
-        }
-        parts.retain(|part| !part.is_empty());
-        parts.join(" · ")
+        task_line(
+            task,
+            &self.description,
+            self.tool_calls,
+            self.stats.as_ref(),
+        )
     }
+}
+
+fn task_line(task: usize, description: &str, tool_calls: usize, stats: Option<&Stats>) -> String {
+    let mut parts = vec![header(task, description)];
+    if tool_calls > 0 {
+        parts.push(tools::agent::tool_calls(tool_calls));
+    }
+    if let Some(stats) = stats {
+        parts.extend([format_context(stats), format_stats(stats)]);
+    }
+    parts.retain(|part| !part.is_empty());
+    parts.join(" · ")
+}
+
+/// A finished task as the interface shows it, for print mode.
+pub(crate) fn finished_task(
+    task: usize,
+    description: &str,
+    tool_calls: usize,
+    stats: Option<&Stats>,
+    failure: Option<&str>,
+) -> String {
+    finished(&task_line(task, description, tool_calls, stats), failure)
 }
 
 /// The task, with the first line of why it failed or did not run.

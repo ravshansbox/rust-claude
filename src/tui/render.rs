@@ -5,7 +5,7 @@ use super::{
 use crate::highlight::Colour;
 use ratatui::{
     buffer::CellWidth,
-    style::{Color, Style, Stylize},
+    style::{Color, Style},
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
@@ -126,7 +126,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
         .collect(),
         Role::Thinking => text
             .lines()
-            .map(|line| Line::from(expand_tabs(line.to_string()).dark_gray().italic()))
+            .map(|line| Line::styled(expand_tabs(line.to_string()), thinking_style()))
             .collect(),
         Role::Tool => tool_message_lines(text, width),
         Role::Event => text
@@ -195,17 +195,42 @@ pub(crate) fn ansi_tool_lines(
         .collect()
 }
 
+fn thinking_style() -> Style {
+    Style::new().dark_gray().italic()
+}
+
+/// Part of the thinking with ANSI codes for its style, for print mode.
+pub(crate) fn ansi_thinking(text: &str) -> String {
+    let text = crate::highlight::strip_controls(text);
+    format!(
+        "{}{}\x1b[0m",
+        sgr(thinking_style()),
+        expand_tabs(text.into_owned())
+    )
+}
+
+fn sgr(style: Style) -> String {
+    let mut codes = String::new();
+    if let Some(Color::Rgb(red, green, blue)) = style.bg {
+        codes.push_str(&format!("\x1b[48;2;{red};{green};{blue}m"));
+    }
+    match style.fg {
+        Some(Color::Rgb(red, green, blue)) => {
+            codes.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"))
+        }
+        Some(Color::DarkGray) => codes.push_str("\x1b[90m"),
+        _ => {}
+    }
+    if style
+        .add_modifier
+        .contains(ratatui::style::Modifier::ITALIC)
+    {
+        codes.push_str("\x1b[3m");
+    }
+    codes
+}
+
 fn ansi_line(line: &Line, columns: Option<u16>) -> String {
-    let sgr = |style: Style| {
-        let mut codes = String::new();
-        if let Some(Color::Rgb(red, green, blue)) = style.bg {
-            codes.push_str(&format!("\x1b[48;2;{red};{green};{blue}m"));
-        }
-        if let Some(Color::Rgb(red, green, blue)) = style.fg {
-            codes.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"));
-        }
-        codes
-    };
     let mut spans: Vec<(String, Style)> = line
         .spans
         .iter()

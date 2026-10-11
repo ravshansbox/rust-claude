@@ -1,5 +1,8 @@
-use crate::{agent::AgentEvent, highlight, tools};
-use std::io::Write;
+use crate::{
+    agent::{AgentEvent, Stats},
+    highlight, tools,
+};
+use std::{collections::HashMap, io::Write};
 
 /// Writes a print mode run: the answer goes to `out`, tool activity and
 /// notices to `err`.
@@ -14,9 +17,14 @@ pub struct Printer<Out, Err> {
     dark: bool,
     background: Option<highlight::Colour>,
     printed: bool,
-    separate: bool,
-    line_open: bool,
+    /// Whether the text written last to `out` or `err` did not end its line.
+    out_open: bool,
+    err_open: bool,
+    err_shown: bool,
+    answering: bool,
+    thinking: bool,
     reads: tools::ReadGroup,
+    tasks: HashMap<usize, (String, Option<Stats>)>,
 }
 
 impl<Out: Write, Err: Write> Printer<Out, Err> {
@@ -36,9 +44,51 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             dark,
             background,
             printed: false,
-            separate: false,
-            line_open: false,
+            out_open: false,
+            err_open: false,
+            err_shown: false,
+            answering: false,
+            thinking: false,
             reads: tools::ReadGroup::default(),
+            tasks: HashMap::new(),
+        }
+    }
+
+    /// Whether `out` and `err` show on the same terminal, so they share
+    /// the blank lines between messages.
+    fn shared_screen(&self) -> bool {
+        self.out_terminal && self.colour
+    }
+
+    /// Starts a message on `err` on its own line, after a blank line.
+    fn begin_err(&mut self) {
+        if std::mem::take(&mut self.err_open) | std::mem::take(&mut self.out_open) {
+            let _ = writeln!(self.err);
+        }
+        if self.err_shown || (self.printed && self.shared_screen()) {
+            let _ = writeln!(self.err);
+        }
+        self.err_shown = true;
+        self.answering = false;
+        self.thinking = false;
+    }
+
+    /// Starts a part of the answer after other messages. On a shared
+    /// terminal the blank line goes to `err`, so `out` holds only the answer.
+    fn begin_answer(&mut self) {
+        self.thinking = false;
+        if std::mem::replace(&mut self.answering, true) {
+            return;
+        }
+        if self.shared_screen() {
+            if std::mem::take(&mut self.err_open) | std::mem::take(&mut self.out_open) {
+                let _ = writeln!(self.err);
+            }
+            if self.err_shown || self.printed {
+                let _ = writeln!(self.err);
+            }
+        } else if self.printed {
+            let _ = write!(self.out, "\n\n");
         }
     }
 
@@ -46,10 +96,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         match event {
             AgentEvent::Text(text) => {
                 self.flush_reads();
-                if self.separate {
-                    let _ = write!(self.out, "\n\n");
-                    self.separate = false;
-                }
+                self.begin_answer();
                 if self.out_terminal {
                     let _ = write!(self.out, "{}", highlight::strip_controls(&text));
                 } else {
@@ -57,23 +104,35 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 }
                 let _ = self.out.flush();
                 self.printed = true;
-                self.line_open = !text.ends_with('\n');
+                self.out_open = !text.ends_with('\n');
+            }
+            AgentEvent::Thinking(text) => {
+                self.flush_reads();
+                if !self.thinking {
+                    self.begin_err();
+                    self.thinking = true;
+                }
+                if self.colour {
+                    let _ = write!(self.err, "{}", crate::tui::ansi_thinking(&text));
+                } else {
+                    let _ = write!(self.err, "{}", highlight::strip_controls(&text));
+                }
+                let _ = self.err.flush();
+                self.err_open = !text.ends_with('\n');
             }
             AgentEvent::ToolStart {
                 name,
                 summary,
                 diff,
             } => {
-                self.separate = self.printed;
-                if std::mem::take(&mut self.line_open) {
-                    let _ = writeln!(self.err);
-                }
                 if name == "read" && diff.is_none() {
+                    self.answering = false;
+                    self.thinking = false;
                     self.reads.add(summary);
                     return;
                 }
                 self.flush_reads();
-                self.tool(&name, summary, diff);
+                self.tool(&crate::tui::tool_message(&name, summary, diff));
             }
             AgentEvent::ToolDone {
                 name,
@@ -81,10 +140,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 ..
             } => {
                 self.flush_reads();
-                if std::mem::take(&mut self.line_open) {
-                    let _ = writeln!(self.err);
-                }
-                self.line(&format!("{name} failed: {error}"));
+                self.message(&format!("{name} failed: {error}"));
             }
             AgentEvent::ToolDone {
                 name,
@@ -92,34 +148,38 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 ..
             } => {
                 self.flush_reads();
-                self.line(&format!("{name}: {note}"));
+                self.message(&format!("{name}: {note}"));
             }
             AgentEvent::Notice(text) => {
                 self.flush_reads();
-                self.line(&format!("\n{text}"));
+                self.message(&text);
             }
             AgentEvent::TaskStart { task, description } => {
-                self.task_line(task, &description);
+                self.tasks.insert(task, (description, None));
+            }
+            AgentEvent::TaskStats { task, stats } => {
+                if let Some((_, task_stats)) = self.tasks.get_mut(&task) {
+                    *task_stats = Some(stats);
+                }
             }
             AgentEvent::TaskDone {
                 task,
                 reply,
                 tool_calls,
             } => {
-                self.task_line(task, &tools::agent::tool_calls(tool_calls));
-                if let Err(error) = reply {
-                    let line = error.lines().next().unwrap_or_default();
-                    self.task_line(task, line);
-                }
+                self.flush_reads();
+                let (description, stats) = self.tasks.remove(&task).unwrap_or_default();
+                let failure = reply.err();
+                let text = crate::tui::finished_task(
+                    task,
+                    &description,
+                    tool_calls,
+                    stats.as_ref(),
+                    failure.as_deref(),
+                );
+                self.tool(&text);
             }
             _ => {}
-        }
-    }
-
-    fn task_line(&mut self, task: usize, text: &str) {
-        self.flush_reads();
-        for line in text.lines() {
-            self.line(&format!("  [agent {}] {line}", task + 1));
         }
     }
 
@@ -127,7 +187,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         if !self.reads.is_empty() {
             let summary = self.reads.summary();
             self.reads.clear();
-            self.tool("read", summary, None);
+            self.tool(&crate::tui::tool_message("read", summary, None));
         }
     }
 
@@ -144,23 +204,27 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         Ok(ended?)
     }
 
-    fn tool(&mut self, name: &str, summary: String, diff: Option<String>) {
+    /// Writes a tool call or task as the interface shows it, or as plain
+    /// text when `err` is not a terminal.
+    fn tool(&mut self, text: &str) {
+        self.begin_err();
         if !self.colour {
-            if summary.is_empty() {
-                self.line(name);
-            } else {
-                self.line(&format!("{name} {summary}"));
-            }
-            if let Some(diff) = diff {
-                self.line(&diff);
+            let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
+            self.line(first.trim_end());
+            for line in rest.lines() {
+                self.line(line);
             }
             return;
         }
         let columns = crossterm::terminal::size().ok().map(|(columns, _)| columns);
-        let text = crate::tui::tool_message(name, summary, diff);
-        for line in crate::tui::ansi_tool_lines(&text, self.dark, self.background, columns) {
+        for line in crate::tui::ansi_tool_lines(text, self.dark, self.background, columns) {
             let _ = writeln!(self.err, "{line}");
         }
+    }
+
+    fn message(&mut self, text: &str) {
+        self.begin_err();
+        self.line(text);
     }
 
     fn line(&mut self, text: &str) {
@@ -198,6 +262,70 @@ mod tests {
     fn has_controls(text: &str) -> bool {
         text.chars()
             .any(|c| c.is_control() && c != '\n' && c != '\t')
+    }
+
+    #[test]
+    fn separates_thinking_tool_calls_and_notices_with_blank_lines() {
+        use crate::agent::AgentEvent;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
+        printer.event(AgentEvent::Thinking("let me".into()));
+        printer.event(AgentEvent::Thinking("\tthink".into()));
+        printer.event(AgentEvent::ToolStart {
+            name: "bash".into(),
+            summary: String::new(),
+            diff: Some("ls".into()),
+        });
+        printer.event(AgentEvent::ToolDone {
+            name: "bash".into(),
+            error: Some("boom".into()),
+            note: None,
+        });
+        printer.event(AgentEvent::Notice("note".into()));
+        printer.event(AgentEvent::Text("answer".into()));
+        printer.finish(Ok(())).unwrap();
+        assert_eq!(
+            String::from_utf8(err).unwrap(),
+            "let me\tthink\n\nbash\nls\n\nbash failed: boom\n\nnote\n"
+        );
+        assert_eq!(String::from_utf8(out).unwrap(), "answer\n");
+    }
+
+    #[test]
+    fn shows_thinking_in_grey_italics() {
+        use crate::agent::AgentEvent;
+        let mut err = Vec::new();
+        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true, None);
+        printer.event(AgentEvent::Thinking("hmm\x1b[2J".into()));
+        assert_eq!(
+            String::from_utf8(err).unwrap(),
+            "\x1b[90m\x1b[3mhmm[2J\x1b[0m"
+        );
+    }
+
+    #[test]
+    fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
+        use crate::agent::AgentEvent;
+        let screen = std::cell::RefCell::new(Vec::new());
+        struct Screen<'a>(&'a std::cell::RefCell<Vec<u8>>);
+        impl std::io::Write for Screen<'_> {
+            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+                self.0.borrow_mut().extend_from_slice(bytes);
+                Ok(bytes.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let mut printer = Printer::new(Screen(&screen), true, Screen(&screen), true, true, None);
+        printer.event(AgentEvent::Text("first".into()));
+        printer.event(AgentEvent::Notice("note".into()));
+        printer.event(AgentEvent::Text("second".into()));
+        printer.finish(Ok(())).unwrap();
+        drop(printer);
+        let shown = without_colours(&String::from_utf8(screen.into_inner()).unwrap());
+        assert_eq!(shown, "first\n\nnote\n\nsecond\n");
     }
 
     #[tokio::test]
@@ -402,7 +530,13 @@ mod tests {
         finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "done\n");
         let err = String::from_utf8(err).unwrap();
-        let expected = "agent sequential, 2 tasks\n  [agent 1] say hi\n  [agent 1] 1 tool call\n  [agent 2] say bye\n  [agent 2] 0 tool calls\n  [agent 2] This task failed: 400 Bad Request: ";
-        assert!(err.starts_with(expected), "{err}");
+        assert!(
+            err.starts_with("agent sequential, 2 tasks\n\n[agent 1] say hi · 1 tool call · "),
+            "{err}"
+        );
+        assert!(
+            err.contains("\n\n[agent 2] say bye\n  This task failed: 400 Bad Request: "),
+            "{err}"
+        );
     }
 }
