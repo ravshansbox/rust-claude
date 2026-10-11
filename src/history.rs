@@ -5,15 +5,16 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde_json::{Value, json};
+use serde::{Deserialize, Serialize};
 
 /// How many prompts history.jsonl keeps; older ones are dropped.
 const MAX_ENTRIES: usize = 10_000;
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Entry {
-    pub prompt: String,
+    #[serde(rename = "cwd", default)]
     pub folder: String,
+    pub prompt: String,
 }
 
 impl Entry {
@@ -26,8 +27,7 @@ impl Entry {
     }
 
     fn line(&self) -> Result<String> {
-        let mut line =
-            serde_json::to_string(&json!({ "prompt": self.prompt, "cwd": self.folder }))?;
+        let mut line = serde_json::to_string(self)?;
         line.push('\n');
         Ok(line)
     }
@@ -81,21 +81,11 @@ pub fn append(path: &Path, entry: &Entry) -> Result<()> {
 pub fn load(path: &Path) -> Vec<Entry> {
     // Read bytes, not text, so a line cut short inside a character costs
     // only that line.
-    let bytes = std::fs::read(path).unwrap_or_default();
-    let mut entries: Vec<Entry> = Vec::new();
-    for line in bytes.split(|byte| *byte == b'\n') {
-        let Ok(value) = serde_json::from_slice::<Value>(line) else {
-            continue;
-        };
-        let Some(prompt) = value["prompt"].as_str() else {
-            continue;
-        };
-        entries.push(Entry {
-            prompt: prompt.to_string(),
-            folder: value["cwd"].as_str().unwrap_or_default().to_string(),
-        });
-    }
-    entries
+    std::fs::read(path)
+        .unwrap_or_default()
+        .split(|byte| *byte == b'\n')
+        .filter_map(|line| serde_json::from_slice(line).ok())
+        .collect()
 }
 
 /// Drops all but the newest `MAX_ENTRIES` prompts from the history file when
@@ -161,12 +151,18 @@ mod tests {
         std::fs::OpenOptions::new()
             .append(true)
             .open(&path)
-            .and_then(|mut file| std::io::Write::write_all(&mut file, b"not json\n"))
+            .and_then(|mut file| {
+                std::io::Write::write_all(&mut file, b"not json\n{\"prompt\":\"x\",\"cwd\":1}\n")
+            })
             .unwrap();
-        let entries = newest_unique(&load(&path));
+        let (text, entries) = (
+            std::fs::read_to_string(&path).unwrap(),
+            newest_unique(&load(&path)),
+        );
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         assert_eq!(prompts(&entries), ["three", "one", "two"]);
         let folder = std::env::current_dir().unwrap().display().to_string();
+        assert!(text.starts_with(&format!("{{\"cwd\":{folder:?},\"prompt\":\"one\"}}\n")));
         assert!(entries.iter().all(|entry| entry.folder == folder));
     }
 
