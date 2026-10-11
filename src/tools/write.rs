@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 pub(super) fn definition() -> Value {
     json!({
         "name": "write",
-        "description": "Create or replace a UTF-8 file in the current project",
+        "description": "Create or replace a UTF-8 file in the current folder",
         "input_schema": {
             "type": "object",
             "properties": {
