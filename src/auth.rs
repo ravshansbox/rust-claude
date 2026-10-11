@@ -501,6 +501,10 @@ pub(crate) mod tests {
         });
     }
 
+    async fn answer_overloaded() {
+        answer_token_requests("503 Service Unavailable", json!({ "error": "overloaded" })).await;
+    }
+
     async fn respond(stream: &mut TcpStream, status: &str, body: &Value) {
         let body = body.to_string();
         let response = format!(
@@ -547,7 +551,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn keeps_the_saved_sign_in_when_the_token_endpoint_is_down() {
         let _lock = AUTH_FILE.lock().await;
-        answer_token_requests("503 Service Unavailable", json!({ "error": "overloaded" })).await;
+        answer_overloaded().await;
         let path = credentials_path().unwrap();
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let saved = json!({ "access": "old", "refresh": "first", "expires": 0 }).to_string();
@@ -566,7 +570,7 @@ pub(crate) mod tests {
     #[tokio::test]
     async fn retries_a_renewal_the_server_could_not_answer() {
         let _lock = AUTH_FILE.lock().await;
-        answer_token_requests("503 Service Unavailable", json!({ "error": "overloaded" })).await;
+        answer_overloaded().await;
         let _ = std::fs::remove_file(credentials_path().unwrap());
         let mut credentials = expired("first");
         let error = credentials
@@ -597,7 +601,7 @@ pub(crate) mod tests {
         let http = reqwest::Client::new();
         let mut credentials = expired("first");
         let first = credentials.access_token(&http).await;
-        answer_token_requests("503 Service Unavailable", json!({ "error": "overloaded" })).await;
+        answer_overloaded().await;
         let second = credentials.access_token(&http).await;
         let _ = std::fs::remove_file(&path);
         assert_eq!(first.unwrap(), "new");
