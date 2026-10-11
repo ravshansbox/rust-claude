@@ -127,11 +127,11 @@ pub(super) async fn agent_task(
                 continue;
             }
             Request::ListSessions => {
-                let _ = events.send(UiEvent::Sessions(agent.list_sessions()));
+                let _ = events.send(UiEvent::Sessions(agent.list_sessions().await));
                 continue;
             }
             Request::Resume(id) => {
-                let _ = events.send(UiEvent::Resumed(agent.resume(&id)));
+                let _ = events.send(UiEvent::Resumed(agent.resume(&id).await));
                 let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }

@@ -499,7 +499,7 @@ mod tests {
         let id = agent.session.id.clone();
         drop(agent);
         let mut resumed = test_support::agent(&api, reqwest::Client::new());
-        let loaded = resumed.resume(&id);
+        let loaded = resumed.resume(&id).await;
         test_support::remove_session(&resumed);
         result.unwrap();
         loaded.unwrap();

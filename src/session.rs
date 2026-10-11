@@ -139,10 +139,10 @@ impl Session {
         inline_images(&directory, messages)
     }
 
-    pub fn list_others(&self) -> Result<Vec<SessionSummary>> {
+    pub fn list_except(id: &str) -> Result<Vec<SessionSummary>> {
         let mut summaries = Vec::new();
         for file in session_files(&sessions_directory()?)? {
-            if file.id == self.id {
+            if file.id == id {
                 continue;
             }
             let Ok(preview) = read_preview(&file.path) else {
@@ -704,7 +704,7 @@ mod tests {
         let unreadable = new_uuid().unwrap();
         let path = directory.join(format!("{unreadable}.jsonl"));
         std::fs::write(&path, "not json\n").unwrap();
-        let listed = session.list_others();
+        let listed = Session::list_except(&session.id);
         std::fs::remove_file(&path).unwrap();
         std::fs::remove_file(directory.join(format!("{}.jsonl", readable.id))).unwrap();
         let ids: Vec<String> = listed
