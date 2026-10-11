@@ -19,7 +19,6 @@ use crate::{
 use anyhow::Result;
 use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
-    clipboard::CopyToClipboard,
     event::{
         DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
         EnableFocusChange, EnableMouseCapture, EventStream, KeyboardEnhancementFlags,
@@ -371,7 +370,6 @@ async fn run_loop(
 
     let mut worker_stopped = false;
     let result = loop {
-        let copied_until = app.copied_until;
         tokio::select! {
             joined = &mut worker => {
                 worker_stopped = true;
@@ -386,11 +384,6 @@ async fn run_loop(
                     break Err(error.into());
                 }
                 dirty = false;
-            }
-            _ = tokio::time::sleep_until(copied_until.unwrap_or_else(std::time::Instant::now).into()),
-                if copied_until.is_some() => {
-                app.copied_until = None;
-                dirty = true;
             }
             _ = spinner.tick(), if app.animating() => {
                 app.tick_spinner();
@@ -456,9 +449,6 @@ async fn run_loop(
                     }
                     Action::Cancel => {
                         let _ = cancel_tx.send(());
-                    }
-                    Action::Copy(text) => {
-                        let _ = copy_to_clipboard(terminal.backend_mut(), &text);
                     }
                 });
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
@@ -598,10 +588,6 @@ fn display_model(model: &str) -> &str {
     model.strip_prefix("claude-").unwrap_or(model)
 }
 
-fn copy_to_clipboard(output: &mut impl Write, text: &str) -> std::io::Result<()> {
-    execute!(output, CopyToClipboard::to_clipboard_from(text))
-}
-
 fn notify(output: &mut impl Write, message: &str, tmux: bool) -> std::io::Result<()> {
     let message: String = message.chars().filter(|c| !c.is_control()).collect();
     if tmux {
@@ -614,7 +600,7 @@ fn notify(output: &mut impl Write, message: &str, tmux: bool) -> std::io::Result
 
 #[cfg(test)]
 mod tests {
-    use super::{HeldPanics, InputModes, UiEvent, copy_to_clipboard, history_writer, notify};
+    use super::{HeldPanics, InputModes, UiEvent, history_writer, notify};
     use crate::{agent::AgentEvent, history};
     use std::sync::{Mutex, PoisonError};
 
@@ -699,13 +685,6 @@ mod tests {
         let mut output = Vec::new();
         notify(&mut output, "Done", true).unwrap();
         assert_eq!(output, b"\x1bPtmux;\x1b\x1b]9;Done\x07\x1b\\");
-    }
-
-    #[test]
-    fn copies_text_with_an_osc_52_sequence() {
-        let mut output = Vec::new();
-        copy_to_clipboard(&mut output, "héllo").unwrap();
-        assert_eq!(output, b"\x1b]52;c;aMOpbGxv\x1b\\");
     }
 
     /// Panics on a thread named "agent" while the interface holds panics.

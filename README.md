@@ -99,7 +99,8 @@ Display:
 - Tabs in replies, tool output and `!` command output shown as four spaces
 - Light and dark theme detection
 - Mouse wheel scrolling
-- Drag over the conversation to select text. Releasing the button copies it to the clipboard with an OSC 52 escape sequence, so the terminal must allow OSC 52. Each screen row is copied as its own line. A "Copied" box shows at the top right for 2 seconds
+- Drag over the conversation to quote text. Releasing the button adds it to the input at the cursor, on a new line, with `> ` before each screen row and a blank line after. The `●` and `❯` markers and the indent of prompts and replies are left out
+- To copy text, use your terminal's own selection by holding a key while you drag: Shift in most terminals, Option in iTerm2
 - The view stays still while you read earlier text and a reply streams
 - Spinner with status text
 - Terminal notification when a run ends while the window is not in focus (see [Notifications](#notifications))
