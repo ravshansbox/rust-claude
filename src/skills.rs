@@ -531,6 +531,18 @@ mod tests {
         std::fs::write(path, content).unwrap();
     }
 
+    fn names(loaded: &Skills) -> Vec<&str> {
+        loaded
+            .skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect()
+    }
+
+    fn scopes(loaded: &Skills) -> Vec<Scope> {
+        loaded.skills.iter().map(|skill| skill.scope).collect()
+    }
+
     #[test]
     fn keeps_home_agents_skills_global_when_home_is_a_symlink() {
         let root = temp_dir("symlinked-home");
@@ -547,8 +559,7 @@ mod tests {
             Some(&home),
             &real_home,
         );
-        let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
-        assert_eq!(scopes, [Scope::Global]);
+        assert_eq!(scopes(&loaded), [Scope::Global]);
         let _ = std::fs::remove_dir_all(root);
     }
 
@@ -581,16 +592,13 @@ mod tests {
         );
 
         let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &cwd);
-        let names: Vec<&str> = loaded
-            .skills
-            .iter()
-            .map(|skill| skill.name.as_str())
-            .collect();
-        assert_eq!(names, ["alpha", "beta", "gamma"]);
+        assert_eq!(names(&loaded), ["alpha", "beta", "gamma"]);
         assert_eq!(loaded.skills[0].description, "Project alpha.");
         assert_eq!(loaded.skills[2].description, "Folded text.");
-        let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
-        assert_eq!(scopes, [Scope::Project, Scope::Project, Scope::Global]);
+        assert_eq!(
+            scopes(&loaded),
+            [Scope::Project, Scope::Project, Scope::Global]
+        );
         assert_eq!(
             loaded.diagnostics,
             [Diagnostic::Collision {
@@ -616,12 +624,7 @@ mod tests {
         );
         let loaded = load_from(None, None, &cwd);
         let _ = std::fs::remove_dir_all(&root);
-        let names: Vec<&str> = loaded
-            .skills
-            .iter()
-            .map(|skill| skill.name.as_str())
-            .collect();
-        assert_eq!(names, ["inside"]);
+        assert_eq!(names(&loaded), ["inside"]);
     }
 
     #[test]
@@ -633,8 +636,7 @@ mod tests {
         );
         let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &home);
         let _ = std::fs::remove_dir_all(&home);
-        let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
-        assert_eq!(scopes, [Scope::Global]);
+        assert_eq!(scopes(&loaded), [Scope::Global]);
     }
 
     #[test]
@@ -658,12 +660,7 @@ mod tests {
         );
 
         let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &cwd);
-        let names: Vec<&str> = loaded
-            .skills
-            .iter()
-            .map(|skill| skill.name.as_str())
-            .collect();
-        assert_eq!(names, ["My Notes", "commit", "review"]);
+        assert_eq!(names(&loaded), ["My Notes", "commit", "review"]);
         assert!(loaded.diagnostics.iter().all(|diagnostic| matches!(
             diagnostic,
             Diagnostic::Warning { path, .. } if *path == skills.join("My Notes.md")
