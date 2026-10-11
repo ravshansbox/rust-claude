@@ -138,13 +138,17 @@ impl Agent {
             slots.push(Usage::default());
             slots.len() - 1
         });
+        let count = move |counted: Usage| {
+            if let Ok(mut slots) = usage.lock()
+                && let Some(slot) = slots.get_mut(slot)
+            {
+                *slot = counted;
+            }
+        };
+        let count_failed = count.clone();
         let callback: Callback = Box::new(move |event| {
             if let AgentEvent::Stats(stats) = &event {
-                if let Ok(mut slots) = usage.lock()
-                    && let Some(counted) = slots.get_mut(slot)
-                {
-                    *counted = stats.usage;
-                }
+                count(stats.usage);
                 let _ = events.send(event);
             } else if matches!(
                 event,
@@ -159,7 +163,11 @@ impl Agent {
                 });
             }
         });
-        child.run(&prompt, &[], callback).await.map_err(failed)?;
+        if let Err(error) = child.run(&prompt, &[], callback).await {
+            child.discard_from(child.messages.len(), "error", false);
+            count_failed(child.stats().usage);
+            return Err(failed(error));
+        }
         Ok(final_reply(&child.messages))
     }
 }
@@ -502,6 +510,25 @@ mod tests {
         assert_eq!(resumed.stats().context_tokens, context_tokens);
         let requests = api.requests().await;
         assert!(!requests[3]["messages"].to_string().contains("usage"));
+    }
+
+    #[tokio::test]
+    async fn counts_the_tokens_of_a_subagent_that_failed() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({ "mode": "parallel", "tasks": [task("first", "one")] }),
+            ),
+            test_support::stopped_reply("partial", "refusal"),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let result = agent.prompt("go", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert_eq!(agent.stats().usage.input, 3);
     }
 
     #[tokio::test]
