@@ -272,41 +272,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn highlights_python_code() {
-        let api = MockApi::start(vec![
-            tool_reply(
-                "call-1",
-                "python",
-                json!({ "code": "def f():\n    return 1\nprint(f())" }),
-            ),
-            text_reply("done"),
-        ])
-        .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let mut err = Vec::new();
-        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
-        let finished = printer.finish(result);
-        test_support::remove_session(&agent);
-        finished.unwrap();
-        let err = String::from_utf8(err).unwrap();
-        let plain = without_colours(&err);
-        assert!(
-            plain.contains("python\n def f():\n  return 1\n print(f())\n"),
-            "{plain:?}"
-        );
-        let definition = err.lines().find(|line| line.contains("def")).unwrap();
-        assert!(
-            definition.matches("\x1b[38;2;").count() > 1,
-            "{definition:?}"
-        );
-    }
-
-    #[tokio::test]
     async fn uses_github_high_contrast_colours() {
         for (dark, keyword) in [(true, "255;148;146"), (false, "160;17;31")] {
             let api = MockApi::start(vec![
-                tool_reply("call-1", "python", json!({ "code": "def f():\n    pass" })),
+                tool_reply(
+                    "call-1",
+                    "bash",
+                    json!({ "command": "python3 - <<'EOF'\ndef f():\n    pass\nEOF" }),
+                ),
                 text_reply("done"),
             ])
             .await;
@@ -470,7 +443,11 @@ mod tests {
                     "tasks": [{ "description": "run python", "prompt": "run it" }],
                 }),
             ),
-            tool_reply("call-2", "python", json!({ "code": "def f():\n    pass" })),
+            tool_reply(
+                "call-2",
+                "bash",
+                json!({ "command": "python3 - <<'EOF'\ndef f():\n    pass\nEOF" }),
+            ),
             text_reply("ran"),
             text_reply("done"),
         ])

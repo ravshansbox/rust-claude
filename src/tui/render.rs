@@ -387,28 +387,6 @@ mod tests {
     }
 
     #[test]
-    fn highlights_python_code() {
-        let input = serde_json::json!({ "code": "def f():\n    return 1" });
-        let message = tool_message(
-            "python",
-            crate::tools::summary("python", &input),
-            crate::tools::diff("python", &input),
-        );
-        let lines = render_message(Role::Tool, &message, 40);
-        let texts: Vec<String> = lines
-            .iter()
-            .map(|line| line.to_string().trim_end().to_string())
-            .collect();
-        assert_eq!(texts, [" python", " def f():", "  return 1"]);
-        let colours: std::collections::HashSet<_> = lines[1]
-            .spans
-            .iter()
-            .filter_map(|span| span.style.fg)
-            .collect();
-        assert!(colours.len() > 1, "{:?}", lines[1]);
-    }
-
-    #[test]
     fn highlights_bash_commands() {
         let input = serde_json::json!({ "command": "echo \"$HOME\" | wc -c" });
         let message = tool_message(
