@@ -423,6 +423,7 @@ pub(super) struct App {
     pub(super) selection: Option<Selection>,
     /// Where the conversation was last drawn, and its first row shown.
     pub(super) conversation_area: Rect,
+    pub(super) bottom_button: Rect,
     pub(super) conversation_top: usize,
     version_line: String,
     version_message: Option<usize>,
@@ -532,6 +533,7 @@ impl App {
             mcp_groups: Vec::new(),
             selection: None,
             conversation_area: Rect::default(),
+            bottom_button: Rect::default(),
             conversation_top: 0,
             version_line: VERSION_LINE.into(),
             version_message: None,
