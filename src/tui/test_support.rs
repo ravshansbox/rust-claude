@@ -1,19 +1,11 @@
 use super::keys::{Action, handle_input};
 use super::{App, Role, draw::draw};
-use crate::agent::{Quota, Stats, Usage};
+use crate::agent::Stats;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
 
 pub(super) fn new_app() -> App {
-    let stats = Stats {
-        usage: Usage::default(),
-        cache_hit_rate: None,
-        tokens_per_second: None,
-        context_tokens: None,
-        context_window: 0,
-        quota: Quota::default(),
-    };
-    App::new("model", "medium", stats)
+    App::new("model", "medium", Stats::default())
 }
 
 pub(super) fn press(app: &mut App, code: KeyCode) -> String {
