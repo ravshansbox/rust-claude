@@ -434,22 +434,21 @@ pub(super) async fn begin(
     let state = random_token().map_err(|error| error.to_string())?;
     let verifier = random_token().map_err(|error| error.to_string())?;
     let challenge = crate::auth::pkce_challenge(&verifier);
-    let mut authorize_url = reqwest::Url::parse(&discovered.authorization_endpoint)
-        .map_err(|error| format!("invalid authorization endpoint: {error}"))?;
-    {
-        let mut query = authorize_url.query_pairs_mut();
-        query
-            .append_pair("response_type", "code")
-            .append_pair("client_id", &client_id)
-            .append_pair("redirect_uri", &redirect_uri)
-            .append_pair("code_challenge", &challenge)
-            .append_pair("code_challenge_method", "S256")
-            .append_pair("state", &state)
-            .append_pair("resource", &discovered.resource);
-        if let Some(scope) = &discovered.scope {
-            query.append_pair("scope", scope);
-        }
-    }
+    let authorize_url = reqwest::Url::parse_with_params(
+        &discovered.authorization_endpoint,
+        [
+            ("response_type", "code"),
+            ("client_id", &client_id),
+            ("redirect_uri", &redirect_uri),
+            ("code_challenge", &challenge),
+            ("code_challenge_method", "S256"),
+            ("state", &state),
+            ("resource", &discovered.resource),
+        ]
+        .into_iter()
+        .chain(discovered.scope.as_deref().map(|scope| ("scope", scope))),
+    )
+    .map_err(|error| format!("invalid authorization endpoint: {error}"))?;
     Ok(Pending {
         authorize_url: authorize_url.to_string(),
         client: client.clone(),
