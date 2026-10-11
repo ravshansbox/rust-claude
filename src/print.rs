@@ -444,7 +444,7 @@ mod tests {
         let err = String::from_utf8(err).unwrap();
         let lines: Vec<&str> = err.lines().take(2).collect();
         assert!(
-            lines[0].starts_with("\x1b[0m\x1b[48;2;50;50;50m\x1b[38;2;220;220;220m bash "),
+            lines[0].starts_with("\x1b[0m\x1b[48;2;50;50;50m\x1b[38;2;220;220;220m\x1b[1m bash "),
             "{lines:?}"
         );
         for line in &lines {
