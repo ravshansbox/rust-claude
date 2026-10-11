@@ -2137,13 +2137,6 @@ done
         assert_eq!(sessions_used("tools/call"), ["s1", "s2"]);
     }
 
-    fn now_millis() -> u128 {
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis()
-    }
-
     /// Answers like `http_mcp`, but only with the access token `fresh`, and
     /// renews the refresh token `r1` at `/token`.
     fn signed_in_mcp(request: &HttpRequest) -> HttpReply {
@@ -2189,7 +2182,7 @@ done
     #[tokio::test]
     async fn renews_oauth_tokens_that_an_http_server_turns_down() {
         let (url, requests) = http_server(signed_in_mcp).await;
-        save_tokens(&url, "stale", now_millis() + 3_600_000);
+        save_tokens(&url, "stale", oauth::now_millis() + 3_600_000);
         let mut mcp = Mcp::default();
         assert_eq!(
             mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
@@ -2213,7 +2206,7 @@ done
     #[tokio::test]
     async fn renews_expired_oauth_tokens_before_sending_them() {
         let (url, requests) = http_server(signed_in_mcp).await;
-        save_tokens(&url, "stale", now_millis() - 1);
+        save_tokens(&url, "stale", oauth::now_millis() - 1);
         let mut mcp = Mcp::default();
         assert_eq!(
             mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
@@ -2498,7 +2491,7 @@ done
     #[tokio::test]
     async fn signs_out_of_an_http_server() {
         let (url, _) = http_server(signed_in_mcp).await;
-        save_tokens(&url, "fresh", now_millis() + 3_600_000);
+        save_tokens(&url, "fresh", oauth::now_millis() + 3_600_000);
         assert_eq!(
             sign_out_with("web", &http_config(&url)),
             Ok("signed out of MCP server web".into())
