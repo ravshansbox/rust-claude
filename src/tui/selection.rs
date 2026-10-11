@@ -80,18 +80,13 @@ impl App {
 
     fn quote(&mut self, text: &str) {
         let before = &self.input[..self.cursor];
-        let mut quote = if before.is_empty() || before.ends_with('\n') {
-            String::new()
+        let space = if before.is_empty() || before.ends_with(char::is_whitespace) {
+            ""
         } else {
-            "\n".to_string()
+            " "
         };
-        for line in text.lines() {
-            quote.push_str(if line.is_empty() { ">" } else { "> " });
-            quote.push_str(line);
-            quote.push('\n');
-        }
-        quote.push('\n');
-        self.insert(&quote);
+        let text = text.lines().collect::<Vec<_>>().join("\n");
+        self.insert(&format!("{space}'{text}' - "));
     }
 
     /// Whether each conversation row from `start` to `end` starts with the
@@ -242,7 +237,7 @@ mod tests {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
         let input = drag(&mut app, (column, row), (column + 6, row));
-        assert_eq!(input, "> Earlier\n\n");
+        assert_eq!(input, "'Earlier' - ");
         assert_eq!(app.cursor, input.len());
     }
 
@@ -251,7 +246,7 @@ mod tests {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
         let input = drag(&mut app, (column + 12, row), (column + 8, row));
-        assert_eq!(input, "> reply\n\n");
+        assert_eq!(input, "'reply' - ");
     }
 
     #[test]
@@ -261,7 +256,7 @@ mod tests {
         let (column, row) = position(&mut app, "reply");
         let (end_column, end_row) = position(&mut app, "second message");
         let input = drag(&mut app, (column, row), (end_column + 5, end_row));
-        assert_eq!(input, "> reply\n>\n> second\n\n");
+        assert_eq!(input, "'reply\n\nsecond' - ");
     }
 
     #[test]
@@ -271,7 +266,7 @@ mod tests {
         let (column, row) = position(&mut app, "Earlier reply");
         let (end_column, end_row) = position(&mut app, "❯ my prompt");
         let input = drag(&mut app, (column, row), (end_column + 10, end_row));
-        assert_eq!(input, "> Earlier reply\n>\n> my prompt\n\n");
+        assert_eq!(input, "'Earlier reply\n\nmy prompt' - ");
     }
 
     #[test]
@@ -280,18 +275,27 @@ mod tests {
         app.push(Role::Event, "    spaced");
         let (column, row) = position(&mut app, "    spaced");
         let input = drag(&mut app, (column, row), (column + 9, row));
-        assert_eq!(input, ">     spaced\n\n");
+        assert_eq!(input, "'    spaced' - ");
     }
 
     #[test]
-    fn quotes_at_the_cursor_on_a_new_line() {
+    fn quotes_at_the_cursor_after_a_space() {
         let mut app = app_with_reply();
         app.insert("before after");
         app.cursor = "before".len();
         let (column, row) = position(&mut app, "Earlier reply");
         let input = drag(&mut app, (column, row), (column + 6, row));
-        assert_eq!(input, "before\n> Earlier\n\n after");
-        assert_eq!(app.cursor, "before\n> Earlier\n\n".len());
+        assert_eq!(input, "before 'Earlier' -  after");
+        assert_eq!(app.cursor, "before 'Earlier' - ".len());
+    }
+
+    #[test]
+    fn quotes_after_a_space_without_adding_another() {
+        let mut app = app_with_reply();
+        app.insert("before ");
+        let (column, row) = position(&mut app, "Earlier reply");
+        let input = drag(&mut app, (column, row), (column + 6, row));
+        assert_eq!(input, "before 'Earlier' - ");
     }
 
     #[test]
@@ -313,7 +317,7 @@ mod tests {
         app.push(Role::Event, "日本語 text");
         let (column, row) = position(&mut app, "text");
         let input = drag(&mut app, (column - 7, row), (column + 3, row));
-        assert_eq!(input, "> 日本語 text\n\n");
+        assert_eq!(input, "'日本語 text' - ");
     }
 
     #[test]
