@@ -38,6 +38,12 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
             _ => return Err("limit must be at least 1".into()),
         },
     };
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|error| format!("failed to read {path}: {error}"))?;
+    if !metadata.is_file() {
+        return Err(format!("{path} is not a regular file"));
+    }
     let file = PathBuf::from(path);
     let read = tokio::task::spawn_blocking(move || {
         read_lines(BufReader::new(File::open(file)?), offset, limit)
@@ -167,21 +173,15 @@ mod tests {
         assert_eq!(last_line, Ok("two\n".into()));
     }
 
+    #[cfg(unix)]
     #[tokio::test]
-    async fn reads_first_lines_without_waiting_for_the_rest() {
+    async fn refuses_pipes_and_devices() {
         let fifo = TemporaryFile::fifo("read-fifo");
-        let path = fifo.path().to_path_buf();
-        let (done, finished) = std::sync::mpsc::channel::<()>();
-        let writer = std::thread::spawn(move || {
-            use std::io::Write;
-            let mut file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
-            file.write_all(b"one\ntwo\n").unwrap();
-            let _ = finished.recv();
-        });
-        let input = json!({ "path": fifo.path(), "limit": 1 });
-        let read = tokio::time::timeout(Duration::from_secs(5), call("read", &input)).await;
-        done.send(()).unwrap();
-        writer.join().unwrap();
-        assert_eq!(read, Ok(Ok("one\n".into())));
+        let fifo = fifo.path().to_str().unwrap();
+        for path in [fifo, "/dev/zero"] {
+            let input = json!({ "path": path, "offset": 2 });
+            let read = tokio::time::timeout(Duration::from_secs(5), call("read", &input)).await;
+            assert_eq!(read, Ok(Err(format!("{path} is not a regular file"))));
+        }
     }
 }

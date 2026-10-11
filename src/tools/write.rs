@@ -19,6 +19,11 @@ pub(super) fn definition() -> Value {
 pub(super) async fn run(input: &Value) -> Result<String, String> {
     let path = argument(input, "path")?;
     let content = argument(input, "content")?;
+    if let Ok(metadata) = tokio::fs::metadata(path).await
+        && !metadata.is_file()
+    {
+        return Err(format!("{path} is not a regular file"));
+    }
     if let Some(parent) = std::path::Path::new(path).parent()
         && !parent.as_os_str().is_empty()
     {
@@ -39,6 +44,7 @@ mod tests {
         test_support::{TemporaryDir, TemporaryFile},
     };
     use serde_json::json;
+    use std::time::Duration;
 
     #[tokio::test]
     async fn writes_file_in_new_directory() {
@@ -188,17 +194,15 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn writes_into_named_pipe() {
+    async fn refuses_to_write_into_pipes_and_devices() {
         use std::os::unix::fs::FileTypeExt;
         let fifo = TemporaryFile::fifo("write-fifo");
-        let path = fifo.path().to_owned();
-        // Opening the pipe waits for the other end, so read it on another thread.
-        let reader = std::thread::spawn(move || std::fs::read_to_string(path).unwrap());
-        let input = json!({ "path": fifo.path(), "content": "new" });
-        let result = call("write", &input).await;
-        let read = reader.join().unwrap();
-        assert_eq!(result, Ok(format!("wrote {}", fifo.path().display())));
-        assert_eq!(read, "new");
+        let fifo_path = fifo.path().to_str().unwrap();
+        for path in [fifo_path, "/dev/null"] {
+            let input = json!({ "path": path, "content": "new" });
+            let result = tokio::time::timeout(Duration::from_secs(5), call("write", &input)).await;
+            assert_eq!(result, Ok(Err(format!("{path} is not a regular file"))));
+        }
         let file_type = std::fs::symlink_metadata(fifo.path()).unwrap().file_type();
         assert!(file_type.is_fifo());
     }
