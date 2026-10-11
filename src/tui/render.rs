@@ -2,6 +2,7 @@ use super::{
     Role,
     input::{expand_tabs, input_rows},
 };
+use crate::highlight::Colour;
 use ratatui::{
     buffer::CellWidth,
     style::{Color, Style, Stylize},
@@ -17,15 +18,40 @@ pub(super) enum Theme {
 }
 
 impl Theme {
-    pub(super) fn detect() -> Self {
-        match terminal_colorsaurus::theme_mode(terminal_colorsaurus::QueryOptions::default()) {
-            Ok(terminal_colorsaurus::ThemeMode::Light) => Self::Light,
-            Ok(terminal_colorsaurus::ThemeMode::Dark) => Self::Dark,
-            Err(_) => std::env::var("COLORFGBG")
-                .ok()
-                .and_then(|value| Self::from_colorfgbg(&value))
-                .unwrap_or(Self::Light),
+    pub(super) fn detect() -> (Self, Option<Colour>) {
+        match terminal_colorsaurus::color_palette(terminal_colorsaurus::QueryOptions::default()) {
+            Ok(palette) => (
+                match palette.theme_mode() {
+                    terminal_colorsaurus::ThemeMode::Light => Self::Light,
+                    terminal_colorsaurus::ThemeMode::Dark => Self::Dark,
+                },
+                Some(palette.background.scale_to_8bit()),
+            ),
+            Err(_) => (
+                std::env::var("COLORFGBG")
+                    .ok()
+                    .and_then(|value| Self::from_colorfgbg(&value))
+                    .unwrap_or(Self::Light),
+                None,
+            ),
         }
+    }
+
+    fn near_background(self, background: Option<Colour>) -> Colour {
+        let shift = |channel: u8| match self {
+            Self::Light => channel.saturating_sub(12),
+            Self::Dark => channel.saturating_add(12),
+        };
+        let (red, green, blue) = background.unwrap_or(match self {
+            Self::Light => (255, 255, 255),
+            Self::Dark => (23, 23, 23),
+        });
+        (shift(red), shift(green), shift(blue))
+    }
+
+    fn tool_style(self) -> Style {
+        let (red, green, blue) = self.near_background(BACKGROUND.get().copied().flatten());
+        Style::new().bg(Color::Rgb(red, green, blue))
     }
 
     fn from_colorfgbg(value: &str) -> Option<Self> {
@@ -67,6 +93,7 @@ impl Theme {
 }
 
 pub(super) static THEME: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
+pub(super) static BACKGROUND: std::sync::OnceLock<Option<Colour>> = std::sync::OnceLock::new();
 
 pub(super) fn theme() -> Theme {
     THEME.get().copied().unwrap_or(Theme::Light)
@@ -101,7 +128,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
             .lines()
             .map(|line| Line::from(expand_tabs(line.to_string()).dark_gray().italic()))
             .collect(),
-        Role::Tool => tool_message_lines(text),
+        Role::Tool => tool_message_lines(text, width),
         Role::Event => text
             .lines()
             .map(|line| Line::raw(expand_tabs(line.to_string())))
@@ -134,26 +161,44 @@ pub(super) fn tool_message(name: &str, summary: String, diff: Option<String>) ->
     }
 }
 
-fn tool_message_lines(text: &str) -> Vec<Line<'static>> {
-    let Some((first, body)) = text.split_once('\n') else {
-        return vec![tool_header(text)];
+fn tool_message_lines(text: &str, width: u16) -> Vec<Line<'static>> {
+    let (first, body) = match text.split_once('\n') {
+        Some((first, body)) => (first, Some(body)),
+        None => (text, None),
     };
     let (name, path) = first.split_once(' ').unwrap_or((first, ""));
     let mut lines = vec![tool_header(first)];
     let dark = matches!(theme(), Theme::Dark);
-    if let Some(highlighted) = crate::highlight::highlight_tool(name, path, body, dark) {
-        lines.extend(
-            highlighted
-                .into_iter()
-                .map(|line| highlighted_line(line, dark)),
-        );
-    } else {
-        lines.extend(
-            body.lines()
-                .map(|line| Line::raw(expand_tabs(line.to_string()))),
-        );
+    if let Some(body) = body {
+        match crate::highlight::highlight_tool(name, path, body, dark) {
+            Some(highlighted) => lines.extend(
+                highlighted
+                    .into_iter()
+                    .map(|line| highlighted_line(line, dark)),
+            ),
+            None => lines.extend(
+                body.lines()
+                    .map(|line| Line::raw(expand_tabs(line.to_string()))),
+            ),
+        }
     }
+    let width = usize::from(width.max(1));
+    let background = theme().tool_style();
     lines
+        .iter()
+        .flat_map(|line| {
+            let style = background.patch(line.style);
+            wrapped_rows(line, width).into_iter().map(move |row| {
+                let used: usize = row
+                    .iter()
+                    .map(|(grapheme, _)| usize::from(grapheme.cell_width()))
+                    .sum();
+                let mut spans = joined_spans(row);
+                spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
+                Line::from(spans).style(style)
+            })
+        })
+        .collect()
 }
 
 fn tool_header(first: &str) -> Line<'static> {
@@ -224,6 +269,21 @@ pub(super) fn indented_rows(
     first_prefix: &'static str,
 ) -> Vec<Line<'static>> {
     let width = usize::from(width.saturating_sub(INDENT_WIDTH).max(1));
+    wrapped_rows(line, width)
+        .into_iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let prefix = if index == 0 { first_prefix } else { INDENT };
+            let mut spans = joined_spans(row);
+            spans.insert(0, Span::raw(prefix));
+            Line::from(spans).style(line.style)
+        })
+        .collect()
+}
+
+/// The line's graphemes and their styles in rows of at most `width`
+/// columns, broken at word boundaries where a word fits on a row.
+fn wrapped_rows<'a>(line: &'a Line<'_>, width: usize) -> Vec<Vec<(&'a str, Style)>> {
     let graphemes: Vec<(&str, Style)> = line
         .spans
         .iter()
@@ -272,21 +332,18 @@ pub(super) fn indented_rows(
             row_width += grapheme_width;
         }
     }
-    rows.into_iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let prefix = if index == 0 { first_prefix } else { INDENT };
-            let mut spans: Vec<Span<'static>> = Vec::new();
-            for (grapheme, style) in row {
-                match spans.last_mut() {
-                    Some(span) if span.style == style => span.content.to_mut().push_str(grapheme),
-                    _ => spans.push(Span::styled(grapheme.to_string(), style)),
-                }
-            }
-            spans.insert(0, Span::raw(prefix));
-            Line::from(spans).style(line.style)
-        })
-        .collect()
+    rows
+}
+
+fn joined_spans(row: Vec<(&str, Style)>) -> Vec<Span<'static>> {
+    let mut spans: Vec<Span<'static>> = Vec::new();
+    for (grapheme, style) in row {
+        match spans.last_mut() {
+            Some(span) if span.style == style => span.content.to_mut().push_str(grapheme),
+            _ => spans.push(Span::styled(grapheme.to_string(), style)),
+        }
+    }
+    spans
 }
 
 pub(super) fn wrapped_height(line: &Line, width: u16) -> usize {
@@ -409,6 +466,40 @@ mod tests {
             .filter_map(|span| span.style.fg)
             .collect();
         assert!(colours.len() > 1, "{:?}", lines[1]);
+    }
+
+    #[test]
+    fn fills_tool_call_rows_with_a_background_near_the_terminal_one() {
+        use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+        let text = "! make\n\tcc main.c\nthis line is longer than twenty columns";
+        let lines = render_message(Role::Tool, text, 20);
+        let area = Rect::new(0, 0, 20, 4);
+        let mut buffer = Buffer::empty(area);
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: false })
+            .render(area, &mut buffer);
+        let near = Color::Rgb(243, 243, 243);
+        for y in 0..4 {
+            let first = if y == 0 { 3 } else { 0 };
+            for x in first..20 {
+                assert_eq!(buffer[(x, y)].bg, near, "{x},{y} in {buffer:?}");
+            }
+        }
+        assert_eq!(buffer[(0, 0)].bg, Color::Rgb(230, 230, 230));
+    }
+
+    #[test]
+    fn shifts_the_terminal_background_towards_the_text() {
+        assert_eq!(
+            Theme::Dark.near_background(Some((30, 30, 30))),
+            (42, 42, 42)
+        );
+        assert_eq!(
+            Theme::Light.near_background(Some((255, 250, 5))),
+            (243, 238, 0)
+        );
+        assert_eq!(Theme::Dark.near_background(None), (35, 35, 35));
+        assert_eq!(Theme::Light.near_background(None), (243, 243, 243));
     }
 
     #[test]

@@ -246,7 +246,8 @@ fn depends_on_width(role: Role, text: &str) -> bool {
     match role {
         Role::User => true,
         Role::Assistant => has_table(text),
-        Role::Thinking | Role::Tool | Role::Event => false,
+        Role::Tool => true,
+        Role::Thinking | Role::Event => false,
     }
 }
 
@@ -1384,7 +1385,7 @@ mod tests {
             (
                 Role::Tool,
                 "edit src/main.rs\n-fn old() {}\n+fn new() { println!(\"a line long enough to wrap\"); }",
-                false,
+                true,
             ),
             (Role::Event, "an event line long enough to wrap", false),
             (Role::Thinking, "thinking about something long", false),
