@@ -315,7 +315,7 @@ impl Agent {
                 "role": "assistant",
                 "stop_reason": stop_reason,
                 "content": [],
-                "usage": lost.to_json(),
+                "usage": lost,
             }));
         }
     }
@@ -348,7 +348,7 @@ impl Agent {
             let mut message = json!({ "role": "user", "content": results });
             let usage = self.running_subagent_usage();
             if usage.input + usage.output + usage.cache_read + usage.cache_write > 0 {
-                message["usage"] = usage.to_json();
+                message["usage"] = json!(usage);
             }
             self.messages.push(message);
         }

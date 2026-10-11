@@ -1,7 +1,9 @@
 use anyhow::{Result, bail};
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Usage {
     pub input: u64,
     pub cache_read: u64,
@@ -19,23 +21,13 @@ impl Usage {
         self.duration_ms += other.duration_ms;
     }
 
-    pub(super) fn to_json(self) -> Value {
-        json!({
-            "input": self.input,
-            "output": self.output,
-            "cache_read": self.cache_read,
-            "cache_write": self.cache_write,
-            "duration_ms": self.duration_ms,
-        })
-    }
-
     /// Stores a reply's usage with that of its retried attempts nested
     /// under `retried`, which only totals count: the context size, cache
     /// hit rate and speed come from the attempt that produced the reply.
     pub(super) fn to_json_with_retried(self, retried: Usage) -> Value {
-        let mut value = self.to_json();
+        let mut value = json!(self);
         if retried.input + retried.output + retried.cache_read + retried.cache_write > 0 {
-            value["retried"] = retried.to_json();
+            value["retried"] = json!(retried);
         }
         value
     }
@@ -55,13 +47,7 @@ impl Usage {
     }
 
     pub(super) fn from_json(value: &Value) -> Self {
-        Self {
-            input: value["input"].as_u64().unwrap_or(0),
-            output: value["output"].as_u64().unwrap_or(0),
-            cache_read: value["cache_read"].as_u64().unwrap_or(0),
-            cache_write: value["cache_write"].as_u64().unwrap_or(0),
-            duration_ms: value["duration_ms"].as_u64().unwrap_or(0),
-        }
+        Self::deserialize(value).unwrap_or_default()
     }
 }
 
@@ -199,7 +185,7 @@ pub(super) async fn fetch_quota(
 
 #[cfg(test)]
 mod tests {
-    use super::{Quota, cache_hit_rate, parse_timestamp, tokens_per_second};
+    use super::{Quota, Usage, cache_hit_rate, parse_timestamp, tokens_per_second, total_usage};
     use serde_json::json;
 
     #[test]
@@ -253,6 +239,17 @@ mod tests {
             }),
         ];
         assert_eq!(cache_hit_rate(&messages), Some(90.0));
+    }
+
+    #[test]
+    fn stores_usage_and_reads_a_bad_one_as_zero() {
+        let stored =
+            json!({ "input": 1, "output": 2, "cache_read": 3, "cache_write": 4, "duration_ms": 5 });
+        let usage = total_usage(&[
+            json!({ "usage": stored }),
+            json!({ "usage": { "input": 7, "output": "x" } }),
+        ]);
+        assert_eq!(usage.to_json_with_retried(Usage::default()), stored);
     }
 
     #[test]
