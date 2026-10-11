@@ -406,7 +406,7 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
     (Some(skill), diagnostics)
 }
 
-fn escape_xml(text: &str) -> String {
+pub(crate) fn escape_xml(text: &str) -> String {
     text.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

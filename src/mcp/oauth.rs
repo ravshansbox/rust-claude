@@ -472,10 +472,7 @@ pub(super) async fn begin(
 const SIGNED_IN_PAGE: &str = "<!doctype html><title>rust-coding-agent</title><p>Signed in. You can close this tab and go back to rust-coding-agent.</p>";
 
 fn failed_page(reason: &str) -> String {
-    let reason = reason
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;");
+    let reason = crate::skills::escape_xml(reason);
     format!("<!doctype html><title>rust-coding-agent</title><p>Sign-in failed: {reason}</p>")
 }
 
