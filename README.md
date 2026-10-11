@@ -19,7 +19,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - `AGENTS.md` instructions and [Agent Skills](https://agentskills.io/specification)
 - MCP servers over stdio or Streamable HTTP, with OAuth sign-in
 - Retries for rate limits, overload and connection errors
-- Background updates, with what's new shown after each one
+- Background updates
 
 ## Install
 
@@ -34,8 +34,6 @@ curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-coding-agent/main/
 **Upgrade or reinstall:** run the same command again.
 
 **Updates:** when the interface starts, rust-coding-agent checks the [latest release](https://github.com/ravshansbox/rust-coding-agent/releases/latest) in the background, every time. If it is newer, rust-coding-agent adds each step to the version line while it builds and installs it with `cargo install` in the background, adding the `rca` link if it is missing, so you can keep working. When a step finishes, it shows how long the step took, for example `rust-coding-agent v0.1.0 · update v0.2.0 available · downloaded in 3s · built in 2m 5s · installed, restart rust-coding-agent to use it`. Each release is signed with [minisign](https://jedisct1.github.io/minisign/), and rust-coding-agent builds it only if `rust-coding-agent.zip.minisig` shows that the release key signed it. Otherwise it shows an error, such as `the signature of rust-coding-agent.zip is not valid`, and installs nothing. The signature's trusted comment must also name the version being installed, for example `rust-coding-agent v0.2.0`, so an older signed release cannot be passed off as a newer one. Otherwise it shows an error such as `rust-coding-agent.zip is signed as rust-coding-agent v0.2.0, not v0.3.0`. The public key is `RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8`. If `cargo` is not on `PATH`, it shows a warning instead. A failed step shows how long it ran and the first error, for example `build failed after 1m 10s: error: could not compile`. It downloads and unpacks each release in `~/.rust-coding-agent/updates` (or `updates` in the `--config-dir` folder), not in a shared temporary folder, and deletes it afterwards. Builds go in `~/.rust-coding-agent/build` (or `build` in the `--config-dir` folder), so later updates reuse the dependencies that did not change and build faster. When `rustc -vV` reports a different compiler, rust-coding-agent empties that folder first, because cargo cannot reuse the old files. To free the space, delete the folder. A failed check, for example when offline, shows nothing. Debug builds, such as from `cargo run`, and builds from `main` (`v0.0.0`) do not check. To turn the check off, set `check_for_updates` to `false` in `settings.json`.
-
-**What's new:** rust-coding-agent saves its version as `last_version` in `settings.json`. On the first launch after an update, it shows the [release notes](https://github.com/ravshansbox/rust-coding-agent/releases) of the new version, for example `what's new in v0.2.0:` followed by its changes. The first launch after installing shows nothing, because there is no earlier version to compare with. A failed check shows nothing. It follows the same rules as the update check, so debug builds, builds from `main`, and `check_for_updates` set to `false` turn it off.
 
 **Uninstall:**
 

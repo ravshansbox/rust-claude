@@ -64,7 +64,6 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Update(progress) => app.show_update(&progress),
-        UiEvent::WhatsNew(notes) => app.push(Role::Event, notes),
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {
@@ -351,18 +350,6 @@ mod tests {
             version < shown.find("loaded AGENTS.md").expect(&shown),
             "{shown}"
         );
-    }
-
-    #[test]
-    fn shows_whats_new_after_an_update() {
-        let mut app = new_app();
-        handle_agent_event(
-            UiEvent::WhatsNew("what's new in v0.2.0:\n- add search".into()),
-            &mut app,
-        );
-        let shown = screen(&mut app);
-        let notes = shown.find("what's new in v0.2.0:").expect(&shown);
-        assert!(notes < shown.find("- add search").expect(&shown), "{shown}");
     }
 
     #[test]
