@@ -466,7 +466,7 @@ mod tests {
     use super::*;
 
     fn texts(lines: &[Line]) -> Vec<String> {
-        lines.iter().map(|line| line.to_string()).collect()
+        lines.iter().map(ToString::to_string).collect()
     }
 
     fn trimmed(lines: &[Line]) -> Vec<String> {
