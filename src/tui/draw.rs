@@ -33,7 +33,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         })
         .collect();
     let mut footer_parts = vec![
-        app.workspace.to_string(),
+        app.workspace.clone(),
         format!("{}:{}", display_model(&app.model), app.effort),
         match app.tasks.len() {
             0 => String::new(),
