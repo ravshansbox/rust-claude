@@ -433,8 +433,8 @@ mod tests {
         }
     }
 
-    fn describe(event: AgentEvent) -> Option<String> {
-        Some(match event {
+    fn describe(event: AgentEvent) -> String {
+        match event {
             AgentEvent::TaskStart { task, description } => format!("{task} start {description}"),
             AgentEvent::TaskToolCalls { task, count } => format!("{task} tool calls {count}"),
             AgentEvent::TaskDone {
@@ -452,7 +452,7 @@ mod tests {
             AgentEvent::Notice(text) => format!("notice {text}"),
             AgentEvent::Stats(_) | AgentEvent::TaskStats { .. } => "stats".into(),
             AgentEvent::Queued(prompt) => format!("queued {prompt}"),
-        })
+        }
     }
 
     #[tokio::test]
@@ -474,7 +474,7 @@ mod tests {
         .await;
         let mut events = Vec::new();
         let (_, result) =
-            test_support::run_prompt(&api, "go", |event| events.extend(describe(event))).await;
+            test_support::run_prompt(&api, "go", |event| events.push(describe(event))).await;
         result.unwrap();
         let tasks: Vec<_> = events
             .iter()
