@@ -3,6 +3,7 @@ use serde_json::Value;
 pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "read" | "write" | "edit" => "path",
+        super::web_search::NAME => "query",
         "bash" | "python" => return String::new(),
         super::agent::NAME => return super::agent::summary(input),
         _ => return input.to_string(),

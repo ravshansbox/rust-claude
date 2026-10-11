@@ -238,6 +238,7 @@ mod tests {
         assert!(tool_names(&requests[0]).contains(&"agent".to_string()));
         assert!(!tool_names(child).contains(&"agent".to_string()));
         assert!(tool_names(child).contains(&"bash".to_string()));
+        assert!(tool_names(child).contains(&"web_search".to_string()));
         assert_eq!(child["system"], requests[0]["system"]);
         assert_eq!(child["model"], requests[0]["model"]);
         assert_eq!(child["thinking"], requests[0]["thinking"]);
