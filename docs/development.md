@@ -2,6 +2,8 @@
 
 Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Tests keep sign-in, sessions and other files in a temporary folder, not in `~/.rust-coding-agent`.
 
+Run `git config core.hooksPath .githooks` once per clone. The `.githooks/commit-msg` hook then rejects a commit unless its first line is a [conventional commit](https://www.conventionalcommits.org) with type `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `style` or `test`, for example `fix(tui): hide notice` or `feat!: drop old config`. `git commit --no-verify` skips the hook.
+
 Every push to `main` runs these checks and then makes a release if needed. The checks for each push start straight away, but only one release runs at a time. The checks cache downloaded crates and build output with [actions/cache](https://github.com/actions/cache). The cache is rebuilt when `Cargo.lock` or the Rust version changes. [git-cliff](https://git-cliff.org) works out the next version from the [conventional commit](https://www.conventionalcommits.org) messages since the last tag: `fix` and `perf` bump the patch version, `feat` the minor version and a breaking change (`feat!` or `BREAKING CHANGE`) the major version. Commits of other types, such as `docs` or `chore`, do not make a release. The release adds tag `v<version>`, a `rust-coding-agent.zip` with the source and the version set in `Cargo.toml`, and release notes that list the `feat`, `fix` and `perf` commit messages since the last tag. Nothing is pushed to `main`, so `Cargo.toml` there stays at `0.0.0`.
 
 The website is plain HTML and CSS in [site](../site). Pushes to `main` that change `site` deploy it to GitHub Pages with [.github/workflows/pages.yml](../.github/workflows/pages.yml).
