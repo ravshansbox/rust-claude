@@ -250,20 +250,17 @@ fn replay_prompt(app: &mut App, text: &str) {
         app.add_prompt(format!("!{command}"));
         return;
     }
-    match skills::parse_block(text) {
-        Some(block) => {
-            app.push(Role::Event, format!("[skill] {}", block.name));
-            let mut command = format!("/skill:{}", block.name);
-            if let Some(user_message) = block.user_message {
-                app.push(Role::User, user_message);
-                command = format!("{command} {user_message}");
-            }
-            app.add_prompt(command);
+    if let Some(block) = skills::parse_block(text) {
+        app.push(Role::Event, format!("[skill] {}", block.name));
+        let mut command = format!("/skill:{}", block.name);
+        if let Some(user_message) = block.user_message {
+            app.push(Role::User, user_message);
+            command = format!("{command} {user_message}");
         }
-        None => {
-            app.push(Role::User, text);
-            app.add_prompt(text.to_string());
-        }
+        app.add_prompt(command);
+    } else {
+        app.push(Role::User, text);
+        app.add_prompt(text.to_string());
     }
 }
 

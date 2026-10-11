@@ -1021,22 +1021,19 @@ impl App {
     /// Returns whether `name` is an effort level.
     pub(super) fn set_effort(&mut self, name: &str) -> bool {
         let levels = models::effort_levels(&self.model);
-        match levels.iter().find(|level| **level == name) {
-            Some(level) => {
-                self.effort = level;
-                self.push(Role::Event, format!("effort: {level}"));
-                true
-            }
-            None => {
-                self.push(
-                    Role::Event,
-                    format!(
-                        "unknown effort level: {name} (options: {})",
-                        levels.join(", ")
-                    ),
-                );
-                false
-            }
+        if let Some(level) = levels.iter().find(|level| **level == name) {
+            self.effort = level;
+            self.push(Role::Event, format!("effort: {level}"));
+            true
+        } else {
+            self.push(
+                Role::Event,
+                format!(
+                    "unknown effort level: {name} (options: {})",
+                    levels.join(", ")
+                ),
+            );
+            false
         }
     }
 
