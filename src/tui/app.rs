@@ -447,6 +447,11 @@ impl App {
     }
 
     pub(super) fn show_update(&mut self, progress: &crate::update::Progress) {
+        if progress.finishes_step()
+            && let Some(step) = self.version_line.rfind(" · ")
+        {
+            self.version_line.truncate(step);
+        }
         self.version_line.push_str(" · ");
         self.version_line.push_str(&progress.message());
         self.show_version();

@@ -13,9 +13,13 @@ pub enum Progress {
     Available(String),
     CargoMissing(String),
     Downloading(String),
+    Downloaded(String, std::time::Duration),
     Building(String),
-    Ready(String, std::time::Duration),
-    Failed(String, String, Option<std::time::Duration>),
+    Built(String, std::time::Duration),
+    Ready(String),
+    DownloadFailed(String, String, std::time::Duration),
+    BuildFailed(String, String, std::time::Duration),
+    Failed(String, String),
 }
 
 impl Progress {
@@ -24,16 +28,28 @@ impl Progress {
             Self::Available(version) => format!("update {version} available"),
             Self::CargoMissing(_) => "cargo not found on PATH, install Rust to update".into(),
             Self::Downloading(_) => "downloading".into(),
+            Self::Downloaded(_, took) => format!("downloaded in {}", format_took(*took)),
             Self::Building(_) => "building".into(),
-            Self::Ready(_, took) => format!(
-                "installed in {}, restart rust-claude to use it",
-                format_took(*took)
-            ),
-            Self::Failed(_, error, None) => format!("failed: {error}"),
-            Self::Failed(_, error, Some(took)) => {
-                format!("failed after {}: {error}", format_took(*took))
+            Self::Built(_, took) => format!("built in {}", format_took(*took)),
+            Self::Ready(_) => "installed, restart rust-claude to use it".into(),
+            Self::DownloadFailed(_, error, took) => {
+                format!("download failed after {}: {error}", format_took(*took))
             }
+            Self::BuildFailed(_, error, took) => {
+                format!("build failed after {}: {error}", format_took(*took))
+            }
+            Self::Failed(_, error) => format!("failed: {error}"),
         }
+    }
+
+    pub fn finishes_step(&self) -> bool {
+        matches!(
+            self,
+            Self::Downloaded(..)
+                | Self::Built(..)
+                | Self::DownloadFailed(..)
+                | Self::BuildFailed(..)
+        )
     }
 }
 
@@ -116,21 +132,32 @@ impl Updater {
             RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
         let outcome = async {
-            self.download(&release, &version, &folder, &report)
-                .await
-                .map_err(|error| (error, None))?;
+            let url = release
+                .assets
+                .iter()
+                .find(|asset| asset.name == ASSET)
+                .map(|asset| asset.browser_download_url.clone())
+                .with_context(|| format!("the release has no {ASSET}"))
+                .map_err(|error| Progress::Failed(version.clone(), format!("{error:#}")))?;
+            report(Progress::Downloading(version.clone()));
+            let started = std::time::Instant::now();
+            self.download(&url, &folder).await.map_err(|error| {
+                Progress::DownloadFailed(version.clone(), format!("{error:#}"), started.elapsed())
+            })?;
+            report(Progress::Downloaded(version.clone(), started.elapsed()));
             report(Progress::Building(version.clone()));
             let started = std::time::Instant::now();
-            self.build(cargo, &folder)
-                .await
-                .map_err(|error| (error, Some(started.elapsed())))?;
-            Ok(started.elapsed())
+            self.build(cargo, &folder).await.map_err(|error| {
+                Progress::BuildFailed(version.clone(), format!("{error:#}"), started.elapsed())
+            })?;
+            report(Progress::Built(version.clone(), started.elapsed()));
+            Ok(())
         }
         .await;
         let _ = std::fs::remove_dir_all(&folder);
         match outcome {
-            Ok(took) => report(Progress::Ready(version, took)),
-            Err((error, took)) => report(Progress::Failed(version, format!("{error:#}"), took)),
+            Ok(()) => report(Progress::Ready(version)),
+            Err(failure) => report(failure),
         }
     }
 
@@ -147,20 +174,7 @@ impl Updater {
             .await?)
     }
 
-    async fn download(
-        &self,
-        release: &Release,
-        version: &str,
-        folder: &Path,
-        report: &impl Fn(Progress),
-    ) -> Result<()> {
-        let url = release
-            .assets
-            .iter()
-            .find(|asset| asset.name == ASSET)
-            .map(|asset| asset.browser_download_url.clone())
-            .with_context(|| format!("the release has no {ASSET}"))?;
-        report(Progress::Downloading(version.into()));
+    async fn download(&self, url: &str, folder: &Path) -> Result<()> {
         let bytes = self
             .http
             .get(url)
@@ -374,16 +388,12 @@ mod tests {
         let (base, _) = github("v0.2.0").await;
         let cargo = fake_cargo(&dir, 0);
         let shown = run(updater(&base, Some(cargo))).await;
-        assert_eq!(
-            shown[..3],
-            ["update v0.2.0 available", "downloading", "building",]
-        );
-        assert_eq!(shown.len(), 4, "{shown:?}");
-        assert!(
-            shown[3].starts_with("installed in ")
-                && shown[3].ends_with("s, restart rust-claude to use it"),
-            "{shown:?}"
-        );
+        assert_eq!(shown.len(), 6, "{shown:?}");
+        assert_eq!(shown[..2], ["update v0.2.0 available", "downloading"]);
+        assert!(shown[2].starts_with("downloaded in "), "{shown:?}");
+        assert_eq!(shown[3], "building");
+        assert!(shown[4].starts_with("built in "), "{shown:?}");
+        assert_eq!(shown[5], "installed, restart rust-claude to use it");
         let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
         assert!(log.starts_with("install --locked --force --path "), "{log}");
         assert!(log.contains("unpacked"), "{log}");
@@ -443,33 +453,33 @@ mod tests {
         let shown = run(updater(&base, Some(cargo))).await;
         let last = shown.last().unwrap();
         assert!(
-            last.starts_with("failed after ") && last.ends_with("s: error: could not compile"),
+            last.starts_with("build failed after ")
+                && last.ends_with("s: error: could not compile"),
             "{shown:?}"
         );
     }
 
     #[test]
-    fn shows_how_long_building_took() {
-        let ready = |seconds| {
-            Progress::Ready("v0.2.0".into(), std::time::Duration::from_secs(seconds)).message()
-        };
-        assert_eq!(ready(0), "installed in 0s, restart rust-claude to use it");
-        assert_eq!(ready(42), "installed in 42s, restart rust-claude to use it");
+    fn shows_how_long_each_step_took() {
+        let seconds = std::time::Duration::from_secs;
+        let built = |took| Progress::Built("v0.2.0".into(), seconds(took)).message();
+        assert_eq!(built(0), "built in 0s");
+        assert_eq!(built(42), "built in 42s");
+        assert_eq!(built(125), "built in 2m 5s");
         assert_eq!(
-            ready(125),
-            "installed in 2m 5s, restart rust-claude to use it"
+            Progress::Downloaded("v0.2.0".into(), seconds(3)).message(),
+            "downloaded in 3s"
         );
         assert_eq!(
-            Progress::Failed(
-                "v0.2.0".into(),
-                "error: x".into(),
-                Some(std::time::Duration::from_secs(70))
-            )
-            .message(),
-            "failed after 1m 10s: error: x"
+            Progress::DownloadFailed("v0.2.0".into(), "error: x".into(), seconds(3)).message(),
+            "download failed after 3s: error: x"
         );
         assert_eq!(
-            Progress::Failed("v0.2.0".into(), "no zip".into(), None).message(),
+            Progress::BuildFailed("v0.2.0".into(), "error: x".into(), seconds(70)).message(),
+            "build failed after 1m 10s: error: x"
+        );
+        assert_eq!(
+            Progress::Failed("v0.2.0".into(), "no zip".into()).message(),
             "failed: no zip"
         );
     }
