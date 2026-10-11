@@ -47,7 +47,6 @@ impl Agent {
             mcp: self.mcp.clone(),
             session: Session::new()?,
             queue: Queue::default(),
-            missing_programs: self.missing_programs.clone(),
             subagent_usage: Arc::default(),
             subagent: true,
             background: Default::default(),
