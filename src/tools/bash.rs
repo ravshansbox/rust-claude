@@ -127,12 +127,12 @@ struct Captured {
 }
 
 impl Captured {
-    fn push(&mut self, mut bytes: &[u8]) {
+    fn push(&mut self, bytes: &[u8]) {
         self.total += bytes.len();
         let room = MAX_OUTPUT.saturating_sub(self.head.len()).min(bytes.len());
-        self.head.extend_from_slice(&bytes[..room]);
-        bytes = &bytes[room..];
-        self.tail.extend(bytes);
+        let (head, tail) = bytes.split_at(room);
+        self.head.extend_from_slice(head);
+        self.tail.extend(tail);
         let excess = self.tail.len().saturating_sub(MAX_OUTPUT);
         self.tail.drain(..excess);
     }
