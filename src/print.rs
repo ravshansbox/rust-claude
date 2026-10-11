@@ -236,8 +236,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
 
     pub fn flush_reads(&mut self) {
         if !self.reads.is_empty() {
-            let summary = self.reads.summary();
-            self.reads.clear();
+            let summary = std::mem::take(&mut self.reads).summary();
             self.tool(&crate::tui::tool_message("read", &summary, None));
         }
     }
