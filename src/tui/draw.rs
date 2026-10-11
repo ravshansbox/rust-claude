@@ -365,19 +365,12 @@ fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
 }
 
 fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
-    let tab = |label: &'static str, active: bool| {
-        if active {
-            Span::from(label).reversed()
-        } else {
-            Span::from(label)
-        }
-    };
     let mut lines = vec![
         Line::from(vec![
             Span::from("Prompt history ").bold(),
-            tab(" Folder ", !search.all),
+            reversed_if(Span::from(" Folder "), !search.all),
             Span::raw(" "),
-            tab(" All ", search.all),
+            reversed_if(Span::from(" All "), search.all),
             Span::from(" (←→ tab, ↑↓ select, Enter edit, Esc cancel)").bold(),
         ]),
         Line::raw(format!("search: {}", search.query)),
@@ -390,11 +383,7 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
         if prompt.lines().nth(1).is_some() {
             text.push_str(" …");
         }
-        let mut spans = vec![if index == search.selected {
-            Span::from(text).reversed()
-        } else {
-            Span::from(text)
-        }];
+        let mut spans = vec![reversed_if(Span::from(text), index == search.selected)];
         if let Some(folder) = folder {
             let name = std::path::Path::new(folder).file_name().map_or_else(
                 || folder.to_string(),
@@ -405,6 +394,10 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
         lines.push(Line::from(spans));
     }
     Paragraph::new(lines)
+}
+
+fn reversed_if(span: Span<'_>, reversed: bool) -> Span<'_> {
+    if reversed { span.reversed() } else { span }
 }
 
 #[cfg(test)]
