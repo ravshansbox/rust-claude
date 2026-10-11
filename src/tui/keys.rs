@@ -196,14 +196,13 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         (KeyCode::Char('c'), KeyModifiers::CONTROL) if !app.input.is_empty() => {
             app.restore_input(String::new());
         }
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy() => {
             if app.activity.is_some_and(Activity::can_cancel) {
                 app.start(Activity::Cancelling);
                 act(Action::Cancel);
             }
         }
-        (KeyCode::Esc, _) => return true,
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Esc, _) => return true,
         (KeyCode::Char('d'), KeyModifiers::CONTROL) if app.input.is_empty() => return true,
         (KeyCode::BackTab, _) => app.cycle_effort(),
         (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
