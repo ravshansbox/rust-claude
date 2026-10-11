@@ -13,6 +13,8 @@ pub struct Settings {
     pub check_for_updates: Option<bool>,
     pub notifications: Option<bool>,
     pub last_version: Option<String>,
+    #[serde(flatten)]
+    pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
 fn settings_path() -> Result<PathBuf> {
@@ -31,7 +33,7 @@ impl Settings {
     }
 
     /// Applies `change` to settings.json, keeping the settings it leaves
-    /// alone. Fails instead of replacing a file that is not valid JSON.
+    /// alone. Fails instead of replacing a file it cannot read.
     pub fn update(change: impl FnOnce(&mut Settings)) -> Result<()> {
         update_file(&settings_path()?, change)
     }
@@ -43,8 +45,12 @@ fn read_file(path: &Path) -> Result<Settings> {
         Err(error) if error.kind() == ErrorKind::NotFound => return Ok(Settings::default()),
         Err(error) => return Err(error).with_context(|| format!("reading {}", path.display())),
     };
-    serde_json::from_str(&text)
-        .with_context(|| format!("{} is not valid JSON; fix or delete it", path.display()))
+    serde_json::from_str(&text).map_err(|error| {
+        anyhow::anyhow!(
+            "{} could not be read: {error}; fix or delete it",
+            path.display()
+        )
+    })
 }
 
 fn update_file(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<()> {
@@ -90,8 +96,42 @@ mod tests {
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         let error = format!("{:#}", result.unwrap_err());
-        assert!(error.contains("settings.json is not valid JSON"), "{error}");
+        assert!(
+            error.contains("settings.json could not be read: "),
+            "{error}"
+        );
+        assert!(error.ends_with("; fix or delete it"), "{error}");
         assert_eq!(text, broken);
+    }
+
+    #[test]
+    fn keeps_settings_it_does_not_know_when_one_changes() {
+        let path = settings_file("unknown");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, r#"{ "future": { "a": 1 } }"#).unwrap();
+        update_file(&path, |settings| settings.model = Some("opus".into())).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        let saved: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert_eq!(saved["future"], serde_json::json!({ "a": 1 }));
+        assert_eq!(saved["model"], "opus");
+    }
+
+    #[test]
+    fn refuses_to_replace_settings_of_the_wrong_type() {
+        let path = settings_file("wrong-type");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let wrong = r#"{ "notifications": "yes" }"#;
+        std::fs::write(&path, wrong).unwrap();
+        let result = update_file(&path, |settings| settings.model = Some("opus".into()));
+        let text = std::fs::read_to_string(&path).unwrap();
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        let error = format!("{:#}", result.unwrap_err());
+        assert!(
+            error.contains("settings.json could not be read: invalid type"),
+            "{error}"
+        );
+        assert_eq!(text, wrong);
     }
 
     #[cfg(unix)]
