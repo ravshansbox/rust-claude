@@ -215,14 +215,16 @@ impl Credentials {
         }
     }
 
-    /// Switches to the tokens in auth.json when they last longer than ours.
+    /// Switches to the tokens in auth.json when they last longer than ours,
+    /// or as long with another refresh token, as tokens without expiry do.
     fn adopt_saved(&mut self) {
         let saved = credentials_path()
             .ok()
             .and_then(|path| std::fs::read_to_string(path).ok())
             .and_then(|text| serde_json::from_str::<Self>(&text).ok());
         if let Some(saved) = saved
-            && saved.expires > self.expires
+            && (saved.expires > self.expires
+                || (saved.expires == self.expires && saved.refresh != self.refresh))
         {
             *self = saved;
         }
@@ -887,6 +889,28 @@ mod tests {
         let token = credentials.access_token(&reqwest::Client::new()).await;
         let _ = std::fs::remove_file(&path);
         assert_eq!(token.unwrap(), "renewed");
+    }
+
+    #[tokio::test]
+    async fn uses_a_sign_in_without_expiry_another_instance_renewed() {
+        let _lock = AUTH_FILE.lock().await;
+        let endpoint = TokenEndpoint::start("spent", false).await;
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let renewed = json!({ "access": "renewed", "refresh": "new", "expires": u64::MAX });
+        std::fs::write(&path, renewed.to_string()).unwrap();
+        let mut credentials: Credentials = serde_json::from_value(
+            json!({ "access": "old", "refresh": "spent", "expires": u64::MAX }),
+        )
+        .unwrap();
+        let token = credentials
+            .renew_rejected(&reqwest::Client::new(), "old")
+            .await;
+        let saved: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(token.unwrap(), "renewed");
+        assert!(endpoint.received.lock().await.is_empty());
+        assert_eq!(saved, renewed);
     }
 
     #[tokio::test]
