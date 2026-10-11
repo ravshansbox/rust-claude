@@ -140,11 +140,7 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
                     )
                 })
                 .collect();
-            let response = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
+            write_response(stream, "200 OK", "text/event-stream", &body).await;
         }
         Some(Reply::Stall) => {
             let _ = stream
@@ -159,29 +155,25 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
         }
         Some(Reply::BadRequest(message)) => bad_request(stream, &message).await,
         Some(Reply::Unauthorized) => {
-            let body = json!({
-                "type": "error",
-                "error": { "type": "authentication_error", "message": "invalid bearer token" },
-            })
-            .to_string();
-            let response = format!(
-                "HTTP/1.1 401 Unauthorized\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-                body.len()
-            );
-            let _ = stream.write_all(response.as_bytes()).await;
+            let message = "invalid bearer token";
+            error(stream, "401 Unauthorized", "authentication_error", message).await;
         }
         None => bad_request(stream, "no scripted reply").await,
     }
 }
 
-async fn bad_request(mut stream: TcpStream, message: &str) {
-    let body = json!({
-        "type": "error",
-        "error": { "type": "invalid_request_error", "message": message },
-    })
-    .to_string();
+async fn bad_request(stream: TcpStream, message: &str) {
+    error(stream, "400 Bad Request", "invalid_request_error", message).await;
+}
+
+async fn error(stream: TcpStream, status: &str, kind: &str, message: &str) {
+    let body = json!({ "type": "error", "error": { "type": kind, "message": message } });
+    write_response(stream, status, "application/json", &body.to_string()).await;
+}
+
+async fn write_response(mut stream: TcpStream, status: &str, content_type: &str, body: &str) {
     let response = format!(
-        "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        "HTTP/1.1 {status}\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
         body.len()
     );
     let _ = stream.write_all(response.as_bytes()).await;
