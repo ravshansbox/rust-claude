@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rust Coding Agent</title>
+<meta name="description" content="A small coding agent for the terminal, written in Rust.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main>
+<header>
+<h1>Rust Coding Agent</h1>
+<p>A small coding agent for the terminal, written in Rust. It sends your requests to Anthropic's Claude models and can run shell commands and read, write and edit files in the current directory.</p>
+<nav>
+<a href="https://github.com/ravshansbox/rust-coding-agent">Source</a>
+<a href="https://github.com/ravshansbox/rust-coding-agent/releases">Releases</a>
+<a href="https://github.com/ravshansbox/rust-coding-agent#readme">Documentation</a>
+</nav>
+</header>
+
+<section>
+<h2>Install</h2>
+<p>You need <a href="https://rustup.rs">Rust</a>, <code>curl</code> and <code>unzip</code>.</p>
+<pre><code>curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-coding-agent/main/install.sh | sh</code></pre>
+<p>Then start it with <code>rust-coding-agent</code>, or <code>rca</code> for short.</p>
+</section>
+
+<section>
+<h2>Features</h2>
+<ul>
+<li>Sign in with a Claude Pro or Max account</li>
+<li>Interactive terminal interface with streamed replies</li>
+<li>Built-in tools: <code>bash</code>, <code>read</code>, <code>write</code>, <code>edit</code>, <code>agent</code> and <code>web_search</code></li>
+<li>Print mode (<code>-p</code>) to run one prompt and print the answer</li>
+<li>Model and effort pickers, with thinking shown in the conversation</li>
+<li>Saved sessions you can resume, and automatic compaction</li>
+<li>Status line with tokens, cache hit rate, context use and quota</li>
+<li>Paste images, <code>@</code> file picker and prompt history search</li>
+<li><code>AGENTS.md</code> instructions and Agent Skills</li>
+<li>MCP servers over stdio or Streamable HTTP</li>
+<li>Background updates</li>
+</ul>
+</section>
+
+<footer>
+<p><a href="https://github.com/ravshansbox/rust-coding-agent/blob/main/LICENSE">Licence</a></p>
+</footer>
+</main>
+</body>
+</html>
