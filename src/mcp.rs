@@ -1280,8 +1280,14 @@ fn starting(name: String, scope: Scope, config: ServerConfig) -> StartingServer 
 /// Starts the configured server `name` again, as after signing in.
 pub fn restart(name: &str) -> Option<StartingServer> {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (mut configs, _, _) = read_configs(crate::config::dir().as_deref(), &cwd);
-    let (scope, config) = configs.remove(name)?;
+    restart_from(crate::config::dir().as_deref(), &cwd, name)
+}
+
+fn restart_from(config_dir: Option<&Path>, cwd: &Path, name: &str) -> Option<StartingServer> {
+    let (mut configs, _, _) = read_configs(config_dir, cwd);
+    let (scope, config) = configs
+        .remove(name)
+        .filter(|(_, config)| config.enabled != Some(false))?;
     Some(starting(name.to_string(), scope, config))
 }
 
@@ -1659,6 +1665,25 @@ mod tests {
         std::fs::remove_dir_all(&directory).unwrap();
         assert_eq!(servers["docs"].0, Scope::Project);
         assert_eq!(overridden, ["docs"]);
+    }
+
+    #[test]
+    fn restarts_only_enabled_servers() {
+        let directory = std::env::temp_dir().join(format!("mcp-restart-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        std::fs::write(
+            directory.join("mcp.json"),
+            r#"{ "mcpServers": {
+                "docs": { "command": "a" },
+                "off": { "command": "a", "enabled": false }
+            } }"#,
+        )
+        .unwrap();
+        let docs = restart_from(Some(&directory), &directory, "docs").map(|server| server.name);
+        let off = restart_from(Some(&directory), &directory, "off").map(|server| server.name);
+        std::fs::remove_dir_all(&directory).unwrap();
+        assert_eq!(docs.as_deref(), Some("docs"));
+        assert_eq!(off.as_deref(), None);
     }
 
     fn echo_server() -> ServerConfig {
