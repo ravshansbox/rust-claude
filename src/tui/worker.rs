@@ -219,6 +219,13 @@ mod tests {
         agent
     }
 
+    fn remove_session(session_id: &str) {
+        if let Some(config_dir) = crate::config::dir() {
+            let sessions = config_dir.join("sessions");
+            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
+        }
+    }
+
     #[tokio::test]
     async fn does_not_start_requests_sent_before_quitting() {
         let marker =
@@ -236,10 +243,7 @@ mod tests {
         agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx).await;
         let ran = marker.exists();
         let _ = std::fs::remove_file(&marker);
-        if let Some(config_dir) = crate::config::dir() {
-            let sessions = config_dir.join("sessions");
-            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
-        }
+        remove_session(&session_id);
         assert!(!ran);
     }
 
@@ -256,10 +260,7 @@ mod tests {
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
         quit(request_tx, cancel_tx);
         let stopped = tokio::time::timeout(std::time::Duration::from_secs(5), worker).await;
-        if let Some(config_dir) = crate::config::dir() {
-            let sessions = config_dir.join("sessions");
-            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
-        }
+        remove_session(&session_id);
         assert!(stopped.is_ok());
     }
 
@@ -371,10 +372,7 @@ mod tests {
         .await;
         quit(request_tx, cancel_tx);
         let _ = worker.await;
-        if let Some(config_dir) = crate::config::dir() {
-            let sessions = config_dir.join("sessions");
-            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
-        }
+        remove_session(&session_id);
         assert!(ran);
         assert!(reported);
     }
@@ -416,10 +414,7 @@ mod tests {
         .await;
         quit(request_tx, cancel_tx);
         let _ = worker.await;
-        if let Some(config_dir) = crate::config::dir() {
-            let sessions = config_dir.join("sessions");
-            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
-        }
+        remove_session(&session_id);
         assert!(first && delivered && second);
         let requests = api.requests().await;
         assert_eq!(requests.len(), 3);
