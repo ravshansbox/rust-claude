@@ -29,6 +29,7 @@ pub(super) enum UiEvent {
         notice: String,
     },
     Update(crate::update::Progress),
+    WhatsNew(String),
 }
 
 pub(super) enum Request {

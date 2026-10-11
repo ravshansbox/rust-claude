@@ -319,11 +319,27 @@ async fn run_loop(
         });
     }
     drop(mcp_tx);
-    if let Some(updater) = crate::update::Updater::for_this_build(&Settings::load()) {
+    let settings = Settings::load();
+    if let Some(updater) = crate::update::Updater::for_this_build(&settings) {
+        let current_version = updater.current_version;
+        if current_version != "0.0.0" && settings.last_version.as_deref() != Some(current_version) {
+            let _ = Settings::update(|settings| {
+                settings.last_version = Some(current_version.into());
+            });
+        }
         let events = background_events.clone();
-        tokio::spawn(updater.run(move |progress| {
-            let _ = events.send(UiEvent::Update(progress));
-        }));
+        tokio::spawn(async move {
+            if let Some(last_version) = settings.last_version
+                && let Some(notes) = updater.whats_new(&last_version).await
+            {
+                let _ = events.send(UiEvent::WhatsNew(notes));
+            }
+            updater
+                .run(move |progress| {
+                    let _ = events.send(UiEvent::Update(progress));
+                })
+                .await;
+        });
     }
     let mut worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
