@@ -328,15 +328,13 @@ fn read_preview(path: &Path) -> Result<String> {
             continue;
         }
         let message: Value = serde_json::from_str(&line)?;
-        let text = match message["content"].as_str() {
-            Some(text) => Some(text),
-            None => message["content"]
+        let Some(text) = message["content"].as_str().or_else(|| {
+            message["content"]
                 .as_array()
                 .filter(|_| message["role"] == "user")
                 .and_then(|blocks| blocks.iter().find(|block| block["type"] == "text"))
-                .and_then(|block| block["text"].as_str()),
-        };
-        let Some(text) = text else {
+                .and_then(|block| block["text"].as_str())
+        }) else {
             continue;
         };
         if let Some((command, _)) = crate::agent::parse_shell_message(text) {
