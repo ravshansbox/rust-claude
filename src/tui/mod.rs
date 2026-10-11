@@ -303,6 +303,7 @@ async fn run_loop(
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let background_events = event_tx.clone();
+    let (history_sender, history_writer) = history_writer(event_tx.clone());
     app.queue = agent.queue.clone();
     let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
     app.start_mcp_servers(
@@ -474,12 +475,41 @@ async fn run_loop(
                 let _ = events.send(UiEvent::Workspace(workspace_label()));
             });
         }
+        for entry in app.unsaved_history.drain(..) {
+            let _ = history_sender.send(entry);
+        }
     };
+    for entry in app.unsaved_history.drain(..) {
+        let _ = history_sender.send(entry);
+    }
+    drop(history_sender);
+    let _ = history_writer.join();
     quit(request_tx, cancel_tx);
     if !worker_stopped {
         let _ = worker.await;
     }
     result
+}
+
+/// Adds prompts to their history files one at a time, in order, on a thread
+/// of its own, so a lock held by another copy does not hold up the interface.
+/// It finishes the prompts sent to it once the sender is dropped.
+fn history_writer(
+    events: mpsc::UnboundedSender<UiEvent>,
+) -> (
+    std::sync::mpsc::Sender<(std::path::PathBuf, history::Entry)>,
+    std::thread::JoinHandle<()>,
+) {
+    let (sender, entries) = std::sync::mpsc::channel::<(std::path::PathBuf, history::Entry)>();
+    let writer = std::thread::spawn(move || {
+        for (path, entry) in entries {
+            if let Err(error) = history::append(&path, &entry) {
+                let notice = format!("failed to save prompt history: {error:#}");
+                let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(notice)));
+            }
+        }
+    });
+    (sender, writer)
 }
 
 fn save_changed_settings(app: &mut App, saved_model: &mut String, saved_effort: &mut &'static str) {
@@ -547,8 +577,49 @@ fn copy_to_clipboard(output: &mut impl Write, text: &str) -> std::io::Result<()>
 
 #[cfg(test)]
 mod tests {
-    use super::{HeldPanics, InputModes, copy_to_clipboard};
+    use super::{HeldPanics, InputModes, UiEvent, copy_to_clipboard, history_writer};
+    use crate::{agent::AgentEvent, history};
     use std::sync::{Mutex, PoisonError};
+
+    #[test]
+    fn saves_prompt_history_in_order_and_reports_failures() {
+        let folder = std::env::temp_dir().join(format!(
+            "rust-coding-agent-history-writer-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("history.jsonl");
+        std::fs::write(folder.join("missing"), "a file, not a folder").unwrap();
+        let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
+        let (sender, writer) = history_writer(events);
+        for prompt in ["one", "two"] {
+            sender
+                .send((path.clone(), history::Entry::here(prompt)))
+                .unwrap();
+        }
+        sender
+            .send((
+                folder.join("missing").join("history.jsonl"),
+                history::Entry::here("three"),
+            ))
+            .unwrap();
+        drop(sender);
+        writer.join().unwrap();
+        let saved: Vec<String> = history::load(&path)
+            .into_iter()
+            .map(|entry| entry.prompt)
+            .collect();
+        let notice = match received.try_recv() {
+            Ok(UiEvent::Agent(AgentEvent::Notice(notice))) => notice,
+            _ => String::new(),
+        };
+        let _ = std::fs::remove_dir_all(&folder);
+        assert_eq!(saved, ["one", "two"]);
+        assert!(
+            notice.starts_with("failed to save prompt history: "),
+            "{notice}"
+        );
+    }
 
     /// Tests that change the process-wide panic hook take turns.
     static PANIC_HOOK: Mutex<()> = Mutex::new(());
