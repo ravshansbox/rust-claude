@@ -2,6 +2,7 @@ use super::{MAX_OUTPUT, argument, number};
 use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
+    fmt::Write,
     process::Stdio,
     sync::{Arc, Mutex},
     time::Duration,
@@ -84,7 +85,7 @@ pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<Strin
     };
     let mut text = output_text(&stdout_output, &stderr_output);
     if !status.success() {
-        text.push_str(&format!("\n{status}"));
+        let _ = write!(text, "\n{status}");
     }
     Ok(text)
 }

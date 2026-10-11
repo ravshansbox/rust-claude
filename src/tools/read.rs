@@ -1,6 +1,7 @@
 use super::{MAX_OUTPUT, argument, number, regular_file, truncate};
 use serde_json::{Value, json};
 use std::{
+    fmt::Write,
     fs::File,
     io::{BufRead, BufReader, Read},
     path::PathBuf,
@@ -76,7 +77,7 @@ fn read_lines(
                 text.push_str("… output truncated");
                 index + 1
             };
-            text.push_str(&format!(", continue with offset {next_line}"));
+            let _ = write!(text, ", continue with offset {next_line}");
             return Ok(Ok(text));
         }
         text.push_str(std::str::from_utf8(&line).map_err(|_| not_utf8())?);
