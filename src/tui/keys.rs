@@ -389,7 +389,7 @@ mod tests {
     use crate::skills::{Scope, Skill};
     use crate::tui::{
         Activity, App, UiEvent, handle_agent_event,
-        test_support::{new_app, press, screen},
+        test_support::{new_app, press, press_with, screen},
     };
     use crossterm::event::{
         Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
@@ -429,20 +429,17 @@ mod tests {
     #[test]
     fn edits_emoji_as_whole_graphemes() {
         let mut app = new_app();
-        let key = |app: &mut App, code| {
-            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
-        };
         handle_input(Event::Paste("a👍🏽❤️".into()), &mut app, |_| {});
-        key(&mut app, KeyCode::Left);
+        press(&mut app, KeyCode::Left);
         assert_eq!(app.cursor, "a👍🏽".len());
-        key(&mut app, KeyCode::Left);
+        press(&mut app, KeyCode::Left);
         assert_eq!(app.cursor, "a".len());
-        key(&mut app, KeyCode::Right);
+        press(&mut app, KeyCode::Right);
         assert_eq!(app.cursor, "a👍🏽".len());
-        key(&mut app, KeyCode::Right);
-        key(&mut app, KeyCode::Backspace);
+        press(&mut app, KeyCode::Right);
+        press(&mut app, KeyCode::Backspace);
         assert_eq!(app.input, "a👍🏽");
-        key(&mut app, KeyCode::Backspace);
+        press(&mut app, KeyCode::Backspace);
         assert_eq!(app.input, "a");
     }
 
@@ -451,15 +448,11 @@ mod tests {
         let mut app = new_app();
         handle_input(Event::Paste("/model other".into()), &mut app, |_| {});
         let mut checked = None;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::CheckModel(model) = action {
-                    checked = Some(model);
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::CheckModel(model) = action {
+                checked = Some(model);
+            }
+        });
         assert_eq!(checked.as_deref(), Some("other"));
         assert_eq!(app.model, "model");
         assert!(app.busy());
@@ -478,7 +471,7 @@ mod tests {
             let mut app = new_app();
             handle_input(Event::Paste(typed.into()), &mut app, |_| {});
             let mut acted = false;
-            handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {
+            press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
                 acted = true
             });
             assert!(!acted && !app.busy(), "{typed}");
@@ -532,11 +525,10 @@ mod tests {
         let mut app = new_app();
         app.model = "claude-sonnet-5-5".into();
         app.effort = "off";
-        let ctrl_p = Event::Key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL));
-        handle_input(ctrl_p.clone(), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('p'), KeyModifiers::CONTROL, |_| {});
         assert_eq!(app.model, "claude-haiku-5-5");
         assert_eq!(app.effort, "off");
-        handle_input(ctrl_p, &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('p'), KeyModifiers::CONTROL, |_| {});
         assert_eq!(app.model, "claude-fable-5-1");
         assert_eq!(app.effort, "medium");
         assert_eq!(app.messages.last().unwrap().text, "model: fable-5-1");
@@ -557,13 +549,9 @@ mod tests {
             let mut app = new_app();
             app.start(activity);
             let mut cancelled = false;
-            let quit = handle_input(
-                Event::Key(KeyEvent::from(KeyCode::Esc)),
-                &mut app,
-                |action| {
-                    cancelled |= matches!(action, Action::Cancel);
-                },
-            );
+            let quit = press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
+                cancelled |= matches!(action, Action::Cancel);
+            });
             assert!(!quit && cancelled, "{activity}");
             handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
             assert!(!app.busy());
@@ -574,7 +562,7 @@ mod tests {
         app.start(Activity::Working);
         handle_input(Event::Paste(prompt.into()), app, |_| {});
         let mut submitted = false;
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), app, |action| {
+        press_with(app, KeyCode::Enter, KeyModifiers::NONE, |action| {
             submitted |= matches!(action, Action::Submit(..));
         });
         assert!(!submitted);
@@ -601,7 +589,7 @@ mod tests {
         let mut app = new_app();
         app.start(Activity::Working);
         handle_input(Event::Paste("/new".into()), &mut app, |_| {});
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
         assert_eq!(app.input, "/new");
         assert!(app.queued_prompts().is_empty());
     }
@@ -662,29 +650,21 @@ mod tests {
         press(&mut app, KeyCode::Tab);
         assert_eq!(app.input, "/mcp login figma");
         let mut signing_in = Vec::new();
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::McpSignIn(name) = action {
-                    signing_in.push(name);
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::McpSignIn(name) = action {
+                signing_in.push(name);
+            }
+        });
         assert_eq!(signing_in, ["figma"]);
         assert!(app.input.is_empty());
         handle_input(Event::Paste("/mcp logout l".into()), &mut app, |_| {});
         assert_eq!(suggested(&app), ["/mcp logout linear"]);
         let mut signing_out = Vec::new();
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::McpSignOut(name) = action {
-                    signing_out.push(name);
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::McpSignOut(name) = action {
+                signing_out.push(name);
+            }
+        });
         assert_eq!(signing_out, ["linear"]);
     }
 
@@ -710,16 +690,15 @@ mod tests {
     fn wraps_the_command_selection_at_either_end() {
         let mut app = new_app();
         handle_input(Event::Paste("/".into()), &mut app, |_| {});
-        let key = |code| Event::Key(KeyEvent::from(code));
-        handle_input(key(KeyCode::Up), &mut app, |_| {});
-        handle_input(key(KeyCode::Tab), &mut app, |_| {});
+        press(&mut app, KeyCode::Up);
+        press(&mut app, KeyCode::Tab);
         assert_eq!(app.input, "/resume");
         app.input.clear();
         app.cursor = 0;
         handle_input(Event::Paste("/".into()), &mut app, |_| {});
-        handle_input(key(KeyCode::Up), &mut app, |_| {});
-        handle_input(key(KeyCode::Down), &mut app, |_| {});
-        handle_input(key(KeyCode::Tab), &mut app, |_| {});
+        press(&mut app, KeyCode::Up);
+        press(&mut app, KeyCode::Down);
+        press(&mut app, KeyCode::Tab);
         assert_eq!(app.input, "/compact");
     }
 
@@ -740,15 +719,11 @@ mod tests {
         ];
         handle_input(Event::Paste("/skill:pdf".into()), &mut app, |_| {});
         let mut submitted = None;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::Submit(prompt, _, _) = action {
-                    submitted = Some(prompt);
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::Submit(prompt, _, _) = action {
+                submitted = Some(prompt);
+            }
+        });
         assert_eq!(submitted.as_deref(), Some("/skill:pdf"));
         assert_eq!(app.messages.last().unwrap().text, "[skill] pdf");
     }
@@ -769,11 +744,9 @@ mod tests {
         let mut app = new_app();
         queue_while_working(&mut app, "first");
         let mut cancelled = false;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Esc)),
-            &mut app,
-            |action| cancelled |= matches!(action, Action::Cancel),
-        );
+        press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
+            cancelled |= matches!(action, Action::Cancel)
+        });
         assert!(cancelled);
         handle_agent_event(UiEvent::Done(Ok(())), &mut app);
         assert!(!app.busy());
@@ -801,35 +774,28 @@ mod tests {
         }
         // Searching uses the history loaded at start-up, not the file.
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
-        let control = |character| {
-            Event::Key(KeyEvent::new(
-                KeyCode::Char(character),
-                KeyModifiers::CONTROL,
-            ))
-        };
-        let key = |code| Event::Key(KeyEvent::from(code));
-        handle_input(control('r'), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
         let search = app.history_search.as_ref().unwrap();
         assert_eq!(search.matches(), [("fix tests", None), ("add docs", None)]);
         handle_input(Event::Paste("FIX".into()), &mut app, |_| {});
         assert_eq!(app.history_search.as_ref().unwrap().matches().len(), 1);
-        handle_input(key(KeyCode::Right), &mut app, |_| {});
+        press(&mut app, KeyCode::Right);
         let search = app.history_search.as_ref().unwrap();
         let prompts: Vec<&str> = search.matches().iter().map(|(prompt, _)| *prompt).collect();
         assert_eq!(prompts, ["fix tests", "elsewhere fix"]);
-        handle_input(key(KeyCode::Down), &mut app, |_| {});
+        press(&mut app, KeyCode::Down);
         let mut submitted = false;
-        handle_input(key(KeyCode::Enter), &mut app, |action| {
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
             submitted |= matches!(action, Action::Submit(..));
         });
         assert!(!submitted);
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "elsewhere fix");
-        handle_input(control('r'), &mut app, |_| {});
-        handle_input(key(KeyCode::Esc), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
+        press(&mut app, KeyCode::Esc);
         assert!(app.history_search.is_none());
-        handle_input(control('r'), &mut app, |_| {});
-        handle_input(control('r'), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "elsewhere fix");
     }
@@ -839,9 +805,10 @@ mod tests {
         let mut app = new_app();
         let mut switched = Vec::new();
         for _ in 0..5 {
-            handle_input(
-                Event::Key(KeyEvent::new(KeyCode::Char('p'), KeyModifiers::CONTROL)),
+            press_with(
                 &mut app,
+                KeyCode::Char('p'),
+                KeyModifiers::CONTROL,
                 |action| {
                     if let Action::SetModel(model) = action {
                         switched.push(model);
@@ -871,14 +838,10 @@ mod tests {
         let mut app = new_app();
         app.add_prompt("earlier".into());
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
         assert_eq!(app.activity, Some(Activity::LoadingModels));
         handle_input(Event::Paste("/mo".into()), &mut app, |_| {});
-        handle_input(
-            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
-            &mut app,
-            |_| {},
-        );
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
         assert!(screen(&mut app).contains("Prompt history"));
         let models = vec![
             "claude-opus-5-5".to_string(),
@@ -889,17 +852,13 @@ mod tests {
         assert!(shown.contains("Select model"), "{shown}");
         assert!(!shown.contains("Prompt history"), "{shown}");
         assert!(!shown.contains("select model"), "{shown}");
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Down)), &mut app, |_| {});
+        press(&mut app, KeyCode::Down);
         let mut chosen = None;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::SetModel(model) = action {
-                    chosen = Some(model);
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::SetModel(model) = action {
+                chosen = Some(model);
+            }
+        });
         assert_eq!(chosen.as_deref(), Some("claude-sonnet-5-5"));
         assert!(app.history_search.is_none());
         assert_eq!(app.input, "/mo");
@@ -926,24 +885,16 @@ mod tests {
             .unwrap();
         let mut app = new_app();
         app.load_history(Some(path.clone()));
-        let press = |app: &mut App, code| {
-            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
-            app.input.clone()
-        };
         assert_eq!(press(&mut app, KeyCode::Up), "first");
         assert_eq!(press(&mut app, KeyCode::Up), "second");
         assert_eq!(press(&mut app, KeyCode::Up), "second");
         press(&mut app, KeyCode::Down);
         press(&mut app, KeyCode::Down);
         handle_input(Event::Paste("third".into()), &mut app, |_| {});
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
         app.activity = None;
         handle_agent_event(UiEvent::NewSession(Ok(())), &mut app);
-        handle_input(
-            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
-            &mut app,
-            |_| {},
-        );
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
         let search = app.history_search.take().unwrap();
         assert_eq!(
             search.matches(),
@@ -967,23 +918,17 @@ mod tests {
         let mut app = new_app();
         handle_input(Event::Paste("! ls -a".into()), &mut app, |_| {});
         let mut command = None;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::Shell(text) = action {
-                    command = Some(text);
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::Shell(text) = action {
+                command = Some(text);
+            }
+        });
         assert_eq!(command.as_deref(), Some("ls -a"));
         assert_eq!(app.activity, Some(Activity::Running));
         let mut cancelled = false;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Esc)),
-            &mut app,
-            |action| cancelled |= matches!(action, Action::Cancel),
-        );
+        press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
+            cancelled |= matches!(action, Action::Cancel)
+        });
         assert!(cancelled);
         handle_agent_event(
             UiEvent::Shell("ls -a".into(), Ok("a\nb\n".into())),
@@ -998,13 +943,9 @@ mod tests {
         let mut app = new_app();
         app.start(Activity::LoadingSessions);
         let mut cancelled = false;
-        let quit = handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Esc)),
-            &mut app,
-            |action| {
-                cancelled |= matches!(action, Action::Cancel);
-            },
-        );
+        let quit = press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |action| {
+            cancelled |= matches!(action, Action::Cancel);
+        });
         assert!(!quit);
         assert!(!cancelled);
         assert_eq!(app.activity, Some(Activity::LoadingSessions));
@@ -1015,12 +956,10 @@ mod tests {
         let mut app = new_app();
         app.input = "hello".into();
         for character in ['g', 'd'] {
-            let quit = handle_input(
-                Event::Key(KeyEvent::new(
-                    KeyCode::Char(character),
-                    KeyModifiers::CONTROL,
-                )),
+            let quit = press_with(
                 &mut app,
+                KeyCode::Char(character),
+                KeyModifiers::CONTROL,
                 |_| {},
             );
             assert!(!quit);
@@ -1032,14 +971,13 @@ mod tests {
     fn moves_by_word_with_alt() {
         let mut app = new_app();
         handle_input(Event::Paste("one two".into()), &mut app, |_| {});
-        let alt = |code| Event::Key(KeyEvent::new(code, KeyModifiers::ALT));
-        handle_input(alt(KeyCode::Left), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Left, KeyModifiers::ALT, |_| {});
         assert_eq!(app.cursor, "one ".len());
-        handle_input(alt(KeyCode::Char('b')), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('b'), KeyModifiers::ALT, |_| {});
         assert_eq!(app.cursor, 0);
-        handle_input(alt(KeyCode::Right), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Right, KeyModifiers::ALT, |_| {});
         assert_eq!(app.cursor, "one".len());
-        handle_input(alt(KeyCode::Char('f')), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('f'), KeyModifiers::ALT, |_| {});
         assert_eq!(app.cursor, "one two".len());
         assert_eq!(app.input, "one two");
     }
@@ -1048,18 +986,10 @@ mod tests {
     fn deletes_previous_word() {
         let mut app = new_app();
         handle_input(Event::Paste("one two three".into()), &mut app, |_| {});
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Left)), &mut app, |_| {});
-        handle_input(
-            Event::Key(KeyEvent::new(KeyCode::Backspace, KeyModifiers::ALT)),
-            &mut app,
-            |_| {},
-        );
+        press(&mut app, KeyCode::Left);
+        press_with(&mut app, KeyCode::Backspace, KeyModifiers::ALT, |_| {});
         assert_eq!(app.input, "one two e");
-        handle_input(
-            Event::Key(KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL)),
-            &mut app,
-            |_| {},
-        );
+        press_with(&mut app, KeyCode::Char('w'), KeyModifiers::CONTROL, |_| {});
         assert_eq!(app.input, "one e");
         assert_eq!(app.cursor, "one ".len());
     }
@@ -1069,31 +999,17 @@ mod tests {
         let mut app = new_app();
         handle_input(Event::Paste("héllo".into()), &mut app, |_| {});
         for code in [KeyCode::Left, KeyCode::Left, KeyCode::Left, KeyCode::Left] {
-            handle_input(Event::Key(KeyEvent::from(code)), &mut app, |_| {});
+            press(&mut app, code);
         }
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Backspace)),
-            &mut app,
-            |_| {},
-        );
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Char('j'))),
-            &mut app,
-            |_| {},
-        );
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Right)), &mut app, |_| {});
+        press(&mut app, KeyCode::Backspace);
+        press(&mut app, KeyCode::Char('j'));
+        press(&mut app, KeyCode::Right);
         handle_input(Event::Paste("!".into()), &mut app, |_| {});
         assert_eq!(app.input, "jé!llo");
         assert_eq!(app.cursor, "jé!".len());
-        let control = |character| {
-            Event::Key(KeyEvent::new(
-                KeyCode::Char(character),
-                KeyModifiers::CONTROL,
-            ))
-        };
-        handle_input(control('a'), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('a'), KeyModifiers::CONTROL, |_| {});
         assert_eq!(app.cursor, 0);
-        handle_input(control('e'), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('e'), KeyModifiers::CONTROL, |_| {});
         assert_eq!(app.cursor, app.input.len());
     }
 
@@ -1103,11 +1019,7 @@ mod tests {
         let mut submitted = false;
         for modifiers in [KeyModifiers::SHIFT, KeyModifiers::ALT] {
             handle_input(Event::Paste("a".into()), &mut app, |_| {});
-            handle_input(
-                Event::Key(KeyEvent::new(KeyCode::Enter, modifiers)),
-                &mut app,
-                |_| submitted = true,
-            );
+            press_with(&mut app, KeyCode::Enter, modifiers, |_| submitted = true);
         }
         assert!(!submitted);
         assert_eq!(app.input, "a\na\n");
@@ -1119,16 +1031,15 @@ mod tests {
         let mut app = new_app();
         app.prompt_history.push("earlier".into());
         handle_input(Event::Paste("one\ntwo".into()), &mut app, |_| {});
-        let key = |code| Event::Key(KeyEvent::from(code));
-        handle_input(key(KeyCode::Up), &mut app, |_| {});
+        press(&mut app, KeyCode::Up);
         assert_eq!(app.cursor, "one".len());
-        handle_input(key(KeyCode::Down), &mut app, |_| {});
+        press(&mut app, KeyCode::Down);
         assert_eq!(app.cursor, "one\ntwo".len());
         assert_eq!(app.input, "one\ntwo");
         app.input = "abcdefg".into();
         app.cursor = 6;
         app.input_width = 4;
-        handle_input(key(KeyCode::Up), &mut app, |_| {});
+        press(&mut app, KeyCode::Up);
         assert_eq!(app.cursor, 2);
     }
 
@@ -1137,15 +1048,11 @@ mod tests {
         let mut app = new_app();
         app.set_files(0, vec!["src/agent.rs".into(), "src/main.rs".into()]);
         for character in "read @src".chars() {
-            handle_input(
-                Event::Key(KeyEvent::from(KeyCode::Char(character))),
-                &mut app,
-                |_| {},
-            );
+            press(&mut app, KeyCode::Char(character));
         }
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Down)), &mut app, |_| {});
+        press(&mut app, KeyCode::Down);
         let mut submitted = false;
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
             submitted = true
         });
         assert!(!submitted);
@@ -1156,23 +1063,22 @@ mod tests {
 
     #[test]
     fn ctrl_c_closes_pickers_and_history_search_keeping_the_draft() {
-        let control = |character| {
-            Event::Key(KeyEvent::new(
-                KeyCode::Char(character),
-                KeyModifiers::CONTROL,
-            ))
-        };
         let mut app = new_app();
         app.add_prompt("fix tests".into());
         handle_input(Event::Paste("draft".into()), &mut app, |_| {});
-        handle_input(control('r'), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
         handle_input(Event::Paste("fix".into()), &mut app, |_| {});
-        assert!(!handle_input(control('c'), &mut app, |_| {}));
+        assert!(!press_with(
+            &mut app,
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+            |_| {}
+        ));
         assert!(!screen(&mut app).contains("Prompt history"));
         assert_eq!(app.input, "draft");
-        handle_input(control('c'), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, |_| {});
         handle_input(Event::Paste("/model".into()), &mut app, |_| {});
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
         handle_input(Event::Paste("draft".into()), &mut app, |_| {});
         let models = vec![
             "claude-opus-5-5".to_string(),
@@ -1180,7 +1086,12 @@ mod tests {
         ];
         handle_agent_event(UiEvent::Models(Ok(models)), &mut app);
         assert!(screen(&mut app).contains("Select model"));
-        assert!(!handle_input(control('c'), &mut app, |_| {}));
+        assert!(!press_with(
+            &mut app,
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+            |_| {}
+        ));
         assert!(!screen(&mut app).contains("Select model"));
         assert_eq!(app.input, "draft");
         assert_eq!(app.model, "model");
@@ -1192,9 +1103,9 @@ mod tests {
         app.set_files(0, vec!["src/main.rs".into()]);
         handle_input(Event::Paste("read @src/main.rs".into()), &mut app, |_| {});
         for _ in 0..2 {
-            handle_input(Event::Key(KeyEvent::from(KeyCode::Left)), &mut app, |_| {});
+            press(&mut app, KeyCode::Left);
         }
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
         assert_eq!(app.input, "read @src/main.rs ");
         assert_eq!(app.cursor, app.input.len());
     }
@@ -1229,7 +1140,7 @@ mod tests {
             ]
         );
         handle_input(Event::Paste(".rs".into()), &mut app, |_| {});
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
         assert_eq!(app.input, "explain @src/lib.rs ");
     }
 
@@ -1250,13 +1161,9 @@ mod tests {
         let mut app = new_app();
         for prompt in ["first", "second"] {
             handle_input(Event::Paste(prompt.into()), &mut app, |_| {});
-            handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
+            press(&mut app, KeyCode::Enter);
             app.activity = None;
         }
-        let press = |app: &mut App, code| {
-            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
-            app.input.clone()
-        };
         assert_eq!(press(&mut app, KeyCode::Up), "second");
         assert_eq!(press(&mut app, KeyCode::Up), "first");
         assert_eq!(press(&mut app, KeyCode::Up), "first");
@@ -1273,10 +1180,6 @@ mod tests {
         for prompt in ["first", "/compact", "read @src", "hello"] {
             app.add_prompt(prompt.into());
         }
-        let press = |app: &mut App, code| {
-            handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
-            app.input.clone()
-        };
         assert_eq!(press(&mut app, KeyCode::Up), "hello");
         assert_eq!(press(&mut app, KeyCode::Up), "read @src");
         assert_eq!(press(&mut app, KeyCode::Up), "/compact");
@@ -1293,9 +1196,10 @@ mod tests {
     fn sends_pasted_images_whose_markers_remain() {
         let mut app = new_app();
         let mut pasting = false;
-        handle_input(
-            Event::Key(KeyEvent::new(KeyCode::Char('v'), KeyModifiers::CONTROL)),
+        press_with(
             &mut app,
+            KeyCode::Char('v'),
+            KeyModifiers::CONTROL,
             |action| pasting = matches!(action, Action::PasteImage),
         );
         assert!(pasting);
@@ -1306,22 +1210,14 @@ mod tests {
         handle_agent_event(UiEvent::ImagePasted(Ok(Some(image(1)))), &mut app);
         handle_agent_event(UiEvent::ImagePasted(Ok(Some(image(2)))), &mut app);
         assert_eq!(app.input, "[image 1][image 2]");
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Backspace)),
-            &mut app,
-            |_| {},
-        );
+        press(&mut app, KeyCode::Backspace);
         handle_input(Event::Paste(" look".into()), &mut app, |_| {});
         let mut sent = None;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| {
-                if let Action::Submit(prompt, images, _) = action {
-                    sent = Some((prompt, images));
-                }
-            },
-        );
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::Submit(prompt, images, _) = action {
+                sent = Some((prompt, images));
+            }
+        });
         assert_eq!(
             sent,
             Some(("[image 1][image 2 look".into(), vec![image(1)]))

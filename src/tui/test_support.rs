@@ -1,6 +1,7 @@
-use super::{App, Role, draw::draw, keys::handle_input};
+use super::keys::{Action, handle_input};
+use super::{App, Role, draw::draw};
 use crate::agent::{Quota, Stats, Usage};
-use crossterm::event::{Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
 
 pub(super) fn new_app() -> App {
@@ -15,8 +16,18 @@ pub(super) fn new_app() -> App {
     App::new("model", "medium", stats)
 }
 
-pub(super) fn press(app: &mut App, code: KeyCode) {
-    handle_input(Event::Key(KeyEvent::from(code)), app, |_| {});
+pub(super) fn press(app: &mut App, code: KeyCode) -> String {
+    press_with(app, code, KeyModifiers::NONE, |_| {});
+    app.input.clone()
+}
+
+pub(super) fn press_with(
+    app: &mut App,
+    code: KeyCode,
+    modifiers: KeyModifiers,
+    act: impl FnMut(Action),
+) -> bool {
+    handle_input(Event::Key(KeyEvent::new(code, modifiers)), app, act)
 }
 
 pub(super) fn screen(app: &mut App) -> String {
