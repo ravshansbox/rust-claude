@@ -217,9 +217,8 @@ impl ChatMessage {
 /// padded to it and replies fit their tables to it.
 fn depends_on_width(role: Role, text: &str) -> bool {
     match role {
-        Role::User => true,
+        Role::User | Role::Tool => true,
         Role::Assistant => has_table(text),
-        Role::Tool => true,
         Role::Thinking | Role::Event => false,
     }
 }
