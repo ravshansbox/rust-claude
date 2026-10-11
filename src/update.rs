@@ -8,6 +8,8 @@ pub const RELEASES_URL: &str =
 const RELEASE_TAG_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/tags/";
 const ASSET: &str = "rust-coding-agent.zip";
+const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
+const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
 static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -87,6 +89,7 @@ pub struct Updater {
     pub rustc: Option<PathBuf>,
     pub build_dir: Option<PathBuf>,
     pub bin_dir: Option<PathBuf>,
+    pub public_key: &'static str,
 }
 
 impl Updater {
@@ -109,6 +112,7 @@ impl Updater {
             rustc: find_on_path("rustc", std::env::var_os("PATH")),
             build_dir: crate::config::dir().map(|dir| dir.join("build")),
             bin_dir: cargo_bin_dir(),
+            public_key: PUBLIC_KEY,
         })
     }
 
@@ -147,18 +151,28 @@ impl Updater {
             return;
         }
         let outcome = async {
-            let url = release
-                .assets
-                .iter()
-                .find(|asset| asset.name == ASSET)
-                .map(|asset| asset.browser_download_url.clone())
-                .with_context(|| format!("the release has no {ASSET}"))
-                .map_err(|error| Progress::Failed(version.clone(), format!("{error:#}")))?;
+            let asset_url = |name: &str| {
+                release
+                    .assets
+                    .iter()
+                    .find(|asset| asset.name == name)
+                    .map(|asset| asset.browser_download_url.clone())
+                    .with_context(|| format!("the release has no {name}"))
+                    .map_err(|error| Progress::Failed(version.clone(), format!("{error:#}")))
+            };
+            let url = asset_url(ASSET)?;
+            let signature_url = asset_url(SIGNATURE_ASSET)?;
             report(Progress::Downloading(version.clone()));
             let started = std::time::Instant::now();
-            self.download(&url, &folder).await.map_err(|error| {
-                Progress::DownloadFailed(version.clone(), format!("{error:#}"), started.elapsed())
-            })?;
+            self.download(&url, &signature_url, &folder)
+                .await
+                .map_err(|error| {
+                    Progress::DownloadFailed(
+                        version.clone(),
+                        format!("{error:#}"),
+                        started.elapsed(),
+                    )
+                })?;
             report(Progress::Downloaded(version.clone(), started.elapsed()));
             report(Progress::Building(version.clone()));
             let started = std::time::Instant::now();
@@ -220,8 +234,8 @@ impl Updater {
             .await?)
     }
 
-    async fn download(&self, url: &str, folder: &Path) -> Result<()> {
-        let bytes = self
+    async fn fetch(&self, url: &str) -> Result<Vec<u8>> {
+        Ok(self
             .http
             .get(url)
             .header(reqwest::header::USER_AGENT, "rust-coding-agent")
@@ -229,7 +243,25 @@ impl Updater {
             .await?
             .error_for_status()?
             .bytes()
-            .await?;
+            .await?
+            .to_vec())
+    }
+
+    /// Downloads the zip and unpacks it, once its signature shows it was
+    /// made with the release key.
+    async fn download(&self, url: &str, signature_url: &str, folder: &Path) -> Result<()> {
+        let bytes = self.fetch(url).await?;
+        let signature = self.fetch(signature_url).await?;
+        let valid = minisign_verify::PublicKey::from_base64(self.public_key)
+            .and_then(|key| {
+                let signature =
+                    minisign_verify::Signature::decode(&String::from_utf8_lossy(&signature))?;
+                key.verify(&bytes, &signature, false)
+            })
+            .is_ok();
+        if !valid {
+            anyhow::bail!("the signature of {ASSET} is not valid");
+        }
         let target = folder.to_path_buf();
         tokio::task::spawn_blocking(move || {
             zip::ZipArchive::new(std::io::Cursor::new(bytes))?.extract(target)
@@ -382,18 +414,35 @@ mod tests {
         buffer.into_inner()
     }
 
-    /// Serves the latest release on `/latest` and its zip on
-    /// `/rust-coding-agent.zip`, and counts the requests.
+    const TEST_PUBLIC_KEY: &str = "RWTE6351OTBrADV+7c6L94WA91b3tgiK798OqhdvvifKH+0mA+XZv4aE";
+    const SIGNED_ZIP: &[u8] = include_bytes!("../tests/fixtures/update/rust-coding-agent.zip");
+    const SIGNATURE: &[u8] =
+        include_bytes!("../tests/fixtures/update/rust-coding-agent.zip.minisig");
+
+    /// Serves the latest release on `/latest`, a zip signed with the test
+    /// key on `/rust-coding-agent.zip` and its signature, and counts the
+    /// requests.
     async fn github(tag: &str) -> (String, Arc<Mutex<Vec<String>>>) {
+        github_serving(tag, SIGNED_ZIP.to_vec(), Some(SIGNATURE.to_vec())).await
+    }
+
+    async fn github_serving(
+        tag: &str,
+        zip: Vec<u8>,
+        signature: Option<Vec<u8>>,
+    ) -> (String, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
-        let release = serde_json::json!({
-            "tag_name": tag,
-            "assets": [{ "name": "rust-coding-agent.zip", "browser_download_url": format!("{base}/rust-coding-agent.zip") }],
-        })
-        .to_string()
-        .into_bytes();
-        let zip = source_zip();
+        let mut assets = vec![
+            serde_json::json!({ "name": "rust-coding-agent.zip", "browser_download_url": format!("{base}/rust-coding-agent.zip") }),
+        ];
+        if signature.is_some() {
+            assets.push(serde_json::json!({ "name": "rust-coding-agent.zip.minisig", "browser_download_url": format!("{base}/rust-coding-agent.zip.minisig") }));
+        }
+        let release = serde_json::json!({ "tag_name": tag, "assets": assets })
+            .to_string()
+            .into_bytes();
+        let signature = signature.unwrap_or_default();
         let requests = Arc::new(Mutex::new(Vec::new()));
         let recorded = requests.clone();
         tokio::spawn(async move {
@@ -409,10 +458,10 @@ mod tests {
                 let request = String::from_utf8_lossy(&data).to_string();
                 let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
                 recorded.lock().unwrap().push(request);
-                let body = if path == "/rust-coding-agent.zip" {
-                    &zip
-                } else {
-                    &release
+                let body = match path.as_str() {
+                    "/rust-coding-agent.zip" => &zip,
+                    "/rust-coding-agent.zip.minisig" => &signature,
+                    _ => &release,
                 };
                 let head = format!(
                     "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
@@ -470,6 +519,7 @@ mod tests {
             rustc: None,
             build_dir: None,
             bin_dir: None,
+            public_key: TEST_PUBLIC_KEY,
         }
     }
 
@@ -629,6 +679,55 @@ mod tests {
         }
         assert!(!build.join("rustc 1.98.0").exists());
         assert!(build.join("rustc 1.99.0").exists());
+    }
+
+    #[tokio::test]
+    async fn refuses_a_release_whose_signature_does_not_match() {
+        let dir = temp_dir("bad-signature");
+        let (base, _) = github_serving("v0.2.0", source_zip(), Some(SIGNATURE.to_vec())).await;
+        let cargo = fake_cargo(&dir, 0);
+        let shown = run(updater(&base, Some(cargo))).await;
+        let last = shown.last().unwrap();
+        assert!(
+            last.starts_with("download failed after ")
+                && last.ends_with("s: the signature of rust-coding-agent.zip is not valid"),
+            "{shown:?}"
+        );
+        assert!(!dir.join("cargo.log").exists());
+    }
+
+    #[tokio::test]
+    async fn refuses_a_release_signed_with_another_key() {
+        let dir = temp_dir("other-key");
+        let (base, _) = github("v0.2.0").await;
+        let cargo = fake_cargo(&dir, 0);
+        let mut updater = updater(&base, Some(cargo));
+        updater.public_key = super::PUBLIC_KEY;
+        let shown = run(updater).await;
+        assert!(
+            shown
+                .last()
+                .unwrap()
+                .ends_with("s: the signature of rust-coding-agent.zip is not valid"),
+            "{shown:?}"
+        );
+        assert!(!dir.join("cargo.log").exists());
+    }
+
+    #[tokio::test]
+    async fn refuses_a_release_without_a_signature() {
+        let dir = temp_dir("unsigned");
+        let (base, _) = github_serving("v0.2.0", SIGNED_ZIP.to_vec(), None).await;
+        let cargo = fake_cargo(&dir, 0);
+        let shown = run(updater(&base, Some(cargo))).await;
+        assert_eq!(
+            shown,
+            [
+                "update v0.2.0 available",
+                "failed: the release has no rust-coding-agent.zip.minisig"
+            ]
+        );
+        assert!(!dir.join("cargo.log").exists());
     }
 
     #[tokio::test]
