@@ -40,6 +40,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::TaskToolCalls { task, count }) => {
             app.count_task_tool_calls(task, count);
         }
+        UiEvent::Agent(AgentEvent::TaskStats { task, stats }) => app.show_task_stats(task, stats),
         UiEvent::Agent(AgentEvent::TaskDone {
             task,
             reply,
@@ -854,6 +855,39 @@ mod tests {
                 "[agent 2] list files · 1 tool call\n  This task failed: 400 Bad Request",
             ]
         );
+    }
+
+    #[test]
+    fn shows_the_stats_of_each_task_and_keeps_them_when_it_finishes() {
+        let mut app = new_app();
+        start_tasks(&mut app);
+        let stats = crate::agent::Stats {
+            usage: crate::agent::Usage {
+                output: 71_000,
+                ..Default::default()
+            },
+            tokens_per_second: Some(107.0),
+            context_tokens: Some(40_000),
+            context_window: 1_000_000,
+            ..Default::default()
+        };
+        for event in [
+            AgentEvent::TaskToolCalls { task: 0, count: 2 },
+            AgentEvent::TaskStats { task: 0, stats },
+        ] {
+            handle_agent_event(UiEvent::Agent(event), &mut app);
+        }
+        let shown = "[agent 1] say hi · 2 tool calls · 4%/1m · ↓71k 107t/s";
+        assert_eq!(texts(&app)[1], shown);
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::TaskDone {
+                task: 0,
+                reply: Ok("hi".into()),
+                tool_calls: 2,
+            }),
+            &mut app,
+        );
+        assert_eq!(texts(&app)[1], shown);
     }
 
     #[test]

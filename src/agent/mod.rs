@@ -78,6 +78,11 @@ pub enum AgentEvent {
         task: usize,
         count: usize,
     },
+    /// The latest stats of the subagent on `task`.
+    TaskStats {
+        task: usize,
+        stats: Stats,
+    },
     /// The subagent on `task` finished with `reply` after `tool_calls` tool
     /// calls, or failed or did not run, as the error tells the main agent.
     TaskDone {
