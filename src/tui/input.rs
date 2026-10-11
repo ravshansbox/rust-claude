@@ -32,34 +32,41 @@ pub(super) fn expand_tabs(text: String) -> String {
 }
 
 fn starts_new_row(grapheme: &str, grapheme_width: usize, row_width: usize, width: usize) -> bool {
-    if grapheme == "\n" {
+    if matches!(grapheme, "\n" | "") {
         row_width >= width
     } else {
         row_width > 0 && row_width + grapheme_width > width
     }
 }
 
+fn layout(input: &str, width: usize) -> impl Iterator<Item = (usize, &str, usize, usize)> {
+    let (mut row, mut row_width) = (0, 0);
+    let end = (input.len(), "");
+    input
+        .grapheme_indices(true)
+        .chain([end])
+        .map(move |(index, grapheme)| {
+            let grapheme_width = shown_width(grapheme);
+            if starts_new_row(grapheme, grapheme_width, row_width, width) {
+                row += 1;
+                row_width = 0;
+            }
+            let position = (index, grapheme, row, row_width);
+            if grapheme == "\n" {
+                row += 1;
+                row_width = 0;
+            } else {
+                row_width += grapheme_width;
+            }
+            position
+        })
+}
+
 pub(super) fn input_rows(input: &str, width: usize) -> Vec<String> {
-    let mut rows = vec![String::new()];
-    let mut row_width = 0;
-    for grapheme in input.graphemes(true) {
-        let grapheme_width = shown_width(grapheme);
-        if starts_new_row(grapheme, grapheme_width, row_width, width) {
-            rows.push(String::new());
-            row_width = 0;
-        }
-        if grapheme == "\n" {
-            rows.push(String::new());
-            row_width = 0;
-            continue;
-        }
-        if let Some(row) = rows.last_mut() {
-            row.push_str(shown(grapheme));
-        }
-        row_width += grapheme_width;
-    }
-    if row_width >= width {
-        rows.push(String::new());
+    let mut rows = Vec::new();
+    for (_, grapheme, row, _) in layout(input, width) {
+        rows.resize(rows.len().max(row + 1), String::new());
+        rows[row].push_str(shown(grapheme));
     }
     rows
 }
@@ -114,52 +121,22 @@ pub(super) fn next_word_end(input: &str, cursor: usize) -> usize {
 }
 
 pub(super) fn input_cursor(input: &str, cursor: usize, width: usize) -> (usize, usize) {
-    let mut row = 0;
-    let mut row_width = 0;
-    for (index, grapheme) in input.grapheme_indices(true) {
-        let grapheme_width = shown_width(grapheme);
-        if starts_new_row(grapheme, grapheme_width, row_width, width) {
-            row += 1;
-            row_width = 0;
-        }
-        if index == cursor {
-            return (row, row_width);
-        }
-        if grapheme == "\n" {
-            row += 1;
-            row_width = 0;
-        } else {
-            row_width += grapheme_width;
-        }
-    }
-    if row_width >= width {
-        (row + 1, 0)
-    } else {
-        (row, row_width)
-    }
+    layout(input, width)
+        .find(|&(index, ..)| index == cursor || index == input.len())
+        .map_or((0, 0), |(_, _, row, column)| (row, column))
 }
 
 fn index_at(input: &str, target_row: usize, column: usize, width: usize) -> usize {
-    let mut row = 0;
-    let mut row_width = 0;
     let mut last_index = 0;
-    for (index, grapheme) in input.grapheme_indices(true) {
-        let grapheme_width = shown_width(grapheme);
-        if starts_new_row(grapheme, grapheme_width, row_width, width) {
-            if row == target_row {
-                return last_index;
-            }
-            row += 1;
-            row_width = 0;
+    for (index, grapheme, row, row_width) in layout(input, width) {
+        if grapheme.is_empty() {
+            break;
         }
-        if row == target_row && (grapheme == "\n" || row_width + grapheme_width > column) {
+        if row > target_row {
+            return last_index;
+        }
+        if row == target_row && (grapheme == "\n" || row_width + shown_width(grapheme) > column) {
             return index;
-        }
-        if grapheme == "\n" {
-            row += 1;
-            row_width = 0;
-        } else {
-            row_width += grapheme_width;
         }
         last_index = index;
     }
