@@ -532,6 +532,13 @@ pub(crate) mod tests {
         }
     }
 
+    fn no_credentials_file() -> std::path::PathBuf {
+        let path = credentials_path().unwrap();
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let _ = std::fs::remove_file(&path);
+        path
+    }
+
     fn expired(refresh: &str) -> Credentials {
         serde_json::from_value(json!({ "access": "old", "refresh": refresh, "expires": 0 }))
             .unwrap()
@@ -586,9 +593,7 @@ pub(crate) mod tests {
 
     async fn token_after_renewal_with(reply: Value) -> Result<String, String> {
         answer_token_requests("200 OK", reply).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let http = reqwest::Client::new();
         let mut credentials = expired("first");
         let first = credentials.access_token(&http).await;
@@ -630,9 +635,7 @@ pub(crate) mod tests {
             json!({ "access_token": "new", "expires_in": 3600 }),
         )
         .await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let mut credentials = expired("first");
         let token = credentials.access_token(&reqwest::Client::new()).await;
         let saved = std::fs::read_to_string(&path);
@@ -678,9 +681,7 @@ pub(crate) mod tests {
     async fn finishes_renewing_after_the_caller_gives_up() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("first", true).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let prompt = tokio::spawn(async {
             let mut credentials = expired("first");
             credentials.access_token(&reqwest::Client::new()).await
@@ -710,9 +711,7 @@ pub(crate) mod tests {
     async fn quitting_waits_for_a_renewal_to_be_saved() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("first", true).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let prompt = tokio::spawn(async {
             let mut credentials = expired("first");
             credentials.access_token(&reqwest::Client::new()).await
@@ -737,9 +736,7 @@ pub(crate) mod tests {
     async fn quitting_stops_waiting_for_a_renewal_that_hangs() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("first", true).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let prompt = tokio::spawn(async {
             let mut credentials = expired("first");
             credentials.access_token(&reqwest::Client::new()).await
@@ -760,9 +757,7 @@ pub(crate) mod tests {
     async fn renews_a_sign_in_the_api_turned_down_and_sends_the_request_again() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("refresh", false).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut text = String::new();
@@ -819,9 +814,7 @@ pub(crate) mod tests {
     async fn asks_to_sign_in_again_when_a_sign_in_the_api_turned_down_cannot_be_renewed() {
         let _lock = AUTH_FILE.lock().await;
         let _endpoint = TokenEndpoint::start("other", false).await;
-        let path = credentials_path().unwrap();
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        let _ = std::fs::remove_file(&path);
+        let path = no_credentials_file();
         let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
         let result = agent.prompt("hi", &[], |_| {}).await;
