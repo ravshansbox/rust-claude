@@ -120,7 +120,11 @@ fn mark_last_block(message: &mut Value) {
 }
 
 pub(super) fn estimate_tokens(message: &Value) -> u64 {
-    let characters: usize = match &message["content"] {
+    (characters(&message["content"]) as u64).div_ceil(4)
+}
+
+fn characters(content: &Value) -> usize {
+    match content {
         Value::String(text) => text.chars().count(),
         Value::Array(blocks) => blocks
             .iter()
@@ -135,17 +139,12 @@ pub(super) fn estimate_tokens(message: &Value) -> u64 {
                     block["name"].as_str().unwrap_or_default().chars().count()
                         + block["input"].to_string().chars().count()
                 }
-                "tool_result" => block["content"]
-                    .as_str()
-                    .unwrap_or_default()
-                    .chars()
-                    .count(),
+                "tool_result" => characters(&block["content"]),
                 _ => 0,
             })
             .sum(),
         _ => 0,
-    };
-    (characters as u64).div_ceil(4)
+    }
 }
 
 pub(super) fn estimate_prompt_tokens(system: &[Value], tools: &Value) -> u64 {
@@ -340,5 +339,21 @@ mod tests {
                 { "type": "text", "text": "abc" },
             ])
         );
+    }
+
+    #[test]
+    fn estimates_tool_results_made_of_text_blocks() {
+        let result = |content| {
+            json!({
+                "role": "user",
+                "content": [{ "type": "tool_result", "tool_use_id": "1", "content": content }],
+            })
+        };
+        let blocks = result(json!([
+            { "type": "text", "text": "12345678" },
+            { "type": "text", "text": "abcdefgh" },
+        ]));
+        assert_eq!(context_tokens(&[blocks], 0), 4);
+        assert_eq!(context_tokens(&[result(json!("12345678abcdefgh"))], 0), 4);
     }
 }
