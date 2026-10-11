@@ -36,7 +36,7 @@ impl Setup {
         setup.script(
             "curl",
             &format!(
-                "echo \"$@\" > '{root}/curl.log'\nwhile [ $# -gt 0 ]; do\n  if [ \"$1\" = -o ]; then out=$2; fi\n  shift\ndone\ncp '{root}/fixture.zip' \"$out\"\n",
+                "echo \"$@\" >> '{root}/curl.log'\nwhile [ $# -gt 0 ]; do\n  case \"$1\" in -o) out=$2 ;; *.minisig) signature=1 ;; esac\n  shift\ndone\nif [ -n \"${{signature:-}}\" ]; then echo signature > \"$out\"; else cp '{root}/fixture.zip' \"$out\"; fi\n",
                 root = setup.root.display()
             ),
         );
@@ -54,6 +54,17 @@ impl Setup {
             "cargo",
             &format!(
                 "echo \"$@\" > '{root}/cargo.log'\nfor last; do :; done\necho \"$last\" > '{root}/folder'\ngrep -q 'version = \"0.5.0\"' \"$last/Cargo.toml\" && echo unpacked >> '{root}/cargo.log'\n",
+                root = self.root.display()
+            ),
+        );
+        self
+    }
+
+    fn with_minisign(self, exit_code: i32) -> Self {
+        self.script(
+            "minisign",
+            &format!(
+                "echo \"$@\" > '{root}/minisign.log'\nfor argument; do case \"$argument\" in *.minisig) cat \"$argument\" >> '{root}/minisign.log' ;; esac; done\nexit {exit_code}\n",
                 root = self.root.display()
             ),
         );
@@ -111,6 +122,56 @@ fn installs_the_latest_release_with_cargo() {
     assert!(cargo.contains("unpacked"), "{cargo}");
     let folder = setup.read("folder");
     assert!(!Path::new(folder.trim()).exists(), "left {folder} behind");
+}
+
+#[test]
+fn checks_the_signature_with_minisign() {
+    let setup = Setup::new("signed").with_cargo().with_minisign(0);
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        setup
+            .read("curl.log")
+            .contains(&format!("{LATEST_ZIP}.minisig")),
+        "{}",
+        setup.read("curl.log")
+    );
+    let minisign = setup.read("minisign.log");
+    assert!(
+        minisign
+            .starts_with("-V -q -P RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8 -m "),
+        "{minisign}"
+    );
+    assert!(minisign.ends_with("signature\n"), "{minisign}");
+    assert!(!stderr(&output).contains("minisign"), "{}", stderr(&output));
+    assert!(setup.read("cargo.log").contains("unpacked"));
+}
+
+#[test]
+fn stops_when_the_signature_is_not_valid() {
+    let setup = Setup::new("bad-signature").with_cargo().with_minisign(1);
+    let output = setup.install();
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        stderr(&output).contains("the signature of rust-coding-agent.zip is not valid"),
+        "{}",
+        stderr(&output)
+    );
+    assert_eq!(setup.read("cargo.log"), "");
+}
+
+#[test]
+fn warns_and_installs_without_minisign() {
+    let setup = Setup::new("no-minisign").with_cargo();
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        stderr(&output)
+            .contains("minisign not found on PATH, installing without checking the signature"),
+        "{}",
+        stderr(&output)
+    );
+    assert!(setup.read("cargo.log").contains("unpacked"));
 }
 
 #[test]
