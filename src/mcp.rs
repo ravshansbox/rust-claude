@@ -1245,6 +1245,10 @@ fn http_url(config: &ServerConfig) -> Option<&str> {
     }
 }
 
+fn http_url_of<'a>(name: &str, config: &'a ServerConfig) -> Result<&'a str, String> {
+    http_url(config).ok_or_else(|| format!("MCP server {name} is not an HTTP server"))
+}
+
 /// A sign-in waiting for the user to finish it in the browser.
 pub struct SignIn {
     pub authorize_url: String,
@@ -1259,9 +1263,7 @@ impl SignIn {
 }
 
 async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn, String> {
-    let Some(url) = http_url(config) else {
-        return Err(format!("MCP server {name} is not an HTTP server"));
-    };
+    let url = http_url_of(name, config)?;
     if !uses_oauth(config) {
         return Err(format!(
             "MCP server {name} sends its own Authorization header"
@@ -1280,9 +1282,7 @@ async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn,
 }
 
 fn sign_out_with(name: &str, config: &ServerConfig) -> Result<String, String> {
-    let Some(url) = http_url(config) else {
-        return Err(format!("MCP server {name} is not an HTTP server"));
-    };
+    let url = http_url_of(name, config)?;
     Ok(if oauth::remove(url)? {
         format!("signed out of MCP server {name}")
     } else {
