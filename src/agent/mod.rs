@@ -436,15 +436,13 @@ impl Agent {
                 .is_some_and(|tokens| tokens * 100 >= stats.context_window * COMPACT_AT_PERCENT)
     }
 
-    async fn compact_if_full(
-        &mut self,
-        end: usize,
-        on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<()> {
-        if self.context_full() && has_uncompacted(&self.messages[..end]) {
-            self.compact_history(end, on_event).await?;
+    async fn compact_if_full(&mut self, end: usize, on_event: &mut impl FnMut(AgentEvent)) {
+        if self.context_full()
+            && has_uncompacted(&self.messages[..end])
+            && let Err(error) = self.compact_history(end, on_event).await
+        {
+            on_event(AgentEvent::Notice(format!("{error:#}")));
         }
-        Ok(())
     }
 
     async fn compact_history(
@@ -582,7 +580,7 @@ impl Agent {
         self.push_prompt(prompt, images)?;
         on_event(AgentEvent::Stats(self.stats()));
         self.compact_if_full(self.messages.len() - 1, &mut on_event)
-            .await?;
+            .await;
 
         loop {
             let messages = with_cache_breakpoint(&active_messages(&self.messages));
@@ -662,7 +660,7 @@ impl Agent {
             // Compact before adding queued prompts, so they follow the summary
             // word for word instead of being summarised.
             self.compact_if_full(self.messages.len(), &mut on_event)
-                .await?;
+                .await;
             if let Some(prompts) = self.take_queued_prompts(&mut on_event)? {
                 self.messages
                     .push(json!({ "role": "user", "content": prompts }));
@@ -836,6 +834,43 @@ mod tests {
             assert!(!after.contains("partial summary"), "{stop_reason}: {after}");
             assert!(after.contains("hello"), "{stop_reason}: {after}");
         }
+    }
+
+    #[tokio::test]
+    async fn answers_the_prompt_when_automatic_compaction_fails() {
+        let full_context_reply = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hello" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+            json!({ "type": "message_stop" }),
+        ]);
+        let api = MockApi::start(vec![
+            full_context_reply,
+            stopped_reply("partial summary", "refusal"),
+            text_reply("ok"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut notices = Vec::new();
+        let first = agent.prompt("hi", &[], |_| {}).await;
+        let next = agent
+            .prompt("next", &[], test_support::notices(&mut notices))
+            .await;
+        test_support::remove_session(&agent);
+        first.unwrap();
+        next.unwrap();
+        assert!(
+            notices
+                .iter()
+                .any(|notice| notice.contains("not compacted")),
+            "{notices:?}"
+        );
+        let requests = api.requests().await;
+        let last = requests[2]["messages"].to_string();
+        assert!(last.contains("hello"), "{last}");
+        assert!(!last.contains("partial summary"), "{last}");
     }
 
     #[tokio::test]
