@@ -20,7 +20,11 @@ pub(super) fn press(app: &mut App, code: KeyCode) {
 }
 
 pub(super) fn screen(app: &mut App) -> String {
-    let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    screen_of_width(app, 100)
+}
+
+pub(super) fn screen_of_width(app: &mut App, width: u16) -> String {
+    let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
     terminal.draw(|frame| draw(frame, app)).unwrap();
     let buffer = terminal.backend().buffer();
     buffer
