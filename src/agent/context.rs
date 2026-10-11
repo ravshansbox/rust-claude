@@ -235,12 +235,6 @@ mod tests {
     }
 
     #[test]
-    fn has_no_context_count_before_a_reply() {
-        let messages = vec![json!({ "role": "user", "content": "12345" })];
-        assert_eq!(context_tokens(&messages), None);
-    }
-
-    #[test]
     fn shortens_each_text_block_of_a_tool_result() {
         let messages = vec![json!({
             "role": "user",

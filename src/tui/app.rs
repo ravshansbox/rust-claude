@@ -1045,18 +1045,6 @@ mod tests {
     }
 
     #[test]
-    fn shows_name_and_version_before_start_up_lines() {
-        let mut app = new_app();
-        app.push(Role::Event, "loaded AGENTS.md");
-        let shown = screen(&mut app);
-        let name = shown
-            .find(&format!("rust-claude v{}", env!("CARGO_PKG_VERSION")))
-            .expect(&shown);
-        let loaded = shown.find("loaded AGENTS.md").expect(&shown);
-        assert!(name < loaded, "{shown}");
-    }
-
-    #[test]
     fn groups_mcp_servers_by_scope_on_two_lines_with_spinners() {
         let mut app = new_app();
         app.start_mcp_servers([

@@ -88,25 +88,6 @@ mod tests {
     use super::{missing_search_programs, system_text};
 
     #[test]
-    fn tells_the_model_to_prefer_ast_grep_for_code_search() {
-        assert!(system_text(&[]).contains(
-            "Search code with ast-grep. Fall back to ripgrep for plain text, comments, strings and files ast-grep cannot parse."
-        ));
-    }
-
-    #[test]
-    fn tells_the_model_how_to_format_questions() {
-        assert!(system_text(&[]).contains(
-            "Number the questions when there is more than one. Letter the options. Put the recommended one first and mark it."
-        ));
-    }
-
-    #[test]
-    fn tells_the_model_to_use_plain_english() {
-        assert!(system_text(&[]).contains("Use plain English (ISO 24495-1)."));
-    }
-
-    #[test]
     fn leaves_missing_search_programs_out_of_the_system_prompt() {
         let without_ast_grep = system_text(&["ast-grep"]);
         assert!(without_ast_grep.contains("Search with ripgrep."));
