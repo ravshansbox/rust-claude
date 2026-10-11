@@ -474,7 +474,11 @@ async fn run_loop(
                 if let Some(message) = app.notification.take()
                     && !app.busy()
                 {
-                    let _ = notify(terminal.backend_mut(), &message);
+                    let _ = notify(
+                        terminal.backend_mut(),
+                        &message,
+                        std::env::var_os("TMUX").is_some(),
+                    );
                 }
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
             }
@@ -591,9 +595,13 @@ fn copy_to_clipboard(output: &mut impl Write, text: &str) -> std::io::Result<()>
     execute!(output, CopyToClipboard::to_clipboard_from(text))
 }
 
-fn notify(output: &mut impl Write, message: &str) -> std::io::Result<()> {
+fn notify(output: &mut impl Write, message: &str, tmux: bool) -> std::io::Result<()> {
     let message: String = message.chars().filter(|c| !c.is_control()).collect();
-    write!(output, "\x1b]9;{message}\x07")?;
+    if tmux {
+        write!(output, "\x1bPtmux;\x1b\x1b]9;{message}\x07\x1b\\")?;
+    } else {
+        write!(output, "\x1b]9;{message}\x07")?;
+    }
     output.flush()
 }
 
@@ -675,8 +683,15 @@ mod tests {
     #[test]
     fn notifies_with_an_osc_9_sequence_without_control_characters() {
         let mut output = Vec::new();
-        notify(&mut output, "Failed: \x1b]52;c;aGk=\x07bad\u{9c}").unwrap();
+        notify(&mut output, "Failed: \x1b]52;c;aGk=\x07bad\u{9c}", false).unwrap();
         assert_eq!(output, b"\x1b]9;Failed: ]52;c;aGk=bad\x07");
+    }
+
+    #[test]
+    fn wraps_the_notification_for_tmux_passthrough() {
+        let mut output = Vec::new();
+        notify(&mut output, "Done", true).unwrap();
+        assert_eq!(output, b"\x1bPtmux;\x1b\x1b]9;Done\x07\x1b\\");
     }
 
     #[test]
