@@ -340,7 +340,7 @@ mod tests {
         let shown = screen_of_width(&mut app, 160);
         let version = shown
             .find(concat!(
-                "rust-coding-agent v",
+                "Rust Coding Agent v",
                 env!("CARGO_PKG_VERSION"),
                 " · update v0.2.0 available · downloaded in 3s · built in 2m 5s",
                 " · installed, restart rust-coding-agent to use it"
@@ -368,7 +368,7 @@ mod tests {
         let shown = screen_of_width(&mut app, 160);
         assert!(
             shown.contains(concat!(
-                "rust-coding-agent v",
+                "Rust Coding Agent v",
                 env!("CARGO_PKG_VERSION"),
                 " · update v0.2.0 available · downloaded in 3s",
                 " · build failed after 1m 10s: error: x"
@@ -392,7 +392,7 @@ mod tests {
         let shown = screen(&mut app);
         assert!(
             shown.contains(concat!(
-                "rust-coding-agent v",
+                "Rust Coding Agent v",
                 env!("CARGO_PKG_VERSION"),
                 " · update v0.2.0 available · downloading"
             )),

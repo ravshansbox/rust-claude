@@ -20,7 +20,7 @@ use anyhow::Result;
 use ratatui::{layout::Rect, text::Line};
 use std::path::PathBuf;
 
-const VERSION_LINE: &str = concat!("rust-coding-agent v", env!("CARGO_PKG_VERSION"));
+const VERSION_LINE: &str = concat!("Rust Coding Agent v", env!("CARGO_PKG_VERSION"));
 
 pub(super) struct Suggestions {
     pub(super) start: usize,
