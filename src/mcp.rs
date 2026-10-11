@@ -1200,22 +1200,25 @@ fn sign_out_with(name: &str, config: &ServerConfig) -> Result<String, String> {
 
 /// Forgets the saved sign-in for the configured server `name`.
 pub fn sign_out(name: &str) -> Result<String, String> {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let (configs, _, _) = read_configs(crate::config::dir().as_deref(), &cwd);
-    let Some((_, config)) = configs.get(name) else {
-        return Err(format!("no MCP server named {name}"));
-    };
-    sign_out_with(name, config)
+    sign_out_with(name, &configured(name)?)
 }
 
 /// Starts signing in to the configured server `name`.
 pub async fn begin_sign_in(name: &str) -> Result<SignIn, String> {
+    begin_sign_in_with(name, &configured(name)?).await
+}
+
+fn configs() -> (Configs, Vec<String>, Vec<String>) {
     let cwd = std::env::current_dir().unwrap_or_default();
-    let (configs, _, _) = read_configs(crate::config::dir().as_deref(), &cwd);
-    let Some((_, config)) = configs.get(name) else {
-        return Err(format!("no MCP server named {name}"));
-    };
-    begin_sign_in_with(name, config).await
+    read_configs(crate::config::dir().as_deref(), &cwd)
+}
+
+fn configured(name: &str) -> Result<ServerConfig, String> {
+    let (mut configs, _, _) = configs();
+    let (_, config) = configs
+        .remove(name)
+        .ok_or_else(|| format!("no MCP server named {name}"))?;
+    Ok(config)
 }
 
 /// Cloning shares the running servers, so subagents can call their tools.
@@ -1279,12 +1282,10 @@ fn starting(name: String, scope: Scope, config: ServerConfig) -> StartingServer 
 
 /// Starts the configured server `name` again, as after signing in.
 pub fn restart(name: &str) -> Option<StartingServer> {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    restart_from(crate::config::dir().as_deref(), &cwd, name)
+    restart_from(configs().0, name)
 }
 
-fn restart_from(config_dir: Option<&Path>, cwd: &Path, name: &str) -> Option<StartingServer> {
-    let (mut configs, _, _) = read_configs(config_dir, cwd);
+fn restart_from(mut configs: Configs, name: &str) -> Option<StartingServer> {
     let (scope, config) = configs
         .remove(name)
         .filter(|(_, config)| config.enabled != Some(false))?;
@@ -1292,8 +1293,7 @@ fn restart_from(config_dir: Option<&Path>, cwd: &Path, name: &str) -> Option<Sta
 }
 
 pub fn startup() -> Startup {
-    let cwd = std::env::current_dir().unwrap_or_default();
-    let (configs, overridden, diagnostics) = read_configs(crate::config::dir().as_deref(), &cwd);
+    let (configs, overridden, diagnostics) = configs();
     let enabled: Vec<_> = configs
         .into_iter()
         .filter(|(_, (_, config))| config.enabled != Some(false))
@@ -1677,8 +1677,9 @@ mod tests {
             } }"#,
         )
         .unwrap();
-        let docs = restart_from(Some(&directory), &directory, "docs").map(|server| server.name);
-        let off = restart_from(Some(&directory), &directory, "off").map(|server| server.name);
+        let configs = || read_configs(Some(&directory), &directory).0;
+        let docs = restart_from(configs(), "docs").map(|server| server.name);
+        let off = restart_from(configs(), "off").map(|server| server.name);
         std::fs::remove_dir_all(&directory).unwrap();
         assert_eq!(docs.as_deref(), Some("docs"));
         assert_eq!(off.as_deref(), None);
