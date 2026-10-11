@@ -1925,7 +1925,7 @@ done
                         reply.body.len()
                     );
                     for (name, value) in reply.headers {
-                        response.push_str(&format!("{name}: {value}\r\n"));
+                        let _ = write!(response, "{name}: {value}\r\n");
                     }
                     response.push_str("\r\n");
                     response.push_str(&reply.body);
