@@ -7,7 +7,7 @@ use ratatui::{
     widgets::Widget,
 };
 
-/// Columns taken by the marker or indent before prompt and reply rows.
+/// Columns taken by the marker or indent before prompt rows.
 const PREFIX_WIDTH: u16 = 2;
 
 /// A cell of the conversation, counting rows from its top.
@@ -95,14 +95,14 @@ impl App {
     }
 
     /// Whether each conversation row from `start` to `end` starts with the
-    /// marker or indent of a prompt or reply.
+    /// marker or indent of a prompt.
     fn prefixed_rows(&self, start: usize, end: usize) -> Vec<bool> {
         let mut prefixed = vec![false; end - start + 1];
         let mut top = 0;
         for message in &self.messages {
             let first = top + 1;
             top = first + message.height();
-            if matches!(message.role, Role::User | Role::Assistant) {
+            if matches!(message.role, Role::User) {
                 for row in first.max(start)..top.min(end + 1) {
                     prefixed[row - start] = true;
                 }
@@ -265,10 +265,10 @@ mod tests {
     }
 
     #[test]
-    fn leaves_out_the_markers_and_indent_of_prompts_and_replies() {
+    fn leaves_out_the_marker_and_indent_of_prompts() {
         let mut app = app_with_reply();
         app.push(Role::User, "my prompt");
-        let (column, row) = position(&mut app, "● Earlier reply");
+        let (column, row) = position(&mut app, "Earlier reply");
         let (end_column, end_row) = position(&mut app, "❯ my prompt");
         let input = drag(&mut app, (column, row), (end_column + 10, end_row));
         assert_eq!(input, "> Earlier reply\n>\n> my prompt\n\n");

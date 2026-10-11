@@ -440,30 +440,30 @@ mod tests {
     }
 
     #[test]
-    fn marks_a_reply_and_indents_its_wrapped_rows() {
+    fn shows_a_reply_without_a_marker_or_indent() {
         let mut app = crate::tui::test_support::new_app();
         app.push(Role::Assistant, "alpha beta gamma delta\n\nsecond part");
         let shown = screen_of_width(&mut app, 14);
-        let rows = rows_from(&shown, "● alpha");
+        let rows = rows_from(&shown, "alpha");
         assert_eq!(
             rows[..4],
-            ["● alpha beta", "  gamma delta", "", "  second part"],
+            ["alpha beta", "gamma delta", "", "second part"],
             "{shown}"
         );
     }
 
     #[test]
-    fn marks_a_streamed_reply_once() {
+    fn shows_a_streamed_reply_without_a_marker_or_indent() {
         let mut app = crate::tui::test_support::new_app();
         handle_agent_event(
             UiEvent::Agent(AgentEvent::Text("Before\n\n```\ncode\n```\n\nAfter".into())),
             &mut app,
         );
         let shown = screen_of_width(&mut app, 40);
-        assert_eq!(shown.matches('●').count(), 1, "{shown}");
-        let rows = rows_from(&shown, "● Before");
-        assert!(rows.contains(&"  code"), "{shown}");
-        assert!(rows.contains(&"  After"), "{shown}");
+        assert!(!shown.contains('●'), "{shown}");
+        let rows = rows_from(&shown, "Before");
+        assert!(rows.contains(&"code"), "{shown}");
+        assert!(rows.contains(&"After"), "{shown}");
     }
 
     #[test]

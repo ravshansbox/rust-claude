@@ -119,7 +119,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
             &hard_line_breaks(text),
             &tui_markdown::Options::new(MarkdownStyleSheet)
                 .code_theme(theme().code_theme())
-                .table_width(width.saturating_sub(INDENT_WIDTH)),
+                .table_width(width),
         )
         .lines
         .into_iter()
@@ -365,30 +365,6 @@ pub(super) fn borrowed_line<'a>(line: &'a Line<'_>) -> Line<'a> {
     }
 }
 
-pub(super) const REPLY_MARKER: &str = "● ";
-pub(super) const INDENT: &str = "  ";
-const INDENT_WIDTH: u16 = 2;
-
-/// The line wrapped at word boundaries to fit after a two-column prefix:
-/// `first_prefix` on the first row and `INDENT` on the rest.
-pub(super) fn indented_rows(
-    line: &Line<'_>,
-    width: u16,
-    first_prefix: &'static str,
-) -> Vec<Line<'static>> {
-    let width = usize::from(width.saturating_sub(INDENT_WIDTH).max(1));
-    wrapped_rows(line, width)
-        .into_iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let prefix = if index == 0 { first_prefix } else { INDENT };
-            let mut spans = joined_spans(row);
-            spans.insert(0, Span::raw(prefix));
-            Line::from(spans).style(line.style)
-        })
-        .collect()
-}
-
 /// The line's graphemes and their styles in rows of at most `width`
 /// columns, broken at word boundaries where a word fits on a row.
 fn wrapped_rows<'a>(line: &'a Line<'_>, width: usize) -> Vec<Vec<(&'a str, Style)>> {
@@ -510,19 +486,6 @@ mod tests {
     }
 
     #[test]
-    fn wraps_reply_rows_by_display_width_and_breaks_long_words() {
-        let rows = |text: &str| -> Vec<String> {
-            indented_rows(&Line::raw(text.to_string()), 8, REPLY_MARKER)
-                .iter()
-                .map(|line| line.to_string())
-                .collect()
-        };
-        assert_eq!(rows("日本語のテキ"), ["● 日本語", "  のテキ"]);
-        assert_eq!(rows("ab abcdefgh"), ["● ab abc", "  defgh"]);
-        assert_eq!(rows("abc   def"), ["● abc   ", "  def"]);
-    }
-
-    #[test]
     fn pads_user_message_with_halfwidth_sound_marks_to_width() {
         use ratatui::buffer::CellWidth;
         for line in user_message_lines("ｶﾞｷﾞ", 8) {
@@ -561,8 +524,7 @@ mod tests {
         assert_eq!(tool[1], format!("{:20}", "[31mred[0m"));
         for role in [Role::Assistant, Role::Thinking, Role::Event, Role::User] {
             for line in render_message(role, "hi \x1b[31mred\x07", 20) {
-                let rows = indented_rows(&line, 20, REPLY_MARKER);
-                let text: String = rows.iter().map(|row| row.to_string()).collect();
+                let text = line.to_string();
                 assert!(!text.contains(['\x1b', '\x07']), "{text:?}");
             }
         }
