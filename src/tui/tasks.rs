@@ -65,13 +65,15 @@ fn finished(header: &str, failure: Option<&str>) -> String {
 impl App {
     pub(super) fn start_task(&mut self, task: usize, description: &str) {
         self.push(Role::Tool, header(task, description));
-        let task_state = Task {
-            message: self.messages.len() - 1,
-            description: description.to_string(),
-            tool_calls: 0,
-            stats: None,
-        };
-        self.tasks.insert(task, task_state);
+        self.tasks.insert(
+            task,
+            Task {
+                message: self.messages.len() - 1,
+                description: description.to_string(),
+                tool_calls: 0,
+                stats: None,
+            },
+        );
     }
 
     fn update_task(&mut self, task: usize, change: impl FnOnce(&mut Task)) {
