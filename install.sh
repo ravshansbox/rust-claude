@@ -13,9 +13,10 @@ curl -fsSL -o "$folder/rust-claude.zip" \
   https://github.com/ravshansbox/rust-claude/releases/latest/download/rust-claude.zip
 unzip -q "$folder/rust-claude.zip" -d "$folder"
 build="$HOME/.rust-claude/build"
+(umask 077 && mkdir -p "$build")
 if version=$(rustc -vV 2>/dev/null) && [ "$(cat "$build/rustc-version" 2>/dev/null)" != "$version" ]; then
   rm -rf "$build"
-  mkdir -p "$build"
+  (umask 077 && mkdir -p "$build")
   printf '%s\n' "$version" > "$build/rustc-version"
 fi
 cargo install --locked --force --target-dir "$build" --path "$folder/rust-claude"

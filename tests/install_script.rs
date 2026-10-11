@@ -105,6 +105,16 @@ fn installs_the_latest_release_with_cargo() {
 }
 
 #[test]
+fn creates_the_config_folder_only_the_user_can_open() {
+    let setup = Setup::new("private").with_cargo();
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    let folder = setup.root.join("home/.rust-claude");
+    let mode = std::fs::metadata(&folder).unwrap().permissions().mode() & 0o777;
+    assert_eq!(mode, 0o700, "{}", folder.display());
+}
+
+#[test]
 fn keeps_the_build_folder_while_the_compiler_stays_the_same() {
     let setup = Setup::new("same-compiler").with_cargo();
     setup.script("rustc", "echo 'rustc 1.99.0'\n");
