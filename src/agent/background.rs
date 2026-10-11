@@ -67,9 +67,14 @@ mod tests {
         ])
         .await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut counts = Vec::new();
         let result = tokio::time::timeout(
             Duration::from_secs(5),
-            agent.prompt("watch it", &[], |_| {}),
+            agent.prompt("watch it", &[], |event| {
+                if let super::super::AgentEvent::Stats(stats) = event {
+                    counts.push(stats.background);
+                }
+            }),
         )
         .await;
         let running = agent.has_background();
@@ -78,6 +83,7 @@ mod tests {
         test_support::remove_session(&agent);
         result.expect("prompt waited for the command").unwrap();
         assert!(running);
+        assert_eq!(counts, [0, 0, 1, 1]);
         let requests = api.requests().await;
         assert!(
             tool_result(&requests[1]).contains("started background task 1"),

@@ -254,6 +254,7 @@ impl Agent {
             context_tokens: context_tokens(&active_messages(&self.messages)),
             context_window: models::context_window(&self.model),
             quota: self.quota,
+            background: self.background.len(),
         }
     }
 
@@ -619,6 +620,7 @@ impl Agent {
                 let result = if name == tools::agent::NAME && !self.subagent {
                     self.run_tasks(&block["input"], &mut on_event).await
                 } else if let Some(result) = self.call_background(name, &block["input"]) {
+                    on_event(AgentEvent::Stats(self.stats()));
                     result.map(Value::from)
                 } else {
                     match self.mcp.call(name, &block["input"]).await {

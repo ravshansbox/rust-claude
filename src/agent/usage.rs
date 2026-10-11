@@ -58,6 +58,8 @@ pub struct Stats {
     pub context_tokens: Option<u64>,
     pub context_window: u64,
     pub quota: Quota,
+    /// Background commands running or waiting to be answered.
+    pub background: usize,
 }
 
 #[derive(Default, Clone, Copy)]
