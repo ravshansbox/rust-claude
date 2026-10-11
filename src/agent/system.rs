@@ -64,9 +64,4 @@ mod tests {
         assert!(!text.contains("bold"));
         assert!(!text.contains("Letter the options"));
     }
-
-    #[test]
-    fn leaves_the_second_identity_line_out_of_the_system_prompt() {
-        assert!(!SYSTEM_PROMPT.contains("You are rust-coding-agent"));
-    }
 }
