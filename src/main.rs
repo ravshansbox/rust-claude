@@ -22,11 +22,7 @@ use tokio::signal::unix::{Signal, SignalKind, signal};
 
 const USAGE: &str = "usage: rust-coding-agent [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]";
 
-const HELP: &str = "A small coding agent for the terminal.
-
-usage: rust-coding-agent [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]
-
-Options:
+const OPTIONS: &str = "Options:
   -c, --continue           Continue the latest session in the current folder
       --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-coding-agent
       --model <id>         Model to use
@@ -147,7 +143,7 @@ async fn run() -> Result<()> {
     }
     let (print_prompt, image_paths) = match command {
         Command::Help => {
-            println!("{HELP}");
+            println!("A small coding agent for the terminal.\n\n{USAGE}\n\n{OPTIONS}");
             return Ok(());
         }
         Command::Interactive => (None, Vec::new()),
