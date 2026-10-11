@@ -18,11 +18,7 @@ const MAX_OUTPUT: usize = 20_000;
 
 pub fn truncate(mut text: String) -> String {
     if text.len() > MAX_OUTPUT {
-        let mut end = MAX_OUTPUT;
-        while !text.is_char_boundary(end) {
-            end -= 1;
-        }
-        text.truncate(end);
+        text.truncate(text.floor_char_boundary(MAX_OUTPUT));
         text.push_str("\n… output truncated");
     }
     text

@@ -163,11 +163,7 @@ pub fn replace_file(
     // Only the start of the name, so the temporary name stays within the
     // longest name a folder allows.
     let name = path.file_name().unwrap_or_default().to_string_lossy();
-    let mut end = name.len().min(64);
-    while !name.is_char_boundary(end) {
-        end -= 1;
-    }
-    let prefix = &name[..end];
+    let prefix = &name[..name.floor_char_boundary(64)];
     // A new name each time, so a file or link someone else put at the
     // name is never opened.
     let (temporary, mut file) = loop {
