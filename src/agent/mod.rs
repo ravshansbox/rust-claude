@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 mod context;
 pub(crate) mod retry;
 mod stream;
+mod subagent;
 mod system;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -69,9 +70,12 @@ pub enum AgentEvent {
     Queued(String),
 }
 
-pub fn tool_definitions(mcp: &Mcp) -> Value {
+fn tool_definitions(mcp: &Mcp, subagent: bool) -> Value {
     let mut definitions = tools::definitions();
     if let Value::Array(list) = &mut definitions {
+        if subagent {
+            list.retain(|definition| definition["name"] != tools::agent::NAME);
+        }
         list.extend(mcp.definitions());
     }
     definitions
@@ -138,6 +142,9 @@ pub struct Agent {
     pub session: Session,
     pub queue: Queue,
     pub missing_programs: Vec<&'static str>,
+    /// Whether this agent runs a task for another agent. A subagent cannot
+    /// start subagents, and its conversation is not saved.
+    subagent: bool,
 }
 
 impl Agent {
@@ -158,6 +165,7 @@ impl Agent {
             session: Session::new()?,
             queue: Queue::default(),
             missing_programs: missing_search_programs(std::env::var_os("PATH")),
+            subagent: false,
         })
     }
 
@@ -240,7 +248,7 @@ impl Agent {
             tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(
                 &active_messages(&self.messages),
-                estimate_prompt_tokens(&self.system_prompt(), &tool_definitions(&self.mcp)),
+                estimate_prompt_tokens(&self.system_prompt(), &self.tool_definitions()),
             ),
             context_window: models::context_window(&self.model),
             quota: self.quota,
@@ -285,6 +293,10 @@ impl Agent {
             total: stats.context_tokens,
             window: stats.context_window,
         }
+    }
+
+    fn tool_definitions(&self) -> Value {
+        tool_definitions(&self.mcp, self.subagent)
     }
 
     fn system_prompt(&self) -> Vec<Value> {
@@ -609,28 +621,36 @@ impl Agent {
                     summary: tools::summary(name, &block["input"]),
                     diff: tools::diff(name, &block["input"]),
                 });
-                let result = match self.mcp.call(name, &block["input"]).await {
-                    Some(result) => result,
-                    None => tools::call(name, &block["input"]).await,
+                let result = if name == tools::agent::NAME && !self.subagent {
+                    self.run_tasks(&block["input"], &mut on_event).await
+                } else {
+                    match self.mcp.call(name, &block["input"]).await {
+                        Some(result) => result,
+                        None => tools::call(name, &block["input"]).await,
+                    }
+                    .map(Value::from)
                 };
-                let (text, is_error) = match result {
-                    Ok(text) => (text, false),
-                    Err(text) => (text, true),
+                let (content, is_error) = match result {
+                    Ok(content) => (content, false),
+                    Err(text) => (Value::from(text), true),
                 };
+                let text = content.as_str().unwrap_or_default();
                 on_event(AgentEvent::ToolDone {
                     name: name.into(),
-                    error: is_error.then(|| text.clone()),
-                    note: tools::note(name, &text).filter(|_| !is_error),
+                    error: is_error.then(|| text.to_string()),
+                    note: tools::note(name, text).filter(|_| !is_error),
                 });
                 self.tool_results.push(json!({
                     "type": "tool_result",
                     "tool_use_id": block["id"],
-                    "content": text,
+                    "content": content,
                     "is_error": is_error,
                 }));
             }
             self.push_tool_results();
-            self.session.save(&self.messages)?;
+            if !self.subagent {
+                self.session.save(&self.messages)?;
+            }
             // Compact before adding queued prompts, so they follow the summary
             // word for word instead of being summarised.
             self.compact_if_full(self.messages.len(), &mut on_event)

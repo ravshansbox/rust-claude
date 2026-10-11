@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+pub mod agent;
 mod bash;
 mod display;
 mod edit;
@@ -32,7 +33,8 @@ pub fn definitions() -> Value {
         python::definition(),
         read::definition(),
         write::definition(),
-        edit::definition()
+        edit::definition(),
+        agent::definition()
     ])
 }
 
