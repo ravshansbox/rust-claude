@@ -567,17 +567,29 @@ impl Agent {
     ) -> Result<()> {
         self.push_prompt(prompt, images)?;
         on_event(AgentEvent::Stats(self.stats()));
-        self.compact_if_full(self.messages.len() - 1, &mut on_event)
-            .await;
+        let mut end = self.messages.len() - 1;
+        self.compact_if_full(end, &mut on_event).await;
 
         loop {
             let messages = with_cache_breakpoint(&active_messages(&self.messages));
+            let response = match self.request(messages, None, &mut on_event).await {
+                Err(error)
+                    if is_prompt_too_long(&error) && has_uncompacted(&self.messages[..end]) =>
+                {
+                    self.compact_history(end, &mut on_event)
+                        .await
+                        .map_err(|compact_error| anyhow!("{error:#}; {compact_error:#}"))?;
+                    let messages = with_cache_breakpoint(&active_messages(&self.messages));
+                    self.request(messages, None, &mut on_event).await
+                }
+                response => response,
+            };
             let Response {
                 content,
                 stop_reason,
                 usage,
                 retried,
-            } = self.request(messages, None, &mut on_event).await?;
+            } = response?;
             // A refusal can arrive partway through a reply, so the text so far
             // is incomplete. Failing throws it away and keeps its tokens.
             if stop_reason == "refusal" {
@@ -650,8 +662,8 @@ impl Agent {
             }
             // Compact before adding queued prompts, so they follow the summary
             // word for word instead of being summarised.
-            self.compact_if_full(self.messages.len(), &mut on_event)
-                .await;
+            end = self.messages.len();
+            self.compact_if_full(end, &mut on_event).await;
             if let Some(prompts) = self.take_queued_prompts(&mut on_event)? {
                 self.messages
                     .push(json!({ "role": "user", "content": prompts }));
@@ -1219,6 +1231,28 @@ mod tests {
                 .to_string()
                 .contains(&output)
         );
+    }
+
+    #[tokio::test]
+    async fn compacts_when_tool_output_makes_the_next_request_too_long() {
+        let api = MockApi::start_with_message_limit(
+            vec![
+                tool_reply(
+                    "call-1",
+                    "bash",
+                    json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
+                ),
+                text_reply("summary of the work"),
+                text_reply("done"),
+            ],
+            10_000,
+        )
+        .await;
+        let (_, result) = test_support::run_prompt(&api, "read the big file", |_| {}).await;
+        result.unwrap();
+        let requests = api.requests().await;
+        let last = requests.last().unwrap()["messages"].to_string();
+        assert!(last.contains("summary of the work"), "{last}");
     }
 
     #[tokio::test]
