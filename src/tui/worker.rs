@@ -55,6 +55,10 @@ pub(super) fn notify_renewed(agent: &mut Agent, events: &mpsc::UnboundedSender<U
     }
 }
 
+fn send_stats(agent: &Agent, events: &mpsc::UnboundedSender<UiEvent>) {
+    let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+}
+
 pub(super) async fn agent_task(
     mut agent: Agent,
     mut requests: mpsc::UnboundedReceiver<Request>,
@@ -79,13 +83,13 @@ pub(super) async fn agent_task(
                 quota = None;
                 if let Ok(Ok(value)) = result {
                     agent.merge_quota(value);
-                    let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                    send_stats(&agent, &events);
                 }
                 continue;
             }
             Some(started) = mcp_servers.recv() => {
                 let _ = events.send(UiEvent::McpServer(agent.mcp.add(started)));
-                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                send_stats(&agent, &events);
                 continue;
             }
             Some(message) = agent.next_background(), if agent.has_background() => {
@@ -116,7 +120,7 @@ pub(super) async fn agent_task(
                     let _ = events.send(UiEvent::Cancelled(Ok(())));
                 }
             }
-            let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+            send_stats(&agent, &events);
             continue;
         }
         let (prompt, effort) = match request {
@@ -129,7 +133,7 @@ pub(super) async fn agent_task(
             Request::Shell(_) => continue,
             Request::ReplaceMcpServer(started) => {
                 let _ = events.send(UiEvent::McpServer(agent.mcp.replace(started)));
-                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                send_stats(&agent, &events);
                 continue;
             }
             Request::ListSessions => {
@@ -138,17 +142,17 @@ pub(super) async fn agent_task(
             }
             Request::Resume(id) => {
                 let _ = events.send(UiEvent::Resumed(agent.resume(&id).await));
-                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                send_stats(&agent, &events);
                 continue;
             }
             Request::SetModel(model) => {
                 agent.model = model;
-                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                send_stats(&agent, &events);
                 continue;
             }
             Request::NewSession => {
                 let _ = events.send(UiEvent::NewSession(agent.new_session()));
-                let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+                send_stats(&agent, &events);
                 continue;
             }
         };
@@ -177,7 +181,7 @@ pub(super) async fn agent_task(
         if cancelled {
             let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
         }
-        let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
+        send_stats(&agent, &events);
     }
 }
 
