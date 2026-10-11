@@ -502,7 +502,11 @@ mod tests {
 
     #[test]
     fn shows_the_same_rows_from_any_scroll_position() {
-        use ratatui::{buffer::Buffer, layout::Rect, widgets::Widget};
+        use ratatui::{
+            buffer::{Buffer, Cell},
+            layout::Rect,
+            widgets::Widget,
+        };
         let mut app = crate::tui::test_support::new_app();
         let words: String = (0..30).map(|number| format!("word{number:02} ")).collect();
         app.push(Role::Event, "first event");
@@ -517,7 +521,7 @@ mod tests {
             buffer
                 .content()
                 .chunks(width as usize)
-                .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+                .map(|row| row.iter().map(Cell::symbol).collect::<String>())
                 .collect::<Vec<_>>()
         };
         let all = rows(0, 200);
