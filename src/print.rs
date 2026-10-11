@@ -99,11 +99,16 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         self.out_terminal && self.colour
     }
 
-    /// Starts a message on `err` on its own line, after a blank line.
-    fn begin_err(&mut self) {
+    /// Ends a line left open on `out` or `err` with a newline on `err`.
+    fn close_open_line(&mut self) {
         if std::mem::take(&mut self.err_open) | std::mem::take(&mut self.out_open) {
             let _ = writeln!(self.err);
         }
+    }
+
+    /// Starts a message on `err` on its own line, after a blank line.
+    fn begin_err(&mut self) {
+        self.close_open_line();
         if self.err_shown || (self.printed && self.shared_screen()) {
             let _ = writeln!(self.err);
         }
@@ -122,9 +127,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             return;
         }
         if self.shared_screen() {
-            if std::mem::take(&mut self.err_open) | std::mem::take(&mut self.out_open) {
-                let _ = writeln!(self.err);
-            }
+            self.close_open_line();
             if self.err_shown || self.printed {
                 let _ = writeln!(self.err);
             }
