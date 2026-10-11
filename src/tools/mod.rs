@@ -47,8 +47,14 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 /// Replaces the file at `path`, or the file a symlink there points to, in one
 /// step, keeping the permissions and group of the file it replaces. In a
 /// folder where no temporary file can be created, and for a file with other
-/// hard links or another owner, it writes the file in place instead.
-async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
+/// hard links or another owner, it writes the file in place instead. With
+/// `expected`, it refuses a file whose text is no longer `expected`, such as
+/// one another edit changed after this one read it.
+async fn replace_file(
+    path: &str,
+    contents: String,
+    expected: Option<String>,
+) -> std::io::Result<()> {
     let path = std::path::PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
         let (target, metadata) = match std::fs::canonicalize(&path) {
@@ -60,6 +66,11 @@ async fn replace_file(path: &str, contents: String) -> std::io::Result<()> {
                     .metadata()?;
                 if !metadata.is_file() {
                     return Err(std::io::Error::other("not a regular file"));
+                }
+                if let Some(expected) = &expected
+                    && std::fs::read(&target)? != expected.as_bytes()
+                {
+                    return Err(std::io::Error::other("it changed while being edited"));
                 }
                 (target, Some(metadata))
             }
@@ -152,6 +163,18 @@ mod tests {
         for (name, input, error) in cases {
             assert_eq!(call(name, &input).await, Err(error.into()), "{input}");
         }
+    }
+
+    #[tokio::test]
+    async fn refuses_to_replace_a_file_that_changed_since_it_was_read() {
+        let file = super::test_support::TemporaryFile::new("changed", "changed by someone else");
+        let path = file.path().to_str().unwrap();
+        let result = super::replace_file(path, "edited".into(), Some("as read".into())).await;
+        assert_eq!(
+            result.map_err(|error| error.to_string()),
+            Err("it changed while being edited".into())
+        );
+        assert_eq!(file.content(), "changed by someone else");
     }
 
     #[test]

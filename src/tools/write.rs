@@ -31,7 +31,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
             .await
             .map_err(|error| format!("failed to write {path}: {error}"))?;
     }
-    replace_file(path, content.to_string())
+    replace_file(path, content.to_string(), None)
         .await
         .map(|_| format!("wrote {path}"))
         .map_err(|error| format!("failed to write {path}: {error}"))
