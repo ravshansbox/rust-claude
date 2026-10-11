@@ -73,10 +73,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             search.query.push_str(&text.replace(['\r', '\n'], " "));
             search.selected = 0;
         } else if app.picker.is_none() {
-            let text = text.replace("\r\n", "\n").replace('\r', "\n");
-            app.input.insert_str(app.cursor, &text);
-            app.cursor += text.len();
-            app.input_changed();
+            app.insert(&text.replace("\r\n", "\n").replace('\r', "\n"));
         }
         return false;
     }
@@ -140,9 +137,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     .map(|(prompt, _)| prompt.to_string());
                 app.history_search = None;
                 if let Some(prompt) = prompt {
-                    app.input = prompt;
-                    app.cursor = app.input.len();
-                    app.input_changed();
+                    app.restore_input(prompt);
                 }
             }
             (KeyCode::Esc, _) | (KeyCode::Char('r' | 'c'), KeyModifiers::CONTROL) => {
@@ -158,9 +153,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             .modifiers
             .intersects(KeyModifiers::SHIFT | KeyModifiers::ALT)
     {
-        app.input.insert(app.cursor, '\n');
-        app.cursor += 1;
-        app.input_changed();
+        app.insert("\n");
         return false;
     }
 
@@ -200,9 +193,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
 
     match (key.code, key.modifiers) {
         (KeyCode::Char('c'), KeyModifiers::CONTROL) if !app.input.is_empty() => {
-            app.input.clear();
-            app.cursor = 0;
-            app.input_changed();
+            app.restore_input(String::new());
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => return true,
         (KeyCode::Esc, _) if app.busy() => {
@@ -244,10 +235,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         }
         (KeyCode::Enter, _) if !app.busy() && !app.input.trim().is_empty() => {
             app.scroll_to_bottom();
-            let prompt = std::mem::take(&mut app.input);
-            app.cursor = 0;
-            app.forget_files();
-            app.history_index = None;
+            let prompt = app.take_input();
             if let Some(command) = prompt.strip_prefix('!') {
                 let command = command.trim().to_string();
                 app.remember(&prompt);
@@ -330,10 +318,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         if !arguments.is_empty() {
                             app.push(Role::User, arguments);
                         }
-                        app.remember(&prompt);
-                        app.start(Activity::Working);
-                        let images = app.take_images(&prompt);
-                        act(Action::Submit(prompt, images, app.effort));
+                        act(app.submit(prompt));
                     }
                     command => {
                         app.push(Role::Event, format!("unknown command: {command}"));
@@ -343,10 +328,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 return false;
             }
             app.push(Role::User, prompt.clone());
-            app.remember(&prompt);
-            app.start(Activity::Working);
-            let images = app.take_images(&prompt);
-            act(Action::Submit(prompt, images, app.effort));
+            act(app.submit(prompt));
         }
         (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
             app.cursor = previous_word_start(&app.input, app.cursor);
@@ -361,21 +343,13 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         (KeyCode::Left, _) => app.cursor = previous_grapheme(&app.input, app.cursor),
         (KeyCode::Right, _) => app.cursor = next_grapheme(&app.input, app.cursor),
         (KeyCode::Backspace, KeyModifiers::ALT) | (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
-            let start = previous_word_start(&app.input, app.cursor);
-            app.input.replace_range(start..app.cursor, "");
-            app.cursor = start;
-            app.input_changed();
+            app.delete_to(previous_word_start(&app.input, app.cursor));
         }
         (KeyCode::Backspace, _) => {
-            let start = previous_grapheme(&app.input, app.cursor);
-            app.input.replace_range(start..app.cursor, "");
-            app.cursor = start;
-            app.input_changed();
+            app.delete_to(previous_grapheme(&app.input, app.cursor));
         }
         (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
-            app.input.insert(app.cursor, character);
-            app.cursor += character.len_utf8();
-            app.input_changed();
+            app.insert(character.encode_utf8(&mut [0; 4]));
         }
         _ => {}
     }

@@ -3,6 +3,7 @@ use super::{
     display_model,
     draw::SPINNER_FRAMES,
     files::{FileList, file_query},
+    keys::Action,
     render::{
         INDENT, REPLY_MARKER, borrowed_line, indented_rows, render_message, tool_message,
         wrapped_height,
@@ -811,18 +812,8 @@ impl App {
 
     pub(super) fn attach_image(&mut self, image: Image) {
         self.image_count += 1;
-        let marker = image_marker(self.image_count);
-        self.input.insert_str(self.cursor, &marker);
-        self.cursor += marker.len();
+        self.insert(&image_marker(self.image_count));
         self.images.push((self.image_count, image));
-        self.input_changed();
-    }
-
-    pub(super) fn take_images(&mut self, prompt: &str) -> Vec<Image> {
-        self.take_numbered_images(prompt)
-            .into_iter()
-            .map(|(_, image)| image)
-            .collect()
     }
 
     pub(super) fn take_numbered_images(&mut self, prompt: &str) -> Vec<(usize, Image)> {
@@ -967,10 +958,7 @@ impl App {
     }
 
     pub(super) fn queue_prompt(&mut self) {
-        let prompt = std::mem::take(&mut self.input);
-        self.cursor = 0;
-        self.forget_files();
-        self.history_index = None;
+        let prompt = self.take_input();
         self.remember(&prompt);
         let images = self.take_numbered_images(&prompt);
         if let Ok(mut queue) = self.queue.lock() {
@@ -1024,6 +1012,33 @@ impl App {
     }
 
     /// Puts back text the user entered so they can fix it.
+    pub(super) fn take_input(&mut self) -> String {
+        self.cursor = 0;
+        self.forget_files();
+        self.history_index = None;
+        std::mem::take(&mut self.input)
+    }
+
+    pub(super) fn insert(&mut self, text: &str) {
+        self.input.insert_str(self.cursor, text);
+        self.cursor += text.len();
+        self.input_changed();
+    }
+
+    pub(super) fn delete_to(&mut self, start: usize) {
+        self.input.replace_range(start..self.cursor, "");
+        self.cursor = start;
+        self.input_changed();
+    }
+
+    pub(super) fn submit(&mut self, prompt: String) -> Action {
+        self.remember(&prompt);
+        self.start(Activity::Working);
+        let images = self.take_numbered_images(&prompt);
+        let images = images.into_iter().map(|(_, image)| image).collect();
+        Action::Submit(prompt, images, self.effort)
+    }
+
     pub(super) fn restore_input(&mut self, text: String) {
         self.input = text;
         self.cursor = self.input.len();
