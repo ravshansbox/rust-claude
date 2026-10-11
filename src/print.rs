@@ -114,10 +114,14 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             }
             AgentEvent::TaskDone {
                 task,
-                reply: Err(error),
+                reply,
+                tool_calls,
             } => {
-                let line = error.lines().next().unwrap_or_default();
-                self.task_line(task, line);
+                self.task_line(task, &tools::agent::tool_calls(tool_calls));
+                if let Err(error) = reply {
+                    let line = error.lines().next().unwrap_or_default();
+                    self.task_line(task, line);
+                }
             }
             _ => {}
         }
@@ -363,7 +367,7 @@ mod tests {
         finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "done\n");
         let err = String::from_utf8(err).unwrap();
-        let expected = "agent sequential, 2 tasks\n  [agent 1] say hi\n  [agent 2] say bye\n  [agent 2] This task failed: 400 Bad Request: ";
+        let expected = "agent sequential, 2 tasks\n  [agent 1] say hi\n  [agent 1] 1 tool call\n  [agent 2] say bye\n  [agent 2] 0 tool calls\n  [agent 2] This task failed: 400 Bad Request: ";
         assert!(err.starts_with(expected), "{err}");
     }
 }

@@ -1,4 +1,11 @@
-use std::{future::Future, pin::Pin, sync::Arc};
+use std::{
+    future::Future,
+    pin::Pin,
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
+};
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -75,6 +82,7 @@ impl Agent {
                                 let _ = sender.send(AgentEvent::TaskDone {
                                     task: index,
                                     reply: Err(NOT_RUN.into()),
+                                    tool_calls: 0,
                                 });
                                 replies.push(Err(NOT_RUN.into()));
                                 continue;
@@ -121,10 +129,14 @@ impl Agent {
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
         Box::pin(async move {
             let _ = events.send(AgentEvent::TaskStart { task, description });
-            let reply = self.run_subagent(prompt, events.clone()).await;
+            let tool_calls = Arc::new(AtomicUsize::new(0));
+            let reply = self
+                .run_subagent(task, prompt, events.clone(), tool_calls.clone())
+                .await;
             let _ = events.send(AgentEvent::TaskDone {
                 task,
                 reply: reply.clone(),
+                tool_calls: tool_calls.load(Ordering::Relaxed),
             });
             reply
         })
@@ -132,8 +144,10 @@ impl Agent {
 
     async fn run_subagent(
         &self,
+        task: usize,
         prompt: String,
         events: mpsc::UnboundedSender<AgentEvent>,
+        tool_calls: Arc<AtomicUsize>,
     ) -> Result<String, String> {
         let failed = |error: anyhow::Error| format!("{FAILED}{error:#}");
         let mut child = self.subagent().map_err(failed)?;
@@ -150,11 +164,16 @@ impl Agent {
             }
         };
         let count_failed = count.clone();
-        let callback: Callback = Box::new(move |event| {
-            if let AgentEvent::Stats(stats) = &event {
+        let callback: Callback = Box::new(move |event| match &event {
+            AgentEvent::Stats(stats) => {
                 count(stats.usage);
                 let _ = events.send(event);
             }
+            AgentEvent::ToolStart { .. } => {
+                let count = tool_calls.fetch_add(1, Ordering::Relaxed) + 1;
+                let _ = events.send(AgentEvent::TaskToolCalls { task, count });
+            }
+            _ => {}
         });
         if let Err(error) = child.run(&prompt, &[], callback).await {
             child.discard_from(child.messages.len(), "error", false);
@@ -402,9 +421,15 @@ mod tests {
     fn describe(event: AgentEvent) -> Option<String> {
         Some(match event {
             AgentEvent::TaskStart { task, description } => format!("{task} start {description}"),
-            AgentEvent::TaskDone { task, reply } => {
-                format!("{task} done {}", reply.unwrap_or_else(|error| error))
-            }
+            AgentEvent::TaskToolCalls { task, count } => format!("{task} tool calls {count}"),
+            AgentEvent::TaskDone {
+                task,
+                reply,
+                tool_calls,
+            } => format!(
+                "{task} done {} after {tool_calls}",
+                reply.unwrap_or_else(|error| error)
+            ),
             AgentEvent::Text(text) => format!("text {text}"),
             AgentEvent::Thinking(text) => format!("thinking {text}"),
             AgentEvent::ToolStart { name, .. } => format!("tool {name}"),
@@ -416,7 +441,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn reports_only_when_each_subagent_starts_and_finishes() {
+    async fn reports_when_each_subagent_starts_calls_tools_and_finishes() {
         let api = MockApi::start(vec![
             tool_reply(
                 "call-1",
@@ -451,9 +476,10 @@ mod tests {
             [
                 "tool agent",
                 "0 start say hi",
-                "0 done hi",
+                "0 tool calls 1",
+                "0 done hi after 1",
                 "1 start say bye",
-                "1 done bye",
+                "1 done bye after 0",
             ]
         );
     }

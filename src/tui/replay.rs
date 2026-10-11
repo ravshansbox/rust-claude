@@ -37,8 +37,15 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::TaskStart { task, description }) => {
             app.start_task(task, &description);
         }
-        UiEvent::Agent(AgentEvent::TaskDone { task, reply }) => {
-            app.finish_task(task, reply.err().as_deref());
+        UiEvent::Agent(AgentEvent::TaskToolCalls { task, count }) => {
+            app.count_task_tool_calls(task, count);
+        }
+        UiEvent::Agent(AgentEvent::TaskDone {
+            task,
+            reply,
+            tool_calls,
+        }) => {
+            app.finish_task(task, tool_calls, reply.err().as_deref());
         }
         UiEvent::McpRestarting {
             name,
@@ -739,6 +746,34 @@ mod tests {
     }
 
     #[test]
+    fn shows_how_many_tool_calls_each_task_made() {
+        let mut app = new_app();
+        start_tasks(&mut app);
+        for (task, count) in [(0, 1), (0, 2), (1, 1)] {
+            handle_agent_event(
+                UiEvent::Agent(AgentEvent::TaskToolCalls { task, count }),
+                &mut app,
+            );
+        }
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::TaskDone {
+                task: 1,
+                reply: Err("This task failed: 400 Bad Request".into()),
+                tool_calls: 1,
+            }),
+            &mut app,
+        );
+        assert_eq!(
+            texts(&app),
+            [
+                "agent parallel, 2 tasks",
+                "[agent 1] say hi · 2 tool calls",
+                "[agent 2] list files · 1 tool call\n  This task failed: 400 Bad Request",
+            ]
+        );
+    }
+
+    #[test]
     fn hides_final_replies_but_shows_why_a_task_failed_live_and_replayed() {
         let reply = "reply 1\nreply 2";
         let failure = "This task failed: 400 Bad Request\nmore detail";
@@ -748,6 +783,7 @@ mod tests {
             UiEvent::Agent(AgentEvent::TaskDone {
                 task: 0,
                 reply: Ok(reply.into()),
+                tool_calls: 0,
             }),
             &mut live,
         );
@@ -755,6 +791,7 @@ mod tests {
             UiEvent::Agent(AgentEvent::TaskDone {
                 task: 1,
                 reply: Err(failure.into()),
+                tool_calls: 0,
             }),
             &mut live,
         );

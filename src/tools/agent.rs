@@ -42,6 +42,13 @@ pub fn summary(input: &Value) -> String {
     }
 }
 
+pub fn tool_calls(count: usize) -> String {
+    match count {
+        1 => "1 tool call".to_string(),
+        count => format!("{count} tool calls"),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mode {
     Sequential,
