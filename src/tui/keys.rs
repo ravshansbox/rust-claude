@@ -263,14 +263,15 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                         act(Action::Compact(app.effort));
                     }
                     "/effort" if argument.is_empty() => {
+                        let levels = models::effort_levels(&app.model);
                         app.open_picker(Picker {
                             kind: PickerKind::Effort,
                             title: "Select effort level",
-                            items: models::effort_levels(&app.model)
+                            items: levels
                                 .iter()
                                 .map(|level| (level.to_string(), level.to_string()))
                                 .collect(),
-                            selected: models::effort_levels(&app.model)
+                            selected: levels
                                 .iter()
                                 .position(|level| *level == app.effort)
                                 .unwrap_or_default(),
