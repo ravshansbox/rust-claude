@@ -23,6 +23,7 @@ pub struct Printer<Out, Err> {
     err_shown: bool,
     answering: bool,
     thinking: bool,
+    held_newlines: usize,
     reads: tools::ReadGroup,
     tasks: HashMap<usize, (String, Option<Stats>)>,
 }
@@ -49,6 +50,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             err_shown: false,
             answering: false,
             thinking: false,
+            held_newlines: 0,
             reads: tools::ReadGroup::default(),
             tasks: HashMap::new(),
         }
@@ -71,12 +73,14 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         self.err_shown = true;
         self.answering = false;
         self.thinking = false;
+        self.held_newlines = 0;
     }
 
     /// Starts a part of the answer after other messages. On a shared
     /// terminal the blank line goes to `err`, so `out` holds only the answer.
     fn begin_answer(&mut self) {
         self.thinking = false;
+        self.held_newlines = 0;
         if std::mem::replace(&mut self.answering, true) {
             return;
         }
@@ -112,13 +116,20 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                     self.begin_err();
                     self.thinking = true;
                 }
+                let shown = text.trim_end_matches('\n');
+                if shown.is_empty() {
+                    self.held_newlines += text.len();
+                    return;
+                }
+                let held = text.len() - shown.len();
+                let text = "\n".repeat(std::mem::replace(&mut self.held_newlines, held)) + shown;
                 if self.colour {
                     let _ = write!(self.err, "{}", crate::tui::ansi_thinking(&text));
                 } else {
                     let _ = write!(self.err, "{}", highlight::strip_controls(&text));
                 }
                 let _ = self.err.flush();
-                self.err_open = !text.ends_with('\n');
+                self.err_open = true;
             }
             AgentEvent::ToolStart {
                 name,
@@ -195,6 +206,9 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
     /// run ends the answer it started too, so the error shown next starts
     /// on its own line.
     pub fn finish(&mut self, result: anyhow::Result<()>) -> anyhow::Result<()> {
+        if std::mem::take(&mut self.err_open) {
+            let _ = writeln!(self.err);
+        }
         let ended = if result.is_ok() || self.printed {
             writeln!(self.out)
         } else {
@@ -290,6 +304,23 @@ mod tests {
             "let me\tthink\n\nbash\nls\n\nbash failed: boom\n\nnote\n"
         );
         assert_eq!(String::from_utf8(out).unwrap(), "answer\n");
+    }
+
+    #[test]
+    fn leaves_one_blank_line_after_thinking_that_ends_with_newlines() {
+        use crate::agent::AgentEvent;
+        let mut err = Vec::new();
+        let mut printer = Printer::new(std::io::sink(), false, &mut err, false, false, None);
+        printer.event(AgentEvent::Thinking("one\n\n".into()));
+        printer.event(AgentEvent::Thinking("two.\n".into()));
+        printer.event(AgentEvent::Thinking("\n".into()));
+        printer.event(AgentEvent::Notice("note".into()));
+        printer.event(AgentEvent::Thinking("last\n\n".into()));
+        printer.finish(Err(anyhow::anyhow!("boom"))).unwrap_err();
+        assert_eq!(
+            String::from_utf8(err).unwrap(),
+            "one\n\ntwo.\n\nnote\n\nlast\n"
+        );
     }
 
     #[test]
