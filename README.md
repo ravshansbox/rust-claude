@@ -137,7 +137,7 @@ You need [Rust](https://rustup.rs), `curl` and `unzip`.
 curl -fsSL https://raw.githubusercontent.com/ravshansbox/rust-coding-agent/main/install.sh | sh
 ```
 
-[install.sh](install.sh) downloads the source of the latest [release](https://github.com/ravshansbox/rust-coding-agent/releases) into a temporary folder, builds it with `cargo install --locked --force` in `~/.rust-coding-agent/build`, the same folder that updates use, and puts `rust-coding-agent` in `~/.cargo/bin`. If `~/.rust-coding-agent` does not exist yet, it creates it so that only you can open it. It stops with an error if `cargo` is not on `PATH`. `--force` makes cargo rebuild even if this version is already installed, so the same command also upgrades or reinstalls.
+[install.sh](install.sh) downloads the source of the latest [release](https://github.com/ravshansbox/rust-coding-agent/releases) into a temporary folder, builds it with `cargo install --locked --force` in `~/.rust-coding-agent/build`, the same folder that updates use, and puts `rust-coding-agent` in `~/.cargo/bin`. If `~/.rust-coding-agent` does not exist yet but `~/.rust-claude` from before the rename does, it moves that folder to `~/.rust-coding-agent`. Otherwise it creates `~/.rust-coding-agent` so that only you can open it. It stops with an error if `cargo` is not on `PATH`. `--force` makes cargo rebuild even if this version is already installed, so the same command also upgrades or reinstalls.
 
 **Upgrade or reinstall:** run the same command again.
 
@@ -198,6 +198,8 @@ Keep sign-in, settings, sessions, prompt history, skills and MCP config in anoth
 ```sh
 rust-coding-agent --config-dir ~/work/.rust-coding-agent
 ```
+
+If `~/.rust-coding-agent` does not exist but `~/.rust-claude` from before the rename does, rust-coding-agent moves it to `~/.rust-coding-agent` at start, unless `--config-dir` is given. Project `.rust-claude` folders are not moved; rename them to `.rust-coding-agent` yourself.
 
 Sessions hold whole conversations and tool output, so rust-coding-agent creates `~/.rust-coding-agent` and the folders and files it writes there so that only you can read them. Folders and files made by older versions keep their permissions. If `settings.json` or `auth.json` is a symlink, for example into a dotfiles folder, saving keeps the symlink and replaces the file it points to.
 

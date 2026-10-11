@@ -339,3 +339,22 @@ fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
     assert_eq!(output.status.code(), Some(1), "{stderr}");
     assert!(stderr.contains("usage:"), "{stderr}");
 }
+
+#[test]
+fn moves_the_old_config_folder_to_the_new_one() {
+    let setup = Setup::new("old-config");
+    setup.write_sign_in(&setup.home.join(".rust-claude"));
+    setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
+
+    let child = setup.run(&["-p", "hello"]);
+    let started = setup.server_started();
+    let output = interrupt(child);
+    stop_server(&setup.server_pid());
+    let moved = setup.home.join(".rust-coding-agent/auth.json").exists();
+    let old_left = setup.home.join(".rust-claude").exists();
+    let _ = std::fs::remove_dir_all(&setup.root);
+
+    assert!(started, "{}", String::from_utf8_lossy(&output.stderr));
+    assert!(moved);
+    assert!(!old_left);
+}
