@@ -19,7 +19,7 @@ pub(super) fn format_stats(stats: &Stats) -> String {
         parts.push(format!("CH{rate:.0}%"));
     }
     if let Some(rate) = stats.tokens_per_second {
-        parts.push(format!("TS{rate:.0}"));
+        parts.push(format!("{rate:.0}t/s"));
     }
     parts.join(" ")
 }
@@ -137,7 +137,7 @@ mod tests {
             tokens_per_second: Some(42.0),
             ..stats_with(Quota::default())
         };
-        assert_eq!(format_stats(&stats), "↑4 ↓338 R6k W88 CH99% TS42");
+        assert_eq!(format_stats(&stats), "↑4 ↓338 R6k W88 CH99% 42t/s");
     }
 
     #[test]
