@@ -40,13 +40,13 @@ On first run, rust-coding-agent prints a sign-in link for your Claude Pro or Max
 Start the interactive interface:
 
 ```sh
-rust-coding-agent
+rca
 ```
 
 Run one prompt and print the answer:
 
 ```sh
-rust-coding-agent -p "explain src/main.rs"
+rca -p "explain src/main.rs"
 ```
 
 Show all options with `-h` or `--help`.

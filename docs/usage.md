@@ -5,13 +5,13 @@
 Start the interactive interface:
 
 ```sh
-rust-coding-agent
+rca
 ```
 
 Run one prompt and print the answer with `-p` or `--print`. The argument after it is always the prompt, even when it starts with `-`:
 
 ```sh
-rust-coding-agent -p "explain src/main.rs"
+rca -p "explain src/main.rs"
 ```
 
 In print mode, `/skill:name` runs a skill as in the interface. Other commands, such as `/compact`, are not available there; their text is sent as the prompt.
@@ -19,7 +19,7 @@ In print mode, `/skill:name` runs a skill as in the interface. Other commands, s
 Send images with the prompt with `--image <path>`. Repeat it for more images:
 
 ```sh
-rust-coding-agent -p "what is wrong in this screenshot?" --image error.png
+rca -p "what is wrong in this screenshot?" --image error.png
 ```
 
 In print mode, tool calls and thinking go to standard error. When standard error is a terminal, they look as they do in the interface, with the same colours and syntax highlighting, and thinking is grey and in italics. A blank line separates each tool call, thinking block, notice and part of the answer, as in the interface. When standard output and standard error are both a terminal, these blank lines go to standard error, so standard output holds only the answer. rust-coding-agent removes control characters other than newline and tab, such as escape sequences that clear the screen or set the clipboard, from the tool calls, tool errors, notices and MCP messages it shows, and from the answer when standard output is a terminal. A piped answer is written byte for byte.
@@ -31,8 +31,8 @@ Choose the model and effort level for one run with `--model <id>` and `--effort 
 Continue the latest session started in the current folder with `-c` or `--continue`. It works in the interface and in print mode:
 
 ```sh
-rust-coding-agent -c
-rust-coding-agent -c -p "now add tests"
+rca -c
+rca -c -p "now add tests"
 ```
 
 If no session in the folder can be continued, rust-coding-agent stops with an error.
@@ -40,7 +40,7 @@ If no session in the folder can be continued, rust-coding-agent stops with an er
 Keep sign-in, settings, sessions, prompt history, skills and MCP config in another folder with `--config-dir <path>`. It works in the interface and in print mode. Wherever these docs mention `~/.rust-coding-agent`, it means this folder when the option is given. `~/AGENTS.md` and `~/.agents/skills/` still come from your home folder.
 
 ```sh
-rust-coding-agent --config-dir ~/work/.rust-coding-agent
+rca --config-dir ~/work/.rust-coding-agent
 ```
 
 If `~/.rust-coding-agent` does not exist but `~/.rust-claude` from before the rename does, rust-coding-agent moves it to `~/.rust-coding-agent` at start, unless `--config-dir` is given. Project `.rust-claude` folders are not moved; rename them to `.rust-coding-agent` yourself.
