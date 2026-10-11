@@ -112,53 +112,13 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             AgentEvent::TaskStart { task, description } => {
                 self.task_line(task, &description);
             }
-            AgentEvent::Task { task, event } => self.task_event(task, *event),
-            AgentEvent::TaskDone { task, reply } => match reply {
-                Ok(_) => self.task_line(task, "done"),
-                Err(error) => self.task_line(task, &error),
-            },
-            _ => {}
-        }
-    }
-
-    /// Writes the tool calls, failures and notices of a subagent, but not
-    /// its text, which only the main agent reads.
-    fn task_event(&mut self, task: usize, event: AgentEvent) {
-        match event {
-            AgentEvent::ToolStart {
-                name,
-                summary,
-                diff,
+            AgentEvent::TaskDone {
+                task,
+                reply: Err(error),
             } => {
-                if summary.is_empty() {
-                    self.task_line(task, &name);
-                } else {
-                    self.task_line(task, &format!("{name} {summary}"));
-                }
-                let Some(diff) = diff else {
-                    return;
-                };
-                match highlight::highlight_tool(&name, &summary, &diff, self.dark) {
-                    Some(lines) if self.colour => {
-                        for line in lines {
-                            let line = highlight::ansi_line(&line, self.dark);
-                            let _ = writeln!(self.err, "  [{}] {line}", task + 1);
-                        }
-                    }
-                    _ => self.task_line(task, &diff),
-                }
+                let line = error.lines().next().unwrap_or_default();
+                self.task_line(task, line);
             }
-            AgentEvent::ToolDone {
-                name,
-                error: Some(error),
-                ..
-            } => self.task_line(task, &format!("{name} failed: {error}")),
-            AgentEvent::ToolDone {
-                name,
-                note: Some(note),
-                ..
-            } => self.task_line(task, &format!("{name}: {note}")),
-            AgentEvent::Notice(text) => self.task_line(task, &text),
             _ => {}
         }
     }
@@ -374,7 +334,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn prints_subagent_tool_calls_indented_with_their_task_number() {
+    async fn prints_only_the_tasks_and_why_one_failed() {
         let api = MockApi::start(vec![
             tool_reply(
                 "call-1",
@@ -403,43 +363,7 @@ mod tests {
         finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "done\n");
         let err = String::from_utf8(err).unwrap();
-        let expected = "agent sequential, 2 tasks\n  [1] say hi\n  [1] bash\n  [1]  true\n  [1] done\n  [2] say bye\n  [2] This task failed: 400 Bad Request: ";
+        let expected = "agent sequential, 2 tasks\n  [1] say hi\n  [2] say bye\n  [2] This task failed: 400 Bad Request: ";
         assert!(err.starts_with(expected), "{err}");
-    }
-
-    #[tokio::test]
-    async fn highlights_subagent_tool_calls() {
-        let api = MockApi::start(vec![
-            tool_reply(
-                "call-1",
-                "agent",
-                json!({
-                    "mode": "parallel",
-                    "tasks": [{ "description": "run python", "prompt": "run it" }],
-                }),
-            ),
-            tool_reply(
-                "call-2",
-                "bash",
-                json!({ "command": "python3 - <<'EOF'\ndef f():\n    pass\nEOF" }),
-            ),
-            text_reply("ran"),
-            text_reply("done"),
-        ])
-        .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let mut err = Vec::new();
-        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
-        let finished = printer.finish(result);
-        test_support::remove_session(&agent);
-        finished.unwrap();
-        let err = String::from_utf8(err).unwrap();
-        let definition = err.lines().find(|line| line.contains("def")).unwrap();
-        assert!(definition.starts_with("  [1] "), "{definition:?}");
-        assert!(
-            definition.contains("\x1b[38;2;255;148;146mdef"),
-            "{definition:?}"
-        );
     }
 }

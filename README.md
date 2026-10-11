@@ -61,7 +61,7 @@ Tools:
 - Diff preview for `edit` and first-lines preview for `write`
 - Syntax highlighting in those previews
 - Consecutive `read` calls grouped on one line, with counts and line ranges
-- `agent` runs tasks in subagents, at the same time or one after another, with live progress
+- `agent` runs tasks in subagents, at the same time or one after another, showing each task but not the subagents' output
 - `web_search` searches the web through Anthropic, and lists the sources a reply cites after it
 
 Status line:
@@ -435,9 +435,9 @@ Each task runs in its own subagent with a new conversation. A subagent uses the 
 
 The input, output and cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use, cache hit rate and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count. The tokens of a subagent that fails still count too.
 
-In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[1] list files`. While a subagent works, its task shows the last 5 lines of its text, tool calls, failures and notices, and scrolls as it works. When it finishes, these lines are replaced by the first 10 lines of its final reply, followed by `…` when the reply is longer, or by why it failed or did not run. A resumed session shows each task with the start of its final reply.
+In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[1] list files`. Nothing a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way.
 
-In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each line from a subagent starts with its task number, such as `  [1] `: the task's description when it starts, its tool calls, failures and notices, and `done` or why it failed or did not run. A subagent's text is not printed.
+In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows its number and description when it starts, such as `  [1] say hi`. If a task fails or does not run, the first line of why follows, starting with the task number.
 
 ## MCP servers
 

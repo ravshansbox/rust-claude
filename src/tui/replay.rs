@@ -37,9 +37,8 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::TaskStart { task, description }) => {
             app.start_task(task, &description);
         }
-        UiEvent::Agent(AgentEvent::Task { task, event }) => app.task_event(task, &event),
         UiEvent::Agent(AgentEvent::TaskDone { task, reply }) => {
-            app.finish_task(task, reply.as_deref().unwrap_or_else(|error| error));
+            app.finish_task(task, reply.err().as_deref());
         }
         UiEvent::McpRestarting {
             name,
@@ -685,13 +684,6 @@ mod tests {
         );
     }
 
-    fn task_event(task: usize, event: AgentEvent) -> UiEvent {
-        UiEvent::Agent(AgentEvent::Task {
-            task,
-            event: Box::new(event),
-        })
-    }
-
     fn agent_input() -> serde_json::Value {
         json!({
             "mode": "parallel",
@@ -731,71 +723,27 @@ mod tests {
     }
 
     #[test]
-    fn shows_the_last_lines_of_each_subagent_while_it_works() {
+    fn shows_each_task_while_it_works() {
         let mut app = new_app();
         start_tasks(&mut app);
-        handle_agent_event(
-            task_event(0, AgentEvent::Text("line 1\nline 2\n\nline 3".into())),
-            &mut app,
-        );
-        let bash = json!({ "command": "ls\nwc -l" });
-        handle_agent_event(
-            task_event(
-                1,
-                AgentEvent::ToolStart {
-                    name: "bash".into(),
-                    summary: tools::summary("bash", &bash),
-                    diff: tools::diff("bash", &bash),
-                },
-            ),
-            &mut app,
-        );
-        handle_agent_event(
-            task_event(
-                1,
-                AgentEvent::ToolDone {
-                    name: "bash".into(),
-                    error: Some("exit status 1\nmore".into()),
-                    note: None,
-                },
-            ),
-            &mut app,
-        );
-        handle_agent_event(
-            task_event(
-                0,
-                AgentEvent::Text(" continues\nline 4\nline 5\nline 6".into()),
-            ),
-            &mut app,
-        );
-        handle_agent_event(
-            task_event(0, AgentEvent::Notice("retrying in 1s".into())),
-            &mut app,
-        );
         assert_eq!(
             texts(&app),
-            [
-                "agent parallel, 2 tasks",
-                "[1] say hi\n  line 3 continues\n  line 4\n  line 5\n  line 6\n  retrying in 1s",
-                "[2] list files\n  bash ls\n  bash failed: exit status 1",
-            ]
+            ["agent parallel, 2 tasks", "[1] say hi", "[2] list files",]
         );
         let screen = screen(&mut app);
         assert!(screen.contains("[1]  say hi"), "{screen}");
-        assert!(screen.contains("  line 3 continues"), "{screen}");
     }
 
     #[test]
-    fn shows_the_start_of_each_final_reply_live_and_replayed() {
-        let reply: String = (1..=12).map(|line| format!("reply {line}\n")).collect();
-        let failure = "This task failed: 400 Bad Request";
+    fn hides_final_replies_but_shows_why_a_task_failed_live_and_replayed() {
+        let reply = "reply 1\nreply 2";
+        let failure = "This task failed: 400 Bad Request\nmore detail";
         let mut live = new_app();
         start_tasks(&mut live);
-        handle_agent_event(task_event(0, AgentEvent::Text("working".into())), &mut live);
         handle_agent_event(
             UiEvent::Agent(AgentEvent::TaskDone {
                 task: 0,
-                reply: Ok(reply.clone()),
+                reply: Ok(reply.into()),
             }),
             &mut live,
         );
@@ -825,13 +773,12 @@ mod tests {
                 ], "is_error": false }] }),
             ],
         );
-        let first_ten: String = (1..=10).map(|line| format!("\n  reply {line}")).collect();
         assert_eq!(
             texts(&live),
             [
-                "agent parallel, 2 tasks".to_string(),
-                format!("[1] say hi{first_ten}\n  …"),
-                format!("[2] list files\n  {failure}"),
+                "agent parallel, 2 tasks",
+                "[1] say hi",
+                "[2] list files\n  This task failed: 400 Bad Request",
             ]
         );
         assert_eq!(texts(&replayed), texts(&live));
