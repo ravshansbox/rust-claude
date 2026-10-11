@@ -70,6 +70,15 @@ impl MockApi {
                 let Some(request) = read_request(&mut stream).await else {
                     continue;
                 };
+                if request.0.starts_with("get /api/oauth/usage ") {
+                    tokio::spawn(error(
+                        stream,
+                        "404 Not Found",
+                        "not_found_error",
+                        "no quota",
+                    ));
+                    continue;
+                }
                 let size = request.1["messages"].to_string().len();
                 recorded.lock().await.push(request);
                 if size > limit {
