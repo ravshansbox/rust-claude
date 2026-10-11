@@ -412,7 +412,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 `web_search` is Anthropic's [web search tool](https://docs.claude.com/en/docs/agents-and-tools/tool-use/web-search-tool) (`web_search_20250305`). It runs on Anthropic's servers and works with a Pro or Max sign-in. The model decides when to search, and there is no limit on searches. Subagents can use it too.
 
-Each search shows its query, such as `web_search latest stable Rust release`, followed by the number of results, such as `web_search: 9 results`, or why it failed, such as `web_search failed: too_many_requests`. When a reply cites pages, a `Sources:` list with each page's title and URL follows the reply. This works in the interface and in print mode, where the search lines go to standard error and the sources to standard output with the reply.
+Each search shows its query, such as `web_search latest stable Rust release`, followed by the number of results, such as `web_search: 9 results`, or why it failed, such as `web_search failed: too_many_requests`. When a reply cites pages, a `Sources:` list with each page's title and URL follows the reply. This works in the interface, in resumed sessions and in print mode, where the search lines go to standard error and the sources to standard output with the reply.
 
 ## Paused replies
 

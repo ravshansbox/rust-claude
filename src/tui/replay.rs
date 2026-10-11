@@ -10,10 +10,7 @@ use serde_json::Value;
 
 pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
     match event {
-        UiEvent::Agent(AgentEvent::Text(text)) => match app.messages.last_mut() {
-            Some(last) if matches!(last.role, Role::Assistant) => last.append(&text),
-            _ => app.push(Role::Assistant, text),
-        },
+        UiEvent::Agent(AgentEvent::Text(text)) => append_reply(app, &text),
         UiEvent::Agent(AgentEvent::Thinking(text)) => match app.messages.last_mut() {
             Some(last) if matches!(last.role, Role::Thinking) => last.append(&text),
             _ => app.push(Role::Thinking, text),
@@ -175,7 +172,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
         for block in message["content"].as_array().into_iter().flatten() {
             match (role, block["type"].as_str().unwrap_or_default()) {
                 ("assistant", "text") => {
-                    app.push(Role::Assistant, block["text"].as_str().unwrap_or_default());
+                    append_reply(app, block["text"].as_str().unwrap_or_default());
                 }
                 ("assistant", "thinking") => {
                     app.push(
@@ -216,10 +213,34 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                         None => {}
                     }
                 }
+                ("assistant", "server_tool_use") => {
+                    let name = block["name"].as_str().unwrap_or_default();
+                    app.push_tool(name, tools::summary(name, &block["input"]), None);
+                }
+                ("assistant", "web_search_tool_result") => {
+                    let name = tools::web_search::NAME;
+                    match tools::web_search::outcome(&block["content"]) {
+                        Ok(note) => app.push(Role::Event, format!("{name}: {note}")),
+                        Err(error) => app.push(Role::Event, format!("{name} failed: {error}")),
+                    }
+                }
                 ("user", "text") => replay_prompt(app, block["text"].as_str().unwrap_or_default()),
                 _ => {}
             }
         }
+        if role == "assistant"
+            && let Some(blocks) = message["content"].as_array()
+            && let Some(sources) = tools::web_search::sources(blocks)
+        {
+            append_reply(app, &sources);
+        }
+    }
+}
+
+fn append_reply(app: &mut App, text: &str) {
+    match app.messages.last_mut() {
+        Some(last) if matches!(last.role, Role::Assistant) => last.append(text),
+        _ => app.push(Role::Assistant, text),
     }
 }
 
@@ -516,6 +537,76 @@ mod tests {
         };
         assert_eq!(texts(&live), ["edit a.rs\n-a\n+b", "edit: 3 replacements"]);
         assert_eq!(texts(&replayed), texts(&live));
+    }
+
+    #[test]
+    fn shows_web_search_and_sources_live_and_replayed() {
+        let input = json!({ "query": "rust release" });
+        let mut live = new_app();
+        let events = [
+            AgentEvent::ToolStart {
+                name: "web_search".into(),
+                summary: tools::summary("web_search", &input),
+                diff: None,
+            },
+            AgentEvent::ToolDone {
+                name: "web_search".into(),
+                error: None,
+                note: Some("1 result".into()),
+            },
+            AgentEvent::Text("Rust 1.99.0".into()),
+            AgentEvent::Text(" is the latest.".into()),
+            AgentEvent::Text("\n\nSources:\n- Rust Versions: https://releases.rs/\n".into()),
+        ];
+        for event in events {
+            handle_agent_event(UiEvent::Agent(event), &mut live);
+        }
+        let citation = json!({ "type": "web_search_result_location", "url": "https://releases.rs/", "title": "Rust Versions" });
+        let mut replayed = new_app();
+        replay_messages(
+            &mut replayed,
+            &[json!({ "role": "assistant", "content": [
+                { "type": "server_tool_use", "id": "s1", "name": "web_search", "input": input },
+                { "type": "web_search_tool_result", "tool_use_id": "s1", "content": [{ "type": "web_search_result", "url": "https://releases.rs/", "title": "Rust Versions" }] },
+                { "type": "text", "text": "Rust 1.99.0", "citations": [citation] },
+                { "type": "text", "text": " is the latest." },
+            ] })],
+        );
+        let texts = |app: &App| -> Vec<String> {
+            app.messages[1..]
+                .iter()
+                .map(|message| message.text.clone())
+                .collect()
+        };
+        assert_eq!(
+            texts(&live),
+            [
+                "web_search rust release",
+                "web_search: 1 result",
+                "Rust 1.99.0 is the latest.\n\nSources:\n- Rust Versions: https://releases.rs/\n"
+            ]
+        );
+        assert_eq!(texts(&replayed), texts(&live));
+    }
+
+    #[test]
+    fn replays_a_failed_web_search() {
+        let mut replayed = new_app();
+        replay_messages(
+            &mut replayed,
+            &[json!({ "role": "assistant", "content": [
+                { "type": "server_tool_use", "id": "s1", "name": "web_search", "input": { "query": "q" } },
+                { "type": "web_search_tool_result", "tool_use_id": "s1", "content": { "type": "web_search_tool_result_error", "error_code": "too_many_requests" } },
+            ] })],
+        );
+        let texts: Vec<&str> = replayed.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            ["web_search q", "web_search failed: too_many_requests"]
+        );
     }
 
     #[test]
