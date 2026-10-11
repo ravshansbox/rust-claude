@@ -113,7 +113,7 @@ fn code_preview(code: &str) -> Option<String> {
     let unit = indent_unit(code.lines());
     let lines: Vec<String> = code
         .lines()
-        .map(|line| format!(" {}", compact_indent(line, unit)))
+        .map(|line| compact_indent(line, unit))
         .collect();
     (!lines.is_empty()).then(|| lines.join("\n"))
 }
@@ -234,7 +234,7 @@ mod tests {
         assert_eq!(summary("bash", &input), "");
         assert_eq!(
             diff("bash", &input),
-            Some(" for x in a b; do\n  echo $x\n done".into())
+            Some("for x in a b; do\n echo $x\ndone".into())
         );
     }
 

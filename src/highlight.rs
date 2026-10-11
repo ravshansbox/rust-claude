@@ -256,14 +256,7 @@ fn highlight_command(body: &str, dark: bool) -> Vec<HighlightedLine> {
     let bash = syntax_set()
         .find_syntax_by_extension("sh")
         .unwrap_or_else(|| syntax_set().find_syntax_plain_text());
-    if !body.lines().all(|line| line.starts_with(' ')) {
-        return highlight_body(bash, body, dark);
-    }
-    let command = body
-        .lines()
-        .map(|line| &line[1..])
-        .collect::<Vec<_>>()
-        .join("\n");
+    let command = body.lines().collect::<Vec<_>>().join("\n");
     let embedded = embedded_code(&command);
     let mut bash_highlighter = HighlightLines::new(bash, theme(dark));
     let mut embedded_highlighters: Vec<HighlightLines> = embedded
@@ -275,10 +268,7 @@ fn highlight_command(body: &str, dark: bool) -> Vec<HighlightedLine> {
         .split('\n')
         .map(|line| {
             let line_end = line_start + line.len();
-            let mut segments = vec![Segment {
-                foreground: None,
-                text: " ".to_string(),
-            }];
+            let mut segments = Vec::new();
             let mut position = line_start;
             for (code, highlighter) in embedded.iter().zip(&mut embedded_highlighters) {
                 let start = code.range.start.clamp(line_start, line_end);
@@ -424,8 +414,7 @@ mod tests {
     }
 
     fn bash(command: &str) -> Vec<HighlightedLine> {
-        let body: Vec<String> = command.lines().map(|line| format!(" {line}")).collect();
-        highlight_tool("bash", "", &body.join("\n"), true).unwrap()
+        highlight_tool("bash", "", command, true).unwrap()
     }
 
     fn colour_of(lines: &[HighlightedLine], word: &str) -> Option<Colour> {
@@ -457,11 +446,12 @@ mod tests {
     fn highlights_python_heredocs_in_bash() {
         let command = "python3 - <<'EOF'\nimport os\ndef f(x):\n  return 1\nEOF\necho done";
         let lines = bash(command);
-        let expected: Vec<String> = command.lines().map(|line| format!(" {line}")).collect();
-        assert_eq!(texts(&lines), expected);
+        assert_eq!(texts(&lines), command.lines().collect::<Vec<_>>());
         let python =
             highlight_tool("write", "f.py", " import os\n def f(x):\n   return 1", true).unwrap();
-        assert_eq!(lines[1..4], python[..]);
+        for (line, python) in lines[1..4].iter().zip(&python) {
+            assert_eq!(line.segments[..], python.segments[1..]);
+        }
         assert_eq!(lines[4], bash("python3 - <<'EOF'\nEOF")[1]);
     }
 
@@ -471,7 +461,7 @@ mod tests {
         let single = bash("python -u -c 'import sys; print(1)' | wc -c");
         assert_eq!(
             texts(&single),
-            [" python -u -c 'import sys; print(1)' | wc -c"]
+            ["python -u -c 'import sys; print(1)' | wc -c"]
         );
         assert_eq!(colour_of(&single, "import"), Some(keyword));
         assert_eq!(colour_of(&single, "wc"), colour_of(&bash("wc -c"), "wc"));
