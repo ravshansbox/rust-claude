@@ -19,11 +19,18 @@ const MAX_LIST_ROWS: usize = 10;
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
-    let input_width = frame.area().width.max(1) as usize;
+    let input_width = frame.area().width.saturating_sub(2).max(1) as usize;
     app.input_width = input_width;
     let input_rows = input_rows(&app.input, input_width);
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
-    let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
+    let input_lines: Vec<Line> = input_rows
+        .into_iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let marker = if index == 0 { "❯ " } else { "  " };
+            Line::raw(format!("{marker}{row}"))
+        })
+        .collect();
     let mut footer_parts = vec![
         app.workspace.to_string(),
         format!("{}:{}", display_model(&app.model), app.effort),
@@ -182,7 +189,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         input,
     );
     frame.set_cursor_position((
-        input.x + cursor_column as u16,
+        input.x + 2 + cursor_column as u16,
         input.y + cursor_row as u16 - input_scroll + 1,
     ));
 
@@ -349,6 +356,27 @@ mod tests {
         test_support::{app_with_reply, press, screen, screen_of_width},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
+    use ratatui::{Terminal, backend::TestBackend};
+
+    #[test]
+    fn shows_the_input_after_a_marker_with_wrapped_rows_indented() {
+        let mut app = app_with_reply();
+        handle_input(Event::Paste("lorem ipsum dolor".into()), &mut app, |_| {});
+        let shown = screen_of_width(&mut app, 12);
+        let rows: Vec<&str> = shown.lines().collect();
+        let first = rows
+            .iter()
+            .position(|row| row.starts_with("❯ lorem"))
+            .unwrap_or_else(|| panic!("{shown}"));
+        assert_eq!(rows[first], "❯ lorem ipsu", "{shown}");
+        assert_eq!(rows[first + 1], "  m dolor   ", "{shown}");
+        let mut terminal = Terminal::new(TestBackend::new(12, 24)).unwrap();
+        terminal.draw(|frame| super::draw(frame, &mut app)).unwrap();
+        let cursor = terminal.get_cursor_position().unwrap();
+        assert_eq!((cursor.x, cursor.y), (9, first as u16 + 1));
+        press(&mut app, KeyCode::Up);
+        assert_eq!(app.cursor, "lorem i".len());
+    }
 
     #[test]
     fn keeps_scrolled_view_still_while_content_grows() {
