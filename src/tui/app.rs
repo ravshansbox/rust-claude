@@ -540,6 +540,19 @@ impl App {
         }
     }
 
+    /// Rows left blank above the message: none above the first one or
+    /// between notices in a row, one elsewhere.
+    pub(super) fn gap_before(&self, index: usize) -> usize {
+        let notices = index
+            .checked_sub(1)
+            .and_then(|previous| self.messages.get(previous))
+            .zip(self.messages.get(index))
+            .is_some_and(|(previous, message)| {
+                matches!((previous.role, message.role), (Role::Event, Role::Event))
+            });
+        usize::from(index > 0 && !notices)
+    }
+
     pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
         self.reads.clear();
         if let Some(last) = self.messages.last_mut() {
