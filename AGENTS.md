@@ -1,7 +1,2 @@
-- Commit after every self-contained small fix.
-- See staged files before commit.
-- Give each question lettered options, mark the recommended one. Number questions when there is more than one.
 - Keep README.md up to date with every change.
-- Write the test first, watch it fail, then write the code.
-- Test in a user-observable way.
 - Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` before commit.
