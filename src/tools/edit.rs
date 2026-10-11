@@ -65,7 +65,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     // along, so the CRLF replacement does not leave a stray `\r` behind.
     let absorb_cr = crlf && old_text.starts_with('\n');
     let limit = if replace_all { usize::MAX } else { 1 };
-    let (content, count) = replace(&content, &old_text, &new_text, limit, absorb_cr);
+    let (edited, count) = replace(&content, &old_text, &new_text, limit, absorb_cr);
     let message = if replace_all {
         let noun = if count == 1 {
             "replacement"
@@ -76,7 +76,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     } else {
         format!("edited {path}")
     };
-    replace_file(path, content)
+    replace_file(path, edited, Some(content))
         .await
         .map(|_| message)
         .map_err(|error| format!("failed to write {path}: {error}"))
