@@ -87,17 +87,6 @@ pub enum AgentEvent {
     },
 }
 
-fn tool_definitions(mcp: &Mcp, subagent: bool) -> Value {
-    let mut definitions = tools::definitions();
-    if let Value::Array(list) = &mut definitions {
-        if subagent {
-            list.retain(|definition| definition["name"] != tools::agent::NAME);
-        }
-        list.extend(mcp.definitions());
-    }
-    definitions
-}
-
 pub fn shell_message(command: &str, output: &str) -> String {
     format!("<bash-input>{command}</bash-input>\n<bash-output>{output}</bash-output>")
 }
@@ -285,7 +274,14 @@ impl Agent {
     }
 
     fn tool_definitions(&self) -> Value {
-        tool_definitions(&self.mcp, self.subagent)
+        let mut definitions = tools::definitions();
+        if let Value::Array(list) = &mut definitions {
+            if self.subagent {
+                list.retain(|definition| definition["name"] != tools::agent::NAME);
+            }
+            list.extend(self.mcp.definitions());
+        }
+        definitions
     }
 
     fn system_prompt(&self) -> Vec<Value> {
