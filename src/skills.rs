@@ -173,18 +173,15 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
 }
 
 fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
-    let repository_root = start
+    let Some(repository_root) = start.ancestors().find(|dir| dir.join(".git").exists()) else {
+        return vec![start.join(".agents").join("skills")];
+    };
+    start
         .ancestors()
-        .find(|dir| dir.join(".git").exists())
-        .map(Path::to_path_buf);
-    let mut dirs = Vec::new();
-    for dir in start.ancestors() {
-        dirs.push(dir.join(".agents").join("skills"));
-        if repository_root.as_deref() == Some(dir) {
-            break;
-        }
-    }
-    dirs
+        .take_while(|dir| *dir != repository_root)
+        .chain([repository_root])
+        .map(|dir| dir.join(".agents").join("skills"))
+        .collect()
 }
 
 fn collect_skill_files(dir: &Path, mode: Mode) -> Vec<PathBuf> {
@@ -602,6 +599,28 @@ mod tests {
             }]
         );
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn loads_agents_skills_only_from_the_current_folder_outside_a_repository() {
+        let root = temp_dir("no-repository");
+        let cwd = root.join("work");
+        write(
+            &cwd.join(".agents/skills/inside/SKILL.md"),
+            "---\ndescription: Inside.\n---\n",
+        );
+        write(
+            &root.join(".agents/skills/parent/SKILL.md"),
+            "---\ndescription: Parent.\n---\n",
+        );
+        let loaded = load_from(None, None, &cwd);
+        let _ = std::fs::remove_dir_all(&root);
+        let names: Vec<&str> = loaded
+            .skills
+            .iter()
+            .map(|skill| skill.name.as_str())
+            .collect();
+        assert_eq!(names, ["inside"]);
     }
 
     #[test]

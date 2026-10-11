@@ -347,7 +347,7 @@ Instructions for the model.
 rust-coding-agent looks for skills in these places, in this order:
 
 1. `.rust-coding-agent/skills/` in the current directory
-2. `.agents/skills/` in the current directory and each parent directory, up to the Git repository root, or up to the filesystem root outside a repository
+2. `.agents/skills/` in the current directory and each parent directory, up to the Git repository root. Outside a repository, only the current directory, so a shared folder such as `/tmp` cannot add skills
 3. `~/.rust-coding-agent/skills/`
 4. `~/.agents/skills/`
 
