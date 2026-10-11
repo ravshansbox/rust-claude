@@ -10,7 +10,7 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 pub(super) fn definition() -> Value {
     json!({
         "name": "bash",
-        "description": "Run a bash command in the current folder and return stdout and stderr",
+        "description": "Run a bash command in the cwd and return stdout and stderr",
         "input_schema": {
             "type": "object",
             "properties": {
