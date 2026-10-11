@@ -3,6 +3,8 @@ use crate::{
     images::Image,
     mcp::{Added, Started},
     session::SessionSummary,
+    skills::Scope,
+    update::Progress,
 };
 use anyhow::Result;
 use serde_json::Value;
@@ -23,10 +25,10 @@ pub(super) enum UiEvent {
     /// The server starts again, after `notice`.
     McpRestarting {
         name: String,
-        scope: crate::skills::Scope,
+        scope: Scope,
         notice: String,
     },
-    Update(crate::update::Progress),
+    Update(Progress),
     /// A background command finished, and a turn starts with this message.
     Background(String),
 }
