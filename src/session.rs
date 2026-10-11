@@ -101,17 +101,13 @@ impl Session {
                 self.file.insert(open_locked(&path, true)?)
             }
         };
+        let header = (self.saved == 0).then(header);
+        let drop_line = self
+            .drops_mismatched_thinking_unsaved
+            .then(drop_mismatched_thinking_line);
         let mut lines = String::new();
-        if self.saved == 0 {
-            lines.push_str(&serde_json::to_string(&header())?);
-            lines.push('\n');
-        }
-        for message in new_messages {
-            lines.push_str(&serde_json::to_string(message)?);
-            lines.push('\n');
-        }
-        if self.drops_mismatched_thinking_unsaved {
-            lines.push_str(&serde_json::to_string(&drop_mismatched_thinking_line())?);
+        for line in header.iter().chain(new_messages).chain(&drop_line) {
+            lines.push_str(&serde_json::to_string(line)?);
             lines.push('\n');
         }
         let length = file.metadata()?.len();
