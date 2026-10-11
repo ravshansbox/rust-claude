@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 use tokio::task::{AbortHandle, JoinSet};
 
-pub const STOP: &str = "stop";
+pub const STOP: &str = "bash_stop";
 pub const RUN_IN_BACKGROUND: &str = "run_in_background";
 
 pub(super) fn stop_definition() -> Value {

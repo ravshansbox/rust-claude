@@ -8,7 +8,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 
 - Sign in with a Claude Pro or Max account
 - Interactive terminal interface with streamed replies
-- Built-in tools: `bash`, `read`, `write`, `edit`, `agent`, `stop` and `web_search`
+- Built-in tools: `bash`, `read`, `write`, `edit`, `agent`, `bash_stop` and `web_search`
 - Subagents that run tasks at the same time or one after another
 - Background commands, such as watching a CI run, whose output comes back when they finish
 - Print mode (`-p`) to run one prompt and print the answer

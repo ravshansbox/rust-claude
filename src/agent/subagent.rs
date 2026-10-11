@@ -260,8 +260,8 @@ mod tests {
         assert!(!tool_names(child).contains(&"agent".to_string()));
         assert!(tool_names(child).contains(&"bash".to_string()));
         assert!(tool_names(child).contains(&"web_search".to_string()));
-        assert!(tool_names(&requests[0]).contains(&"stop".to_string()));
-        assert!(!tool_names(child).contains(&"stop".to_string()));
+        assert!(tool_names(&requests[0]).contains(&"bash_stop".to_string()));
+        assert!(!tool_names(child).contains(&"bash_stop".to_string()));
         let background = |request: &Value| {
             request["tools"]
                 .as_array()

@@ -8,7 +8,7 @@ The agent can use these tools:
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings, and writes the new text with CRLF line endings. A file counts as using CRLF when its first line ends with CRLF. It refuses files larger than 10 MiB and anything that is not a regular file, such as a pipe or device. If the file changes while it is being edited, for example by a subagent editing it at the same time, the edit fails instead of undoing the other change
 
 - `agent`: run tasks in subagents. See [Subagents](#subagents)
-- `stop`: stop a background command. See [Background commands](#background-commands)
+- `bash_stop`: stop a background command. See [Background commands](#background-commands)
 - `web_search`: search the web. See [Web search](#web-search)
 
 The agent can also use tools from [MCP servers](mcp.md).
@@ -25,9 +25,9 @@ With `"run_in_background": true`, `bash` starts the command and returns at once 
 
 When the command finishes, its output comes back in a message to the model, with the same limits as other `bash` output. It shows as `background task 1 finished`, with the output below it. Until then, the status line shows how many background commands are running, such as `1 background`. If the agent is idle, a turn starts at once with that message. If the agent is working, the message waits until the current turn ends. `timeout` works as for other commands; output after a timeout comes back the same way.
 
-`stop` with the task number stops a background command and all its processes, and no message comes back for it. Esc cancels the current turn but leaves background commands running. Quitting, or a stop signal such as Ctrl+C, stops them all. In print mode, rust-coding-agent waits for every background command to finish, and answers each one, before it exits. Resumed sessions show the finished messages, but commands that were running when the session ended do not come back.
+`bash_stop` with the task number stops a background command and all its processes, and no message comes back for it. Esc cancels the current turn but leaves background commands running. Quitting, or a stop signal such as Ctrl+C, stops them all. In print mode, rust-coding-agent waits for every background command to finish, and answers each one, before it exits. Resumed sessions show the finished messages, but commands that were running when the session ended do not come back.
 
-Subagents cannot run commands in the background or use `stop`. They do not get `run_in_background` or `stop` at all.
+Subagents cannot run commands in the background or use `bash_stop`. They do not get `run_in_background` or `bash_stop` at all.
 
 ## Web search
 

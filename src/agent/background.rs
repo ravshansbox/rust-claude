@@ -107,7 +107,7 @@ mod tests {
                 json!({ "command": command, "run_in_background": true }),
             ),
             text_reply("started"),
-            tool_reply("call-2", "stop", json!({ "id": 1 })),
+            tool_reply("call-2", "bash_stop", json!({ "id": 1 })),
             text_reply("stopped"),
         ])
         .await;
