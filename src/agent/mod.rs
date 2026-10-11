@@ -34,7 +34,7 @@ use stream::Response;
 pub use system::Instructions;
 use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
 pub use usage::{Quota, Stats, Usage};
-use usage::{cache_hit_rate, fetch_quota, tokens_per_second, total_usage};
+use usage::{fetch_quota, tokens_per_second, total_usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
 
@@ -247,7 +247,6 @@ impl Agent {
         usage.add(self.running_subagent_usage());
         Stats {
             usage,
-            cache_hit_rate: cache_hit_rate(&self.messages),
             tokens_per_second: tokens_per_second(&self.messages),
             context_tokens: context_tokens(&active_messages(&self.messages)),
             context_window: models::context_window(&self.model),
@@ -921,7 +920,6 @@ mod tests {
         result.unwrap();
         let stats = agent.stats();
         assert_eq!(stats.context_tokens, Some(2));
-        assert_eq!(stats.cache_hit_rate, Some(0.0));
         assert_eq!(stats.usage.cache_read, 500);
     }
 

@@ -22,8 +22,8 @@ impl Usage {
     }
 
     /// Stores a reply's usage with that of its retried attempts nested
-    /// under `retried`, which only totals count: the context size, cache
-    /// hit rate and speed come from the attempt that produced the reply.
+    /// under `retried`, which only totals count: the context size and speed
+    /// come from the attempt that produced the reply.
     pub(super) fn to_json_with_retried(self, retried: Usage) -> Value {
         let mut value = json!(self);
         if retried.input + retried.output + retried.cache_read + retried.cache_write > 0 {
@@ -54,7 +54,6 @@ impl Usage {
 #[derive(Default, Clone, Copy)]
 pub struct Stats {
     pub usage: Usage,
-    pub cache_hit_rate: Option<f64>,
     pub tokens_per_second: Option<f64>,
     pub context_tokens: Option<u64>,
     pub context_window: u64,
@@ -118,17 +117,6 @@ fn parse_timestamp(text: &str) -> Option<u64> {
     u64::try_from(days * 86_400 + hour * 3_600 + minute * 60 + second - offset).ok()
 }
 
-pub(super) fn cache_hit_rate(messages: &[Value]) -> Option<f64> {
-    messages
-        .iter()
-        .rfind(|message| message["role"] == "assistant" && message.get("stop_reason").is_none())
-        .map(|message| Usage::from_json(&message["usage"]))
-        .and_then(|usage| {
-            let prompt_tokens = usage.input + usage.cache_read + usage.cache_write;
-            (prompt_tokens > 0).then(|| usage.cache_read as f64 / prompt_tokens as f64 * 100.0)
-        })
-}
-
 pub(super) fn tokens_per_second(messages: &[Value]) -> Option<f64> {
     let mut timed = Usage::default();
     for message in messages
@@ -186,7 +174,7 @@ pub(super) async fn fetch_quota(
 
 #[cfg(test)]
 mod tests {
-    use super::{Quota, Usage, cache_hit_rate, parse_timestamp, tokens_per_second, total_usage};
+    use super::{Quota, Usage, parse_timestamp, tokens_per_second, total_usage};
     use serde_json::json;
 
     #[test]
@@ -221,25 +209,6 @@ mod tests {
             parse_timestamp("2024-02-29T00:00:00-00:30"),
             Some(1_709_166_600)
         );
-    }
-
-    #[test]
-    fn ignores_discarded_usage_in_cache_hit_rate() {
-        let messages = vec![
-            json!({ "role": "user", "content": "hello" }),
-            json!({
-                "role": "assistant",
-                "content": [{ "type": "text", "text": "hi" }],
-                "usage": { "input": 10, "output": 5, "cache_read": 90, "cache_write": 0 },
-            }),
-            json!({
-                "role": "assistant",
-                "stop_reason": "aborted",
-                "content": [],
-                "usage": { "input": 999 },
-            }),
-        ];
-        assert_eq!(cache_hit_rate(&messages), Some(90.0));
     }
 
     #[test]
