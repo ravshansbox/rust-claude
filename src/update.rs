@@ -1,5 +1,6 @@
 use std::{
     path::{Path, PathBuf},
+    sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
 
@@ -11,7 +12,7 @@ pub const RELEASES_URL: &str =
 const ASSET: &str = "rust-coding-agent.zip";
 const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
 const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
-static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static RUNS: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Progress {
@@ -141,7 +142,7 @@ impl Updater {
         let folder = self.update_dir.join(format!(
             "{}-{}",
             std::process::id(),
-            RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            RUNS.fetch_add(1, Ordering::Relaxed)
         ));
         if let Err(error) = crate::config::create_private_dir(&self.update_dir)
             .and_then(|()| create_update_folder(&folder))
