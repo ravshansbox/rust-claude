@@ -16,6 +16,7 @@ use ratatui::{
 };
 
 const MAX_LIST_ROWS: usize = 10;
+const BOTTOM_BUTTON: &str = "↓ Bottom (End)";
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
@@ -46,8 +47,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     footer_parts.retain(|part| !part.is_empty());
     let footer_paragraph =
         Paragraph::new(Line::raw(footer_parts.join(" · "))).wrap(Wrap { trim: false });
+    let bottom_button = (app.scroll_from_bottom > 0).then_some(BOTTOM_BUTTON);
+    let button_width = bottom_button.map_or(0, |label| Line::raw(label).width() as u16 + 1);
     let footer_height = footer_paragraph
-        .line_count(frame.area().width)
+        .line_count(frame.area().width.saturating_sub(button_width).max(1))
         .min(u16::MAX as usize) as u16;
     let [chat, input, footer] = Layout::vertical([
         Constraint::Min(1),
@@ -214,7 +217,19 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         input.y + cursor_row as u16 - input_scroll + 1,
     ));
 
+    let [footer, button] =
+        Layout::horizontal([Constraint::Fill(1), Constraint::Length(button_width)]).areas(footer);
     frame.render_widget(footer_paragraph, footer);
+    app.bottom_button = Rect::default();
+    if let Some(label) = bottom_button {
+        app.bottom_button = Rect {
+            x: button.x + 1,
+            width: button.width.saturating_sub(1),
+            height: button.height.min(1),
+            ..button
+        };
+        frame.render_widget(Paragraph::new(label).dark_gray(), app.bottom_button);
+    }
 }
 
 fn status_lines(app: &App) -> Vec<Line<'static>> {
@@ -508,6 +523,39 @@ mod tests {
         let shown = screen(&mut app);
         assert_eq!(shown.matches(" working").count(), 1, "{shown}");
         assert!(shown.contains("event 99"), "{shown}");
+    }
+
+    #[test]
+    fn shows_a_scroll_to_bottom_button_on_the_status_line_when_scrolled_up() {
+        use crossterm::event::{MouseButton, MouseEvent, MouseEventKind};
+        let mut app = app_with_reply();
+        for number in 0..100 {
+            app.push(Role::Event, format!("event {number}"));
+        }
+        let shown = screen(&mut app);
+        assert!(!shown.contains("↓ Bottom (End)"), "{shown}");
+        press(&mut app, KeyCode::Home);
+        let shown = screen(&mut app);
+        let last = shown.lines().last().unwrap();
+        assert!(last.ends_with("↓ Bottom (End)"), "{shown}");
+        let column = 100 - "↓ Bottom (End)".chars().count() as u16;
+        let row = shown.lines().count() as u16 - 1;
+        for kind in [
+            MouseEventKind::Down(MouseButton::Left),
+            MouseEventKind::Up(MouseButton::Left),
+        ] {
+            let event = Event::Mouse(MouseEvent {
+                kind,
+                column,
+                row,
+                modifiers: KeyModifiers::NONE,
+            });
+            handle_input(event, &mut app, |_| {});
+        }
+        let shown = screen(&mut app);
+        assert!(shown.contains("event 99"), "{shown}");
+        assert!(!shown.contains("↓ Bottom (End)"), "{shown}");
+        assert!(app.input.is_empty(), "{:?}", app.input);
     }
 
     #[test]

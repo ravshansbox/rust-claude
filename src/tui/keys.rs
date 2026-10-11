@@ -6,6 +6,7 @@ use super::{
 };
 use crate::{images::Image, models, skills};
 use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use ratatui::layout::Position;
 
 pub(super) enum Action {
     Submit(String, Vec<Image>, &'static str),
@@ -50,6 +51,13 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         match mouse.kind {
             MouseEventKind::ScrollUp => app.scroll_up(3),
             MouseEventKind::ScrollDown => app.scroll_down(3),
+            MouseEventKind::Down(MouseButton::Left)
+                if app
+                    .bottom_button
+                    .contains(Position::new(mouse.column, mouse.row)) =>
+            {
+                app.scroll_to_bottom()
+            }
             MouseEventKind::Down(MouseButton::Left) => app.press_mouse(mouse.column, mouse.row),
             MouseEventKind::Drag(MouseButton::Left) => app.drag_mouse(mouse.column, mouse.row),
             MouseEventKind::Up(MouseButton::Left) => app.release_mouse(mouse.column, mouse.row),
