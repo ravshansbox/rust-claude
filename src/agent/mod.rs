@@ -33,7 +33,7 @@ use context::{
 use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
 use stream::Response;
 pub use system::Instructions;
-use system::{IDENTITY, load_instructions, missing_search_programs, system_text};
+use system::{IDENTITY, SYSTEM_PROMPT, load_instructions};
 pub use usage::{Quota, Stats, Usage};
 use usage::{fetch_quota, tokens_per_second, total_usage};
 
@@ -161,7 +161,6 @@ pub struct Agent {
     pub mcp: Mcp,
     pub session: Session,
     pub queue: Queue,
-    pub missing_programs: Vec<&'static str>,
     /// Tokens used by each subagent started since the last tool results.
     subagent_usage: Arc<Mutex<Vec<Usage>>>,
     /// Whether this agent runs a task for another agent. A subagent cannot
@@ -187,7 +186,6 @@ impl Agent {
             mcp: Mcp::default(),
             session: Session::new()?,
             queue: Queue::default(),
-            missing_programs: missing_search_programs(std::env::var_os("PATH")),
             subagent_usage: Arc::default(),
             subagent: false,
             background: Default::default(),
@@ -290,7 +288,7 @@ impl Agent {
     fn system_prompt(&self) -> Vec<Value> {
         let mut system = vec![
             json!({ "type": "text", "text": IDENTITY }),
-            json!({ "type": "text", "text": system_text(&self.missing_programs) }),
+            json!({ "type": "text", "text": SYSTEM_PROMPT }),
         ];
         for instructions in &self.instructions {
             system.push(json!({

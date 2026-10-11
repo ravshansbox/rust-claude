@@ -27,9 +27,7 @@ Changing the model or effort level in the interface saves only the setting you c
 
 rust-coding-agent adds `AGENTS.md` from your home folder and from the current directory to the system prompt. At start, the interface lists the loaded files on one line, after the tools, MCP servers and skills, such as `loaded ~/AGENTS.md, ./AGENTS.md`.
 
-The system prompt tells the model to use plain English (ISO 24495-1). It also tells it to put questions to the user in bold and number them when there is more than one. Options are lettered, with the recommended option first and marked.
-
-The system prompt also tells the model to search code with `ast-grep`, and to fall back to `ripgrep` for plain text, comments, strings and files `ast-grep` cannot parse. Both run through the `bash` tool. At start, rust-coding-agent looks for `ast-grep` and `rg` on `PATH`. For each one it cannot find, it shows a warning such as `rg not found on PATH`, in the interface or on standard error in print mode, and leaves that program out of the system prompt.
+The system prompt tells the model to use plain English (ISO 24495-1).
 
 ## Skills
 

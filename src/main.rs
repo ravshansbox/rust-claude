@@ -237,9 +237,6 @@ async fn run() -> Result<()> {
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{}", highlight::strip_controls(diagnostic));
     }
-    for program in &agent.missing_programs {
-        eprintln!("{} not found on PATH", highlight::strip_controls(program));
-    }
     let stdout = std::io::stdout();
     let out_terminal = stdout.is_terminal();
     let colour = std::io::stderr().is_terminal();
