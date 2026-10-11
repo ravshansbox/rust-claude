@@ -86,6 +86,7 @@ fn expand_variables(text: &str) -> Result<String, String> {
         expanded.push_str(&rest[..start]);
         let after = &rest[start + 2..];
         let Some(end) = after.find('}') else {
+            rest = &rest[start..];
             break;
         };
         let name = &after[..end];
@@ -1454,6 +1455,14 @@ mod tests {
         assert_eq!(
             qualified_name("docs", &"a".repeat(100)).len(),
             MAX_TOOL_NAME
+        );
+    }
+
+    #[test]
+    fn leaves_an_unclosed_variable_as_written() {
+        assert_eq!(
+            expand_variables("Bearer ${TOKEN"),
+            Ok("Bearer ${TOKEN".into())
         );
     }
 
