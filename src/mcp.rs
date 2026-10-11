@@ -67,6 +67,10 @@ fn uses_oauth(config: &ServerConfig) -> bool {
             .any(|name| name.eq_ignore_ascii_case("authorization"))
 }
 
+fn enabled(config: &ServerConfig) -> bool {
+    config.enabled != Some(false)
+}
+
 fn valid_server_name(name: &str) -> bool {
     !name.is_empty()
         && name.chars().all(|character| {
@@ -170,7 +174,7 @@ fn read_configs(config_dir: Option<&Path>, cwd: &Path) -> (Configs, Vec<String>,
     }
     let global: Vec<String> = configs
         .iter()
-        .filter(|(_, (_, config))| config.enabled != Some(false))
+        .filter(|(_, (_, config))| enabled(config))
         .map(|(name, _)| name.clone())
         .collect();
     let project_dir = cwd.join(".rust-coding-agent");
@@ -1378,9 +1382,7 @@ pub fn restart(name: &str) -> Option<StartingServer> {
 }
 
 fn restart_from(mut configs: Configs, name: &str) -> Option<StartingServer> {
-    let (scope, config) = configs
-        .remove(name)
-        .filter(|(_, config)| config.enabled != Some(false))?;
+    let (scope, config) = configs.remove(name).filter(|(_, config)| enabled(config))?;
     Some(starting(name.to_string(), scope, config))
 }
 
@@ -1388,7 +1390,7 @@ pub fn startup() -> Startup {
     let (configs, overridden, diagnostics) = configs();
     let enabled: Vec<_> = configs
         .into_iter()
-        .filter(|(_, (_, config))| config.enabled != Some(false))
+        .filter(|(_, (_, config))| enabled(config))
         .collect();
     let sign_in_servers = enabled
         .iter()
