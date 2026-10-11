@@ -1469,14 +1469,13 @@ impl Mcp {
         let Started { name, result } = started;
         let mut server = match result {
             Ok(server) => server,
-            Err(error) if error.starts_with(NEEDS_SIGN_IN) => {
-                return (Vec::new(), Err(format!("MCP server {name} {error}")));
-            }
             Err(error) => {
-                return (
-                    Vec::new(),
-                    Err(format!("MCP server {name} failed: {error}")),
-                );
+                let failed = if error.starts_with(NEEDS_SIGN_IN) {
+                    format!("MCP server {name} {error}")
+                } else {
+                    format!("MCP server {name} failed: {error}")
+                };
+                return (Vec::new(), Err(failed));
             }
         };
         let mut diagnostics = Vec::new();
