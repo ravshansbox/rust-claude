@@ -247,13 +247,7 @@ mod tests {
             .collect();
         assert_eq!(
             rows,
-            vec![
-                "❯ 日本語",
-                "  のテキ",
-                "  スト  ",
-                "        ",
-                "  abcd  ",
-            ]
+            vec!["❯ 日本語", "  のテキ", "  スト  ", "        ", "  abcd  ",]
         );
     }
 
