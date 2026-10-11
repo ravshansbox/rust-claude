@@ -1,4 +1,4 @@
-use std::{future::Future, pin::Pin};
+use std::{future::Future, pin::Pin, sync::Arc};
 
 use anyhow::Result;
 use serde_json::{Value, json};
@@ -36,6 +36,7 @@ impl Agent {
             session: Session::new()?,
             queue: Queue::default(),
             missing_programs: self.missing_programs.clone(),
+            subagent_usage: Arc::default(),
             subagent: true,
         })
     }
@@ -90,7 +91,10 @@ impl Agent {
         };
         let forward = async {
             while let Some(event) = receiver.recv().await {
-                on_event(event);
+                match event {
+                    AgentEvent::Stats(_) => on_event(AgentEvent::Stats(self.stats())),
+                    event => on_event(event),
+                }
             }
         };
         let (replies, ()) = futures::join!(work, forward);
@@ -129,8 +133,20 @@ impl Agent {
     ) -> Result<String, String> {
         let failed = |error: anyhow::Error| format!("This task failed: {error:#}");
         let mut child = self.subagent().map_err(failed)?;
+        let usage = self.subagent_usage.clone();
+        let slot = usage.lock().map_or(0, |mut slots| {
+            slots.push(Usage::default());
+            slots.len() - 1
+        });
         let callback: Callback = Box::new(move |event| {
-            if matches!(
+            if let AgentEvent::Stats(stats) = &event {
+                if let Ok(mut slots) = usage.lock()
+                    && let Some(counted) = slots.get_mut(slot)
+                {
+                    *counted = stats.usage;
+                }
+                let _ = events.send(event);
+            } else if matches!(
                 event,
                 AgentEvent::Text(_)
                     | AgentEvent::ToolStart { .. }
@@ -426,6 +442,7 @@ mod tests {
             .iter()
             .skip_while(|event| *event != "tool agent")
             .take_while(|event| !event.starts_with("tool done agent"))
+            .filter(|event| *event != "stats")
             .cloned()
             .collect();
         assert_eq!(
@@ -442,5 +459,47 @@ mod tests {
                 "1 done bye",
             ]
         );
+    }
+
+    #[tokio::test]
+    async fn counts_the_tokens_subagents_use_in_the_totals() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({
+                    "mode": "parallel",
+                    "tasks": [task("first", "one"), task("second", "two")],
+                }),
+            ),
+            text_reply("one done"),
+            text_reply("two done"),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut inputs = Vec::new();
+        let result = agent
+            .prompt("go", &[], |event| {
+                if let AgentEvent::Stats(stats) = event {
+                    inputs.push(stats.usage.input);
+                }
+            })
+            .await;
+        let context_tokens = agent.stats().context_tokens;
+        let id = agent.session.id.clone();
+        drop(agent);
+        let mut resumed = test_support::agent(&api, reqwest::Client::new());
+        let loaded = resumed.resume(&id);
+        test_support::remove_session(&resumed);
+        result.unwrap();
+        loaded.unwrap();
+        assert!(inputs.contains(&3), "{inputs:?}");
+        assert_eq!(inputs.last(), Some(&4));
+        let usage = resumed.stats().usage;
+        assert_eq!((usage.input, usage.output), (4, 4));
+        assert_eq!(resumed.stats().context_tokens, context_tokens);
+        let requests = api.requests().await;
+        assert!(!requests[3]["messages"].to_string().contains("usage"));
     }
 }

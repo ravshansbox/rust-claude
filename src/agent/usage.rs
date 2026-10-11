@@ -156,12 +156,11 @@ pub(super) fn tokens_per_second(messages: &[Value]) -> Option<f64> {
     (timed.duration_ms > 0).then(|| timed.output as f64 * 1_000.0 / timed.duration_ms as f64)
 }
 
+/// Tokens used by replies, and by subagents, whose tokens are kept with the
+/// tool results they produced.
 pub(super) fn total_usage(messages: &[Value]) -> Usage {
     let mut total = Usage::default();
-    for message in messages
-        .iter()
-        .filter(|message| message["role"] == "assistant")
-    {
+    for message in messages {
         total.add(Usage::from_json(&message["usage"]));
         total.add(Usage::from_json(&message["usage"]["retried"]));
     }
