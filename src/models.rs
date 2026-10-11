@@ -38,11 +38,7 @@ const MODELS: &[Model] = &[
 ];
 
 fn find(model: &str) -> Option<&'static Model> {
-    let undated = match model.rsplit_once('-') {
-        Some((base, date)) if date.len() == 8 && date.bytes().all(|b| b.is_ascii_digit()) => base,
-        _ => model,
-    };
-    MODELS.iter().find(|candidate| candidate.id == undated)
+    MODELS.iter().find(|candidate| candidate.id == model)
 }
 
 pub fn next_known(model: &str) -> &'static str {
@@ -111,7 +107,7 @@ pub fn latest_in_each_class(models: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_window, effort_levels, max_output, thinking_settings};
+    use super::{effort_levels, thinking_settings};
     use serde_json::json;
 
     const MODELS: [&str; 4] = [
@@ -146,13 +142,5 @@ mod tests {
         assert_eq!(effort_levels("claude-sonnet-5-5"), with_off);
         assert_eq!(effort_levels("claude-haiku-5-5"), with_off);
         assert_eq!(effort_levels("claude-x"), levels);
-    }
-
-    #[test]
-    fn knows_the_limits_of_a_model_named_with_its_release_date() {
-        assert_eq!(context_window("claude-opus-5-5-20261001"), 1_000_000);
-        assert_eq!(max_output("claude-opus-5-5-20261001"), 128_000);
-        assert_eq!(effort_levels("claude-haiku-5-5-20261001")[0], "off");
-        assert_eq!(context_window("claude-opus-5-5-preview"), 0);
     }
 }
