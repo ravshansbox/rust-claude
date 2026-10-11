@@ -24,17 +24,16 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     {
         return Err(format!("{path} is not a regular file"));
     }
+    let failed = |error: std::io::Error| format!("failed to write {path}: {error}");
     if let Some(parent) = std::path::Path::new(path).parent()
         && !parent.as_os_str().is_empty()
     {
-        tokio::fs::create_dir_all(parent)
-            .await
-            .map_err(|error| format!("failed to write {path}: {error}"))?;
+        tokio::fs::create_dir_all(parent).await.map_err(failed)?;
     }
     replace_file(path, content.to_string(), None)
         .await
         .map(|_| format!("wrote {path}"))
-        .map_err(|error| format!("failed to write {path}: {error}"))
+        .map_err(failed)
 }
 
 #[cfg(test)]
