@@ -49,11 +49,14 @@ impl Agent {
         if let Some(tool_choice) = tool_choice {
             body["tool_choice"] = tool_choice.clone();
         }
-        let mut beta = "oauth-2025-04-20";
-        if self.session.drops_mismatched_thinking() && body["thinking"]["type"] == "adaptive" {
+        let beta = if self.session.drops_mismatched_thinking()
+            && body["thinking"]["type"] == "adaptive"
+        {
             body["thinking"]["block_binding"] = json!({ "prefix_mismatch_behavior": "drop_block" });
-            beta = "oauth-2025-04-20,thinking-binding-controls-2026-08-01";
-        }
+            "oauth-2025-04-20,thinking-binding-controls-2026-08-01"
+        } else {
+            "oauth-2025-04-20"
+        };
         // The API may turn down a token before it expires, as when the
         // sign-in was revoked; renewing it is then worth one more try.
         let mut renewed = false;
