@@ -2,9 +2,9 @@ use std::path::{Path, PathBuf};
 
 pub(super) const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
-pub(super) const SYSTEM_PROMPT: &str = r#"Use your tools to inspect and change files in the current working directory.
+pub(super) const SYSTEM_PROMPT: &str = r"Use your tools to inspect and change files in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
-Use plain English (ISO 24495-1)."#;
+Use plain English (ISO 24495-1).";
 
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 
