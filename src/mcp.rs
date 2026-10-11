@@ -1513,8 +1513,13 @@ impl Mcp {
     }
 
     pub fn definitions(&self) -> impl Iterator<Item = Value> + '_ {
-        self.servers
-            .iter()
+        let mut servers: Vec<_> = self.servers.iter().collect();
+        servers.sort_by(|first, second| {
+            (first.scope == Scope::Project, &first.name)
+                .cmp(&(second.scope == Scope::Project, &second.name))
+        });
+        servers
+            .into_iter()
             .flat_map(|server| &server.tools)
             .map(|tool| tool.definition.clone())
     }
@@ -2017,6 +2022,27 @@ done
             .filter(|request| request.body["method"] == method)
             .cloned()
             .collect()
+    }
+
+    #[tokio::test]
+    async fn lists_global_server_tools_before_project_ones() {
+        let (url, _) = http_server(http_mcp).await;
+        let mut mcp = Mcp::default();
+        for (name, scope) in [
+            ("alpha", Scope::Project),
+            ("zeta", Scope::Global),
+            ("beta", Scope::Global),
+        ] {
+            mcp.add(start(name.into(), scope, http_config(&url)).await);
+        }
+        let names: Vec<Value> = mcp
+            .definitions()
+            .map(|definition| definition["name"].clone())
+            .collect();
+        assert_eq!(
+            names,
+            ["mcp__beta__echo", "mcp__zeta__echo", "mcp__alpha__echo"]
+        );
     }
 
     #[tokio::test]
