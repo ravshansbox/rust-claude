@@ -13,7 +13,7 @@ const IGNORE_FILE_NAMES: [&str; 3] = [".gitignore", ".ignore", ".fdignore"];
 const SKILL_FILE: &str = "SKILL.md";
 const COMMAND_PREFIX: &str = "/skill:";
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Skill {
     pub name: String,
     pub description: String,
@@ -23,7 +23,7 @@ pub struct Skill {
     pub scope: Scope,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Scope {
     Global,
     Project,
@@ -38,7 +38,7 @@ impl fmt::Display for Scope {
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Diagnostic {
     Warning {
         path: PathBuf,
@@ -483,7 +483,7 @@ pub fn expand_command(text: &str, skills: &[Skill]) -> Result<String> {
     })
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct SkillBlock<'a> {
     pub name: Cow<'a, str>,
     pub user_message: Option<&'a str>,

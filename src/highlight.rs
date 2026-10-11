@@ -8,20 +8,20 @@ use syntect::{
 
 pub type Colour = (u8, u8, u8);
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Change {
     Delete,
     Insert,
     Equal,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Segment {
     pub foreground: Option<Colour>,
     pub text: String,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct HighlightedLine {
     pub change: Option<Change>,
     pub segments: Vec<Segment>,

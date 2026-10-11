@@ -10,7 +10,7 @@ const MAX_EDGE: u32 = 2000;
 const MAX_ENCODED_BYTES: usize = 5 * 1024 * 1024;
 const JPEG_QUALITIES: [u8; 4] = [85, 70, 55, 40];
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Image {
     pub media_type: &'static str,
     pub data: Vec<u8>,

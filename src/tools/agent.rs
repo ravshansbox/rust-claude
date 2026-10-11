@@ -49,13 +49,13 @@ pub fn tool_calls(count: usize) -> String {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Mode {
     Sequential,
     Parallel,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct Task {
     pub description: String,
     pub prompt: String,

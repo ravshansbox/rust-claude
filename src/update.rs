@@ -14,7 +14,7 @@ const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
 const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
 static RUNS: AtomicUsize = AtomicUsize::new(0);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Progress {
     Available(String),
     CargoMissing(String),
