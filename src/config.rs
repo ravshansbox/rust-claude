@@ -23,13 +23,13 @@ pub fn dir() -> Option<PathBuf> {
 
 #[cfg(not(test))]
 fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".rust-claude"))
+    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".rust-coding-agent"))
 }
 
 #[cfg(test)]
 fn default_dir() -> Option<PathBuf> {
     static DIR: std::sync::LazyLock<(PathBuf, std::fs::File)> = std::sync::LazyLock::new(|| {
-        test_dir(&std::env::temp_dir().join("rust-claude-test-config"))
+        test_dir(&std::env::temp_dir().join("rust-coding-agent-test-config"))
     });
     Some(DIR.0.clone())
 }
@@ -205,8 +205,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn saves_through_symlinked_file() {
-        let base =
-            std::env::temp_dir().join(format!("rust-claude-linked-save-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!(
+            "rust-coding-agent-linked-save-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir(&base).unwrap();
         let target = base.join("dotfiles-settings.json");
@@ -228,8 +230,10 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn saves_through_dangling_symlink() {
-        let base =
-            std::env::temp_dir().join(format!("rust-claude-dangling-save-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!(
+            "rust-coding-agent-dangling-save-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir_all(base.join("dotfiles")).unwrap();
         let link = base.join("settings.json");
@@ -248,7 +252,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn does_not_follow_symlinks_at_temporary_names() {
-        let base = std::env::temp_dir().join(format!("rust-claude-planted-{}", std::process::id()));
+        let base =
+            std::env::temp_dir().join(format!("rust-coding-agent-planted-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&base);
         std::fs::create_dir(&base).unwrap();
         let victim = base.join("victim");

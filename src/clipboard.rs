@@ -25,7 +25,7 @@ pub fn read_image() -> Result<Option<Vec<u8>>> {
     // Each paste gets its own file, since several pastes may run at once.
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
-        "rust-claude-clipboard-{}-{}",
+        "rust-coding-agent-clipboard-{}-{}",
         std::process::id(),
         NEXT.fetch_add(1, Ordering::Relaxed)
     ));

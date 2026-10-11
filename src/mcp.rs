@@ -169,7 +169,7 @@ fn read_configs(config_dir: Option<&Path>, cwd: &Path) -> (Configs, Vec<String>,
         .filter(|(_, (_, config))| config.enabled != Some(false))
         .map(|(name, _)| name.clone())
         .collect();
-    let project_dir = cwd.join(".rust-claude");
+    let project_dir = cwd.join(".rust-coding-agent");
     if !config_dir.is_some_and(|config_dir| crate::skills::same_dir(config_dir, &project_dir)) {
         read_config(
             &project_dir.join("mcp.json"),
@@ -1082,7 +1082,7 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
             json!({
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": { "name": "rust-claude", "version": env!("CARGO_PKG_VERSION") },
+                "clientInfo": { "name": "Claude Code", "version": env!("CARGO_PKG_VERSION") },
             }),
         )
         .await?;
@@ -1611,14 +1611,14 @@ mod tests {
     #[test]
     fn labels_servers_global_when_run_from_the_home_folder() {
         let home = std::env::temp_dir().join(format!("mcp-home-{}", std::process::id()));
-        std::fs::create_dir_all(home.join(".rust-claude")).unwrap();
+        std::fs::create_dir_all(home.join(".rust-coding-agent")).unwrap();
         std::fs::write(
-            home.join(".rust-claude/mcp.json"),
+            home.join(".rust-coding-agent/mcp.json"),
             r#"{ "mcpServers": { "docs": { "command": "a" } } }"#,
         )
         .unwrap();
         let (servers, overridden, diagnostics) =
-            read_configs(Some(&home.join(".rust-claude")), &home);
+            read_configs(Some(&home.join(".rust-coding-agent")), &home);
         std::fs::remove_dir_all(&home).unwrap();
         assert_eq!(servers["docs"].0, Scope::Global);
         assert!(overridden.is_empty());
@@ -1631,7 +1631,7 @@ mod tests {
         let global = directory.join("global");
         let project = directory.join("project");
         std::fs::create_dir_all(&global).unwrap();
-        std::fs::create_dir_all(project.join(".rust-claude")).unwrap();
+        std::fs::create_dir_all(project.join(".rust-coding-agent")).unwrap();
         std::fs::write(
             global.join("mcp.json"),
             r#"{ "mcpServers": {
@@ -1642,7 +1642,7 @@ mod tests {
         )
         .unwrap();
         std::fs::write(
-            project.join(".rust-claude/mcp.json"),
+            project.join(".rust-coding-agent/mcp.json"),
             r#"{ "mcpServers": { "docs": { "command": "c" }, "off": { "command": "c" } } }"#,
         )
         .unwrap();
@@ -2036,12 +2036,12 @@ done
         let mut config = http_config(&url);
         config.headers.insert(
             "Authorization".into(),
-            "Bearer ${RUST_CLAUDE_UNSET_TOKEN}".into(),
+            "Bearer ${RUST_CODING_AGENT_UNSET_TOKEN}".into(),
         );
         assert_eq!(
             mcp.add(start("unset".into(), Scope::Global, config).await)
                 .status,
-            "MCP server unset failed: header Authorization uses RUST_CLAUDE_UNSET_TOKEN, which is not set"
+            "MCP server unset failed: header Authorization uses RUST_CODING_AGENT_UNSET_TOKEN, which is not set"
         );
     }
 

@@ -255,7 +255,8 @@ mod tests {
 
     #[tokio::test]
     async fn does_not_start_requests_sent_before_quitting() {
-        let marker = std::env::temp_dir().join(format!("rust-claude-quit-{}", std::process::id()));
+        let marker =
+            std::env::temp_dir().join(format!("rust-coding-agent-quit-{}", std::process::id()));
         let agent = agent();
         let session_id = agent.session.id.clone();
         let (request_tx, request_rx) = mpsc::unbounded_channel();

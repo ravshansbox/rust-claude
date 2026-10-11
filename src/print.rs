@@ -230,8 +230,10 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_escape_sequences_from_the_model_and_tools_out_of_the_terminal() {
-        let path =
-            std::env::temp_dir().join(format!("rust-claude-print-escape-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "rust-coding-agent-print-escape-{}",
+            std::process::id()
+        ));
         let api = MockApi::start(vec![
             tool_reply(
                 "call-1",

@@ -135,7 +135,7 @@ impl Credentials {
             }
             match credentials.refresh(&http).await {
                 Ok(renewed) => Ok(renewed),
-                // A rust-claude that does not take turns may have renewed
+                // A rust-coding-agent that does not take turns may have renewed
                 // the tokens meanwhile, spending the refresh token we hold.
                 Err(error) => {
                     credentials.adopt_saved();
@@ -205,9 +205,9 @@ impl Credentials {
     fn renewed_token(&self, renewed: Result<()>, problem: &str) -> Result<String> {
         match renewed {
             Ok(()) => Ok(self.access.clone()),
-            Err(error) if error.is::<Unusable>() => {
-                Err(error.context(format!("{problem}: restart rust-claude to sign in again")))
-            }
+            Err(error) if error.is::<Unusable>() => Err(error.context(format!(
+                "{problem}: restart rust-coding-agent to sign in again"
+            ))),
             Err(error) => Err(crate::agent::retry::retryable(
                 format!("could not renew the sign-in: {error:#}"),
                 None,

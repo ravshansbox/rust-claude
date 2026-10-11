@@ -780,7 +780,7 @@ mod tests {
     #[test]
     fn searches_prompt_history_in_tabs() {
         let path = std::env::temp_dir().join(format!(
-            "rust-claude-tui-history-{}/history.jsonl",
+            "rust-coding-agent-tui-history-{}/history.jsonl",
             std::process::id()
         ));
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -903,7 +903,7 @@ mod tests {
     #[test]
     fn keeps_folder_prompt_history_across_restarts_and_new_sessions() {
         let path = std::env::temp_dir().join(format!(
-            "rust-claude-tui-saved-history-{}/history.jsonl",
+            "rust-coding-agent-tui-saved-history-{}/history.jsonl",
             std::process::id()
         ));
         for prompt in ["first", "second", "first"] {
