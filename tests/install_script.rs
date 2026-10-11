@@ -65,6 +65,8 @@ impl Setup {
             .arg(concat!(env!("CARGO_MANIFEST_DIR"), "/install.sh"))
             .env("PATH", format!("{}:/usr/bin:/bin", self.bin.display()))
             .env("HOME", self.root.join("home"))
+            .env_remove("CARGO_HOME")
+            .env_remove("CARGO_INSTALL_ROOT")
             .output()
             .unwrap()
     }
@@ -185,4 +187,26 @@ fn moves_the_old_config_folder_to_the_new_one() {
             .exists()
     );
     assert!(!old.exists());
+}
+
+#[test]
+fn links_rca_to_the_installed_binary() {
+    let setup = Setup::new("link").with_cargo();
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(
+        std::fs::read_link(setup.root.join("home/.cargo/bin/rca")).unwrap(),
+        Path::new("rust-coding-agent")
+    );
+}
+
+#[test]
+fn keeps_an_existing_rca() {
+    let setup = Setup::new("existing-rca").with_cargo();
+    let bin = setup.root.join("home/.cargo/bin");
+    std::fs::create_dir_all(&bin).unwrap();
+    std::fs::write(bin.join("rca"), "other").unwrap();
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert_eq!(std::fs::read_to_string(bin.join("rca")).unwrap(), "other");
 }
