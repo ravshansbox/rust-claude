@@ -2381,6 +2381,26 @@ done
         );
     }
 
+    #[tokio::test]
+    async fn signs_in_while_another_connection_to_the_callback_stays_idle() {
+        let (url, _) = oauth_server().await;
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+        let authorize_url = sign_in.authorize_url.clone();
+        let callback = reqwest::Url::parse(&query(&authorize_url)["redirect_uri"]).unwrap();
+        let _idle = tokio::net::TcpStream::connect(("127.0.0.1", callback.port().unwrap()))
+            .await
+            .unwrap();
+        let finished = tokio::spawn(sign_in.finish());
+        let page = tokio::time::timeout(
+            Duration::from_secs(10),
+            visit_callback(&authorize_url, "the-code", None),
+        )
+        .await
+        .expect("the idle connection stalled the sign-in");
+        assert!(page.contains("Signed in"), "{page}");
+        assert_eq!(finished.await.unwrap(), Ok(()));
+    }
+
     fn requests_for_path(requests: &Requests, path: &str) -> Vec<HttpRequest> {
         requests
             .lock()
@@ -2423,6 +2443,19 @@ done
         assert_eq!(
             finished.await.unwrap(),
             Err("token endpoint answered with status 400: invalid_grant".into())
+        );
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+        let mut callback =
+            reqwest::Url::parse(&query(&sign_in.authorize_url)["redirect_uri"]).unwrap();
+        callback
+            .query_pairs_mut()
+            .append_pair("error", "access_denied")
+            .append_pair("state", "forged");
+        let finished = tokio::spawn(sign_in.finish());
+        reqwest::get(callback).await.unwrap();
+        assert_eq!(
+            finished.await.unwrap(),
+            Err("the sign-in page sent back a different state".into())
         );
         let mut keyed = http_config(&url);
         keyed

@@ -180,6 +180,7 @@ pub(super) async fn refresh(
 }
 
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(300);
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(2);
 
 /// What the sign-in server needs, found from the MCP server.
 struct Discovered {
@@ -529,7 +530,9 @@ impl Pending {
                 .accept()
                 .await
                 .map_err(|error| format!("cannot receive the sign-in: {error}"))?;
-            let Some(target) = read_target(&mut stream).await else {
+            let Ok(Some(target)) =
+                tokio::time::timeout(REQUEST_TIMEOUT, read_target(&mut stream)).await
+            else {
                 continue;
             };
             let Ok(url) = reqwest::Url::parse(&format!("http://127.0.0.1{target}")) else {
@@ -540,13 +543,13 @@ impl Pending {
                 continue;
             }
             let parameters: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
-            let result = if let Some(error) = parameters.get("error") {
+            let result = if parameters.get("state") != Some(&self.state) {
+                Err("the sign-in page sent back a different state".to_string())
+            } else if let Some(error) = parameters.get("error") {
                 Err(match parameters.get("error_description") {
                     Some(description) => format!("{error}: {description}"),
                     None => error.clone(),
                 })
-            } else if parameters.get("state") != Some(&self.state) {
-                Err("the sign-in page sent back a different state".to_string())
             } else {
                 parameters
                     .get("code")
