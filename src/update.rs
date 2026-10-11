@@ -4,9 +4,10 @@ use anyhow::{Context, Result};
 use serde::Deserialize;
 
 pub const RELEASES_URL: &str =
-    "https://api.github.com/repos/ravshansbox/rust-claude/releases/latest";
-const RELEASE_TAG_URL: &str = "https://api.github.com/repos/ravshansbox/rust-claude/releases/tags/";
-const ASSET: &str = "rust-claude.zip";
+    "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/latest";
+const RELEASE_TAG_URL: &str =
+    "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/tags/";
+const ASSET: &str = "rust-coding-agent.zip";
 static RUNS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +33,7 @@ impl Progress {
             Self::Downloaded(_, took) => format!("downloaded in {}", format_took(*took)),
             Self::Building(_) => "building".into(),
             Self::Built(_, took) => format!("built in {}", format_took(*took)),
-            Self::Ready(_) => "installed, restart rust-claude to use it".into(),
+            Self::Ready(_) => "installed, restart rust-coding-agent to use it".into(),
             Self::DownloadFailed(_, error, took) => {
                 format!("download failed after {}: {error}", format_took(*took))
             }
@@ -132,7 +133,7 @@ impl Updater {
             return;
         };
         let folder = std::env::temp_dir().join(format!(
-            "rust-claude-update-{}-{}",
+            "rust-coding-agent-update-{}-{}",
             std::process::id(),
             RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
@@ -177,7 +178,7 @@ impl Updater {
         let release: Release = self
             .http
             .get(format!("{}{tag}", self.release_tag_url))
-            .header(reqwest::header::USER_AGENT, "rust-claude")
+            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .send()
             .await
@@ -196,7 +197,7 @@ impl Updater {
         Ok(self
             .http
             .get(&self.releases_url)
-            .header(reqwest::header::USER_AGENT, "rust-claude")
+            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .send()
             .await?
@@ -209,7 +210,7 @@ impl Updater {
         let bytes = self
             .http
             .get(url)
-            .header(reqwest::header::USER_AGENT, "rust-claude")
+            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
             .send()
             .await?
             .error_for_status()?
@@ -233,7 +234,7 @@ impl Updater {
         }
         let output = command
             .arg("--path")
-            .arg(folder.join("rust-claude"))
+            .arg(folder.join("rust-coding-agent"))
             .stdin(std::process::Stdio::null())
             .output()
             .await
@@ -306,8 +307,10 @@ mod tests {
     };
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("rust-claude-update-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "rust-coding-agent-update-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -317,21 +320,22 @@ mod tests {
         let mut buffer = std::io::Cursor::new(Vec::new());
         let mut zip = zip::ZipWriter::new(&mut buffer);
         let options = zip::write::SimpleFileOptions::default();
-        zip.start_file("rust-claude/Cargo.toml", options).unwrap();
-        zip.write_all(b"[package]\nname = \"rust-claude\"\nversion = \"0.2.0\"\n")
+        zip.start_file("rust-coding-agent/Cargo.toml", options)
+            .unwrap();
+        zip.write_all(b"[package]\nname = \"rust-coding-agent\"\nversion = \"0.2.0\"\n")
             .unwrap();
         zip.finish().unwrap();
         buffer.into_inner()
     }
 
     /// Serves the latest release on `/latest` and its zip on
-    /// `/rust-claude.zip`, and counts the requests.
+    /// `/rust-coding-agent.zip`, and counts the requests.
     async fn github(tag: &str) -> (String, Arc<Mutex<Vec<String>>>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let base = format!("http://{}", listener.local_addr().unwrap());
         let release = serde_json::json!({
             "tag_name": tag,
-            "assets": [{ "name": "rust-claude.zip", "browser_download_url": format!("{base}/rust-claude.zip") }],
+            "assets": [{ "name": "rust-coding-agent.zip", "browser_download_url": format!("{base}/rust-coding-agent.zip") }],
         })
         .to_string()
         .into_bytes();
@@ -351,7 +355,7 @@ mod tests {
                 let request = String::from_utf8_lossy(&data).to_string();
                 let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
                 recorded.lock().unwrap().push(request);
-                let body = if path == "/rust-claude.zip" {
+                let body = if path == "/rust-coding-agent.zip" {
                     &zip
                 } else {
                     &release
@@ -492,7 +496,7 @@ mod tests {
         assert!(shown[2].starts_with("downloaded in "), "{shown:?}");
         assert_eq!(shown[3], "building");
         assert!(shown[4].starts_with("built in "), "{shown:?}");
-        assert_eq!(shown[5], "installed, restart rust-claude to use it");
+        assert_eq!(shown[5], "installed, restart rust-coding-agent to use it");
         let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
         assert!(log.starts_with("install --locked --force --path "), "{log}");
         assert!(log.contains("unpacked"), "{log}");

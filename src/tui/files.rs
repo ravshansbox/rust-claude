@@ -120,7 +120,8 @@ mod tests {
 
     #[test]
     fn lists_git_files_with_non_ascii_names() {
-        let root = std::env::temp_dir().join(format!("rust-claude-files-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("rust-coding-agent-files-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("src")).unwrap();
         std::fs::write(root.join("src/café.rs"), "").unwrap();
@@ -139,7 +140,8 @@ mod tests {
 
     #[test]
     fn skips_ignored_files_outside_git() {
-        let root = std::env::temp_dir().join(format!("rust-claude-walk-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("rust-coding-agent-walk-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         for folder in ["target", ".hidden", "logs"] {
             std::fs::create_dir_all(root.join(folder)).unwrap();
@@ -163,7 +165,8 @@ mod tests {
 
     #[test]
     fn stops_walking_at_the_file_limit() {
-        let root = std::env::temp_dir().join(format!("rust-claude-limit-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("rust-coding-agent-limit-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("src")).unwrap();
         for file in ["a.rs", "b.rs", "src/c.rs", "src/d.rs"] {

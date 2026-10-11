@@ -40,7 +40,8 @@ struct Setup {
 
 impl Setup {
     fn new(name: &str) -> Self {
-        let root = std::env::temp_dir().join(format!("rust-claude-{name}-{}", std::process::id()));
+        let root =
+            std::env::temp_dir().join(format!("rust-coding-agent-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         Self {
             home: root.join("home"),
@@ -70,7 +71,7 @@ impl Setup {
     }
 
     fn run(&self, arguments: &[&str]) -> Child {
-        Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+        Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
             .args(arguments)
             .current_dir(&self.project)
             .env("HOME", &self.home)
@@ -118,7 +119,7 @@ fn wait_for_exit(child: Child, signal: &str) -> std::process::Output {
     if !exited {
         let _ = child.kill();
         let _ = child.wait();
-        panic!("rust-claude did not exit after {signal}");
+        panic!("rust-coding-agent did not exit after {signal}");
     }
     child.wait_with_output().unwrap()
 }
@@ -134,14 +135,14 @@ fn stop_server(pid: &str) -> bool {
 #[test]
 fn ctrl_c_in_print_mode_stops_started_processes() {
     let setup = Setup::new("interrupt");
-    setup.write_sign_in(&setup.home.join(".rust-claude"));
-    setup.write_hanging_server(&setup.project.join(".rust-claude"));
+    setup.write_sign_in(&setup.home.join(".rust-coding-agent"));
+    setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
     let child = setup.run(&["-p", "hello"]);
     let started = setup.server_started();
     let output = interrupt(child);
     let server_stopped = stop_server(&setup.server_pid());
-    let sessions: Vec<String> = std::fs::read_dir(setup.home.join(".rust-claude/sessions"))
+    let sessions: Vec<String> = std::fs::read_dir(setup.home.join(".rust-coding-agent/sessions"))
         .into_iter()
         .flatten()
         .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path()).ok())
@@ -165,8 +166,8 @@ fn ctrl_c_in_print_mode_stops_started_processes() {
 fn hangup_and_terminate_in_print_mode_stop_started_processes() {
     for (name, code) in [("HUP", 129), ("TERM", 143)] {
         let setup = Setup::new(&format!("signal-{name}"));
-        setup.write_sign_in(&setup.home.join(".rust-claude"));
-        setup.write_hanging_server(&setup.project.join(".rust-claude"));
+        setup.write_sign_in(&setup.home.join(".rust-coding-agent"));
+        setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
         let child = setup.run(&["-p", "hello"]);
         let started = setup.server_started();
@@ -193,7 +194,7 @@ fn reads_sign_in_and_mcp_servers_from_config_dir() {
     let started = setup.server_started();
     let output = interrupt(child);
     stop_server(&setup.server_pid());
-    let home_untouched = !setup.home.join(".rust-claude").exists();
+    let home_untouched = !setup.home.join(".rust-coding-agent").exists();
     let _ = std::fs::remove_dir_all(&setup.root);
 
     assert!(
@@ -228,7 +229,7 @@ fn continuing_without_a_session_fails_before_asking_to_sign_in() {
 #[test]
 fn ctrl_c_while_the_sign_in_renews_at_start_waits_for_the_renewal() {
     let setup = Setup::new("renewal-interrupt");
-    let auth = setup.home.join(".rust-claude/auth.json");
+    let auth = setup.home.join(".rust-coding-agent/auth.json");
     let expired = r#"{ "access": "access", "refresh": "refresh", "expires": 0 }"#;
     write(&auth, expired);
     std::fs::create_dir_all(&setup.project).unwrap();
@@ -237,7 +238,7 @@ fn ctrl_c_while_the_sign_in_renews_at_start_waits_for_the_renewal() {
     let proxy = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     proxy.set_nonblocking(true).unwrap();
     let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
-    let child = Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+    let child = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
         .args(["-p", "hello"])
         .current_dir(&setup.project)
         .env("HOME", &setup.home)
@@ -282,7 +283,7 @@ fn ctrl_c_at_the_sign_in_prompt_exits_as_cancelled() {
     let setup = Setup::new("sign-in-interrupt");
     std::fs::create_dir_all(&setup.project).unwrap();
     std::fs::create_dir_all(&setup.home).unwrap();
-    let mut child = Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
         .args(["-p", "hello"])
         .current_dir(&setup.project)
         .env("HOME", &setup.home)
@@ -324,7 +325,7 @@ fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
     let setup = Setup::new("non-utf8");
     std::fs::create_dir_all(&setup.project).unwrap();
     std::fs::create_dir_all(&setup.home).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_rust-claude"))
+    let output = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
         .args(["-p", "hello", "--image"])
         .arg(std::ffi::OsStr::from_bytes(b"photo-\xff.png"))
         .current_dir(&setup.project)

@@ -4,14 +4,16 @@ pub(super) struct TemporaryFile(PathBuf);
 
 impl TemporaryFile {
     pub(super) fn new(name: &str, content: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("rust-claude-{name}-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("rust-coding-agent-{name}-{}", std::process::id()));
         std::fs::write(&path, content).unwrap();
         Self(path)
     }
 
     /// A named pipe, which only reaches its end once every writer closes it.
     pub(super) fn fifo(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("rust-claude-{name}-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("rust-coding-agent-{name}-{}", std::process::id()));
         let _ = std::fs::remove_file(&path);
         let status = std::process::Command::new("mkfifo")
             .arg(&path)
@@ -41,7 +43,8 @@ pub(super) struct TemporaryDir(PathBuf);
 
 impl TemporaryDir {
     pub(super) fn new(name: &str) -> Self {
-        let path = std::env::temp_dir().join(format!("rust-claude-{name}-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("rust-coding-agent-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir(&path).unwrap();
         Self(path)

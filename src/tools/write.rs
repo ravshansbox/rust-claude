@@ -42,7 +42,8 @@ mod tests {
 
     #[tokio::test]
     async fn writes_file_in_new_directory() {
-        let directory = std::env::temp_dir().join(format!("rust-claude-{}", std::process::id()));
+        let directory =
+            std::env::temp_dir().join(format!("rust-coding-agent-{}", std::process::id()));
         let path = directory.join("nested").join("file.txt");
         let input = json!({ "path": path.to_str().unwrap(), "content": "hello" });
         let result = call("write", &input).await;
@@ -55,7 +56,7 @@ mod tests {
     #[tokio::test]
     async fn write_without_content_creates_no_directory() {
         let directory =
-            std::env::temp_dir().join(format!("rust-claude-empty-{}", std::process::id()));
+            std::env::temp_dir().join(format!("rust-coding-agent-empty-{}", std::process::id()));
         let path = directory.join("file.txt");
         let input = json!({ "path": path.to_str().unwrap() });
         let result = call("write", &input).await;

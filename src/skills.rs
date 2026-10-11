@@ -90,7 +90,7 @@ pub fn load() -> Skills {
     load_from(config_dir.as_deref(), home.as_deref(), &cwd)
 }
 
-/// Whether two paths name the same folder, so a project `.rust-claude` run
+/// Whether two paths name the same folder, so a project `.rust-coding-agent` run
 /// from the home folder is not mistaken for a second, project-level one.
 pub fn same_dir(a: &Path, b: &Path) -> bool {
     a == b
@@ -103,7 +103,7 @@ pub fn same_dir(a: &Path, b: &Path) -> bool {
 fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skills {
     let with_scope =
         |files: Vec<PathBuf>, scope: Scope| files.into_iter().map(move |path| (path, scope));
-    let project_dir = cwd.join(".rust-claude");
+    let project_dir = cwd.join(".rust-coding-agent");
     let mut paths: Vec<(PathBuf, Scope)> = Vec::new();
     if !config_dir.is_some_and(|config_dir| same_dir(config_dir, &project_dir)) {
         paths.extend(with_scope(
@@ -527,8 +527,10 @@ mod tests {
     use super::*;
 
     fn temp_dir(name: &str) -> PathBuf {
-        let dir =
-            std::env::temp_dir().join(format!("rust-claude-skills-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "rust-coding-agent-skills-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -550,7 +552,11 @@ mod tests {
         let home = root.join("home");
         std::os::unix::fs::symlink(&real_home, &home).unwrap();
 
-        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &real_home);
+        let loaded = load_from(
+            Some(&home.join(".rust-coding-agent")),
+            Some(&home),
+            &real_home,
+        );
         let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
         assert_eq!(scopes, [Scope::Global]);
         let _ = std::fs::remove_dir_all(root);
@@ -564,7 +570,7 @@ mod tests {
         let cwd = project.join("sub");
         std::fs::create_dir_all(project.join(".git")).unwrap();
         write(
-            &cwd.join(".rust-claude/skills/alpha/SKILL.md"),
+            &cwd.join(".rust-coding-agent/skills/alpha/SKILL.md"),
             "---\nname: alpha\ndescription: Project alpha.\n---\nBody",
         );
         write(
@@ -572,7 +578,7 @@ mod tests {
             "---\ndescription: Project beta.\n---\n",
         );
         write(
-            &home.join(".rust-claude/skills/alpha/SKILL.md"),
+            &home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
             "---\nname: alpha\ndescription: Home alpha.\n---\n",
         );
         write(
@@ -584,7 +590,7 @@ mod tests {
             "---\ndescription: Outside the repository.\n---\n",
         );
 
-        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &cwd);
+        let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &cwd);
         let names: Vec<&str> = loaded
             .skills
             .iter()
@@ -599,8 +605,8 @@ mod tests {
             loaded.diagnostics,
             [Diagnostic::Collision {
                 name: "alpha".into(),
-                winner: cwd.join(".rust-claude/skills/alpha/SKILL.md"),
-                loser: home.join(".rust-claude/skills/alpha/SKILL.md"),
+                winner: cwd.join(".rust-coding-agent/skills/alpha/SKILL.md"),
+                loser: home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
             }]
         );
         let _ = std::fs::remove_dir_all(root);
@@ -610,10 +616,10 @@ mod tests {
     fn labels_skills_global_when_run_from_the_home_folder() {
         let home = temp_dir("home-cwd");
         write(
-            &home.join(".rust-claude/skills/alpha/SKILL.md"),
+            &home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
             "---\ndescription: Alpha.\n---\n",
         );
-        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &home);
+        let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &home);
         let _ = std::fs::remove_dir_all(&home);
         let scopes: Vec<Scope> = loaded.skills.iter().map(|skill| skill.scope).collect();
         assert_eq!(scopes, [Scope::Global]);
@@ -625,7 +631,7 @@ mod tests {
         let home = root.join("home");
         let cwd = root.join("project");
         std::fs::create_dir_all(cwd.join(".git")).unwrap();
-        let skills = home.join(".rust-claude/skills");
+        let skills = home.join(".rust-coding-agent/skills");
         write(
             &skills.join("commit.md"),
             "---\ndescription: Commit.\n---\n",
@@ -639,7 +645,7 @@ mod tests {
             "---\ndescription: Notes.\n---\n",
         );
 
-        let loaded = load_from(Some(&home.join(".rust-claude")), Some(&home), &cwd);
+        let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &cwd);
         let names: Vec<&str> = loaded
             .skills
             .iter()

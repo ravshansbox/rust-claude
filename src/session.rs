@@ -26,7 +26,7 @@ pub struct Session {
     drops_mismatched_thinking: bool,
     /// Whether that choice still needs writing to the session file.
     drops_mismatched_thinking_unsaved: bool,
-    /// The session file, locked so that no other rust-claude writes to it.
+    /// The session file, locked so that no other rust-coding-agent writes to it.
     file: Option<File>,
 }
 
@@ -207,7 +207,7 @@ fn open_locked(path: &Path, create: bool) -> Result<File> {
                 std::thread::sleep(std::time::Duration::from_millis(10));
             }
             Err(TryLockError::WouldBlock) => {
-                anyhow::bail!("this session is open in another rust-claude")
+                anyhow::bail!("this session is open in another rust-coding-agent")
             }
             Err(TryLockError::Error(error)) => return Err(error.into()),
         }
@@ -281,7 +281,7 @@ fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
     Ok(())
 }
 
-/// The folder rust-claude runs in, as saved in sessions and prompt history.
+/// The folder rust-coding-agent runs in, as saved in sessions and prompt history.
 pub fn current_folder() -> String {
     std::env::current_dir()
         .map(|folder| folder.display().to_string())
@@ -410,7 +410,7 @@ mod tests {
     #[test]
     fn inlines_saved_images_as_base64() {
         let directory =
-            std::env::temp_dir().join(format!("rust-claude-images-{}", std::process::id()));
+            std::env::temp_dir().join(format!("rust-coding-agent-images-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         std::fs::write(directory.join("a.png"), b"abc").unwrap();
         let mut messages = vec![json!({
@@ -434,8 +434,10 @@ mod tests {
 
     #[test]
     fn previews_prompt_with_images() {
-        let path =
-            std::env::temp_dir().join(format!("rust-claude-image-preview-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "rust-coding-agent-image-preview-{}",
+            std::process::id()
+        ));
         std::fs::write(
             &path,
             "{\"role\":\"user\",\"content\":[{\"type\":\"image\"},{\"type\":\"text\",\"text\":\"look\"}]}\n",
@@ -448,8 +450,10 @@ mod tests {
 
     #[test]
     fn previews_shell_command_without_markup() {
-        let path =
-            std::env::temp_dir().join(format!("rust-claude-shell-preview-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "rust-coding-agent-shell-preview-{}",
+            std::process::id()
+        ));
         let message = json!({
             "role": "user",
             "content": crate::agent::shell_message("ls -la", "file\n"),
@@ -462,8 +466,10 @@ mod tests {
 
     #[test]
     fn previews_skill_command_without_markup() {
-        let path =
-            std::env::temp_dir().join(format!("rust-claude-skill-preview-{}", std::process::id()));
+        let path = std::env::temp_dir().join(format!(
+            "rust-coding-agent-skill-preview-{}",
+            std::process::id()
+        ));
         let message = json!({
             "role": "user",
             "content": "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nDo the demo.\n</skill>\n\nfix it",
@@ -476,7 +482,8 @@ mod tests {
 
     #[test]
     fn reads_preview_without_reading_rest_of_file() {
-        let path = std::env::temp_dir().join(format!("rust-claude-preview-{}", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("rust-coding-agent-preview-{}", std::process::id()));
         std::fs::write(
             &path,
             "{\"role\":\"user\",\"content\":\"first\"}\nnot json\n",
@@ -490,7 +497,7 @@ mod tests {
     #[test]
     fn continues_latest_session_in_current_folder() {
         let directory =
-            std::env::temp_dir().join(format!("rust-claude-latest-{}", std::process::id()));
+            std::env::temp_dir().join(format!("rust-coding-agent-latest-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
         let now = std::time::SystemTime::now();
         for (id, folder, age) in [
@@ -534,7 +541,7 @@ mod tests {
         let folder = read_folder(&path);
         std::fs::remove_file(&path).unwrap();
         let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
-        assert!(!path.starts_with(home.join(".rust-claude")));
+        assert!(!path.starts_with(home.join(".rust-coding-agent")));
         assert_eq!(loaded.unwrap().1, messages);
         assert_eq!(folder.unwrap(), Some(current_folder()));
     }
@@ -555,7 +562,7 @@ mod tests {
         for refused in [while_saving, second] {
             assert_eq!(
                 refused.unwrap_err().to_string(),
-                "this session is open in another rust-claude"
+                "this session is open in another rust-coding-agent"
             );
         }
         assert_eq!(after_closing.unwrap(), messages);

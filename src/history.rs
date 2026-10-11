@@ -152,7 +152,7 @@ mod tests {
     #[test]
     fn loads_newest_first_without_repeats() {
         let path = std::env::temp_dir().join(format!(
-            "rust-claude-history-{}/history.jsonl",
+            "rust-coding-agent-history-{}/history.jsonl",
             std::process::id()
         ));
         for prompt in ["one", "two", "one", "three"] {
@@ -173,7 +173,7 @@ mod tests {
     #[test]
     fn keeps_history_after_a_line_cut_short_inside_a_character() {
         let path = std::env::temp_dir().join(format!(
-            "rust-claude-cut-history-{}/history.jsonl",
+            "rust-coding-agent-cut-history-{}/history.jsonl",
             std::process::id()
         ));
         append(&path, &Entry::here("one")).unwrap();
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn keeps_a_prompt_sent_after_a_line_cut_short_before_its_end() {
         let path = std::env::temp_dir().join(format!(
-            "rust-claude-unended-history-{}/history.jsonl",
+            "rust-coding-agent-unended-history-{}/history.jsonl",
             std::process::id()
         ));
         append(&path, &Entry::here("one")).unwrap();
@@ -208,8 +208,10 @@ mod tests {
 
     #[test]
     fn keeps_only_the_newest_prompts() {
-        let directory =
-            std::env::temp_dir().join(format!("rust-claude-long-history-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "rust-coding-agent-long-history-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("history.jsonl");
         let text: String = (0..MAX_ENTRIES + 5)
@@ -234,8 +236,10 @@ mod tests {
 
     #[test]
     fn keeps_prompts_another_copy_sent_after_loading() {
-        let directory =
-            std::env::temp_dir().join(format!("rust-claude-shared-history-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "rust-coding-agent-shared-history-{}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("history.jsonl");
         let text: String = (0..MAX_ENTRIES + 5)
@@ -261,7 +265,7 @@ mod tests {
     fn saves_history_only_the_user_can_read() {
         use crate::config::permissions;
         let directory = std::env::temp_dir().join(format!(
-            "rust-claude-private-history-{}/config",
+            "rust-coding-agent-private-history-{}/config",
             std::process::id()
         ));
         let path = directory.join("history.jsonl");

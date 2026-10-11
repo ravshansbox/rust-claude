@@ -7,8 +7,7 @@ use std::{
     process::{Command, Output},
 };
 
-const LATEST_ZIP: &str =
-    "https://github.com/ravshansbox/rust-claude/releases/latest/download/rust-claude.zip";
+const LATEST_ZIP: &str = "https://github.com/ravshansbox/rust-coding-agent/releases/latest/download/rust-coding-agent.zip";
 
 struct Setup {
     root: PathBuf,
@@ -17,18 +16,20 @@ struct Setup {
 
 impl Setup {
     fn new(name: &str) -> Self {
-        let root =
-            std::env::temp_dir().join(format!("rust-claude-install-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!(
+            "rust-coding-agent-install-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&root);
         let bin = root.join("bin");
         std::fs::create_dir_all(&bin).unwrap();
         let mut zip = zip::ZipWriter::new(std::fs::File::create(root.join("fixture.zip")).unwrap());
         zip.start_file(
-            "rust-claude/Cargo.toml",
+            "rust-coding-agent/Cargo.toml",
             zip::write::SimpleFileOptions::default(),
         )
         .unwrap();
-        zip.write_all(b"[package]\nname = \"rust-claude\"\nversion = \"0.5.0\"\n")
+        zip.write_all(b"[package]\nname = \"rust-coding-agent\"\nversion = \"0.5.0\"\n")
             .unwrap();
         zip.finish().unwrap();
         let setup = Self { root, bin };
@@ -69,7 +70,7 @@ impl Setup {
     }
 
     fn build(&self) -> PathBuf {
-        self.root.join("home/.rust-claude/build")
+        self.root.join("home/.rust-coding-agent/build")
     }
 
     fn read(&self, name: &str) -> String {
@@ -109,7 +110,7 @@ fn creates_the_config_folder_only_the_user_can_open() {
     let setup = Setup::new("private").with_cargo();
     let output = setup.install();
     assert!(output.status.success(), "{}", stderr(&output));
-    let folder = setup.root.join("home/.rust-claude");
+    let folder = setup.root.join("home/.rust-coding-agent");
     let mode = std::fs::metadata(&folder).unwrap().permissions().mode() & 0o777;
     assert_eq!(mode, 0o700, "{}", folder.display());
 }

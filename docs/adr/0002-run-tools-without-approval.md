@@ -12,9 +12,9 @@ The agent can use `bash`, `read`, `write` and `edit`. Asking the user to approve
 
 ## Decision
 
-rust-claude runs every tool call straight away, without asking for approval and without limiting which paths a tool can use.
+rust-coding-agent runs every tool call straight away, without asking for approval and without limiting which paths a tool can use.
 
-Use rust-claude only in projects you trust and that are under version control.
+Use rust-coding-agent only in projects you trust and that are under version control.
 
 ## Consequences
 

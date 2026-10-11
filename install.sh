@@ -9,14 +9,14 @@ fi
 folder=$(mktemp -d)
 trap 'rm -rf "$folder"' EXIT
 
-curl -fsSL -o "$folder/rust-claude.zip" \
-  https://github.com/ravshansbox/rust-claude/releases/latest/download/rust-claude.zip
-unzip -q "$folder/rust-claude.zip" -d "$folder"
-build="$HOME/.rust-claude/build"
+curl -fsSL -o "$folder/rust-coding-agent.zip" \
+  https://github.com/ravshansbox/rust-coding-agent/releases/latest/download/rust-coding-agent.zip
+unzip -q "$folder/rust-coding-agent.zip" -d "$folder"
+build="$HOME/.rust-coding-agent/build"
 (umask 077 && mkdir -p "$build")
 if version=$(rustc -vV 2>/dev/null) && [ "$(cat "$build/rustc-version" 2>/dev/null)" != "$version" ]; then
   rm -rf "$build"
   (umask 077 && mkdir -p "$build")
   printf '%s\n' "$version" > "$build/rustc-version"
 fi
-cargo install --locked --force --target-dir "$build" --path "$folder/rust-claude"
+cargo install --locked --force --target-dir "$build" --path "$folder/rust-coding-agent"

@@ -20,15 +20,15 @@ use std::{io::IsTerminal, time::Duration};
 use anyhow::{Context, Result, bail};
 use tokio::signal::unix::{Signal, SignalKind, signal};
 
-const USAGE: &str = "usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]";
+const USAGE: &str = "usage: rust-coding-agent [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]";
 
 const HELP: &str = "A small coding agent for the terminal.
 
-usage: rust-claude [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]
+usage: rust-coding-agent [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]
 
 Options:
   -c, --continue           Continue the latest session in the current folder
-      --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-claude
+      --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-coding-agent
       --model <id>         Model to use
       --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
   -p, --print <prompt>     Run one prompt and print the answer
@@ -248,7 +248,7 @@ async fn run() -> Result<()> {
 }
 
 /// Ctrl+C, a closed terminal (hangup) and `kill` (terminate) all stop
-/// rust-claude the same way, so running commands and MCP servers are stopped
+/// rust-coding-agent the same way, so running commands and MCP servers are stopped
 /// instead of left behind.
 struct StopSignals {
     interrupt: Signal,

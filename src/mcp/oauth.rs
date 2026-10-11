@@ -150,7 +150,7 @@ pub(super) async fn request_tokens(
 }
 
 /// Renews `saved` with its refresh token and saves the new tokens. Tokens
-/// another copy of rust-claude saved meanwhile are used instead, unless they
+/// another copy of rust-coding-agent saved meanwhile are used instead, unless they
 /// are the ones the server turned down.
 pub(super) async fn refresh(
     client: &reqwest::Client,
@@ -273,7 +273,7 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             "params": {
                 "protocolVersion": super::PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": { "name": "rust-claude", "version": env!("CARGO_PKG_VERSION") },
+                "clientInfo": { "name": "Claude Code", "version": env!("CARGO_PKG_VERSION") },
             },
         }))
         .send()
@@ -422,7 +422,7 @@ pub(super) async fn begin(
         }
         None => {
             let registration_endpoint = discovered.registration_endpoint.as_deref().ok_or(
-                "the sign-in server does not let rust-claude register; set oauth.clientId in mcp.json",
+                "the sign-in server does not let rust-coding-agent register; set oauth.clientId in mcp.json",
             )?;
             register(client, registration_endpoint, &redirect_uri).await?
         }
@@ -466,14 +466,14 @@ pub(super) async fn begin(
     })
 }
 
-const SIGNED_IN_PAGE: &str = "<!doctype html><title>rust-claude</title><p>Signed in. You can close this tab and go back to rust-claude.</p>";
+const SIGNED_IN_PAGE: &str = "<!doctype html><title>rust-coding-agent</title><p>Signed in. You can close this tab and go back to rust-coding-agent.</p>";
 
 fn failed_page(reason: &str) -> String {
     let reason = reason
         .replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;");
-    format!("<!doctype html><title>rust-claude</title><p>Sign-in failed: {reason}</p>")
+    format!("<!doctype html><title>rust-coding-agent</title><p>Sign-in failed: {reason}</p>")
 }
 
 async fn reply_page(stream: &mut TcpStream, status: &str, page: &str) {

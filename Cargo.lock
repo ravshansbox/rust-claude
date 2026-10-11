@@ -2256,7 +2256,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust-claude"
+name = "rust-coding-agent"
 version = "0.0.0"
 dependencies = [
  "anyhow",

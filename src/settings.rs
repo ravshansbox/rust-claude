@@ -61,7 +61,7 @@ mod tests {
     fn settings_file(name: &str) -> std::path::PathBuf {
         std::env::temp_dir()
             .join(format!(
-                "rust-claude-settings-{name}-{}",
+                "rust-coding-agent-settings-{name}-{}",
                 std::process::id()
             ))
             .join("settings.json")
