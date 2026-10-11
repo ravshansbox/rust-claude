@@ -521,11 +521,9 @@ pub(super) async fn begin(
     })
 }
 
-const SIGNED_IN_PAGE: &str = "<!doctype html><title>rust-coding-agent</title><p>Signed in. You can close this tab and go back to rust-coding-agent.</p>";
-
-fn failed_page(reason: &str) -> String {
-    let reason = crate::skills::escape_xml(reason);
-    format!("<!doctype html><title>rust-coding-agent</title><p>Sign-in failed: {reason}</p>")
+fn page(message: &str) -> String {
+    let message = crate::skills::escape_xml(message);
+    format!("<!doctype html><title>rust-coding-agent</title><p>{message}</p>")
 }
 
 async fn reply_page(stream: &mut TcpStream, status: &str, page: &str) {
@@ -607,12 +605,15 @@ impl Pending {
                     .cloned()
                     .ok_or_else(|| "the sign-in page sent back no code".to_string())
             };
-            match &result {
-                Ok(_) => reply_page(&mut stream, "200 OK", SIGNED_IN_PAGE).await,
-                Err(reason) => {
-                    reply_page(&mut stream, "400 Bad Request", &failed_page(reason)).await
-                }
-            }
+            let (status, message) = match &result {
+                Ok(_) => (
+                    "200 OK",
+                    "Signed in. You can close this tab and go back to rust-coding-agent."
+                        .to_string(),
+                ),
+                Err(reason) => ("400 Bad Request", format!("Sign-in failed: {reason}")),
+            };
+            reply_page(&mut stream, status, &page(&message)).await;
             return result;
         }
     }
