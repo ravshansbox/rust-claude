@@ -19,7 +19,7 @@ pub async fn run<Out: Write, Err: Write>(
     while let Some(message) = agent.next_background().await {
         printer.flush_reads();
         if let Some((summary, output)) = tools::background::display(&message) {
-            printer.tool(&crate::tui::tool_message("background", summary, output));
+            printer.tool(&crate::tui::tool_message("background", &summary, output));
         }
         turn(agent, printer, &message, &[], checkpoint).await?;
     }
@@ -183,7 +183,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                     return;
                 }
                 self.flush_reads();
-                self.tool(&crate::tui::tool_message(&name, summary, diff));
+                self.tool(&crate::tui::tool_message(&name, &summary, diff));
             }
             AgentEvent::ToolDone {
                 name,
@@ -238,7 +238,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         if !self.reads.is_empty() {
             let summary = self.reads.summary();
             self.reads.clear();
-            self.tool(&crate::tui::tool_message("read", summary, None));
+            self.tool(&crate::tui::tool_message("read", &summary, None));
         }
     }
 
