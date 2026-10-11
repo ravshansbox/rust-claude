@@ -2385,6 +2385,87 @@ done
         );
     }
 
+    #[tokio::test]
+    async fn refuses_to_sign_in_to_a_server_without_https() {
+        assert_eq!(
+            begin_sign_in_with("web", &http_config("http://mcp.example/mcp"))
+                .await
+                .err(),
+            Some("the MCP server does not use HTTPS: http://mcp.example/mcp".into())
+        );
+    }
+
+    /// Serves `oauth_mcp`, with `change` applied to the JSON it sends for
+    /// `path`.
+    async fn oauth_server_changing(
+        path: &'static str,
+        change: impl Fn(&mut Value) + Send + Sync + 'static,
+    ) -> String {
+        let base = Arc::new(Mutex::new(String::new()));
+        let shared = base.clone();
+        let (url, _) = http_server(move |request| {
+            let base = shared.lock().unwrap().clone();
+            let mut reply = oauth_mcp(&base, request);
+            if request.path == path {
+                let mut metadata: Value = serde_json::from_str(&reply.body).unwrap();
+                change(&mut metadata);
+                reply = HttpReply::json(metadata);
+            }
+            reply
+        })
+        .await;
+        *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
+        url
+    }
+
+    #[tokio::test]
+    async fn refuses_resource_metadata_for_another_server() {
+        let url = oauth_server_changing("/.well-known/oauth-protected-resource/mcp", |metadata| {
+            metadata["resource"] = json!("https://other.example/mcp");
+        })
+        .await;
+        assert_eq!(
+            begin_sign_in_with("web", &http_config(&url)).await.err(),
+            Some(format!(
+                "the sign-in metadata of {url} is for another server: https://other.example/mcp"
+            ))
+        );
+    }
+
+    #[tokio::test]
+    async fn accepts_resource_metadata_for_the_server_origin() {
+        let url = oauth_server_changing("/.well-known/oauth-protected-resource/mcp", |metadata| {
+            let resource = metadata["resource"]
+                .as_str()
+                .unwrap()
+                .trim_end_matches("/mcp")
+                .to_string();
+            metadata["resource"] = json!(resource);
+        })
+        .await;
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+        assert_eq!(
+            query(&sign_in.authorize_url)["resource"],
+            url.trim_end_matches("/mcp")
+        );
+    }
+
+    #[tokio::test]
+    async fn refuses_a_sign_in_server_that_names_another_issuer() {
+        let url =
+            oauth_server_changing("/.well-known/oauth-authorization-server/auth", |metadata| {
+                metadata["issuer"] = json!("https://other.example");
+            })
+            .await;
+        let base = url.trim_end_matches("/mcp");
+        assert_eq!(
+            begin_sign_in_with("web", &http_config(&url)).await.err(),
+            Some(format!(
+                "the sign-in server {base}/auth names another issuer: https://other.example"
+            ))
+        );
+    }
+
     fn requests_for_path(requests: &Requests, path: &str) -> Vec<HttpRequest> {
         requests
             .lock()
