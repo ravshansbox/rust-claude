@@ -2,7 +2,7 @@ use std::{
     fs::{File, TryLockError},
     io::{Read, Write},
     path::{Path, PathBuf},
-    time::SystemTime,
+    time::{Duration, SystemTime},
 };
 
 use anyhow::{Context, Result};
@@ -205,7 +205,7 @@ fn open_locked(path: &Path, create: bool) -> Result<File> {
             Ok(()) => return Ok(file),
             Err(TryLockError::WouldBlock) if attempts < 20 => {
                 attempts += 1;
-                std::thread::sleep(std::time::Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(10));
             }
             Err(TryLockError::WouldBlock) => {
                 anyhow::bail!("this session is open in another rust-coding-agent")
@@ -407,6 +407,7 @@ mod tests {
         read_preview, sessions_directory,
     };
     use serde_json::json;
+    use std::time::{Duration, SystemTime};
 
     #[test]
     fn inlines_saved_images_as_base64() {
@@ -500,7 +501,7 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("rust-coding-agent-latest-{}", std::process::id()));
         std::fs::create_dir_all(&directory).unwrap();
-        let now = std::time::SystemTime::now();
+        let now = SystemTime::now();
         for (id, folder, age) in [
             ("old", "/project", 60),
             ("new", "/project", 30),
@@ -515,7 +516,7 @@ mod tests {
             std::fs::File::options()
                 .write(true)
                 .open(&path)
-                .and_then(|file| file.set_modified(now - std::time::Duration::from_secs(age)))
+                .and_then(|file| file.set_modified(now - Duration::from_secs(age)))
                 .unwrap();
         }
         let latest = latest_in_folder(&directory, "/project");
