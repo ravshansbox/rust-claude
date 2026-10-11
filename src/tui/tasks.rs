@@ -1,24 +1,36 @@
 use std::collections::HashMap;
 
-use super::{App, Role};
-use crate::{agent, tools};
+use super::{
+    App, Role,
+    status::{format_context, format_stats},
+};
+use crate::{agent, agent::Stats, tools};
 
-/// The message and description of each subagent task of the running `agent`
-/// call, by task number.
-pub(super) type Tasks = HashMap<usize, (usize, String)>;
+pub(super) struct Task {
+    message: usize,
+    description: String,
+    tool_calls: usize,
+    stats: Option<Stats>,
+}
+
+/// The subagent tasks of the running `agent` call, by task number.
+pub(super) type Tasks = HashMap<usize, Task>;
 
 fn header(task: usize, description: &str) -> String {
     format!("[agent {}] {description}", task + 1)
 }
 
-fn header_with_tool_calls(task: usize, description: &str, count: usize) -> String {
-    match count {
-        0 => header(task, description),
-        count => format!(
-            "{} · {}",
-            header(task, description),
-            tools::agent::tool_calls(count)
-        ),
+impl Task {
+    fn line(&self, task: usize) -> String {
+        let mut parts = vec![header(task, &self.description)];
+        if self.tool_calls > 0 {
+            parts.push(tools::agent::tool_calls(self.tool_calls));
+        }
+        if let Some(stats) = &self.stats {
+            parts.extend([format_context(stats), format_stats(stats)]);
+        }
+        parts.retain(|part| !part.is_empty());
+        parts.join(" · ")
     }
 }
 
@@ -33,28 +45,38 @@ fn finished(header: &str, failure: Option<&str>) -> String {
 impl App {
     pub(super) fn start_task(&mut self, task: usize, description: &str) {
         self.push(Role::Tool, header(task, description));
-        self.tasks
-            .insert(task, (self.messages.len() - 1, description.to_string()));
+        let task_state = Task {
+            message: self.messages.len() - 1,
+            description: description.to_string(),
+            tool_calls: 0,
+            stats: None,
+        };
+        self.tasks.insert(task, task_state);
+    }
+
+    fn update_task(&mut self, task: usize, change: impl FnOnce(&mut Task)) {
+        let Some(state) = self.tasks.get_mut(&task) else {
+            return;
+        };
+        change(state);
+        let (message, text) = (state.message, state.line(task));
+        self.set_message_text(message, text);
     }
 
     pub(super) fn count_task_tool_calls(&mut self, task: usize, count: usize) {
-        let Some((message, description)) = self.tasks.get(&task) else {
-            return;
-        };
-        let message = *message;
-        let text = header_with_tool_calls(task, description, count);
-        self.set_message_text(message, text);
+        self.update_task(task, |state| state.tool_calls = count);
+    }
+
+    pub(super) fn show_task_stats(&mut self, task: usize, stats: Stats) {
+        self.update_task(task, |state| state.stats = Some(stats));
     }
 
     pub(super) fn finish_task(&mut self, task: usize, tool_calls: usize, failure: Option<&str>) {
-        let Some((message, description)) = self.tasks.remove(&task) else {
+        let Some(mut state) = self.tasks.remove(&task) else {
             return;
         };
-        let text = finished(
-            &header_with_tool_calls(task, &description, tool_calls),
-            failure,
-        );
-        self.set_message_text(message, text);
+        state.tool_calls = tool_calls;
+        self.set_message_text(state.message, finished(&state.line(task), failure));
     }
 
     /// Shows the tasks of a replayed `agent` call, and why any failed.

@@ -167,6 +167,10 @@ impl Agent {
         let callback: Callback = Box::new(move |event| match &event {
             AgentEvent::Stats(stats) => {
                 count(stats.usage);
+                let _ = events.send(AgentEvent::TaskStats {
+                    task,
+                    stats: *stats,
+                });
                 let _ = events.send(event);
             }
             AgentEvent::ToolStart { .. } => {
@@ -425,7 +429,7 @@ mod tests {
             AgentEvent::ToolStart { name, .. } => format!("tool {name}"),
             AgentEvent::ToolDone { name, error, .. } => format!("tool done {name} {error:?}"),
             AgentEvent::Notice(text) => format!("notice {text}"),
-            AgentEvent::Stats(_) => "stats".into(),
+            AgentEvent::Stats(_) | AgentEvent::TaskStats { .. } => "stats".into(),
             AgentEvent::Queued(prompt) => format!("queued {prompt}"),
         })
     }
@@ -468,6 +472,37 @@ mod tests {
                 "1 start say bye",
                 "1 done bye after 0",
             ]
+        );
+    }
+
+    #[tokio::test]
+    async fn reports_the_stats_of_each_subagent() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({
+                    "mode": "sequential",
+                    "tasks": [task("first", "one"), task("second", "two")],
+                }),
+            ),
+            tool_reply("call-2", "bash", json!({ "command": "true" })),
+            text_reply("one done"),
+            text_reply("two done"),
+            text_reply("done"),
+        ])
+        .await;
+        let mut last = std::collections::BTreeMap::new();
+        let (_, result) = test_support::run_prompt(&api, "go", |event| {
+            if let AgentEvent::TaskStats { task, stats } = event {
+                last.insert(task, (stats.usage.output, stats.context_tokens.is_some()));
+            }
+        })
+        .await;
+        result.unwrap();
+        assert_eq!(
+            last.into_iter().collect::<Vec<_>>(),
+            [(0, (2, true)), (1, (1, true))]
         );
     }
 

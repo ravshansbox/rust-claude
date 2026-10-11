@@ -51,6 +51,7 @@ impl Usage {
     }
 }
 
+#[derive(Default, Clone, Copy)]
 pub struct Stats {
     pub usage: Usage,
     pub cache_hit_rate: Option<f64>,

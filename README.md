@@ -63,7 +63,7 @@ Tools:
 - Diff preview for `edit` and first-lines preview for `write`
 - Syntax highlighting in those previews
 - Consecutive `read` calls grouped on one line, with counts and line ranges
-- `agent` runs tasks in subagents, at the same time or one after another, showing each task but not the subagents' output
+- `agent` runs tasks in subagents, at the same time or one after another, showing each task with its tool calls and stats but not the subagents' output
 - `web_search` searches the web through Anthropic, and lists the sources a reply cites after it
 
 Status line:
@@ -444,7 +444,7 @@ Each task runs in its own subagent with a new conversation. A subagent uses the 
 
 The input, output and cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use, cache hit rate and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count. The tokens of a subagent that fails still count too.
 
-In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Once the subagent calls a tool, the number of tool calls so far follows, such as `[agent 1] list files · 3 tool calls`. Nothing else a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way, but without the number of tool calls, because subagent conversations are not saved.
+In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Once the subagent calls a tool, the number of tool calls so far follows, such as `[agent 1] list files · 3 tool calls`. After its first reply, the subagent's own context use and stats follow, in the same form as on the status line, such as `[agent 1] list files · 3 tool calls · 4%/1m · ↑312 ↓71k R7m W472k CH98% 107t/s`. They update while it works and stay after it finishes. Nothing else a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way, but without the number of tool calls or stats, because subagent conversations are not saved.
 
 In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows its number and description when it starts, such as `  [agent 1] say hi`. When it finishes, its number of tool calls follows, such as `  [agent 1] 3 tool calls`. If a task fails or does not run, the first line of why follows that, starting with the task number.
 
