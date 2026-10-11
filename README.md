@@ -88,6 +88,7 @@ Input and editing:
 
 Display:
 
+- Your prompts shown after `❯` on grey rows
 - Markdown replies, with tables wrapped to the window width
 - Tabs in replies, tool output and `!` command output shown as four spaces
 - Light and dark theme detection

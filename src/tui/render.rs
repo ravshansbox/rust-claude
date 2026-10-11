@@ -213,7 +213,7 @@ pub(super) fn wrapped_height(line: &Line, width: u16) -> usize {
 
 fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
     let content_width = width.saturating_sub(2).max(1);
-    let mut rows = vec![String::new()];
+    let mut rows = Vec::new();
     for line in text.lines() {
         let mut line_rows = input_rows(line, content_width);
         if line_rows.len() > 1 && line_rows.last().is_some_and(String::is_empty) {
@@ -221,11 +221,16 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
         }
         rows.extend(line_rows);
     }
-    rows.push(String::new());
+    if rows.is_empty() {
+        rows.push(String::new());
+    }
     rows.into_iter()
-        .map(|row| {
-            let padding = content_width.saturating_sub(usize::from(row.cell_width())) + 1;
-            Line::from(format!(" {row}{}", " ".repeat(padding))).style(theme().highlight_style())
+        .enumerate()
+        .map(|(index, row)| {
+            let marker = if index == 0 { "❯ " } else { "  " };
+            let padding = content_width.saturating_sub(usize::from(row.cell_width()));
+            Line::from(format!("{marker}{row}{}", " ".repeat(padding)))
+                .style(theme().highlight_style())
         })
         .collect()
 }
@@ -243,13 +248,11 @@ mod tests {
         assert_eq!(
             rows,
             vec![
+                "❯ 日本語",
+                "  のテキ",
+                "  スト  ",
                 "        ",
-                " 日本語 ",
-                " のテキ ",
-                " スト   ",
-                "        ",
-                " abcd   ",
-                "        ",
+                "  abcd  ",
             ]
         );
     }
@@ -260,7 +263,7 @@ mod tests {
             .iter()
             .map(|line| line.to_string())
             .collect();
-        assert_eq!(rows, vec!["        ", "     x  ", "        "]);
+        assert_eq!(rows, vec!["❯     x "]);
     }
 
     #[test]
