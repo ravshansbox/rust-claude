@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+use std::fmt::Write;
 
 pub const NAME: &str = "web_search";
 
@@ -35,7 +36,7 @@ pub fn sources(content: &[Value]) -> Option<String> {
         }
         urls.push(url);
         let title = citation["title"].as_str().unwrap_or(url);
-        list.push_str(&format!("- {title}: {url}\n"));
+        let _ = writeln!(list, "- {title}: {url}");
     }
     (!list.is_empty()).then(|| format!("\n\nSources:\n{list}"))
 }
