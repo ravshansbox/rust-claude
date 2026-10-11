@@ -310,11 +310,32 @@ fn create_update_folder(folder: &Path) -> std::io::Result<()> {
 }
 
 fn link_alias(bin_dir: &Path) {
+    link_alias_to(bin_dir, std::ffi::OsStr::new("rust-coding-agent"));
+}
+
+fn link_alias_to(bin_dir: &Path, program: &std::ffi::OsStr) {
     let alias = bin_dir.join("rca");
     if alias.symlink_metadata().is_err() {
         let _ = std::fs::create_dir_all(bin_dir);
         #[cfg(unix)]
-        let _ = std::os::unix::fs::symlink("rust-coding-agent", &alias);
+        let _ = std::os::unix::fs::symlink(program, &alias);
+    }
+}
+
+/// Adds the `rca` link beside this program if nothing has that name, so
+/// every way of installing gets it. Debug builds, as from `cargo run`, skip it.
+pub fn link_alias_beside_this_program() {
+    if let Ok(program) = std::env::current_exe() {
+        link_alias_beside(&program, cfg!(debug_assertions));
+    }
+}
+
+fn link_alias_beside(program: &Path, debug_build: bool) {
+    if debug_build {
+        return;
+    }
+    if let (Some(dir), Some(name)) = (program.parent(), program.file_name()) {
+        link_alias_to(dir, name);
     }
 }
 
@@ -345,7 +366,7 @@ pub fn find_on_path(program: &str, path: Option<std::ffi::OsString>) -> Option<P
 
 #[cfg(test)]
 mod tests {
-    use super::{Progress, Updater, create_update_folder, find_on_path};
+    use super::{Progress, Updater, create_update_folder, find_on_path, link_alias_beside};
     use std::{
         io::Write,
         path::{Path, PathBuf},
@@ -547,6 +568,38 @@ mod tests {
             std::fs::read_to_string(dir.join("bin/rca")).unwrap(),
             "other"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn links_rca_beside_the_program_at_start() {
+        let dir = temp_dir("start-link");
+        let program = dir.join("rust-coding-agent");
+        std::fs::write(&program, "").unwrap();
+        link_alias_beside(&program, false);
+        assert_eq!(
+            std::fs::read_link(dir.join("rca")).unwrap(),
+            Path::new("rust-coding-agent")
+        );
+    }
+
+    #[test]
+    fn does_not_link_rca_in_a_debug_build() {
+        let dir = temp_dir("start-link-debug");
+        let program = dir.join("rust-coding-agent");
+        std::fs::write(&program, "").unwrap();
+        link_alias_beside(&program, true);
+        assert!(dir.join("rca").symlink_metadata().is_err());
+    }
+
+    #[test]
+    fn keeps_an_existing_rca_beside_the_program() {
+        let dir = temp_dir("start-link-existing");
+        let program = dir.join("rust-coding-agent");
+        std::fs::write(&program, "").unwrap();
+        std::fs::write(dir.join("rca"), "other").unwrap();
+        link_alias_beside(&program, false);
+        assert_eq!(std::fs::read_to_string(dir.join("rca")).unwrap(), "other");
     }
 
     #[tokio::test]

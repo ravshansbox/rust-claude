@@ -140,6 +140,7 @@ fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
+    update::link_alias_beside_this_program();
     let arguments = std::env::args_os()
         .skip(1)
         .map(|argument| {
