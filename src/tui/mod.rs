@@ -280,8 +280,13 @@ async fn run_loop(
     mut stop: StopSignals,
 ) -> Result<()> {
     let mut app = App::new(&agent.model, agent.effort, agent.stats());
-    for instructions in &agent.instructions {
-        app.push(Role::Event, format!("loaded {}", instructions.label));
+    if let Some(line) = instructions_line(
+        agent
+            .instructions
+            .iter()
+            .map(|instructions| instructions.label.as_str()),
+    ) {
+        app.push(Role::Event, line);
     }
     for scope in [Scope::Global, Scope::Project] {
         let names: Vec<&str> = agent
@@ -579,6 +584,11 @@ fn workspace_label() -> String {
     }
 }
 
+fn instructions_line<'a>(labels: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    let labels: Vec<&str> = labels.into_iter().collect();
+    (!labels.is_empty()).then(|| format!("loaded {}", labels.join(", ")))
+}
+
 fn display_model(model: &str) -> &str {
     model.strip_prefix("claude-").unwrap_or(model)
 }
@@ -595,9 +605,22 @@ fn notify(output: &mut impl Write, message: &str, tmux: bool) -> std::io::Result
 
 #[cfg(test)]
 mod tests {
-    use super::{HeldPanics, InputModes, UiEvent, history_writer, notify};
+    use super::{HeldPanics, InputModes, UiEvent, history_writer, instructions_line, notify};
     use crate::{agent::AgentEvent, history};
     use std::sync::{Mutex, PoisonError};
+
+    #[test]
+    fn lists_loaded_instructions_on_one_line() {
+        assert_eq!(
+            instructions_line(["~/AGENTS.md", "./AGENTS.md"]).as_deref(),
+            Some("loaded ~/AGENTS.md, ./AGENTS.md")
+        );
+        assert_eq!(
+            instructions_line(["./AGENTS.md"]).as_deref(),
+            Some("loaded ./AGENTS.md")
+        );
+        assert_eq!(instructions_line([]), None);
+    }
 
     #[test]
     fn saves_prompt_history_in_order_and_reports_failures() {
