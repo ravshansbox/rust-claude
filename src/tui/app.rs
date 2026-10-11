@@ -3,7 +3,10 @@ use super::{
     display_model,
     draw::SPINNER_FRAMES,
     files::{FileList, file_query},
-    render::{render_message, tool_message, wrapped_height},
+    render::{
+        INDENT, REPLY_MARKER, borrowed_line, indented_rows, render_message, tool_message,
+        wrapped_height,
+    },
     selection::Selection,
     workspace_label,
 };
@@ -45,6 +48,9 @@ pub(super) struct ChatMessage {
 
 pub(super) struct Rendered {
     pub(super) width: u16,
+    /// Whether the lines show as a reply: after a marker, with wrapped rows
+    /// indented to line up.
+    indented: bool,
     pub(super) lines: Vec<Line<'static>>,
     /// Rows each line takes once wrapped to `width`.
     pub(super) heights: Vec<usize>,
@@ -58,9 +64,10 @@ pub(super) struct Rendered {
 }
 
 impl Rendered {
-    fn new(width: u16) -> Self {
+    fn new(width: u16, indented: bool) -> Self {
         Self {
             width,
+            indented,
             lines: Vec::new(),
             heights: Vec::new(),
             height: 0,
@@ -78,7 +85,7 @@ impl Rendered {
             self.heights.push(1);
         }
         for line in lines {
-            let height = wrapped_height(&line, self.width);
+            let height = self.line_height(&line);
             self.lines.push(line);
             self.heights.push(height);
         }
@@ -91,9 +98,36 @@ impl Rendered {
         self.heights = self
             .lines
             .iter()
-            .map(|line| wrapped_height(line, width))
+            .map(|line| self.line_height(line))
             .collect();
         self.height = self.heights.iter().sum();
+    }
+
+    fn line_height(&self, line: &Line) -> usize {
+        if self.indented {
+            indented_rows(line, self.width, INDENT).len()
+        } else {
+            wrapped_height(line, self.width)
+        }
+    }
+
+    /// Each row as shown, with the rows it takes once wrapped.
+    pub(super) fn rows(&self) -> Box<dyn Iterator<Item = (Line<'_>, usize)> + '_> {
+        if self.indented {
+            Box::new(self.lines.iter().enumerate().flat_map(|(index, line)| {
+                let prefix = if index == 0 { REPLY_MARKER } else { INDENT };
+                indented_rows(line, self.width, prefix)
+                    .into_iter()
+                    .map(|row| (row, 1))
+            }))
+        } else {
+            Box::new(
+                self.lines
+                    .iter()
+                    .map(borrowed_line)
+                    .zip(self.heights.iter().copied()),
+            )
+        }
     }
 }
 
@@ -146,7 +180,7 @@ impl ChatMessage {
         }
         let mut rendered = match self.rendered.take() {
             Some(rendered) if rendered.width == width => rendered,
-            _ => Rendered::new(width),
+            _ => Rendered::new(width, matches!(self.role, Role::Assistant)),
         };
         rendered.lines.truncate(rendered.finished_lines);
         rendered.heights.truncate(rendered.finished_lines);

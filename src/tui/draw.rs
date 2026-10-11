@@ -1,7 +1,7 @@
 use super::{
     App, HistorySearch, Picker, display_model,
     input::{input_cursor, input_rows},
-    render::{borrowed_line, theme, wrapped_height},
+    render::{theme, wrapped_height},
     selection::{highlight_selection, show_copied_notice},
     status::{format_context, format_quota, format_stats},
 };
@@ -230,13 +230,7 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
     let rows = app.messages[first_message..]
         .iter()
         .flat_map(|message| {
-            let rendered = message.rendered.iter().flat_map(|rendered| {
-                rendered
-                    .lines
-                    .iter()
-                    .map(borrowed_line)
-                    .zip(rendered.heights.iter().copied())
-            });
+            let rendered = message.rendered.iter().flat_map(|rendered| rendered.rows());
             std::iter::once((Line::default(), 1)).chain(rendered)
         })
         .chain(status_lines.into_iter().zip(status_heights));
@@ -376,6 +370,42 @@ mod tests {
         assert_eq!((cursor.x, cursor.y), (9, first as u16 + 1));
         press(&mut app, KeyCode::Up);
         assert_eq!(app.cursor, "lorem i".len());
+    }
+
+    fn rows_from<'a>(shown: &'a str, start: &str) -> Vec<&'a str> {
+        let rows: Vec<&str> = shown.lines().map(str::trim_end).collect();
+        let first = rows
+            .iter()
+            .position(|row| row.starts_with(start))
+            .unwrap_or_else(|| panic!("{shown}"));
+        rows[first..].to_vec()
+    }
+
+    #[test]
+    fn marks_a_reply_and_indents_its_wrapped_rows() {
+        let mut app = crate::tui::test_support::new_app();
+        app.push(Role::Assistant, "alpha beta gamma delta\n\nsecond part");
+        let shown = screen_of_width(&mut app, 14);
+        let rows = rows_from(&shown, "● alpha");
+        assert_eq!(
+            rows[..4],
+            ["● alpha beta", "  gamma delta", "", "  second part"],
+            "{shown}"
+        );
+    }
+
+    #[test]
+    fn marks_a_streamed_reply_once() {
+        let mut app = crate::tui::test_support::new_app();
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::Text("Before\n\n```\ncode\n```\n\nAfter".into())),
+            &mut app,
+        );
+        let shown = screen_of_width(&mut app, 40);
+        assert_eq!(shown.matches('●').count(), 1, "{shown}");
+        let rows = rows_from(&shown, "● Before");
+        assert!(rows.contains(&"  code"), "{shown}");
+        assert!(rows.contains(&"  After"), "{shown}");
     }
 
     #[test]

@@ -8,6 +8,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
+use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Copy)]
 pub(super) enum Theme {
@@ -87,7 +88,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
             &hard_line_breaks(text),
             &tui_markdown::Options::new(MarkdownStyleSheet)
                 .code_theme(theme().code_theme())
-                .table_width(width),
+                .table_width(width.saturating_sub(INDENT_WIDTH)),
         )
         .lines
         .into_iter()
@@ -205,6 +206,83 @@ pub(super) fn borrowed_line<'a>(line: &'a Line<'_>) -> Line<'a> {
     }
 }
 
+pub(super) const REPLY_MARKER: &str = "● ";
+pub(super) const INDENT: &str = "  ";
+const INDENT_WIDTH: u16 = 2;
+
+/// The line wrapped at word boundaries to fit after a two-column prefix:
+/// `first_prefix` on the first row and `INDENT` on the rest.
+pub(super) fn indented_rows(
+    line: &Line<'_>,
+    width: u16,
+    first_prefix: &'static str,
+) -> Vec<Line<'static>> {
+    let width = usize::from(width.saturating_sub(INDENT_WIDTH).max(1));
+    let graphemes: Vec<(&str, Style)> = line
+        .spans
+        .iter()
+        .flat_map(|span| {
+            span.content
+                .graphemes(true)
+                .map(move |grapheme| (grapheme, span.style))
+        })
+        .collect();
+    let is_space = |grapheme: &str| grapheme.chars().all(char::is_whitespace);
+    let mut rows: Vec<Vec<(&str, Style)>> = vec![Vec::new()];
+    let mut row_width = 0;
+    let mut start = 0;
+    while start < graphemes.len() {
+        let space = is_space(graphemes[start].0);
+        let end = (start..graphemes.len())
+            .find(|&index| is_space(graphemes[index].0) != space)
+            .unwrap_or(graphemes.len());
+        let word = &graphemes[start..end];
+        let word_width: usize = word
+            .iter()
+            .map(|(grapheme, _)| usize::from(grapheme.cell_width()))
+            .sum();
+        start = end;
+        if space && row_width == 0 && rows.len() > 1 {
+            continue;
+        }
+        if !space && row_width > 0 && row_width + word_width > width && word_width <= width {
+            rows.push(Vec::new());
+            row_width = 0;
+        }
+        for &(grapheme, style) in word {
+            let grapheme_width = usize::from(grapheme.cell_width());
+            if row_width + grapheme_width > width {
+                if space {
+                    break;
+                }
+                if row_width > 0 {
+                    rows.push(Vec::new());
+                    row_width = 0;
+                }
+            }
+            if let Some(row) = rows.last_mut() {
+                row.push((grapheme, style));
+            }
+            row_width += grapheme_width;
+        }
+    }
+    rows.into_iter()
+        .enumerate()
+        .map(|(index, row)| {
+            let prefix = if index == 0 { first_prefix } else { INDENT };
+            let mut spans: Vec<Span<'static>> = Vec::new();
+            for (grapheme, style) in row {
+                match spans.last_mut() {
+                    Some(span) if span.style == style => span.content.to_mut().push_str(grapheme),
+                    _ => spans.push(Span::styled(grapheme.to_string(), style)),
+                }
+            }
+            spans.insert(0, Span::raw(prefix));
+            Line::from(spans).style(line.style)
+        })
+        .collect()
+}
+
 pub(super) fn wrapped_height(line: &Line, width: u16) -> usize {
     Paragraph::new(borrowed_line(line))
         .wrap(Wrap { trim: false })
@@ -258,6 +336,19 @@ mod tests {
             .map(|line| line.to_string())
             .collect();
         assert_eq!(rows, vec!["❯     x "]);
+    }
+
+    #[test]
+    fn wraps_reply_rows_by_display_width_and_breaks_long_words() {
+        let rows = |text: &str| -> Vec<String> {
+            indented_rows(&Line::raw(text.to_string()), 8, REPLY_MARKER)
+                .iter()
+                .map(|line| line.to_string())
+                .collect()
+        };
+        assert_eq!(rows("日本語のテキ"), ["● 日本語", "  のテキ"]);
+        assert_eq!(rows("ab abcdefgh"), ["● ab abc", "  defgh"]);
+        assert_eq!(rows("abc   def"), ["● abc   ", "  def"]);
     }
 
     #[test]
