@@ -105,12 +105,9 @@ fn expand_variables(text: &str) -> Result<String, String> {
     Ok(expanded)
 }
 
-fn read_config(
-    path: &Path,
-    scope: Scope,
-    servers: &mut BTreeMap<String, (Scope, ServerConfig)>,
-    diagnostics: &mut Vec<String>,
-) {
+type Configs = BTreeMap<String, (Scope, ServerConfig)>;
+
+fn read_config(path: &Path, scope: Scope, servers: &mut Configs, diagnostics: &mut Vec<String>) {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
@@ -157,8 +154,6 @@ fn read_config(
         }
     }
 }
-
-type Configs = BTreeMap<String, (Scope, ServerConfig)>;
 
 /// Reads the global and project configs. Also gives the enabled global
 /// servers that project entries override.
