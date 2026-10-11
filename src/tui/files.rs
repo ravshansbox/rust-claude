@@ -41,7 +41,7 @@ fn walk(root: &Path, limit: usize) -> Vec<String> {
     let mut files: Vec<String> = WalkBuilder::new(root)
         .require_git(false)
         .filter_entry(|entry| entry.file_name() != "target")
-        .sort_by_file_name(|a, b| a.cmp(b))
+        .sort_by_file_name(Ord::cmp)
         .build()
         .flatten()
         .filter(|entry| {
