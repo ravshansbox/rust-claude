@@ -99,16 +99,14 @@ pub(super) async fn request_tokens(
     if let Some(resource) = &saved.resource {
         form.push(("resource", resource));
     }
-    let response = client
-        .post(&saved.token_endpoint)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .form(&form)
-        .send()
-        .await
-        .map_err(|error| format!("cannot reach {}: {error}", saved.token_endpoint))?;
-    let status = response.status();
-    let body = response.text().await.unwrap_or_default();
-    let reply: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    let (status, reply, body) = send(
+        client
+            .post(&saved.token_endpoint)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .form(&form),
+    )
+    .await
+    .map_err(|error| format!("cannot reach {}: {error}", saved.token_endpoint))?;
     let Some(access_token) = reply["access_token"]
         .as_str()
         .filter(|_| status.is_success())
@@ -117,7 +115,7 @@ pub(super) async fn request_tokens(
             .as_str()
             .or(reply["error"].as_str())
             .map(str::to_string)
-            .unwrap_or_else(|| body.trim().chars().take(200).collect());
+            .unwrap_or(body);
         return Err(format!(
             "token endpoint answered with status {}: {reason}",
             status.as_u16()
@@ -134,6 +132,16 @@ pub(super) async fn request_tokens(
             .map(|seconds| now_millis() + u128::from(seconds) * 1000),
         ..saved.clone()
     })
+}
+
+async fn send(
+    request: reqwest::RequestBuilder,
+) -> Result<(reqwest::StatusCode, Value, String), reqwest::Error> {
+    let response = request.send().await?;
+    let status = response.status();
+    let body = response.text().await.unwrap_or_default();
+    let reply = serde_json::from_str(&body).unwrap_or(Value::Null);
+    Ok((status, reply, body.trim().chars().take(200).collect()))
 }
 
 /// Renews `saved` with its refresh token and saves the new tokens. Tokens
@@ -374,31 +382,21 @@ async fn register(
 ) -> Result<(String, Option<String>), String> {
     let failed =
         |reason: String| format!("cannot register Claude Code with the sign-in server: {reason}");
-    let response = client
-        .post(registration_endpoint)
-        .json(&serde_json::json!({
-            "client_name": "Claude Code",
-            "redirect_uris": [redirect_uri],
-            "grant_types": ["authorization_code", "refresh_token"],
-            "response_types": ["code"],
-            "token_endpoint_auth_method": "none",
-        }))
-        .send()
-        .await
-        .map_err(|error| failed(error.to_string()))?;
-    let status = response.status();
-    let body = response.text().await.unwrap_or_default();
-    let reply: Value = serde_json::from_str(&body).unwrap_or(Value::Null);
+    let (status, reply, body) = send(client.post(registration_endpoint).json(&serde_json::json!({
+        "client_name": "Claude Code",
+        "redirect_uris": [redirect_uri],
+        "grant_types": ["authorization_code", "refresh_token"],
+        "response_types": ["code"],
+        "token_endpoint_auth_method": "none",
+    })))
+    .await
+    .map_err(|error| failed(error.to_string()))?;
     match reply["client_id"].as_str() {
         Some(client_id) if status.is_success() => Ok((
             client_id.to_string(),
             reply["client_secret"].as_str().map(str::to_string),
         )),
-        _ => Err(failed(format!(
-            "status {}: {}",
-            status.as_u16(),
-            body.trim().chars().take(200).collect::<String>()
-        ))),
+        _ => Err(failed(format!("status {}: {body}", status.as_u16()))),
     }
 }
 
