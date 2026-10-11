@@ -80,6 +80,13 @@ mod tests {
             .join("settings.json")
     }
 
+    fn written_settings_file(name: &str, text: &str) -> std::path::PathBuf {
+        let path = settings_file(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, text).unwrap();
+        path
+    }
+
     #[test]
     fn keeps_the_other_setting_when_one_changes() {
         let path = settings_file("keep");
@@ -94,10 +101,8 @@ mod tests {
 
     #[test]
     fn refuses_to_replace_settings_that_are_not_valid_json() {
-        let path = settings_file("broken");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let broken = "{ \"model\": \"opus\", }";
-        std::fs::write(&path, broken).unwrap();
+        let path = written_settings_file("broken", broken);
         let result = update_file(&path, |settings| settings.effort = Some("high".into()));
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
@@ -112,9 +117,7 @@ mod tests {
 
     #[test]
     fn turns_update_checks_off_when_settings_cannot_be_read() {
-        let path = settings_file("broken-load");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "{ \"check_for_updates\": false, }").unwrap();
+        let path = written_settings_file("broken-load", "{ \"check_for_updates\": false, }");
         let settings = load_file(&path);
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         assert_eq!(settings.check_for_updates, Some(false));
@@ -128,9 +131,7 @@ mod tests {
 
     #[test]
     fn keeps_settings_it_does_not_know_when_one_changes() {
-        let path = settings_file("unknown");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, r#"{ "future": { "a": 1 } }"#).unwrap();
+        let path = written_settings_file("unknown", r#"{ "future": { "a": 1 } }"#);
         update_file(&path, |settings| settings.model = Some("opus".into())).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
@@ -141,10 +142,8 @@ mod tests {
 
     #[test]
     fn refuses_to_replace_settings_of_the_wrong_type() {
-        let path = settings_file("wrong-type");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         let wrong = r#"{ "notifications": "yes" }"#;
-        std::fs::write(&path, wrong).unwrap();
+        let path = written_settings_file("wrong-type", wrong);
         let result = update_file(&path, |settings| settings.model = Some("opus".into()));
         let text = std::fs::read_to_string(&path).unwrap();
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
@@ -160,9 +159,7 @@ mod tests {
     #[test]
     fn saves_settings_only_the_user_can_read() {
         use std::os::unix::fs::PermissionsExt;
-        let path = settings_file("private");
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-        std::fs::write(&path, "{}").unwrap();
+        let path = written_settings_file("private", "{}");
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         update_file(&path, |settings| settings.model = Some("opus".into())).unwrap();
         let found = crate::config::permissions(&path);
