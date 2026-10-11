@@ -755,10 +755,7 @@ mod tests {
     async fn says_why_the_api_could_not_be_reached() {
         let api = MockApi::start(vec![]).await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
-        // Nothing listens on a port that was just freed.
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        agent.api_base = format!("http://{}", listener.local_addr().unwrap());
-        drop(listener);
+        agent.api_base = "http://127.0.0.1:1".into();
         let mut notices = Vec::new();
         let result = agent
             .prompt("hi", &[], |event| {
