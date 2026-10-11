@@ -1,14 +1,14 @@
-use super::{App, draw::conversation};
+use super::{App, Role, draw::conversation};
 use ratatui::{
     buffer::Buffer,
     layout::{Position, Rect},
     style::Style,
     text::Span,
-    widgets::{Block, Clear, Paragraph, Widget},
+    widgets::Widget,
 };
-use std::time::{Duration, Instant};
 
-const COPIED_NOTICE_TIME: Duration = Duration::from_secs(2);
+/// Columns taken by the marker or indent before prompt and reply rows.
+const PREFIX_WIDTH: u16 = 2;
 
 /// A cell of the conversation, counting rows from its top.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -66,20 +66,52 @@ impl App {
         }
     }
 
-    /// Ends a drag and returns the selected text.
-    pub(super) fn release_mouse(&mut self, column: u16, row: u16) -> Option<String> {
+    /// Ends a drag and quotes the selected text in the input.
+    pub(super) fn release_mouse(&mut self, column: u16, row: u16) {
         self.drag_mouse(column, row);
-        let selection = self
-            .selection
-            .as_mut()
-            .filter(|selection| selection.dragging)?;
-        selection.dragging = false;
-        let Some((start, end)) = selection.bounds() else {
-            self.selection = None;
-            return None;
+        let Some(selection) = self.selection.take().filter(|selection| selection.dragging) else {
+            return;
         };
-        self.copied_until = Some(Instant::now() + COPIED_NOTICE_TIME);
-        Some(self.selected_text(start, end))
+        if let Some((start, end)) = selection.bounds() {
+            let text = self.selected_text(start, end);
+            self.quote(&text);
+        }
+    }
+
+    fn quote(&mut self, text: &str) {
+        let before = &self.input[..self.cursor];
+        let mut quote = if before.is_empty() || before.ends_with('\n') {
+            String::new()
+        } else {
+            "\n".to_string()
+        };
+        for line in text.lines() {
+            quote.push_str(if line.is_empty() { ">" } else { "> " });
+            quote.push_str(line);
+            quote.push('\n');
+        }
+        quote.push('\n');
+        self.insert(&quote);
+    }
+
+    /// Whether each conversation row from `start` to `end` starts with the
+    /// marker or indent of a prompt or reply.
+    fn prefixed_rows(&self, start: usize, end: usize) -> Vec<bool> {
+        let mut prefixed = vec![false; end - start + 1];
+        let mut top = 0;
+        for message in &self.messages {
+            let first = top + 1;
+            top = first + message.height();
+            if matches!(message.role, Role::User | Role::Assistant) {
+                for row in first.max(start)..top.min(end + 1) {
+                    prefixed[row - start] = true;
+                }
+            }
+            if top > end {
+                break;
+            }
+        }
+        prefixed
     }
 
     /// The text from `start` to `end`, each row on its own line without
@@ -90,9 +122,15 @@ impl App {
         let area = Rect::new(0, 0, width, height);
         let mut buffer = Buffer::empty(area);
         conversation(self, width, start.row, height).render(area, &mut buffer);
+        let prefixed = self.prefixed_rows(start.row, end.row);
         (0..height)
             .map(|y| {
                 let first = if y == 0 { start.column } else { 0 };
+                let first = if prefixed[y as usize] {
+                    first.max(PREFIX_WIDTH)
+                } else {
+                    first
+                };
                 let last = if y == height - 1 {
                     end.column
                 } else {
@@ -116,20 +154,6 @@ impl App {
             .collect::<Vec<_>>()
             .join("\n")
     }
-}
-
-/// Shows that text was copied in a box at the top right of the conversation.
-pub(super) fn show_copied_notice(app: &App, buffer: &mut Buffer) {
-    if app.copied_until.is_none_or(|until| until <= Instant::now()) {
-        return;
-    }
-    let area = app.conversation_area;
-    let width = 10.min(area.width);
-    let box_area = Rect::new(area.right() - width, area.top(), width, 3.min(area.height));
-    Clear.render(box_area, buffer);
-    Paragraph::new(" Copied")
-        .block(Block::bordered())
-        .render(box_area, buffer);
 }
 
 /// Shows the selected cells of the conversation in reverse video.
@@ -158,35 +182,30 @@ mod tests {
     use crate::tui::{
         App, Role,
         draw::draw,
-        keys::{Action, handle_input},
+        keys::handle_input,
         test_support::{app_with_reply, screen},
     };
     use crossterm::event::{Event, KeyModifiers, MouseButton, MouseEvent, MouseEventKind};
     use ratatui::{Terminal, backend::TestBackend, buffer::Buffer, style::Modifier};
 
-    fn mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) -> Vec<String> {
-        let mut copied = Vec::new();
+    fn mouse(app: &mut App, kind: MouseEventKind, column: u16, row: u16) {
         let event = Event::Mouse(MouseEvent {
             kind,
             column,
             row,
             modifiers: KeyModifiers::NONE,
         });
-        handle_input(event, app, |action| {
-            if let Action::Copy(text) = action {
-                copied.push(text);
-            }
-        });
-        copied
+        handle_input(event, app, |_| {});
     }
 
-    fn drag(app: &mut App, from: (u16, u16), to: (u16, u16)) -> Vec<String> {
+    fn drag(app: &mut App, from: (u16, u16), to: (u16, u16)) -> String {
         let left = MouseButton::Left;
         mouse(app, MouseEventKind::Down(left), from.0, from.1);
         screen(app);
         mouse(app, MouseEventKind::Drag(left), to.0, to.1);
         screen(app);
-        mouse(app, MouseEventKind::Up(left), to.0, to.1)
+        mouse(app, MouseEventKind::Up(left), to.0, to.1);
+        app.input.clone()
     }
 
     /// Column and row where `text` starts on the screen.
@@ -219,33 +238,64 @@ mod tests {
     }
 
     #[test]
-    fn copies_the_text_dragged_over_on_release() {
+    fn quotes_the_text_dragged_over_on_release() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
-        let copied = drag(&mut app, (column, row), (column + 6, row));
-        assert_eq!(copied, ["Earlier"]);
+        let input = drag(&mut app, (column, row), (column + 6, row));
+        assert_eq!(input, "> Earlier\n\n");
+        assert_eq!(app.cursor, input.len());
     }
 
     #[test]
-    fn copies_a_selection_dragged_backwards() {
+    fn quotes_a_selection_dragged_backwards() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
-        let copied = drag(&mut app, (column + 12, row), (column + 8, row));
-        assert_eq!(copied, ["reply"]);
+        let input = drag(&mut app, (column + 12, row), (column + 8, row));
+        assert_eq!(input, "> reply\n\n");
     }
 
     #[test]
-    fn copies_each_row_on_its_own_line_without_trailing_spaces() {
+    fn quotes_each_row_on_its_own_line_without_trailing_spaces() {
         let mut app = app_with_reply();
         app.push(Role::Event, "second message");
         let (column, row) = position(&mut app, "reply");
         let (end_column, end_row) = position(&mut app, "second message");
-        let copied = drag(&mut app, (column, row), (end_column + 5, end_row));
-        assert_eq!(copied, ["reply\n\nsecond"]);
+        let input = drag(&mut app, (column, row), (end_column + 5, end_row));
+        assert_eq!(input, "> reply\n>\n> second\n\n");
     }
 
     #[test]
-    fn highlights_the_selection_until_the_next_click() {
+    fn leaves_out_the_markers_and_indent_of_prompts_and_replies() {
+        let mut app = app_with_reply();
+        app.push(Role::User, "my prompt");
+        let (column, row) = position(&mut app, "● Earlier reply");
+        let (end_column, end_row) = position(&mut app, "❯ my prompt");
+        let input = drag(&mut app, (column, row), (end_column + 10, end_row));
+        assert_eq!(input, "> Earlier reply\n>\n> my prompt\n\n");
+    }
+
+    #[test]
+    fn keeps_the_leading_spaces_of_other_messages() {
+        let mut app = app_with_reply();
+        app.push(Role::Event, "    spaced");
+        let (column, row) = position(&mut app, "    spaced");
+        let input = drag(&mut app, (column, row), (column + 9, row));
+        assert_eq!(input, ">     spaced\n\n");
+    }
+
+    #[test]
+    fn quotes_at_the_cursor_on_a_new_line() {
+        let mut app = app_with_reply();
+        app.insert("before after");
+        app.cursor = "before".len();
+        let (column, row) = position(&mut app, "Earlier reply");
+        let input = drag(&mut app, (column, row), (column + 6, row));
+        assert_eq!(input, "before\n> Earlier\n\n after");
+        assert_eq!(app.cursor, "before\n> Earlier\n\n".len());
+    }
+
+    #[test]
+    fn highlights_the_selection_until_release() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
         let left = MouseButton::Left;
@@ -254,44 +304,32 @@ mod tests {
         mouse(&mut app, MouseEventKind::Drag(left), column + 6, row);
         assert_eq!(reversed_text(&mut app), "Earlier");
         mouse(&mut app, MouseEventKind::Up(left), column + 6, row);
-        assert_eq!(reversed_text(&mut app), "Earlier");
-        let copied = mouse(&mut app, MouseEventKind::Down(left), column, row);
-        assert!(copied.is_empty());
-        mouse(&mut app, MouseEventKind::Up(left), column, row);
         assert_eq!(reversed_text(&mut app), "");
     }
 
     #[test]
-    fn copies_wide_characters_once() {
+    fn quotes_wide_characters_once() {
         let mut app = app_with_reply();
         app.push(Role::Event, "日本語 text");
         let (column, row) = position(&mut app, "text");
-        let copied = drag(&mut app, (column - 7, row), (column + 3, row));
-        assert_eq!(copied, ["日本語 text"]);
+        let input = drag(&mut app, (column - 7, row), (column + 3, row));
+        assert_eq!(input, "> 日本語 text\n\n");
     }
 
     #[test]
-    fn shows_a_copied_notice_at_the_top_right_for_a_while() {
+    fn shows_no_notice_after_quoting() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
-        assert!(!screen(&mut app).contains("Copied"));
         drag(&mut app, (column, row), (column + 6, row));
-        let shown = screen(&mut app);
-        let notice_row = shown.lines().position(|line| line.contains("Copied"));
-        assert_eq!(notice_row, Some(1), "{shown}");
-        let line = shown.lines().nth(1).unwrap();
-        assert!(line.trim_end().ends_with("Copied │"), "{shown}");
-        app.copied_until = Some(std::time::Instant::now());
         assert!(!screen(&mut app).contains("Copied"));
     }
 
     #[test]
-    fn copies_nothing_on_a_click() {
+    fn quotes_nothing_on_a_click() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
-        let copied = drag(&mut app, (column, row), (column, row));
-        assert!(copied.is_empty());
-        assert!(!screen(&mut app).contains("Copied"));
+        let input = drag(&mut app, (column, row), (column, row));
+        assert_eq!(input, "");
         assert_eq!(reversed_text(&mut app), "");
     }
 
@@ -302,7 +340,9 @@ mod tests {
             app.push(Role::Event, format!("event {number}"));
         }
         let (column, row) = position(&mut app, "event 35");
-        drag(&mut app, (column, row), (column + 7, row));
+        let left = MouseButton::Left;
+        mouse(&mut app, MouseEventKind::Down(left), column, row);
+        mouse(&mut app, MouseEventKind::Drag(left), column + 7, row);
         mouse(&mut app, MouseEventKind::ScrollUp, 0, 0);
         assert_ne!(position(&mut app, "event 35"), (column, row));
         assert_eq!(reversed_text(&mut app), "event 35");
@@ -311,8 +351,8 @@ mod tests {
     #[test]
     fn ignores_drags_that_start_outside_the_conversation() {
         let mut app = app_with_reply();
-        let copied = drag(&mut app, (0, 23), (0, 2));
-        assert!(copied.is_empty());
+        let input = drag(&mut app, (0, 23), (0, 2));
+        assert_eq!(input, "");
         assert_eq!(reversed_text(&mut app), "");
     }
 
@@ -320,7 +360,9 @@ mod tests {
     fn drops_the_selection_when_the_terminal_is_resized() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
-        drag(&mut app, (column, row), (column + 6, row));
+        let left = MouseButton::Left;
+        mouse(&mut app, MouseEventKind::Down(left), column, row);
+        mouse(&mut app, MouseEventKind::Drag(left), column + 6, row);
         handle_input(Event::Resize(100, 24), &mut app, |_| {});
         assert_eq!(reversed_text(&mut app), "");
     }

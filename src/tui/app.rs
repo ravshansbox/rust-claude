@@ -21,7 +21,7 @@ use crate::{
 };
 use anyhow::Result;
 use ratatui::{layout::Rect, text::Line};
-use std::{path::PathBuf, time::Instant};
+use std::path::PathBuf;
 
 const VERSION_LINE: &str = concat!("rust-coding-agent v", env!("CARGO_PKG_VERSION"));
 
@@ -435,8 +435,6 @@ pub(super) struct App {
     /// Where the conversation was last drawn, and its first row shown.
     pub(super) conversation_area: Rect,
     pub(super) conversation_top: usize,
-    /// When the notice that text was copied goes away.
-    pub(super) copied_until: Option<Instant>,
     version_line: String,
     version_message: Option<usize>,
     pub(super) notifications: bool,
@@ -546,7 +544,6 @@ impl App {
             selection: None,
             conversation_area: Rect::default(),
             conversation_top: 0,
-            copied_until: None,
             version_line: VERSION_LINE.into(),
             version_message: None,
             notifications: true,

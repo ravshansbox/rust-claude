@@ -21,7 +21,6 @@ pub(super) enum Action {
     McpSignIn(String),
     McpSignOut(String),
     Cancel,
-    Copy(String),
 }
 
 /// Whether `handle_input` may change what the screen shows for the event.
@@ -55,11 +54,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             MouseEventKind::ScrollDown => app.scroll_down(3),
             MouseEventKind::Down(MouseButton::Left) => app.press_mouse(mouse.column, mouse.row),
             MouseEventKind::Drag(MouseButton::Left) => app.drag_mouse(mouse.column, mouse.row),
-            MouseEventKind::Up(MouseButton::Left) => {
-                if let Some(text) = app.release_mouse(mouse.column, mouse.row) {
-                    act(Action::Copy(text));
-                }
-            }
+            MouseEventKind::Up(MouseButton::Left) => app.release_mouse(mouse.column, mouse.row),
             _ => {}
         }
         return false;
