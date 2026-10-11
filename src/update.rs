@@ -192,7 +192,7 @@ impl Updater {
                 if let Some(bin_dir) = &self.bin_dir {
                     link_alias(bin_dir);
                 }
-                report(Progress::Ready(version))
+                report(Progress::Ready(version));
             }
             Err(failure) => report(failure),
         }

@@ -158,7 +158,7 @@ impl Agent {
                             "citations_delta" => {
                                 match block.get_mut("citations") {
                                     Some(Value::Array(citations)) => {
-                                        citations.push(delta["citation"].clone())
+                                        citations.push(delta["citation"].clone());
                                     }
                                     _ => block["citations"] = json!([delta["citation"]]),
                                 }

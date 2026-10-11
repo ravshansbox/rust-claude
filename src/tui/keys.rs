@@ -56,7 +56,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     .bottom_button
                     .contains(Position::new(mouse.column, mouse.row)) =>
             {
-                app.scroll_to_bottom()
+                app.scroll_to_bottom();
             }
             MouseEventKind::Down(MouseButton::Left) => app.press_mouse(mouse.column, mouse.row),
             MouseEventKind::Drag(MouseButton::Left) => app.drag_mouse(mouse.column, mouse.row),

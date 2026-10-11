@@ -218,7 +218,7 @@ fn sgr(style: Style) -> String {
     }
     match style.fg {
         Some(Color::Rgb(red, green, blue)) => {
-            codes.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"))
+            codes.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"));
         }
         Some(Color::DarkGray) => codes.push_str("\x1b[90m"),
         _ => {}
