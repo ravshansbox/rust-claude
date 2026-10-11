@@ -5,6 +5,7 @@ pub(super) const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI
 const SYSTEM_PROMPT: &str = r#"You are rust-claude, a small coding agent running in a terminal.
 Use your tools to inspect and change the project in the current working directory.
 Read files before changing them, keep changes focused, run relevant checks, and answer concisely.
+Use plain English (ISO 24495-1).
 Put questions to the user in bold.
 Number the questions when there is more than one. Letter the options. Put the recommended one first and mark it."#;
 
@@ -98,6 +99,11 @@ mod tests {
         assert!(system_text(&[]).contains(
             "Number the questions when there is more than one. Letter the options. Put the recommended one first and mark it."
         ));
+    }
+
+    #[test]
+    fn tells_the_model_to_use_plain_english() {
+        assert!(system_text(&[]).contains("Use plain English (ISO 24495-1)."));
     }
 
     #[test]
