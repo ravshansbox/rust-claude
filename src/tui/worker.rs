@@ -250,7 +250,9 @@ mod tests {
             "expires": 4_102_444_800_000u64,
         }))
         .unwrap();
-        Agent::new(reqwest::Client::new(), credentials, "model".into()).unwrap()
+        let mut agent = Agent::new(reqwest::Client::new(), credentials, "model".into()).unwrap();
+        agent.api_base = "http://127.0.0.1:1".into();
+        agent
     }
 
     #[tokio::test]
