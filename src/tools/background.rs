@@ -131,6 +131,7 @@ mod tests {
     use super::{Background, message, parse_message};
     use crate::tools::test_support::{TemporaryFile, is_running};
     use serde_json::json;
+    use std::time::Duration;
 
     #[test]
     fn refuses_to_stop_a_task_that_is_not_running() {
@@ -154,10 +155,10 @@ mod tests {
             if !pid.trim().is_empty() {
                 break;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            tokio::time::sleep(Duration::from_millis(50)).await;
         }
         drop(background);
-        std::thread::sleep(std::time::Duration::from_millis(200));
+        std::thread::sleep(Duration::from_millis(200));
         assert!(!is_running(&pid), "process {pid} still running");
     }
 
