@@ -406,8 +406,9 @@ async fn run_loop(
                     }
                     Action::PasteImage => {
                         let events = background_events.clone();
-                        tokio::task::spawn_blocking(move || {
+                        tokio::spawn(async move {
                             let result = clipboard::read_image()
+                                .await
                                 .and_then(|data| data.map(images::prepare).transpose());
                             let _ = events.send(UiEvent::ImagePasted(result));
                         });

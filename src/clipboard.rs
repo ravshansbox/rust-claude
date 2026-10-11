@@ -1,10 +1,10 @@
 use std::{
-    io::Read,
-    process::{Command, Output, Stdio},
-    time::{Duration, Instant},
+    process::{Output, Stdio},
+    time::Duration,
 };
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, anyhow};
+use tokio::process::Command;
 
 /// How long a clipboard helper may take. One waiting on a clipboard owner
 /// that never answers would otherwise run forever.
@@ -20,7 +20,7 @@ const IMAGE_TYPES: [&str; 5] = [
 ];
 
 #[cfg(target_os = "macos")]
-pub fn read_image() -> Result<Option<Vec<u8>>> {
+pub async fn read_image() -> Result<Option<Vec<u8>>> {
     use std::sync::atomic::{AtomicU64, Ordering};
     // Each paste gets its own file, since several pastes may run at once.
     static NEXT: AtomicU64 = AtomicU64::new(0);
@@ -59,17 +59,18 @@ pub fn read_image() -> Result<Option<Vec<u8>>> {
                 ])
                 .arg(&path),
             HELPER_TIMEOUT,
-        )?
+        )
+        .await?
         .status;
         if status.success() {
-            return Ok(Some(std::fs::read(&path)?));
+            return Ok(Some(tokio::fs::read(&path).await?));
         }
     }
     Ok(None)
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn read_image() -> Result<Option<Vec<u8>>> {
+pub async fn read_image() -> Result<Option<Vec<u8>>> {
     let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
     let (program, list_types, read_type): (&str, &[&str], &[&str]) = if wayland {
         ("wl-paste", &["--list-types"], &["--no-newline", "--type"])
@@ -80,7 +81,7 @@ pub fn read_image() -> Result<Option<Vec<u8>>> {
             &["-selection", "clipboard", "-o", "-t"],
         )
     };
-    let types = output(Command::new(program).args(list_types), HELPER_TIMEOUT)?;
+    let types = output(Command::new(program).args(list_types), HELPER_TIMEOUT).await?;
     let types = String::from_utf8_lossy(&types.stdout);
     let Some(image_type) = IMAGE_TYPES
         .iter()
@@ -91,76 +92,61 @@ pub fn read_image() -> Result<Option<Vec<u8>>> {
     let output = output(
         Command::new(program).args(read_type).arg(image_type),
         HELPER_TIMEOUT,
-    )?;
+    )
+    .await?;
     Ok(Some(output.stdout).filter(|data| output.status.success() && !data.is_empty()))
 }
 
 /// Runs a clipboard helper and collects what it prints, killing it if it
 /// takes longer than `timeout`.
-fn output(command: &mut Command, timeout: Duration) -> Result<Output> {
-    let program = command.get_program().to_string_lossy().into_owned();
-    let mut child = command
+async fn output(command: &mut Command, timeout: Duration) -> Result<Output> {
+    let program = command
+        .as_std()
+        .get_program()
+        .to_string_lossy()
+        .into_owned();
+    let child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
+        .kill_on_drop(true)
         .spawn()
         .with_context(|| format!("failed to run {program}"))?;
-    // Read while waiting, so a large image cannot fill the pipe and stall it.
-    let mut stdout = child.stdout.take().context("no output pipe")?;
-    let reader = std::thread::spawn(move || {
-        let mut data = Vec::new();
-        stdout.read_to_end(&mut data).map(|_| data)
-    });
-    let deadline = Instant::now() + timeout;
-    let status = loop {
-        if let Some(status) = child.try_wait()? {
-            break status;
-        }
-        if Instant::now() >= deadline {
-            let _ = child.kill();
-            let _ = child.wait();
-            bail!(
+    tokio::time::timeout(timeout, child.wait_with_output())
+        .await
+        .map_err(|_| {
+            anyhow!(
                 "{program} did not answer within {} seconds",
                 timeout.as_secs_f64()
-            );
-        }
-        std::thread::sleep(Duration::from_millis(10));
-    };
-    let stdout = reader
-        .join()
-        .map_err(|_| anyhow::anyhow!("failed to read from {program}"))?
-        .with_context(|| format!("failed to read from {program}"))?;
-    Ok(Output {
-        status,
-        stdout,
-        stderr: Vec::new(),
-    })
+            )
+        })?
+        .with_context(|| format!("failed to read from {program}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::output;
-    use std::{
-        process::Command,
-        time::{Duration, Instant},
-    };
+    use std::time::{Duration, Instant};
+    use tokio::process::Command;
 
-    #[test]
-    fn returns_what_a_helper_prints() {
+    #[tokio::test]
+    async fn returns_what_a_helper_prints() {
         let printed = output(
             Command::new("sh").args(["-c", "printf image"]),
             Duration::from_secs(5),
         )
+        .await
         .unwrap();
         assert!(printed.status.success());
         assert_eq!(printed.stdout, b"image");
     }
 
-    #[test]
-    fn stops_a_helper_that_does_not_answer() {
+    #[tokio::test]
+    async fn stops_a_helper_that_does_not_answer() {
         let started = Instant::now();
-        let error =
-            output(Command::new("sleep").arg("30"), Duration::from_millis(200)).unwrap_err();
+        let error = output(Command::new("sleep").arg("30"), Duration::from_millis(200))
+            .await
+            .unwrap_err();
         assert!(started.elapsed() < Duration::from_secs(5));
         assert_eq!(error.to_string(), "sleep did not answer within 0.2 seconds");
     }
