@@ -1,6 +1,7 @@
-use super::{MAX_OUTPUT, argument, number, truncate};
+use super::{MAX_OUTPUT, argument, number};
 use serde_json::{Value, json};
 use std::{
+    collections::VecDeque,
     process::Stdio,
     sync::{Arc, Mutex},
     time::Duration,
@@ -56,8 +57,8 @@ pub(super) async fn run_command(
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         return Err("failed to capture command output".into());
     };
-    let stdout_output = Arc::new(Mutex::new(Vec::new()));
-    let stderr_output = Arc::new(Mutex::new(Vec::new()));
+    let stdout_output = Arc::new(Mutex::new(Captured::default()));
+    let stderr_output = Arc::new(Mutex::new(Captured::default()));
     let readers = [
         tokio::spawn(read_capped(stdout, stdout_output.clone())),
         tokio::spawn(read_capped(stderr, stderr_output.clone())),
@@ -123,33 +124,85 @@ impl Drop for ProcessGroup {
     }
 }
 
-async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin, output: Arc<Mutex<Vec<u8>>>) {
+#[derive(Clone, Default)]
+struct Captured {
+    head: Vec<u8>,
+    tail: VecDeque<u8>,
+    total: usize,
+}
+
+impl Captured {
+    fn push(&mut self, mut bytes: &[u8]) {
+        self.total += bytes.len();
+        let room = MAX_OUTPUT.saturating_sub(self.head.len()).min(bytes.len());
+        self.head.extend_from_slice(&bytes[..room]);
+        bytes = &bytes[room..];
+        self.tail.extend(bytes);
+        let excess = self.tail.len().saturating_sub(MAX_OUTPUT);
+        self.tail.drain(..excess);
+    }
+
+    /// The output in at most `limit` bytes: all of it when it fits, or else
+    /// its start and end around a note of how much was left out.
+    fn text(&self, limit: usize) -> String {
+        let all: Vec<u8> = self.head.iter().chain(&self.tail).copied().collect();
+        if self.total <= limit {
+            return String::from_utf8_lossy(&all).into_owned();
+        }
+        let half = limit / 2;
+        let mut start = &all[..half];
+        while let Err(error) = std::str::from_utf8(start)
+            && error.error_len().is_none()
+        {
+            start = &start[..error.valid_up_to()];
+        }
+        let mut end = &all[all.len() - half..];
+        while end
+            .first()
+            .is_some_and(|byte| byte & 0b1100_0000 == 0b1000_0000)
+        {
+            end = &end[1..];
+        }
+        format!(
+            "{}\n… {} bytes left out …\n{}",
+            String::from_utf8_lossy(start),
+            self.total - start.len() - end.len(),
+            String::from_utf8_lossy(end)
+        )
+    }
+}
+
+async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin, output: Arc<Mutex<Captured>>) {
     let mut chunk = [0; 8192];
     while let Ok(count) = reader.read(&mut chunk).await
         && count > 0
     {
         if let Ok(mut output) = output.lock() {
-            let room = (MAX_OUTPUT + 1).saturating_sub(output.len());
-            output.extend_from_slice(&chunk[..count.min(room)]);
+            output.push(&chunk[..count]);
         }
     }
 }
 
-fn snapshot(output: &Mutex<Vec<u8>>) -> Vec<u8> {
+fn snapshot(output: &Mutex<Captured>) -> Captured {
     output
         .lock()
         .map(|output| output.clone())
         .unwrap_or_default()
 }
 
-fn output_text(stdout_output: &Mutex<Vec<u8>>, stderr_output: &Mutex<Vec<u8>>) -> String {
-    let mut text = String::from_utf8_lossy(&snapshot(stdout_output)).into_owned();
-    let stderr = String::from_utf8_lossy(&snapshot(stderr_output)).into_owned();
-    if !stderr.is_empty() {
+/// Both streams within `MAX_OUTPUT` bytes. Each gets half, and a stream
+/// that needs less leaves the rest to the other.
+fn output_text(stdout_output: &Mutex<Captured>, stderr_output: &Mutex<Captured>) -> String {
+    let (stdout, stderr) = (snapshot(stdout_output), snapshot(stderr_output));
+    let half = MAX_OUTPUT / 2;
+    let stdout_limit = MAX_OUTPUT - stderr.total.min(half);
+    let stderr_limit = MAX_OUTPUT - stdout.total.min(stdout_limit);
+    let mut text = stdout.text(stdout_limit);
+    if stderr.total > 0 {
         text.push_str("\nstderr:\n");
-        text.push_str(&stderr);
+        text.push_str(&stderr.text(stderr_limit));
     }
-    truncate(text)
+    text
 }
 
 #[cfg(test)]
@@ -194,11 +247,33 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn keeps_only_start_of_long_output() {
-        let input = json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; echo b >&2", MAX_OUTPUT * 50) });
-        let text = call("bash", &input).await.unwrap();
-        assert!(text.ends_with("… output truncated"));
-        assert!(!text.contains("stderr"));
+    async fn keeps_start_and_end_of_long_output_from_both_streams() {
+        let command = format!(
+            "echo first; head -c {} /dev/zero | tr '\\0' a; echo last; echo problem >&2",
+            MAX_OUTPUT * 50
+        );
+        let text = call("bash", &json!({ "command": command })).await.unwrap();
+        assert!(text.starts_with("first\n"), "{}", &text[..20]);
+        assert!(text.contains("bytes left out"));
+        assert!(text.contains("last\n\nstderr:\nproblem\n"));
+        assert!(text.len() <= MAX_OUTPUT + 100, "{}", text.len());
+    }
+
+    #[test]
+    fn cuts_long_output_between_characters() {
+        let mut captured = super::Captured::default();
+        captured.push("é".repeat(MAX_OUTPUT * 2).as_bytes());
+        captured.push(b"xy");
+        let text = captured.text(MAX_OUTPUT - 1);
+        assert!(!text.contains('\u{FFFD}'));
+        assert!(text.starts_with('é') && text.ends_with("éxy"));
+    }
+
+    #[tokio::test]
+    async fn gives_one_stream_the_room_the_other_does_not_use() {
+        let command = format!("head -c {} /dev/zero | tr '\\0' a", MAX_OUTPUT * 3 / 4);
+        let text = call("bash", &json!({ "command": command })).await.unwrap();
+        assert_eq!(text.len(), MAX_OUTPUT * 3 / 4);
     }
 
     #[tokio::test]
