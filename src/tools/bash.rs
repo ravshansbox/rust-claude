@@ -204,6 +204,7 @@ fn output_text(stdout_output: &Mutex<Captured>, stderr_output: &Mutex<Captured>)
 mod tests {
     use crate::tools::{MAX_OUTPUT, call, test_support::TemporaryFile};
     use serde_json::json;
+    use std::time::{Duration, Instant};
 
     #[tokio::test]
     async fn times_out_bash_command() {
@@ -283,9 +284,9 @@ mod tests {
     #[tokio::test]
     async fn returns_when_background_process_keeps_output_open() {
         let input = json!({ "command": "sleep 30 & echo $!", "timeout": 10 });
-        let started = std::time::Instant::now();
+        let started = Instant::now();
         let text = call("bash", &input).await.unwrap();
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        assert!(started.elapsed() < Duration::from_secs(5));
         let killed = std::process::Command::new("kill")
             .arg(text.trim())
             .status()
@@ -301,7 +302,7 @@ mod tests {
         let input = json!({ "command": command, "timeout": 1 });
         assert!(call("bash", &input).await.is_err());
         let pid = pid_file.content();
-        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        tokio::time::sleep(Duration::from_millis(100)).await;
         let alive = std::process::Command::new("kill")
             .args(["-0", pid.trim()])
             .status()
