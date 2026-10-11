@@ -2,7 +2,7 @@ use super::keys::{Action, handle_input};
 use super::{App, Role, draw::draw};
 use crate::agent::Stats;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-use ratatui::{Terminal, backend::TestBackend};
+use ratatui::{Terminal, backend::TestBackend, buffer::Cell};
 
 pub(super) fn new_app() -> App {
     App::new("model", "medium", Stats::default())
@@ -33,7 +33,7 @@ pub(super) fn screen_of_width(app: &mut App, width: u16) -> String {
     buffer
         .content()
         .chunks(buffer.area.width as usize)
-        .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
+        .map(|row| row.iter().map(Cell::symbol).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n")
 }
