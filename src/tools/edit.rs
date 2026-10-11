@@ -73,7 +73,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     };
     replace_file(path, edited, Some(content))
         .await
-        .map(|_| message)
+        .map(|()| message)
         .map_err(|error| format!("failed to write {path}: {error}"))
 }
 
