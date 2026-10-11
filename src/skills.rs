@@ -153,16 +153,15 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
         if real_paths.contains(&real_path) {
             continue;
         }
-        match skills.iter().find(|existing| existing.name == skill.name) {
-            Some(existing) => collisions.push(Diagnostic::Collision {
+        if let Some(existing) = skills.iter().find(|existing| existing.name == skill.name) {
+            collisions.push(Diagnostic::Collision {
                 name: skill.name,
                 winner: existing.path.clone(),
                 loser: skill.path,
-            }),
-            None => {
-                real_paths.insert(real_path);
-                skills.push(skill);
-            }
+            });
+        } else {
+            real_paths.insert(real_path);
+            skills.push(skill);
         }
     }
     diagnostics.extend(collisions);
