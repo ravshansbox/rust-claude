@@ -280,14 +280,6 @@ async fn run_loop(
     mut stop: StopSignals,
 ) -> Result<()> {
     let mut app = App::new(&agent.model, agent.effort, agent.stats());
-    if let Some(line) = instructions_line(
-        agent
-            .instructions
-            .iter()
-            .map(|instructions| instructions.label.as_str()),
-    ) {
-        app.push(Role::Event, line);
-    }
     for scope in [Scope::Global, Scope::Project] {
         let names: Vec<&str> = agent
             .skills
@@ -335,6 +327,14 @@ async fn run_loop(
     );
     app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
     app.push(Role::Event, tools_line());
+    if let Some(line) = instructions_line(
+        agent
+            .instructions
+            .iter()
+            .map(|instructions| instructions.label.as_str()),
+    ) {
+        app.push(Role::Event, line);
+    }
     for server in startup.servers {
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
