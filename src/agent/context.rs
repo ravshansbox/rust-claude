@@ -124,8 +124,7 @@ pub(super) fn context_tokens(messages: &[Value]) -> Option<u64> {
         if message["role"] != "assistant" || message.get("stop_reason").is_some() {
             return None;
         }
-        let usage = Usage::from_json(&message["usage"]);
-        let tokens = usage.input + usage.output + usage.cache_read + usage.cache_write;
+        let tokens = Usage::from_json(&message["usage"]).tokens();
         (tokens > 0).then_some(tokens)
     })
 }

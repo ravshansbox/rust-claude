@@ -21,12 +21,16 @@ impl Usage {
         self.duration_ms += other.duration_ms;
     }
 
+    pub(super) fn tokens(self) -> u64 {
+        self.input + self.output + self.cache_read + self.cache_write
+    }
+
     /// Stores a reply's usage with that of its retried attempts nested
     /// under `retried`, which only totals count: the context size and speed
     /// come from the attempt that produced the reply.
     pub(super) fn to_json_with_retried(self, retried: Self) -> Value {
         let mut value = json!(self);
-        if retried.input + retried.output + retried.cache_read + retried.cache_write > 0 {
+        if retried.tokens() > 0 {
             value["retried"] = json!(retried);
         }
         value

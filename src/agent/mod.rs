@@ -308,7 +308,7 @@ impl Agent {
         let mut lost = total_usage(&self.messages[index..]);
         lost.add(std::mem::take(&mut self.pending_usage));
         self.messages.truncate(index);
-        if always_mark || lost.input + lost.output + lost.cache_read + lost.cache_write > 0 {
+        if always_mark || lost.tokens() > 0 {
             self.messages.push(json!({
                 "role": "assistant",
                 "stop_reason": stop_reason,
@@ -345,7 +345,7 @@ impl Agent {
         if !results.is_empty() {
             let mut message = json!({ "role": "user", "content": results });
             let usage = self.running_subagent_usage();
-            if usage.input + usage.output + usage.cache_read + usage.cache_write > 0 {
+            if usage.tokens() > 0 {
                 message["usage"] = json!(usage);
             }
             self.messages.push(message);
