@@ -11,6 +11,8 @@ The agent can use these tools:
 - `bash_stop`: stop a background command. See [Background commands](#background-commands)
 - `web_search`: search the web. See [Web search](#web-search)
 
+At start, the interface lists these tools on one line, after the MCP servers, such as `loaded tools: bash, read, write, edit, agent, bash_stop, web_search`.
+
 The agent can also use tools from [MCP servers](mcp.md).
 
 `write` and `edit` write a temporary file in the same folder and then replace the file with it, so a failed write, for example on a full disk, keeps the old file. The file keeps its permissions and group, so a script stays executable, and a symlink stays a symlink, with the file it points to replaced. A file with other hard links, or owned by someone else, is written in place instead, so every link sees the new text and the owner does not change.

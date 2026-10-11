@@ -334,6 +334,7 @@ async fn run_loop(
             .map(|server| (server.name.as_str(), server.scope)),
     );
     app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
+    app.push(Role::Event, tools_line());
     for server in startup.servers {
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
@@ -578,6 +579,17 @@ fn instructions_line<'a>(labels: impl IntoIterator<Item = &'a str>) -> Option<St
     (!labels.is_empty()).then(|| format!("loaded {}", labels.join(", ")))
 }
 
+fn tools_line() -> String {
+    let definitions = crate::tools::definitions();
+    let names: Vec<&str> = definitions
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|definition| definition["name"].as_str())
+        .collect();
+    format!("loaded tools: {}", names.join(", "))
+}
+
 fn display_model(model: &str) -> &str {
     model.strip_prefix("claude-").unwrap_or(model)
 }
@@ -594,7 +606,9 @@ fn notify(output: &mut impl Write, message: &str, tmux: bool) -> std::io::Result
 
 #[cfg(test)]
 mod tests {
-    use super::{HeldPanics, InputModes, UiEvent, history_writer, instructions_line, notify};
+    use super::{
+        HeldPanics, InputModes, UiEvent, history_writer, instructions_line, notify, tools_line,
+    };
     use crate::{agent::AgentEvent, history};
     use std::sync::{Mutex, PoisonError};
 
@@ -609,6 +623,14 @@ mod tests {
             Some("loaded ./AGENTS.md")
         );
         assert_eq!(instructions_line([]), None);
+    }
+
+    #[test]
+    fn lists_built_in_tools_on_one_line() {
+        assert_eq!(
+            tools_line(),
+            "loaded tools: bash, read, write, edit, agent, bash_stop, web_search"
+        );
     }
 
     #[test]
