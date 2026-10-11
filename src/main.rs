@@ -189,7 +189,7 @@ async fn run() -> Result<()> {
     let effort = options.effort.or(settings.effort);
     let mut agent = agent::Agent::new(http, credentials, model)?;
     if let Some(id) = resume_id {
-        agent.resume(&id)?;
+        agent.resume(&id).await?;
     }
     if let Some(name) = effort {
         let (level, warning) = choose_effort(&agent.model, &name);

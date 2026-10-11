@@ -199,12 +199,14 @@ impl Agent {
         self.credentials.take_renewal_notice()
     }
 
-    pub fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
-        self.session.list_others()
+    pub async fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
+        let id = self.session.id.clone();
+        tokio::task::spawn_blocking(move || Session::list_except(&id)).await?
     }
 
-    pub fn resume(&mut self, id: &str) -> Result<Vec<Value>> {
-        let (session, messages) = Session::load(id)?;
+    pub async fn resume(&mut self, id: &str) -> Result<Vec<Value>> {
+        let id = id.to_string();
+        let (session, messages) = tokio::task::spawn_blocking(move || Session::load(&id)).await??;
         self.session = session;
         self.messages = messages.clone();
         Ok(messages)
@@ -952,7 +954,7 @@ mod tests {
         let id = agent.session.id.clone();
         drop(agent);
         let mut restarted = test_support::agent(&api, reqwest::Client::new());
-        let resumed = restarted.resume(&id);
+        let resumed = restarted.resume(&id).await;
         let after_restart = restarted.prompt("four", &[], |_| {}).await;
         test_support::remove_session(&restarted);
         first.unwrap();
