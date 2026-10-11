@@ -23,3 +23,8 @@ if version=$(rustc -vV 2>/dev/null) && [ "$(cat "$build/rustc-version" 2>/dev/nu
   printf '%s\n' "$version" > "$build/rustc-version"
 fi
 cargo install --locked --force --target-dir "$build" --path "$folder/rust-coding-agent"
+bin="${CARGO_INSTALL_ROOT:-${CARGO_HOME:-$HOME/.cargo}}/bin"
+if [ ! -e "$bin/rca" ] && [ ! -L "$bin/rca" ]; then
+  mkdir -p "$bin"
+  ln -s rust-coding-agent "$bin/rca"
+fi

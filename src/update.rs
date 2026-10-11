@@ -86,6 +86,7 @@ pub struct Updater {
     pub cargo: Option<PathBuf>,
     pub rustc: Option<PathBuf>,
     pub build_dir: Option<PathBuf>,
+    pub bin_dir: Option<PathBuf>,
 }
 
 impl Updater {
@@ -107,6 +108,7 @@ impl Updater {
             cargo: find_on_path("cargo", std::env::var_os("PATH")),
             rustc: find_on_path("rustc", std::env::var_os("PATH")),
             build_dir: crate::config::dir().map(|dir| dir.join("build")),
+            bin_dir: cargo_bin_dir(),
         })
     }
 
@@ -162,7 +164,12 @@ impl Updater {
         .await;
         let _ = std::fs::remove_dir_all(&folder);
         match outcome {
-            Ok(()) => report(Progress::Ready(version)),
+            Ok(()) => {
+                if let Some(bin_dir) = &self.bin_dir {
+                    link_alias(bin_dir);
+                }
+                report(Progress::Ready(version))
+            }
             Err(failure) => report(failure),
         }
     }
@@ -274,6 +281,23 @@ impl Updater {
         let _ = std::fs::create_dir_all(build_dir);
         let _ = std::fs::write(stamp, output.stdout);
     }
+}
+
+fn link_alias(bin_dir: &Path) {
+    let alias = bin_dir.join("rca");
+    if alias.symlink_metadata().is_err() {
+        let _ = std::fs::create_dir_all(bin_dir);
+        #[cfg(unix)]
+        let _ = std::os::unix::fs::symlink("rust-coding-agent", &alias);
+    }
+}
+
+fn cargo_bin_dir() -> Option<PathBuf> {
+    let root = std::env::var_os("CARGO_INSTALL_ROOT")
+        .or_else(|| std::env::var_os("CARGO_HOME"))
+        .map(PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))?;
+    Some(root.join("bin"))
 }
 
 fn parse_version(text: &str) -> Option<[u64; 3]> {
@@ -415,6 +439,7 @@ mod tests {
             cargo,
             rustc: None,
             build_dir: None,
+            bin_dir: None,
         }
     }
 
@@ -500,6 +525,34 @@ mod tests {
         let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
         assert!(log.starts_with("install --locked --force --path "), "{log}");
         assert!(log.contains("unpacked"), "{log}");
+    }
+
+    #[tokio::test]
+    async fn links_rca_to_the_installed_binary() {
+        let dir = temp_dir("link");
+        let (base, _) = github("v0.2.0").await;
+        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
+        updater.bin_dir = Some(dir.join("bin"));
+        run(updater).await;
+        assert_eq!(
+            std::fs::read_link(dir.join("bin/rca")).unwrap(),
+            Path::new("rust-coding-agent")
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_an_existing_rca() {
+        let dir = temp_dir("existing-rca");
+        let (base, _) = github("v0.2.0").await;
+        std::fs::create_dir_all(dir.join("bin")).unwrap();
+        std::fs::write(dir.join("bin/rca"), "other").unwrap();
+        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
+        updater.bin_dir = Some(dir.join("bin"));
+        run(updater).await;
+        assert_eq!(
+            std::fs::read_to_string(dir.join("bin/rca")).unwrap(),
+            "other"
+        );
     }
 
     #[tokio::test]
