@@ -324,13 +324,7 @@ mod tests {
     use super::{Command, Options, choose_effort, choose_model, parse_arguments};
 
     fn parse_with_options(arguments: &[&str]) -> Option<(Command, Options)> {
-        parse_arguments(
-            arguments
-                .iter()
-                .map(|argument| argument.to_string())
-                .collect(),
-        )
-        .ok()
+        parse_arguments(arguments.iter().map(ToString::to_string).collect()).ok()
     }
 
     fn parse(arguments: &[&str]) -> Option<Command> {
