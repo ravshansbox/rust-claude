@@ -4,7 +4,7 @@ Date: 2026-10-10
 
 ## Status
 
-Accepted
+Superseded by [ADR 5](0005-accept-only-the-listed-models.md)
 
 ## Context
 
