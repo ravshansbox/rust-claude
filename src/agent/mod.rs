@@ -736,16 +736,13 @@ mod tests {
     #[tokio::test]
     async fn retries_an_overloaded_reply_whose_error_breaks_off() {
         let api = MockApi::start(vec![Reply::CutOffOverloaded, text_reply("hello")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut text = String::new();
-        let result = agent
-            .prompt("hi", &[], |event| {
-                if let AgentEvent::Text(delta) = event {
-                    text.push_str(&delta);
-                }
-            })
-            .await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "hi", |event| {
+            if let AgentEvent::Text(delta) = event {
+                text.push_str(&delta);
+            }
+        })
+        .await;
         result.unwrap();
         assert_eq!(text, "hello");
         assert_eq!(api.requests().await.len(), 2);
@@ -758,11 +755,7 @@ mod tests {
         agent.api_base = "http://127.0.0.1:1".into();
         let mut notices = Vec::new();
         let result = agent
-            .prompt("hi", &[], |event| {
-                if let AgentEvent::Notice(notice) = event {
-                    notices.push(notice);
-                }
-            })
+            .prompt("hi", &[], test_support::notices(&mut notices))
             .await;
         test_support::remove_session(&agent);
         let message = result.unwrap_err().to_string();
@@ -777,16 +770,9 @@ mod tests {
             "model_context_window_exceeded",
         )])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut notices = Vec::new();
-        let result = agent
-            .prompt("hi", &[], |event| {
-                if let AgentEvent::Notice(notice) = event {
-                    notices.push(notice);
-                }
-            })
-            .await;
-        test_support::remove_session(&agent);
+        let (_, result) =
+            test_support::run_prompt(&api, "hi", test_support::notices(&mut notices)).await;
         result.unwrap();
         assert_eq!(
             notices,
@@ -813,9 +799,7 @@ mod tests {
             json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
         ]);
         let api = MockApi::start(vec![overloaded, text_reply("hello")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("hi", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (agent, result) = test_support::run_prompt(&api, "hi", |_| {}).await;
         result.unwrap();
         assert_eq!(api.requests().await.len(), 2);
         let usage = agent.stats().usage;
@@ -917,9 +901,7 @@ mod tests {
             json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
         ]);
         let api = MockApi::start(vec![overloaded, text_reply("hello")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("hi", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (agent, result) = test_support::run_prompt(&api, "hi", |_| {}).await;
         result.unwrap();
         let stats = agent.stats();
         assert_eq!(stats.context_tokens, Some(2));
@@ -942,11 +924,7 @@ mod tests {
         let mut notices = Vec::new();
         let first = agent.prompt("one", &[], |_| {}).await;
         let second = agent
-            .prompt("two", &[], |event| {
-                if let AgentEvent::Notice(notice) = event {
-                    notices.push(notice);
-                }
-            })
+            .prompt("two", &[], test_support::notices(&mut notices))
             .await;
         let third = agent.prompt("three", &[], |_| {}).await;
         // Close the session, as quitting does, so that it can be resumed.
@@ -1190,16 +1168,13 @@ mod tests {
             10_000,
         )
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut notices = Vec::new();
-        let result = agent
-            .prompt("read the big file", &[], |event| {
-                if let AgentEvent::Notice(notice) = event {
-                    notices.push(notice);
-                }
-            })
-            .await;
-        test_support::remove_session(&agent);
+        let (agent, result) = test_support::run_prompt(
+            &api,
+            "read the big file",
+            test_support::notices(&mut notices),
+        )
+        .await;
         result.unwrap();
         assert!(
             notices.iter().any(|notice| notice.contains("too long")),
@@ -1355,9 +1330,7 @@ mod tests {
         }
         events.push(json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }));
         let api = MockApi::start(vec![Reply::Events(events), text_reply("done")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("run them all", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "run them all", |_| {}).await;
         result.unwrap();
         let requests = api.requests().await;
         assert_eq!(requests.len(), 2);
@@ -1435,9 +1408,7 @@ mod tests {
     #[tokio::test]
     async fn offers_web_search_to_the_model() {
         let api = MockApi::start(vec![text_reply("hello")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("hi", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "hi", |_| {}).await;
         result.unwrap();
         let requests = api.requests().await;
         let tools = requests[0]["tools"].as_array().unwrap();
@@ -1498,19 +1469,16 @@ mod tests {
             "error_code": "too_many_requests",
         }))])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut errors = Vec::new();
-        let result = agent
-            .prompt("search", &[], |event| {
-                if let AgentEvent::ToolDone {
-                    error: Some(error), ..
-                } = event
-                {
-                    errors.push(error);
-                }
-            })
-            .await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "search", |event| {
+            if let AgentEvent::ToolDone {
+                error: Some(error), ..
+            } = event
+            {
+                errors.push(error);
+            }
+        })
+        .await;
         result.unwrap();
         assert_eq!(errors, ["too_many_requests"]);
     }
@@ -1522,16 +1490,13 @@ mod tests {
             text_reply(" done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut text = String::new();
-        let result = agent
-            .prompt("search", &[], |event| {
-                if let AgentEvent::Text(delta) = event {
-                    text.push_str(&delta);
-                }
-            })
-            .await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "search", |event| {
+            if let AgentEvent::Text(delta) = event {
+                text.push_str(&delta);
+            }
+        })
+        .await;
         result.unwrap();
         assert_eq!(text, "searching done");
         let requests = api.requests().await;
