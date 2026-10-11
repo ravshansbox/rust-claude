@@ -8,7 +8,7 @@ pub(super) fn new_app() -> App {
         usage: Usage::default(),
         cache_hit_rate: None,
         tokens_per_second: None,
-        context_tokens: 0,
+        context_tokens: None,
         context_window: 0,
         quota: Quota::default(),
     };

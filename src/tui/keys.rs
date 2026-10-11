@@ -18,7 +18,6 @@ pub(super) enum Action {
     CheckModel(String),
     NewSession,
     ListModels,
-    Context,
     McpSignIn(String),
     McpSignOut(String),
     Cancel,
@@ -296,10 +295,6 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                     "/model" => {
                         app.start(Activity::CheckingModel);
                         act(Action::CheckModel(argument.to_string()));
-                    }
-                    "/context" => {
-                        app.start(Activity::MeasuringContext);
-                        act(Action::Context);
                     }
                     "/resume" => {
                         app.start(Activity::LoadingSessions);
@@ -621,7 +616,6 @@ mod tests {
         let shown = screen(&mut app);
         let names = [
             "/compact",
-            "/context",
             "/effort",
             "/mcp",
             "/model",
@@ -635,6 +629,7 @@ mod tests {
             .map(|name| shown.find(&format!("{name} ")).expect(name))
             .collect();
         assert!(positions.is_sorted(), "{shown}");
+        assert!(!shown.contains("/context"), "{shown}");
     }
 
     fn suggested(app: &App) -> Vec<String> {
@@ -954,34 +949,6 @@ mod tests {
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         assert_eq!(press(&mut restarted, KeyCode::Up), "third");
         assert_eq!(press(&mut restarted, KeyCode::Up), "first");
-    }
-
-    #[test]
-    fn shows_context_use() {
-        let mut app = new_app();
-        handle_input(Event::Paste("/context".into()), &mut app, |_| {});
-        let mut requested = false;
-        handle_input(
-            Event::Key(KeyEvent::from(KeyCode::Enter)),
-            &mut app,
-            |action| requested |= matches!(action, Action::Context),
-        );
-        assert!(requested);
-        assert!(app.busy());
-        let context = crate::agent::ContextUse {
-            parts: vec![("messages", 10)],
-            total: 10,
-            window: 0,
-        };
-        handle_agent_event(UiEvent::Context(context), &mut app);
-        assert!(!app.busy());
-        assert!(
-            app.messages
-                .last()
-                .unwrap()
-                .text
-                .starts_with("context: 10 of unknown\n")
-        );
     }
 
     #[test]

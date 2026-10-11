@@ -38,7 +38,6 @@ Sessions and context:
 - Resumed sessions show messages, tool calls and failures as they appeared live
 - `/new` to start a new session
 - `/compact` to summarise the conversation
-- `/context` to show what fills the context
 - Automatic compaction when the context is 80% full
 - Finished tool calls kept when a prompt is cancelled or fails
 - Prompt caching
@@ -69,7 +68,7 @@ Status line:
 - Input, output, cache read and cache write tokens
 - Cache hit rate
 - Output speed in tokens per second
-- Context use
+- Context use, as counted by the API for the last reply
 - 5-hour and 7-day quota with reset times, loaded at start and updated after each reply
 - Folder and Git branch
 
@@ -211,7 +210,6 @@ Syntax highlighting in tool calls and in code blocks in replies uses the GitHub 
 | Command | Action |
 | --- | --- |
 | `/compact` | Summarise the conversation to free context |
-| `/context` | Show what fills the context |
 | `/mcp login <server>` | Sign in to an MCP server. See [Signing in to MCP servers](#signing-in-to-mcp-servers) |
 | `/mcp logout <server>` | Remove the saved sign-in for an MCP server and start it again |
 | `/model [id]` | Select a model. The picker shows the latest model in each class. An id must be in the list of available models |
@@ -383,7 +381,7 @@ rust-claude also compacts automatically when the context is 80% full: before sen
 
 A round of tool calls can take the conversation past the context window, and the API then refuses to read it. When that happens during compaction, rust-claude shows a notice and asks for the summary again with each tool output cut to its first 2,000 characters, then to 200. The session file still keeps the full output.
 
-`/context` shows how many tokens each part of the context uses: the system prompt, instructions, skills, built-in tools, MCP tools and messages, and how much of the context window is free. Each part is estimated from its length, then scaled so that the parts add up to the context use on the status line. That figure comes from the token count of the last reply, plus an estimate for anything added since. Images are not counted.
+Context use on the status line is the token count the API reported for the last reply. rust-claude never estimates it, so it is hidden until the first reply of a session, and again after compaction until the next reply. Automatic compaction uses the same count, so tool results and prompts added since the last reply are not included until the next reply.
 
 `/resume` reads each session only up to its first prompt to build the list. A session that starts with a `!` command shows that command, such as `!ls`, as its preview, and one that starts with a skill command shows it as typed, such as `/skill:demo fix it`. A session that is damaged before its first prompt is left out of the list. Resuming a session that is damaged later in the file keeps the messages before the damage, as after a crash. A resumed session shows messages, tool calls and failed tool calls as they appeared live.
 

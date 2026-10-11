@@ -1,7 +1,4 @@
-use super::{
-    Activity, App, Picker, PickerKind, Role, display_model, status::format_context_use, time_ago,
-    worker::UiEvent,
-};
+use super::{Activity, App, Picker, PickerKind, Role, display_model, time_ago, worker::UiEvent};
 use crate::{
     agent::{AgentEvent, parse_shell_message},
     models, skills, tools,
@@ -123,10 +120,6 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
                 selected,
             });
         }),
-        UiEvent::Context(context) => {
-            app.push(Role::Event, format_context_use(&context));
-            app.activity = None;
-        }
         UiEvent::Shell(command, result) => {
             app.workspace_stale = true;
             app.finish(result, |app, output| app.push_shell(&command, &output));

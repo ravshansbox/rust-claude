@@ -1,4 +1,4 @@
-use crate::agent::{ContextUse, Stats};
+use crate::agent::Stats;
 use std::time::SystemTime;
 
 pub(super) fn format_stats(stats: &Stats) -> String {
@@ -82,52 +82,14 @@ fn format_duration(seconds: u64) -> String {
 }
 
 pub(super) fn format_context(stats: &Stats) -> String {
+    let Some(tokens) = stats.context_tokens else {
+        return String::new();
+    };
     if stats.context_window == 0 {
-        return format_tokens(stats.context_tokens);
+        return format_tokens(tokens);
     }
-    let percent = stats.context_tokens as f64 / stats.context_window as f64 * 100.0;
+    let percent = tokens as f64 / stats.context_window as f64 * 100.0;
     format!("{percent:.0}%/{}", format_tokens(stats.context_window))
-}
-
-pub(super) fn format_context_use(context: &ContextUse) -> String {
-    let percent = |tokens: u64| {
-        if context.window > 0 {
-            format!("{:.0}%", tokens as f64 / context.window as f64 * 100.0)
-        } else {
-            String::new()
-        }
-    };
-    let mut rows: Vec<(&str, u64)> = context.parts.clone();
-    if context.window > 0 {
-        rows.push(("free", context.window.saturating_sub(context.total)));
-    }
-    let window = if context.window > 0 {
-        format_tokens(context.window)
-    } else {
-        "unknown".into()
-    };
-    let mut lines = vec![
-        format!(
-            "context: {} of {window} {}",
-            format_tokens(context.total),
-            percent(context.total)
-        )
-        .trim_end()
-        .to_string(),
-    ];
-    for (name, tokens) in rows {
-        lines.push(
-            format!(
-                "  {name:<16}{:>6}  {:>4}",
-                format_tokens(tokens),
-                percent(tokens)
-            )
-            .trim_end()
-            .to_string(),
-        );
-    }
-    lines.push("Estimated, and scaled to the token count of the last reply.".into());
-    lines.join("\n")
 }
 
 fn format_tokens(count: u64) -> String {
@@ -151,7 +113,7 @@ mod tests {
             usage: Usage::default(),
             cache_hit_rate: None,
             tokens_per_second: None,
-            context_tokens: 0,
+            context_tokens: None,
             context_window: 0,
             quota,
         }
@@ -189,29 +151,19 @@ mod tests {
     }
 
     #[test]
-    fn formats_context_use() {
-        let context = ContextUse {
-            parts: vec![("system prompt", 2_000), ("messages", 48_000)],
-            total: 50_000,
-            window: 200_000,
-        };
-        assert_eq!(
-            format_context_use(&context),
-            "context: 50k of 200k 25%
-  system prompt       2k    1%
-  messages           48k   24%
-  free              150k   75%
-Estimated, and scaled to the token count of the last reply."
-        );
-    }
-
-    #[test]
     fn shows_context_tokens_without_a_percentage_for_an_unknown_window() {
         let mut stats = stats_with(Quota::default());
-        stats.context_tokens = 12_000;
+        stats.context_tokens = Some(12_000);
         assert_eq!(format_context(&stats), "12k");
         stats.context_window = 200_000;
         assert_eq!(format_context(&stats), "6%/200k");
+    }
+
+    #[test]
+    fn hides_context_until_a_reply_counts_it() {
+        let mut stats = stats_with(Quota::default());
+        stats.context_window = 200_000;
+        assert_eq!(format_context(&stats), "");
     }
 
     #[test]

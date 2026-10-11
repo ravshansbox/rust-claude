@@ -387,9 +387,6 @@ async fn run_loop(
                     Action::Compact(effort) => {
                         let _ = request_tx.send(Request::Compact(effort));
                     }
-                    Action::Context => {
-                        let _ = request_tx.send(Request::Context);
-                    }
                     Action::ListSessions => {
                         let _ = request_tx.send(Request::ListSessions);
                     }

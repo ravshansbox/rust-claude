@@ -24,10 +24,9 @@ use crate::{
     skills::{self, Skills},
     tools,
 };
-pub use context::ContextUse;
 use context::{
-    active_messages, context_tokens, estimate_prompt_tokens, estimate_text_tokens, estimate_tokens,
-    has_uncompacted, is_compaction, scale_parts, shorten_tool_results, with_cache_breakpoint,
+    active_messages, context_tokens, has_uncompacted, is_compaction, shorten_tool_results,
+    with_cache_breakpoint,
 };
 use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
 use stream::Response;
@@ -267,52 +266,9 @@ impl Agent {
             usage,
             cache_hit_rate: cache_hit_rate(&self.messages),
             tokens_per_second: tokens_per_second(&self.messages),
-            context_tokens: context_tokens(
-                &active_messages(&self.messages),
-                estimate_prompt_tokens(&self.system_prompt(), &self.tool_definitions()),
-            ),
+            context_tokens: context_tokens(&active_messages(&self.messages)),
             context_window: models::context_window(&self.model),
             quota: self.quota,
-        }
-    }
-
-    pub fn context_use(&self) -> ContextUse {
-        let stats = self.stats();
-        let instructions = self
-            .instructions
-            .iter()
-            .map(|instructions| estimate_text_tokens(&instructions.text))
-            .sum();
-        let skills = skills::format_for_prompt(&self.skills.skills)
-            .map_or(0, |text| estimate_text_tokens(&text));
-        let mcp_tools = self
-            .mcp
-            .definitions()
-            .map(|definition| estimate_text_tokens(&definition.to_string()))
-            .sum();
-        let messages = active_messages(&self.messages)
-            .iter()
-            .map(estimate_tokens)
-            .sum();
-        let parts = vec![
-            (
-                "system prompt",
-                estimate_text_tokens(IDENTITY)
-                    + estimate_text_tokens(&system_text(&self.missing_programs)),
-            ),
-            ("instructions", instructions),
-            ("skills", skills),
-            (
-                "built-in tools",
-                estimate_text_tokens(&tools::definitions().to_string()),
-            ),
-            ("MCP tools", mcp_tools),
-            ("messages", messages),
-        ];
-        ContextUse {
-            parts: scale_parts(parts, stats.context_tokens),
-            total: stats.context_tokens,
-            window: stats.context_window,
         }
     }
 
@@ -462,7 +418,9 @@ impl Agent {
     fn context_full(&self) -> bool {
         let stats = self.stats();
         stats.context_window > 0
-            && stats.context_tokens * 100 >= stats.context_window * COMPACT_AT_PERCENT
+            && stats
+                .context_tokens
+                .is_some_and(|tokens| tokens * 100 >= stats.context_window * COMPACT_AT_PERCENT)
     }
 
     async fn compact_if_full(
@@ -963,7 +921,7 @@ mod tests {
         test_support::remove_session(&agent);
         result.unwrap();
         let stats = agent.stats();
-        assert_eq!(stats.context_tokens, 2);
+        assert_eq!(stats.context_tokens, Some(2));
         assert_eq!(stats.cache_hit_rate, Some(0.0));
         assert_eq!(stats.usage.cache_read, 500);
     }
@@ -1144,6 +1102,38 @@ mod tests {
             ]
         );
         assert!(requests[1]["messages"].to_string().contains("first-done"));
+    }
+
+    #[tokio::test]
+    async fn shows_only_context_counts_the_api_reported() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "bash",
+                json!({ "command": "head -c 8000 /dev/zero | tr '\\0' x" }),
+            ),
+            text_reply("done"),
+            text_reply("summary of the work"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let before = agent.stats().context_tokens;
+        let mut counts = Vec::new();
+        let result = agent
+            .prompt("run it", &[], |event| {
+                if let AgentEvent::Stats(stats) = event {
+                    counts.push(stats.context_tokens);
+                }
+            })
+            .await;
+        let compacted = agent.compact(|_| {}).await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        compacted.unwrap();
+        assert_eq!(before, None);
+        counts.dedup();
+        assert_eq!(counts, [None, Some(2)]);
+        assert_eq!(agent.stats().context_tokens, None);
     }
 
     #[tokio::test]
