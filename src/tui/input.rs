@@ -151,7 +151,8 @@ pub(super) fn row_above(input: &str, cursor: usize, width: usize) -> Option<usiz
 
 pub(super) fn row_below(input: &str, cursor: usize, width: usize) -> Option<usize> {
     let (row, column) = input_cursor(input, cursor, width);
-    if row + 1 >= input_rows(input, width).len() {
+    let (.., last_row, _) = layout(input, width).last()?;
+    if row >= last_row {
         return None;
     }
     Some(index_at(input, row + 1, column, width))
