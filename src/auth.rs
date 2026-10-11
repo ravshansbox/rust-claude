@@ -394,7 +394,7 @@ pub(crate) mod tests {
         test_support::{self, MockApi, Reply, text_reply},
     };
     use serde_json::{Value, json};
-    use std::sync::Arc;
+    use std::{sync::Arc, time::Duration};
     use tokio::{
         io::{AsyncReadExt, AsyncWriteExt},
         net::{TcpListener, TcpStream},
@@ -705,7 +705,7 @@ pub(crate) mod tests {
             if saved.is_some() {
                 break;
             }
-            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            tokio::time::sleep(Duration::from_millis(20)).await;
         }
         let _ = std::fs::remove_file(&path);
         let saved: Credentials =
@@ -730,10 +730,10 @@ pub(crate) mod tests {
         let _ = prompt.await;
         let release = endpoint.release.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(Duration::from_millis(100)).await;
             release.notify_one();
         });
-        finish_renewal(std::time::Duration::from_secs(5)).await;
+        finish_renewal(Duration::from_secs(5)).await;
         let saved = std::fs::read_to_string(&path);
         let _ = std::fs::remove_file(&path);
         let saved: Credentials =
@@ -752,8 +752,8 @@ pub(crate) mod tests {
         });
         endpoint.arrived.notified().await;
         let waited = tokio::time::timeout(
-            std::time::Duration::from_secs(5),
-            finish_renewal(std::time::Duration::from_millis(100)),
+            Duration::from_secs(5),
+            finish_renewal(Duration::from_millis(100)),
         )
         .await;
         endpoint.release.notify_one();
