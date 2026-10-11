@@ -501,8 +501,8 @@ mod tests {
     }
 
     fn write_script(path: PathBuf, script: String) -> PathBuf {
-        std::fs::write(&path, script).unwrap();
         use std::os::unix::fs::PermissionsExt;
+        std::fs::write(&path, script).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
     }

@@ -2590,6 +2590,7 @@ done
 
     #[tokio::test]
     async fn signs_in_to_an_http_server_with_oauth() {
+        use base64::Engine;
         let (url, requests) = oauth_server().await;
         let base = url.trim_end_matches("/mcp");
         let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
@@ -2622,7 +2623,6 @@ done
         assert_eq!(token_form["client_secret"], "shh");
         assert_eq!(token_form["redirect_uri"], parameters["redirect_uri"]);
         assert_eq!(token_form["resource"], url);
-        use base64::Engine;
         let challenge = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
             <sha2::Sha256 as sha2::Digest>::digest(token_form["code_verifier"].as_bytes()),
         );

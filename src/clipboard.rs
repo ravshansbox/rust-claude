@@ -22,6 +22,12 @@ const IMAGE_TYPES: [&str; 5] = [
 #[cfg(target_os = "macos")]
 pub async fn read_image() -> Result<Option<Vec<u8>>> {
     use std::sync::atomic::{AtomicU64, Ordering};
+    struct RemoveOnDrop<'a>(&'a std::path::Path);
+    impl Drop for RemoveOnDrop<'_> {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(self.0);
+        }
+    }
     // Each paste gets its own file, since several pastes may run at once.
     static NEXT: AtomicU64 = AtomicU64::new(0);
     let path = std::env::temp_dir().join(format!(
@@ -31,12 +37,6 @@ pub async fn read_image() -> Result<Option<Vec<u8>>> {
     ));
     // Remove the file however this returns, including a helper timing out
     // after writing part of it.
-    struct RemoveOnDrop<'a>(&'a std::path::Path);
-    impl Drop for RemoveOnDrop<'_> {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_file(self.0);
-        }
-    }
     let _remove = RemoveOnDrop(&path);
     for class in ["PNGf", "TIFF"] {
         let status = output(

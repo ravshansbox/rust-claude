@@ -378,7 +378,6 @@ mod tests {
     #[test]
     fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
         use crate::agent::AgentEvent;
-        let screen = std::cell::RefCell::new(Vec::new());
         struct Screen<'a>(&'a std::cell::RefCell<Vec<u8>>);
         impl std::io::Write for Screen<'_> {
             fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
@@ -389,6 +388,7 @@ mod tests {
                 Ok(())
             }
         }
+        let screen = std::cell::RefCell::new(Vec::new());
         let mut printer = Printer::new(Screen(&screen), true, Screen(&screen), true, true, None);
         printer.event(AgentEvent::Text("first".into()));
         printer.event(AgentEvent::Notice("note".into()));
