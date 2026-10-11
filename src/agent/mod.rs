@@ -213,7 +213,7 @@ impl Agent {
         let id = id.to_string();
         let (session, messages) = tokio::task::spawn_blocking(move || Session::load(&id)).await??;
         self.session = session;
-        self.messages = messages.clone();
+        self.messages.clone_from(&messages);
         Ok(messages)
     }
 
