@@ -5,10 +5,11 @@ use super::{
 use crate::highlight::Colour;
 use ratatui::{
     buffer::CellWidth,
-    style::{Color, Style},
+    style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{Paragraph, Wrap},
 };
+use std::sync::OnceLock;
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Copy)]
@@ -81,8 +82,8 @@ impl Theme {
     }
 
     fn code_theme(self) -> tui_markdown::CodeTheme {
-        static DARK: std::sync::OnceLock<tui_markdown::CodeTheme> = std::sync::OnceLock::new();
-        static LIGHT: std::sync::OnceLock<tui_markdown::CodeTheme> = std::sync::OnceLock::new();
+        static DARK: OnceLock<tui_markdown::CodeTheme> = OnceLock::new();
+        static LIGHT: OnceLock<tui_markdown::CodeTheme> = OnceLock::new();
         let load = |source| tui_markdown::CodeTheme::from_textmate(source).expect("bundled theme");
         match self {
             Self::Light => LIGHT.get_or_init(|| load(crate::highlight::LIGHT_THEME)),
@@ -92,8 +93,8 @@ impl Theme {
     }
 }
 
-pub(super) static THEME: std::sync::OnceLock<Theme> = std::sync::OnceLock::new();
-pub(super) static BACKGROUND: std::sync::OnceLock<Option<Colour>> = std::sync::OnceLock::new();
+pub(super) static THEME: OnceLock<Theme> = OnceLock::new();
+pub(super) static BACKGROUND: OnceLock<Option<Colour>> = OnceLock::new();
 
 pub(super) fn theme() -> Theme {
     THEME.get().copied().unwrap_or(Theme::Light)
@@ -224,13 +225,10 @@ fn sgr(style: Style) -> String {
         Some(Color::DarkGray) => codes.push_str("\x1b[90m"),
         _ => {}
     }
-    if style.add_modifier.contains(ratatui::style::Modifier::BOLD) {
+    if style.add_modifier.contains(Modifier::BOLD) {
         codes.push_str("\x1b[1m");
     }
-    if style
-        .add_modifier
-        .contains(ratatui::style::Modifier::ITALIC)
-    {
+    if style.add_modifier.contains(Modifier::ITALIC) {
         codes.push_str("\x1b[3m");
     }
     codes
@@ -612,13 +610,13 @@ mod tests {
             lines[0].spans[0]
                 .style
                 .add_modifier
-                .contains(ratatui::style::Modifier::BOLD)
+                .contains(Modifier::BOLD)
         );
         assert!(
             !lines[0].spans[1]
                 .style
                 .add_modifier
-                .contains(ratatui::style::Modifier::BOLD)
+                .contains(Modifier::BOLD)
         );
         let line = &ansi_tool_lines("bash ls", true, None, None)[0];
         assert!(line.contains("\x1b[1m bash "), "{line:?}");
