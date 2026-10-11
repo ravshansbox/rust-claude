@@ -382,7 +382,7 @@ fn expiry(lifetime: Option<u64>) -> u128 {
 const RENEWAL_MARGIN: u128 = 5 * 60 * 1000;
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::{Credentials, credentials_path, exchange_code, finish_renewal, parse_pasted_code};
     use crate::agent::{
         AgentEvent,
@@ -398,7 +398,7 @@ mod tests {
     };
 
     /// Tests share one auth.json, so they take turns.
-    static AUTH_FILE: Mutex<()> = Mutex::const_new(());
+    pub(crate) static AUTH_FILE: Mutex<()> = Mutex::const_new(());
 
     /// Where the running test answers token requests.
     pub(super) static TOKEN_URL: Mutex<Option<String>> = Mutex::const_new(None);
