@@ -73,11 +73,17 @@ pub enum AgentEvent {
         task: usize,
         description: String,
     },
-    /// The subagent on `task` finished with `reply`, or failed or did not
-    /// run, as the error tells the main agent.
+    /// The subagent on `task` has made `count` tool calls so far.
+    TaskToolCalls {
+        task: usize,
+        count: usize,
+    },
+    /// The subagent on `task` finished with `reply` after `tool_calls` tool
+    /// calls, or failed or did not run, as the error tells the main agent.
     TaskDone {
         task: usize,
         reply: Result<String, String>,
+        tool_calls: usize,
     },
 }
 

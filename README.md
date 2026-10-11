@@ -435,9 +435,9 @@ Each task runs in its own subagent with a new conversation. A subagent uses the 
 
 The input, output and cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use, cache hit rate and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count. The tokens of a subagent that fails still count too.
 
-In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Nothing a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way.
+In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Once the subagent calls a tool, the number of tool calls so far follows, such as `[agent 1] list files · 3 tool calls`. Nothing else a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way, but without the number of tool calls, because subagent conversations are not saved.
 
-In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows its number and description when it starts, such as `  [agent 1] say hi`. If a task fails or does not run, the first line of why follows, starting with the task number.
+In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows its number and description when it starts, such as `  [agent 1] say hi`. When it finishes, its number of tool calls follows, such as `  [agent 1] 3 tool calls`. If a task fails or does not run, the first line of why follows that, starting with the task number.
 
 ## MCP servers
 

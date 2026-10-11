@@ -1,13 +1,25 @@
 use std::collections::HashMap;
 
 use super::{App, Role};
-use crate::agent;
+use crate::{agent, tools};
 
-/// The message of each subagent task of the running `agent` call, by task number.
-pub(super) type Tasks = HashMap<usize, usize>;
+/// The message and description of each subagent task of the running `agent`
+/// call, by task number.
+pub(super) type Tasks = HashMap<usize, (usize, String)>;
 
 fn header(task: usize, description: &str) -> String {
     format!("[agent {}] {description}", task + 1)
+}
+
+fn header_with_tool_calls(task: usize, description: &str, count: usize) -> String {
+    match count {
+        0 => header(task, description),
+        count => format!(
+            "{} · {}",
+            header(task, description),
+            tools::agent::tool_calls(count)
+        ),
+    }
 }
 
 /// The task, with the first line of why it failed or did not run.
@@ -21,14 +33,27 @@ fn finished(header: &str, failure: Option<&str>) -> String {
 impl App {
     pub(super) fn start_task(&mut self, task: usize, description: &str) {
         self.push(Role::Tool, header(task, description));
-        self.tasks.insert(task, self.messages.len() - 1);
+        self.tasks
+            .insert(task, (self.messages.len() - 1, description.to_string()));
     }
 
-    pub(super) fn finish_task(&mut self, task: usize, failure: Option<&str>) {
-        let Some(message) = self.tasks.remove(&task) else {
+    pub(super) fn count_task_tool_calls(&mut self, task: usize, count: usize) {
+        let Some((message, description)) = self.tasks.get(&task) else {
             return;
         };
-        let text = finished(&self.messages[message].text, failure);
+        let message = *message;
+        let text = header_with_tool_calls(task, description, count);
+        self.set_message_text(message, text);
+    }
+
+    pub(super) fn finish_task(&mut self, task: usize, tool_calls: usize, failure: Option<&str>) {
+        let Some((message, description)) = self.tasks.remove(&task) else {
+            return;
+        };
+        let text = finished(
+            &header_with_tool_calls(task, &description, tool_calls),
+            failure,
+        );
         self.set_message_text(message, text);
     }
 
