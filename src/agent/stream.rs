@@ -2,7 +2,7 @@ use super::{
     Agent, AgentEvent, Usage,
     retry::{is_retryable_status, retry_after, retryable},
 };
-use crate::models;
+use crate::{models, tools};
 use anyhow::{Result, bail};
 use futures::StreamExt;
 use serde_json::{Value, json};
@@ -138,6 +138,14 @@ impl Agent {
                         first_token.get_or_insert_with(Instant::now);
                         let block = event["content_block"].clone();
                         partial_json.clear();
+                        if block["type"] == "web_search_tool_result" {
+                            let outcome = tools::web_search::outcome(&block["content"]);
+                            on_event(AgentEvent::ToolDone {
+                                name: tools::web_search::NAME.into(),
+                                note: outcome.as_ref().ok().cloned(),
+                                error: outcome.err(),
+                            });
+                        }
                         content.push(block);
                     }
                     "content_block_delta" => {
@@ -149,6 +157,15 @@ impl Agent {
                             "text_delta" => "text",
                             "thinking_delta" => "thinking",
                             "signature_delta" => "signature",
+                            "citations_delta" => {
+                                match block.get_mut("citations") {
+                                    Some(Value::Array(citations)) => {
+                                        citations.push(delta["citation"].clone())
+                                    }
+                                    _ => block["citations"] = json!([delta["citation"]]),
+                                }
+                                continue;
+                            }
                             "input_json_delta" => {
                                 partial_json
                                     .push_str(delta["partial_json"].as_str().unwrap_or_default());
@@ -169,13 +186,23 @@ impl Agent {
                     }
                     "content_block_stop" => {
                         if let Some(block) = content.last_mut()
-                            && block["type"] == "tool_use"
+                            && (block["type"] == "tool_use" || block["type"] == "server_tool_use")
                             && !partial_json.is_empty()
                         {
                             match serde_json::from_str(&partial_json) {
                                 Ok(input) => block["input"] = input,
                                 Err(error) => input_error = Some(error),
                             }
+                        }
+                        if let Some(block) = content.last()
+                            && block["type"] == "server_tool_use"
+                        {
+                            let name = block["name"].as_str().unwrap_or_default();
+                            on_event(AgentEvent::ToolStart {
+                                name: name.into(),
+                                summary: tools::summary(name, &block["input"]),
+                                diff: None,
+                            });
                         }
                     }
                     "message_delta" => {

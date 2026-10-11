@@ -8,7 +8,7 @@ Core:
 
 - Sign in with a Claude Pro or Max account, with automatic token renewal
 - Streamed replies
-- Built-in tools: `bash`, `python`, `read`, `write`, `edit` and `agent`
+- Built-in tools: `bash`, `python`, `read`, `write`, `edit`, `agent` and `web_search`
 - Interactive terminal interface
 
 Command line:
@@ -62,6 +62,7 @@ Tools:
 - Syntax highlighting in those previews
 - Consecutive `read` calls grouped on one line, with counts and line ranges
 - `agent` runs tasks in subagents, at the same time or one after another, with live progress
+- `web_search` searches the web through Anthropic, and lists the sources a reply cites after it
 
 Status line:
 
@@ -397,6 +398,7 @@ The agent can use these tools:
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings, and writes the new text with CRLF line endings. A file counts as using CRLF when its first line ends with CRLF. It refuses files larger than 10 MiB and anything that is not a regular file, such as a pipe or device
 
 - `agent`: run tasks in subagents. See [Subagents](#subagents)
+- `web_search`: search the web. See [Web search](#web-search)
 
 The agent can also use tools from [MCP servers](#mcp-servers).
 
@@ -405,6 +407,12 @@ The agent can also use tools from [MCP servers](#mcp-servers).
 `bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice. `bash` and `!` commands and MCP servers run without the terminal, so programs that prompt on it, such as `sudo`, `ssh` or `git` asking for a password, fail at once instead of waiting for input. `python` works the same way as `bash`.
 
 Consecutive `read` calls show as one line with the paths separated by commas, for example `read src/main.rs (2), README.md`. A number in brackets shows how many times a file was read. A read with `offset` or `limit` shows its line range, for example `src/tools.rs:325-354`, or `src/tools.rs:325-` when only `offset` is given. A failed read starts a new line. In print mode, the line is printed when the next tool, text or notice arrives.
+
+## Web search
+
+`web_search` is Anthropic's [web search tool](https://docs.claude.com/en/docs/agents-and-tools/tool-use/web-search-tool) (`web_search_20250305`). It runs on Anthropic's servers and works with a Pro or Max sign-in. The model decides when to search, and there is no limit on searches. Subagents can use it too.
+
+Each search shows its query, such as `web_search latest stable Rust release`, followed by the number of results, such as `web_search: 9 results`, or why it failed, such as `web_search failed: too_many_requests`. When a reply cites pages, a `Sources:` list with each page's title and URL follows the reply. This works in the interface and in print mode, where the search lines go to standard error and the sources to standard output with the reply.
 
 ## Paused replies
 

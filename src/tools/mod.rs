@@ -8,6 +8,7 @@ mod python;
 mod read;
 #[cfg(test)]
 mod test_support;
+pub mod web_search;
 mod write;
 
 pub use bash::{ProcessGroup, new_session};
@@ -34,7 +35,8 @@ pub fn definitions() -> Value {
         read::definition(),
         write::definition(),
         edit::definition(),
-        agent::definition()
+        agent::definition(),
+        web_search::definition()
     ])
 }
 
