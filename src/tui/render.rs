@@ -465,12 +465,20 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 mod tests {
     use super::*;
 
+    fn texts(lines: &[Line]) -> Vec<String> {
+        lines.iter().map(|line| line.to_string()).collect()
+    }
+
+    fn trimmed(lines: &[Line]) -> Vec<String> {
+        lines
+            .iter()
+            .map(|line| line.to_string().trim_end().to_string())
+            .collect()
+    }
+
     #[test]
     fn wraps_user_message_by_display_width() {
-        let rows: Vec<String> = user_message_lines("日本語のテキスト\n\nabcd", 8)
-            .iter()
-            .map(|line| line.to_string())
-            .collect();
+        let rows = texts(&user_message_lines("日本語のテキスト\n\nabcd", 8));
         assert_eq!(
             rows,
             vec!["❯ 日本語", "  のテキ", "  スト  ", "        ", "  abcd  ",]
@@ -479,10 +487,7 @@ mod tests {
 
     #[test]
     fn shows_tab_indentation_in_user_message() {
-        let rows: Vec<String> = user_message_lines("\tx", 8)
-            .iter()
-            .map(|line| line.to_string())
-            .collect();
+        let rows = texts(&user_message_lines("\tx", 8));
         assert_eq!(rows, vec!["❯     x "]);
     }
 
@@ -496,12 +501,7 @@ mod tests {
 
     #[test]
     fn shows_tab_indentation_in_replies_and_tool_output() {
-        let shown = |role, text| -> Vec<String> {
-            render_message(role, text, 40)
-                .iter()
-                .map(|line| line.to_string().trim_end().to_string())
-                .collect()
-        };
+        let shown = |role, text| trimmed(&render_message(role, text, 40));
         let reply = shown(
             Role::Assistant,
             "Here:\n\n```go\nfunc f() {\n\treturn\n}\n```\n\nname\tvalue",
@@ -520,17 +520,17 @@ mod tests {
 
     #[test]
     fn leaves_out_blank_lines_at_the_end_of_thinking() {
-        let lines: Vec<String> = render_message(Role::Thinking, "one\n\ntwo.\n\n", 40)
-            .iter()
-            .map(|line| line.to_string())
-            .collect();
+        let lines = texts(&render_message(Role::Thinking, "one\n\ntwo.\n\n", 40));
         assert_eq!(lines, ["one", "", "two."]);
     }
 
     #[test]
     fn leaves_out_control_characters_from_shell_output_and_replies() {
-        let tool = render_message(Role::Tool, "! ls\n\x1b[31mred\x1b[0m\r", 20);
-        let tool: Vec<String> = tool.iter().map(|line| line.to_string()).collect();
+        let tool = texts(&render_message(
+            Role::Tool,
+            "! ls\n\x1b[31mred\x1b[0m\r",
+            20,
+        ));
         assert_eq!(tool[1], format!("{:20}", "[31mred[0m"));
         for role in [Role::Assistant, Role::Thinking, Role::Event, Role::User] {
             for line in render_message(role, "hi \x1b[31mred\x07", 20) {
@@ -549,11 +549,7 @@ mod tests {
             crate::tools::diff("bash", &input),
         );
         let lines = render_message(Role::Tool, &message, 40);
-        let texts: Vec<String> = lines
-            .iter()
-            .map(|line| line.to_string().trim_end().to_string())
-            .collect();
-        assert_eq!(texts, [" bash  echo \"$HOME\" | wc -c"]);
+        assert_eq!(trimmed(&lines), [" bash  echo \"$HOME\" | wc -c"]);
         let colours: std::collections::HashSet<_> = lines[0]
             .spans
             .iter()
@@ -565,11 +561,10 @@ mod tests {
     #[test]
     fn keeps_later_lines_of_a_multi_line_command_below_the_tool_name() {
         let message = tool_message("bash", String::new(), Some("cd src\nls".into()));
-        let texts: Vec<String> = render_message(Role::Tool, &message, 40)
-            .iter()
-            .map(|line| line.to_string().trim_end().to_string())
-            .collect();
-        assert_eq!(texts, [" bash  cd src", "ls"]);
+        assert_eq!(
+            trimmed(&render_message(Role::Tool, &message, 40)),
+            [" bash  cd src", "ls"]
+        );
         let printed = ansi_tool_lines(&message, true, None, None);
         assert_eq!(printed.len(), 2, "{printed:?}");
         assert!(printed[0].contains("cd"), "{printed:?}");
