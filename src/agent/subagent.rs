@@ -502,4 +502,30 @@ mod tests {
         let requests = api.requests().await;
         assert!(!requests[3]["messages"].to_string().contains("usage"));
     }
+
+    #[tokio::test]
+    async fn counts_finished_subagent_replies_when_cancelled() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({
+                    "mode": "parallel",
+                    "tasks": [task("first", "one"), task("second", "two")],
+                }),
+            ),
+            text_reply("one done"),
+            Reply::Stall,
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut prompt = Box::pin(agent.prompt("go", &[], |_| {}));
+        let _ = tokio::time::timeout(Duration::from_millis(500), &mut prompt).await;
+        drop(prompt);
+        let cancelled = agent.cancel(0);
+        test_support::remove_session(&agent);
+        cancelled.unwrap();
+        assert_eq!(api.requests().await.len(), 3);
+        assert_eq!(agent.stats().usage.input, 2);
+    }
 }
