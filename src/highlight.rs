@@ -338,24 +338,6 @@ fn highlight_body(syntax: &SyntaxReference, body: &str, dark: bool) -> Vec<Highl
         .collect()
 }
 
-pub fn ansi_line(line: &HighlightedLine, dark: bool) -> String {
-    let background = line
-        .background(dark)
-        .map(|(red, green, blue)| format!("\x1b[48;2;{red};{green};{blue}m"))
-        .unwrap_or_default();
-    let mut text = background;
-    for segment in &line.segments {
-        if let Some((red, green, blue)) = segment.foreground {
-            text.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"));
-        } else {
-            text.push_str("\x1b[39m");
-        }
-        text.push_str(&strip_controls(&segment.text));
-    }
-    text.push_str("\x1b[0m");
-    text
-}
-
 /// Removes control characters other than newline and tab, such as escape
 /// sequences that would clear the screen or set the clipboard, so text from
 /// the model or a tool can be written to a terminal as plain text. Carriage
@@ -491,24 +473,5 @@ mod tests {
     fn leaves_input_to_scripts_as_bash() {
         let lines = bash("python3 script.py <<EOF\nimport os\nEOF");
         assert_eq!(colour_of(&lines, "import"), None);
-    }
-
-    #[test]
-    fn ansi_line_keeps_its_colours_but_not_escapes_in_the_text() {
-        let lines = highlight_tool(
-            "write",
-            "notes.txt",
-            "+a\x1b]52;c;aGk=\x07b\x1b[2J\u{9b}c\r",
-            true,
-        )
-        .unwrap();
-        let line = ansi_line(&lines[0], true);
-        assert!(line.starts_with("\x1b[48;2;"));
-        assert!(line.ends_with("\x1b[0m"));
-        let text: String = line
-            .split('\x1b')
-            .map(|part| part.split_once('m').map_or(part, |(_, text)| text))
-            .collect();
-        assert_eq!(text, "+a]52;c;aGk=b[2Jc");
     }
 }

@@ -124,8 +124,12 @@ async fn restart_mcp_server(
 }
 use worker::{Request, UiEvent, agent_task, quit};
 
-pub fn dark_theme() -> bool {
-    matches!(Theme::detect().0, Theme::Dark)
+pub(crate) use render::{ansi_tool_lines, tool_message};
+
+/// Whether the terminal has a dark theme, and its background if it says.
+pub fn terminal_theme() -> (bool, Option<crate::highlight::Colour>) {
+    let (theme, background) = Theme::detect();
+    (matches!(theme, Theme::Dark), background)
 }
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);

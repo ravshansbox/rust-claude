@@ -220,8 +220,19 @@ async fn run() -> Result<()> {
     let stdout = std::io::stdout();
     let out_terminal = stdout.is_terminal();
     let colour = std::io::stderr().is_terminal();
-    let dark = colour && tui::dark_theme();
-    let mut printer = print::Printer::new(stdout, out_terminal, std::io::stderr(), colour, dark);
+    let (dark, background) = if colour {
+        tui::terminal_theme()
+    } else {
+        (false, None)
+    };
+    let mut printer = print::Printer::new(
+        stdout,
+        out_terminal,
+        std::io::stderr(),
+        colour,
+        dark,
+        background,
+    );
     let checkpoint = agent.history_len();
     let run = agent.prompt(&prompt, &images, |event| printer.event(event));
     let result = tokio::select! {
