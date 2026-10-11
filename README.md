@@ -414,6 +414,8 @@ The `agent` tool takes a list of tasks, each with a short `description` and a `p
 
 Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run.
 
+In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each line from a subagent starts with its task number, such as `  [1] `: the task's description when it starts, its tool calls, failures and notices, and `done` or why it failed or did not run. A subagent's text is not printed.
+
 ## MCP servers
 
 rust-claude connects to [Model Context Protocol](https://modelcontextprotocol.io) servers over stdio or Streamable HTTP and gives their tools to the model. Add servers to `~/.rust-claude/mcp.json`, or to `.rust-claude/mcp.json` in a project. The format uses the standard `mcpServers` shape:

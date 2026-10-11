@@ -4,6 +4,7 @@ pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "read" | "write" | "edit" => "path",
         "bash" | "python" => return String::new(),
+        super::agent::NAME => return super::agent::summary(input),
         _ => return input.to_string(),
     };
     let value = input[key].as_str().unwrap_or_default().to_string();

@@ -68,6 +68,22 @@ pub enum AgentEvent {
     Stats(Stats),
     Notice(String),
     Queued(String),
+    /// A subagent started on task `task`, counting from 0.
+    TaskStart {
+        task: usize,
+        description: String,
+    },
+    /// Text, a tool call or a notice from the subagent working on `task`.
+    Task {
+        task: usize,
+        event: Box<AgentEvent>,
+    },
+    /// The subagent on `task` finished with `reply`, or failed or did not
+    /// run, as the error tells the main agent.
+    TaskDone {
+        task: usize,
+        reply: Result<String, String>,
+    },
 }
 
 fn tool_definitions(mcp: &Mcp, subagent: bool) -> Value {
