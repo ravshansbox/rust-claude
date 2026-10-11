@@ -8,7 +8,7 @@ Core:
 
 - Sign in with a Claude Pro or Max account, with automatic token renewal
 - Streamed replies
-- Built-in tools: `bash`, `python`, `read`, `write` and `edit`
+- Built-in tools: `bash`, `python`, `read`, `write`, `edit` and `agent`
 - Interactive terminal interface
 
 Command line:
@@ -395,6 +395,8 @@ The agent can use these tools:
 - `write`: create or replace a file
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings, and writes the new text with CRLF line endings. A file counts as using CRLF when its first line ends with CRLF. It refuses files larger than 10 MiB and anything that is not a regular file, such as a pipe or device
 
+- `agent`: run tasks in subagents. See [Subagents](#subagents)
+
 The agent can also use tools from [MCP servers](#mcp-servers).
 
 `write` and `edit` write a temporary file in the same folder and then replace the file with it, so a failed write, for example on a full disk, keeps the old file. The file keeps its permissions and group, so a script stays executable, and a symlink stays a symlink, with the file it points to replaced. A file with other hard links, or owned by someone else, is written in place instead, so every link sees the new text and the owner does not change. `write` to a pipe or device sends the text into it and leaves it in place.
@@ -402,6 +404,15 @@ The agent can also use tools from [MCP servers](#mcp-servers).
 `bash` keeps only the first 20,000 bytes of output and discards the rest as it arrives. It returns once the command exits, even if a background process it started keeps running. If a command times out, `bash` returns the output so far, followed by the timeout notice. `bash` and `!` commands and MCP servers run without the terminal, so programs that prompt on it, such as `sudo`, `ssh` or `git` asking for a password, fail at once instead of waiting for input. `python` works the same way as `bash`.
 
 Consecutive `read` calls show as one line with the paths separated by commas, for example `read src/main.rs (2), README.md`. A number in brackets shows how many times a file was read. A read with `offset` or `limit` shows its line range, for example `src/tools.rs:325-354`, or `src/tools.rs:325-` when only `offset` is given. A failed read starts a new line. In print mode, the line is printed when the next tool, text or notice arrives.
+
+## Subagents
+
+The `agent` tool takes a list of tasks, each with a short `description` and a `prompt`, and a `mode`:
+
+- `parallel` runs the tasks at the same time
+- `sequential` runs them one after another, and adds each task's final reply to the next task's prompt. If a task fails, the tasks after it do not run
+
+Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run.
 
 ## MCP servers
 

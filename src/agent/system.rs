@@ -39,6 +39,7 @@ pub(super) fn missing_search_programs(path: Option<std::ffi::OsString>) -> Vec<&
 
 const INSTRUCTIONS_FILE: &str = "AGENTS.md";
 
+#[derive(Clone)]
 pub struct Instructions {
     pub label: String,
     pub(super) text: String,

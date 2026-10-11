@@ -1217,9 +1217,10 @@ pub async fn begin_sign_in(name: &str) -> Result<SignIn, String> {
     begin_sign_in_with(name, config).await
 }
 
-#[derive(Default)]
+/// Cloning shares the running servers, so subagents can call their tools.
+#[derive(Clone, Default)]
 pub struct Mcp {
-    servers: Vec<Server>,
+    servers: Vec<std::sync::Arc<Server>>,
     pub diagnostics: Vec<String>,
 }
 
@@ -1396,7 +1397,7 @@ impl Mcp {
             server.scope,
             server.tools.len()
         );
-        self.servers.push(server);
+        self.servers.push(std::sync::Arc::new(server));
         (diagnostics, Ok(loaded))
     }
 

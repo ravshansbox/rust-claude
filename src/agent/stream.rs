@@ -1,7 +1,6 @@
 use super::{
     Agent, AgentEvent, Usage,
     retry::{is_retryable_status, retry_after, retryable},
-    tool_definitions,
 };
 use crate::models;
 use anyhow::{Result, bail};
@@ -39,7 +38,7 @@ impl Agent {
             "max_tokens": models::max_output(&self.model),
             "stream": true,
             "system": system,
-            "tools": tool_definitions(&self.mcp),
+            "tools": self.tool_definitions(),
             "messages": messages,
         });
         if let (Some(object), Value::Object(settings)) = (
