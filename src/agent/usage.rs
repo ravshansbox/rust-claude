@@ -72,19 +72,18 @@ pub struct Quota {
 
 impl Quota {
     pub(super) fn update_from_headers(&mut self, headers: &reqwest::header::HeaderMap) {
-        let remaining = |window: &str| {
+        let header = |window: &str, field: &str| {
             headers
-                .get(format!("anthropic-ratelimit-unified-{window}-utilization"))
+                .get(format!("anthropic-ratelimit-unified-{window}-{field}"))
                 .and_then(|value| value.to_str().ok())
+        };
+        let remaining = |window: &str| {
+            header(window, "utilization")
                 .and_then(|value| value.parse::<f64>().ok())
                 .map(|utilisation| (1.0 - utilisation) * 100.0)
         };
-        let reset = |window: &str| {
-            headers
-                .get(format!("anthropic-ratelimit-unified-{window}-reset"))
-                .and_then(|value| value.to_str().ok())
-                .and_then(|value| value.parse::<u64>().ok())
-        };
+        let reset =
+            |window: &str| header(window, "reset").and_then(|value| value.parse::<u64>().ok());
         self.five_hour_remaining = remaining("5h").or(self.five_hour_remaining);
         self.seven_day_remaining = remaining("7d").or(self.seven_day_remaining);
         self.five_hour_reset = reset("5h").or(self.five_hour_reset);
