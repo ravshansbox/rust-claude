@@ -53,6 +53,16 @@ fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
     }
 }
 
+async fn regular_file(path: &str) -> Result<std::fs::Metadata, String> {
+    let metadata = tokio::fs::metadata(path)
+        .await
+        .map_err(|error| format!("failed to read {path}: {error}"))?;
+    if !metadata.is_file() {
+        return Err(format!("{path} is not a regular file"));
+    }
+    Ok(metadata)
+}
+
 /// Replaces the file at `path`, or the file a symlink there points to, in one
 /// step, keeping the permissions and group of the file it replaces. In a
 /// folder where no temporary file can be created, and for a file with other

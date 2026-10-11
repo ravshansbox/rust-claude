@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT, argument, number, truncate};
+use super::{MAX_OUTPUT, argument, number, regular_file, truncate};
 use serde_json::{Value, json};
 use std::{
     fs::File,
@@ -26,12 +26,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     let path = argument(input, "path")?;
     let offset = number(input, "offset", 0)?.map_or(1, |offset| offset.max(1) as usize);
     let limit = number(input, "limit", 1)?.map_or(usize::MAX, |limit| limit as usize);
-    let metadata = tokio::fs::metadata(path)
-        .await
-        .map_err(|error| format!("failed to read {path}: {error}"))?;
-    if !metadata.is_file() {
-        return Err(format!("{path} is not a regular file"));
-    }
+    regular_file(path).await?;
     let file = PathBuf::from(path);
     let read = tokio::task::spawn_blocking(move || {
         read_lines(BufReader::new(File::open(file)?), offset, limit)

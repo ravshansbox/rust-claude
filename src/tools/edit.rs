@@ -1,4 +1,4 @@
-use super::{argument, replace_file};
+use super::{argument, regular_file, replace_file};
 use serde_json::{Value, json};
 
 /// Larger files are refused rather than loaded whole into memory.
@@ -31,12 +31,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         Value::Null => false,
         value => value.as_bool().ok_or("replace_all must be true or false")?,
     };
-    let metadata = tokio::fs::metadata(path)
-        .await
-        .map_err(|error| format!("failed to read {path}: {error}"))?;
-    if !metadata.is_file() {
-        return Err(format!("{path} is not a regular file"));
-    }
+    let metadata = regular_file(path).await?;
     if metadata.len() > MAX_SIZE {
         return Err(format!("{path} is larger than 10 MiB, too large to edit"));
     }
