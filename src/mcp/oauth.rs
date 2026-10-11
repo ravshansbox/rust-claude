@@ -1,14 +1,8 @@
-use std::{
-    collections::BTreeMap,
-    path::PathBuf,
-    sync::Mutex,
-    time::{Duration, SystemTime, UNIX_EPOCH},
-};
+use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};
 
-use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+use crate::auth::{now_millis, random_token};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -42,13 +36,6 @@ impl Saved {
         self.expires_at
             .is_some_and(|expires_at| now_millis() + EXPIRY_MARGIN >= expires_at)
     }
-}
-
-pub(super) fn now_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis()
 }
 
 fn path() -> Option<PathBuf> {
@@ -201,12 +188,6 @@ pub(super) struct Pending {
     state: String,
     verifier: String,
     template: Saved,
-}
-
-fn random_token() -> Result<String, String> {
-    let mut random = [0u8; 32];
-    getrandom::fill(&mut random).map_err(|error| error.to_string())?;
-    Ok(URL_SAFE_NO_PAD.encode(random))
 }
 
 /// Reads a `key="value"` or `key=value` parameter of a `WWW-Authenticate`
@@ -456,9 +437,9 @@ pub(super) async fn begin(
             register(client, registration_endpoint, &redirect_uri).await?
         }
     };
-    let state = random_token()?;
-    let verifier = random_token()?;
-    let challenge = URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()));
+    let state = random_token().map_err(|error| error.to_string())?;
+    let verifier = random_token().map_err(|error| error.to_string())?;
+    let challenge = crate::auth::pkce_challenge(&verifier);
     let mut authorize_url = reqwest::Url::parse(&discovered.authorization_endpoint)
         .map_err(|error| format!("invalid authorization endpoint: {error}"))?;
     {
