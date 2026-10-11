@@ -139,6 +139,13 @@ impl Updater {
             std::process::id(),
             RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
+        if let Err(error) = create_update_folder(&folder) {
+            report(Progress::Failed(
+                version,
+                format!("creating {}: {error}", folder.display()),
+            ));
+            return;
+        }
         let outcome = async {
             let url = release
                 .assets
@@ -283,6 +290,13 @@ impl Updater {
     }
 }
 
+fn create_update_folder(folder: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
+    builder.create(folder)
+}
+
 fn link_alias(bin_dir: &Path) {
     let alias = bin_dir.join("rca");
     if alias.symlink_metadata().is_err() {
@@ -319,7 +333,7 @@ pub fn find_on_path(program: &str, path: Option<std::ffi::OsString>) -> Option<P
 
 #[cfg(test)]
 mod tests {
-    use super::{Progress, Updater, find_on_path};
+    use super::{Progress, Updater, create_update_folder, find_on_path};
     use std::{
         io::Write,
         path::{Path, PathBuf},
@@ -707,6 +721,17 @@ mod tests {
         };
         assert!(Updater::new(&settings, true).is_none());
         assert!(Updater::for_this_build(&settings).is_none());
+    }
+
+    #[test]
+    fn creates_a_new_update_folder_only_the_user_can_open() {
+        let dir = temp_dir("update-folder");
+        let folder = dir.join("update");
+        create_update_folder(&folder).unwrap();
+        let mode = crate::config::permissions(&folder);
+        let again = create_update_folder(&folder);
+        assert_eq!(mode, Some(0o700));
+        assert_eq!(again.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
     }
 
     #[test]
