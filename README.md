@@ -68,7 +68,7 @@ Tools:
 
 Status line:
 
-- Input, output, cache read and cache write tokens
+- Cache read and cache write tokens
 - Output speed in tokens per second
 - Context use, as counted by the API for the last reply
 - 5-hour and 7-day quota with reset times, loaded at start and updated after each reply
@@ -289,7 +289,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 ## Status line
 
-The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, the number of subagents running while any run (for example `2 agents`), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
+The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, the number of subagents running while any run (for example `2 agents`), context use, and stats for the session: cache reads (R), cache writes (W) and the average output speed in tokens per second (t/s), for example `R6k W88 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-coding-agent loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 1h16m` or `7d 81% 3d`. When the first unit is 2 or more, only that unit is shown, rounded to the nearest, so `2h40m` shows as `3h`.
 
@@ -443,11 +443,11 @@ The `agent` tool takes a list of tasks, each with a short `description` and a `p
 
 Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run.
 
-The input, output and cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count. The tokens of a subagent that fails still count too.
+The cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count. The tokens of a subagent that fails still count too.
 
-In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Once the subagent calls a tool, the number of tool calls so far follows, such as `[agent 1] list files · 3 tool calls`. After its first reply, the subagent's own context use and stats follow, in the same form as on the status line, such as `[agent 1] list files · 3 tool calls · 4%/1m · ↑312 ↓71k R7m W472k CH98% 107t/s`. They update while it works and stay after it finishes. Nothing else a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way, but without the number of tool calls or stats, because subagent conversations are not saved.
+In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[agent 1] list files`. Once the subagent calls a tool, the number of tool calls so far follows, such as `[agent 1] list files · 3 tool calls`. After its first reply, the subagent's own context use and stats follow, in the same form as on the status line, such as `[agent 1] list files · 3 tool calls · 4%/1m · R7m W472k CH98% 107t/s`. They update while it works and stay after it finishes. Nothing else a subagent writes or does is shown, not even its final reply. If a task fails or does not run, the first line of why shows below it. A resumed session shows the tasks the same way, but without the number of tool calls or stats, because subagent conversations are not saved.
 
-In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows one line when it finishes, as in the interface: its number, description, number of tool calls and stats, such as `[agent 1] say hi · 3 tool calls · 12%/200k · ↑4 ↓338`. If a task fails or does not run, the first line of why follows on the next line.
+In print mode, the `agent` call shows its mode and number of tasks, such as `agent sequential, 2 tasks`. Below it, each task shows one line when it finishes, as in the interface: its number, description, number of tool calls and stats, such as `[agent 1] say hi · 3 tool calls · 12%/200k · R6k W88 42t/s`. If a task fails or does not run, the first line of why follows on the next line.
 
 ## MCP servers
 
