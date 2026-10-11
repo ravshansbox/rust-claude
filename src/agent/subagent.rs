@@ -258,7 +258,14 @@ mod tests {
         assert!(tool_names(&requests[0]).contains(&"agent".to_string()));
         assert!(!tool_names(child).contains(&"agent".to_string()));
         assert!(tool_names(child).contains(&"bash".to_string()));
-        assert!(tool_names(child).contains(&"web_search".to_string()));
+        assert!(
+            child["tools"]
+                .as_array()
+                .unwrap()
+                .contains(&json!({ "type": "web_search_20250305", "name": "web_search" })),
+            "{}",
+            child["tools"]
+        );
         assert!(tool_names(&requests[0]).contains(&"bash_stop".to_string()));
         assert!(!tool_names(child).contains(&"bash_stop".to_string()));
         let background = |request: &Value| {
