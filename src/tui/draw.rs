@@ -396,11 +396,10 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
             Span::from(text)
         }];
         if let Some(folder) = folder {
-            let name = std::path::Path::new(folder)
-                .file_name()
-                .map_or(folder.to_string(), |name| {
-                    name.to_string_lossy().into_owned()
-                });
+            let name = std::path::Path::new(folder).file_name().map_or_else(
+                || folder.to_string(),
+                |name| name.to_string_lossy().into_owned(),
+            );
             spans.push(Span::from(format!("  {name}")).dark_gray());
         }
         lines.push(Line::from(spans));

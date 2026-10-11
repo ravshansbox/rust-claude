@@ -439,7 +439,7 @@ impl HeadersHelper {
             let status = output
                 .status
                 .code()
-                .map_or("a signal".to_string(), |code| format!("status {code}"));
+                .map_or_else(|| "a signal".to_string(), |code| format!("status {code}"));
             let stderr = String::from_utf8_lossy(&output.stderr);
             let stderr: String = stderr.trim().chars().take(MAX_ERROR_BODY).collect();
             return Err(if stderr.is_empty() {
