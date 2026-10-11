@@ -80,6 +80,12 @@ impl Setup {
     }
 }
 
+impl Drop for Setup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
 fn stderr(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).to_string()
 }
