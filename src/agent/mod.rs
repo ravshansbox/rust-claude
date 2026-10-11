@@ -646,6 +646,9 @@ impl Agent {
             if let Some(cause) = cut_off {
                 on_event(AgentEvent::Notice(format!("reply cut off: {cause}")));
             }
+            if stop_reason == "pause_turn" {
+                continue;
+            }
             if stop_reason != "tool_use" {
                 return Ok(());
             }
@@ -1415,5 +1418,32 @@ mod tests {
             ),
             3
         );
+    }
+
+    #[tokio::test]
+    async fn continues_a_reply_the_api_paused() {
+        let api = MockApi::start(vec![
+            stopped_reply("searching", "pause_turn"),
+            text_reply(" done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut text = String::new();
+        let result = agent
+            .prompt("search", &[], |event| {
+                if let AgentEvent::Text(delta) = event {
+                    text.push_str(&delta);
+                }
+            })
+            .await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        assert_eq!(text, "searching done");
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 2);
+        let messages = requests[1]["messages"].as_array().unwrap();
+        let last = messages.last().unwrap();
+        assert_eq!(last["role"], "assistant");
+        assert!(last.to_string().contains("searching"), "{last}");
     }
 }
