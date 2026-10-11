@@ -50,6 +50,7 @@ impl Agent {
             missing_programs: self.missing_programs.clone(),
             subagent_usage: Arc::default(),
             subagent: true,
+            background: Default::default(),
         })
     }
 
@@ -259,6 +260,20 @@ mod tests {
         assert!(!tool_names(child).contains(&"agent".to_string()));
         assert!(tool_names(child).contains(&"bash".to_string()));
         assert!(tool_names(child).contains(&"web_search".to_string()));
+        assert!(tool_names(&requests[0]).contains(&"stop".to_string()));
+        assert!(!tool_names(child).contains(&"stop".to_string()));
+        let background = |request: &Value| {
+            request["tools"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|tool| tool["name"] == "bash")
+                .unwrap()["input_schema"]["properties"]
+                .get("run_in_background")
+                .is_some()
+        };
+        assert!(background(&requests[0]));
+        assert!(!background(child));
         assert_eq!(child["system"], requests[0]["system"]);
         assert_eq!(child["model"], requests[0]["model"]);
         assert_eq!(child["thinking"], requests[0]["thinking"]);

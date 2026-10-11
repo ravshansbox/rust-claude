@@ -6,6 +6,7 @@ use std::{
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
+mod background;
 mod context;
 pub(crate) mod retry;
 mod stream;
@@ -164,8 +165,9 @@ pub struct Agent {
     /// Tokens used by each subagent started since the last tool results.
     subagent_usage: Arc<Mutex<Vec<Usage>>>,
     /// Whether this agent runs a task for another agent. A subagent cannot
-    /// start subagents, and its conversation is not saved.
+    /// start subagents or background commands, and its conversation is not saved.
     subagent: bool,
+    background: tools::background::Background,
 }
 
 impl Agent {
@@ -188,6 +190,7 @@ impl Agent {
             missing_programs: missing_search_programs(std::env::var_os("PATH")),
             subagent_usage: Arc::default(),
             subagent: false,
+            background: Default::default(),
         })
     }
 
@@ -266,7 +269,17 @@ impl Agent {
         let mut definitions = tools::definitions();
         if let Value::Array(list) = &mut definitions {
             if self.subagent {
-                list.retain(|definition| definition["name"] != tools::agent::NAME);
+                list.retain(|definition| {
+                    definition["name"] != tools::agent::NAME
+                        && definition["name"] != tools::background::STOP
+                });
+                for definition in list.iter_mut() {
+                    if let Some(properties) =
+                        definition["input_schema"]["properties"].as_object_mut()
+                    {
+                        properties.remove(tools::background::RUN_IN_BACKGROUND);
+                    }
+                }
             }
             list.extend(self.mcp.definitions());
         }
@@ -605,6 +618,8 @@ impl Agent {
                 });
                 let result = if name == tools::agent::NAME && !self.subagent {
                     self.run_tasks(&block["input"], &mut on_event).await
+                } else if let Some(result) = self.call_background(name, &block["input"]) {
+                    result.map(Value::from)
                 } else {
                     match self.mcp.call(name, &block["input"]).await {
                         Some(result) => result,

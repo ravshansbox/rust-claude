@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
-pub(super) struct TemporaryFile(PathBuf);
+pub(crate) struct TemporaryFile(PathBuf);
 
 impl TemporaryFile {
-    pub(super) fn new(name: &str, content: &str) -> Self {
+    pub(crate) fn new(name: &str, content: &str) -> Self {
         let path =
             std::env::temp_dir().join(format!("rust-coding-agent-{name}-{}", std::process::id()));
         std::fs::write(&path, content).unwrap();
@@ -23,11 +23,11 @@ impl TemporaryFile {
         Self(path)
     }
 
-    pub(super) fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 
-    pub(super) fn content(&self) -> String {
+    pub(crate) fn content(&self) -> String {
         std::fs::read_to_string(&self.0).unwrap()
     }
 }

@@ -129,6 +129,10 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         }
         UiEvent::Files(generation, files) => app.set_files(generation, files),
         UiEvent::Workspace(label) => app.workspace = label,
+        UiEvent::Background(message) => {
+            app.start(Activity::Working);
+            app.push_background(&message);
+        }
         UiEvent::Resumed(result) => app.finish(result, |app, messages| {
             app.clear_session();
             replay_messages(app, &messages);
@@ -239,6 +243,9 @@ fn append_reply(app: &mut App, text: &str) {
 }
 
 fn replay_prompt(app: &mut App, text: &str) {
+    if app.push_background(text) {
+        return;
+    }
     if let Some((command, output)) = parse_shell_message(text) {
         app.push_shell(command, output);
         app.add_prompt(format!("!{command}"));
@@ -404,6 +411,29 @@ mod tests {
             )),
             "{shown}"
         );
+    }
+
+    #[test]
+    fn shows_a_finished_background_command_while_working_on_it() {
+        let message = crate::tools::background::message(1, "echo hi", "hi\n");
+        let mut app = new_app();
+        handle_agent_event(UiEvent::Background(message.clone()), &mut app);
+        assert!(app.busy());
+        assert!(matches!(app.messages.last().unwrap().role, Role::Tool));
+        assert_eq!(
+            app.messages.last().unwrap().text,
+            "background task 1 finished\nhi"
+        );
+        let mut resumed = new_app();
+        replay_messages(
+            &mut resumed,
+            &[json!({ "role": "user", "content": message })],
+        );
+        assert_eq!(
+            resumed.messages.last().unwrap().text,
+            "background task 1 finished\nhi"
+        );
+        assert!(resumed.prompt_history.is_empty());
     }
 
     #[test]

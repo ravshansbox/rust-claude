@@ -28,6 +28,8 @@ pub(super) enum UiEvent {
     },
     Update(crate::update::Progress),
     WhatsNew(String),
+    /// A background command finished, and a turn starts with this message.
+    Background(String),
 }
 
 pub(super) enum Request {
@@ -39,6 +41,8 @@ pub(super) enum Request {
     SetModel(String),
     NewSession,
     ReplaceMcpServer(Started),
+    /// Starts a turn with the message of a finished background command.
+    Background(String),
 }
 
 pub(super) fn quit(requests: mpsc::UnboundedSender<Request>, cancel: mpsc::UnboundedSender<()>) {
@@ -85,6 +89,9 @@ pub(super) async fn agent_task(
                 let _ = events.send(UiEvent::Agent(AgentEvent::Stats(agent.stats())));
                 continue;
             }
+            Some(message) = agent.next_background(), if agent.has_background() => {
+                Some(Request::Background(message))
+            }
             request = requests.recv() => request,
         };
         let Some(request) = request else { break };
@@ -115,6 +122,10 @@ pub(super) async fn agent_task(
         }
         let (prompt, effort) = match request {
             Request::Prompt(prompt, images, effort) => (Some((prompt, images)), effort),
+            Request::Background(message) => {
+                let _ = events.send(UiEvent::Background(message.clone()));
+                (Some((message, Vec::new())), agent.effort)
+            }
             Request::Compact(effort) => (None, effort),
             Request::Shell(_) => continue,
             Request::ReplaceMcpServer(started) => {
@@ -363,5 +374,54 @@ mod tests {
         }
         assert!(ran);
         assert!(reported);
+    }
+
+    #[tokio::test]
+    async fn starts_a_turn_when_a_background_command_finishes() {
+        let api = MockApi::start(vec![
+            crate::agent::test_support::tool_reply(
+                "call-1",
+                "bash",
+                json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
+            ),
+            crate::agent::test_support::text_reply("waiting"),
+            crate::agent::test_support::text_reply("seen it"),
+        ])
+        .await;
+        let agent = crate::agent::test_support::agent(&api, reqwest::Client::new());
+        let session_id = agent.session.id.clone();
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        request_tx
+            .send(Request::Prompt("watch it".into(), Vec::new(), "off"))
+            .unwrap();
+        let first = wait_for_event(&mut event_rx, |event| {
+            matches!(event, UiEvent::Done(Ok(())))
+        })
+        .await;
+        let delivered = wait_for_event(
+            &mut event_rx,
+            |event| matches!(event, UiEvent::Background(text) if text.contains("finished")),
+        )
+        .await;
+        let second = wait_for_event(&mut event_rx, |event| {
+            matches!(event, UiEvent::Done(Ok(())))
+        })
+        .await;
+        quit(request_tx, cancel_tx);
+        let _ = worker.await;
+        if let Some(config_dir) = crate::config::dir() {
+            let sessions = config_dir.join("sessions");
+            let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
+        }
+        assert!(first && delivered && second);
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 3);
+        let last = requests[2]["messages"].as_array().unwrap().last().unwrap();
+        assert_eq!(last["role"], "user");
+        assert!(last["content"].to_string().contains("finished"), "{last}");
     }
 }

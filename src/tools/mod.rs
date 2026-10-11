@@ -1,12 +1,13 @@
 use serde_json::{Value, json};
 
 pub mod agent;
+pub mod background;
 mod bash;
 mod display;
 mod edit;
 mod read;
 #[cfg(test)]
-mod test_support;
+pub(crate) mod test_support;
 pub mod web_search;
 mod write;
 
@@ -34,6 +35,7 @@ pub fn definitions() -> Value {
         write::definition(),
         edit::definition(),
         agent::definition(),
+        background::stop_definition(),
         web_search::definition()
     ])
 }

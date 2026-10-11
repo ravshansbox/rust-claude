@@ -255,8 +255,8 @@ async fn run() -> Result<()> {
         dark,
         background,
     );
-    let checkpoint = agent.history_len();
-    let run = agent.prompt(&prompt, &images, |event| printer.event(event));
+    let mut checkpoint = None;
+    let run = print::run(&mut agent, &mut printer, &prompt, &images, &mut checkpoint);
     let result = tokio::select! {
         result = run => Ok(result),
         status = &mut stopped => Err(status),
@@ -265,8 +265,9 @@ async fn run() -> Result<()> {
     let result = match result {
         Ok(result) => result,
         Err(status) => {
-            let saved = agent.cancel(checkpoint);
-            if let Err(error) = saved {
+            if let Some(checkpoint) = checkpoint
+                && let Err(error) = agent.cancel(checkpoint)
+            {
                 eprintln!("failed to save session: {error}");
             }
             return interrupted(agent, status).await;

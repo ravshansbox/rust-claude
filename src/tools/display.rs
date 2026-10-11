@@ -4,7 +4,13 @@ pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "read" | "write" | "edit" => "path",
         super::web_search::NAME => "query",
+        "bash" if super::background::runs_in_background(name, input) => {
+            return "in the background".into();
+        }
         "bash" => return String::new(),
+        super::background::STOP => {
+            return format!("background task {}", input["id"]);
+        }
         super::agent::NAME => return super::agent::summary(input),
         _ => return input.to_string(),
     };
