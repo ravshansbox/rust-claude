@@ -77,7 +77,10 @@ struct MarkdownStyleSheet;
 
 impl tui_markdown::StyleSheet for MarkdownStyleSheet {
     fn code(&self) -> Style {
-        theme().highlight_style()
+        match theme() {
+            Theme::Light => Style::new().fg(Color::Rgb(87, 105, 247)),
+            Theme::Dark => Style::new().fg(Color::Rgb(177, 185, 249)),
+        }
     }
 }
 
@@ -440,6 +443,18 @@ mod tests {
             Some(Color::Rgb(160, 17, 31)),
             "{keyword:?}"
         );
+    }
+
+    #[test]
+    fn shows_inline_code_in_blue_text() {
+        let lines = render_message(Role::Assistant, "Run `cargo build` now", 40);
+        let code = lines
+            .iter()
+            .flat_map(|line| &line.spans)
+            .find(|span| span.content == "cargo build")
+            .unwrap();
+        assert_eq!(code.style.fg, Some(Color::Rgb(87, 105, 247)), "{code:?}");
+        assert_eq!(code.style.bg, None, "{code:?}");
     }
 
     #[test]
