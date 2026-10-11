@@ -2,6 +2,7 @@ use std::{future::Future, pin::Pin};
 
 use anyhow::Result;
 use serde_json::{Value, json};
+use tokio::sync::mpsc;
 
 use super::{Agent, AgentEvent, Queue, Usage};
 use crate::{
@@ -44,35 +45,55 @@ impl Agent {
     pub(super) async fn run_tasks(
         &self,
         input: &Value,
-        _on_event: &mut impl FnMut(AgentEvent),
+        on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Value, String> {
         let (mode, tasks) = agent::parse(input)?;
-        let replies = match mode {
-            Mode::Parallel => {
-                futures::future::join_all(
-                    tasks.iter().map(|task| self.run_task(task.prompt.clone())),
-                )
-                .await
-            }
-            Mode::Sequential => {
-                let mut replies: Vec<Result<String, String>> = Vec::new();
-                for task in &tasks {
-                    let reply = match replies.last() {
-                        Some(Err(_)) => Err(NOT_RUN.into()),
-                        Some(Ok(previous)) => {
-                            self.run_task(format!(
+        let (sender, mut receiver) = mpsc::unbounded_channel();
+        let work = async move {
+            match mode {
+                Mode::Parallel => {
+                    futures::future::join_all(tasks.into_iter().enumerate().map(|(index, task)| {
+                        self.run_task(index, task.description, task.prompt, sender.clone())
+                    }))
+                    .await
+                }
+                Mode::Sequential => {
+                    let mut replies: Vec<Result<String, String>> = Vec::new();
+                    for (index, task) in tasks.into_iter().enumerate() {
+                        let prompt = match replies.last() {
+                            Some(Err(_)) => {
+                                let _ = sender.send(AgentEvent::TaskStart {
+                                    task: index,
+                                    description: task.description,
+                                });
+                                let _ = sender.send(AgentEvent::TaskDone {
+                                    task: index,
+                                    reply: Err(NOT_RUN.into()),
+                                });
+                                replies.push(Err(NOT_RUN.into()));
+                                continue;
+                            }
+                            Some(Ok(previous)) => format!(
                                 "{}\n\n<previous-task-result>\n{previous}\n</previous-task-result>",
                                 task.prompt
-                            ))
-                            .await
-                        }
-                        None => self.run_task(task.prompt.clone()).await,
-                    };
-                    replies.push(reply);
+                            ),
+                            None => task.prompt,
+                        };
+                        let reply = self
+                            .run_task(index, task.description, prompt, sender.clone())
+                            .await;
+                        replies.push(reply);
+                    }
+                    replies
                 }
-                replies
             }
         };
+        let forward = async {
+            while let Some(event) = receiver.recv().await {
+                on_event(event);
+            }
+        };
+        let (replies, ()) = futures::join!(work, forward);
         Ok(Value::Array(
             replies
                 .into_iter()
@@ -84,15 +105,46 @@ impl Agent {
     /// Boxed, because a subagent's run holds this future's type in turn.
     fn run_task(
         &self,
+        task: usize,
+        description: String,
         prompt: String,
+        events: mpsc::UnboundedSender<AgentEvent>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
         Box::pin(async move {
-            let failed = |error: anyhow::Error| format!("This task failed: {error:#}");
-            let mut child = self.subagent().map_err(failed)?;
-            let callback: Callback = Box::new(|_| {});
-            child.run(&prompt, &[], callback).await.map_err(failed)?;
-            Ok(final_reply(&child.messages))
+            let _ = events.send(AgentEvent::TaskStart { task, description });
+            let reply = self.run_subagent(prompt, task, events.clone()).await;
+            let _ = events.send(AgentEvent::TaskDone {
+                task,
+                reply: reply.clone(),
+            });
+            reply
         })
+    }
+
+    async fn run_subagent(
+        &self,
+        prompt: String,
+        task: usize,
+        events: mpsc::UnboundedSender<AgentEvent>,
+    ) -> Result<String, String> {
+        let failed = |error: anyhow::Error| format!("This task failed: {error:#}");
+        let mut child = self.subagent().map_err(failed)?;
+        let callback: Callback = Box::new(move |event| {
+            if matches!(
+                event,
+                AgentEvent::Text(_)
+                    | AgentEvent::ToolStart { .. }
+                    | AgentEvent::ToolDone { .. }
+                    | AgentEvent::Notice(_)
+            ) {
+                let _ = events.send(AgentEvent::Task {
+                    task,
+                    event: Box::new(event),
+                });
+            }
+        });
+        child.run(&prompt, &[], callback).await.map_err(failed)?;
+        Ok(final_reply(&child.messages))
     }
 }
 
@@ -110,7 +162,10 @@ fn final_reply(messages: &[Value]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::super::test_support::{self, MockApi, Reply, text_reply, tool_reply};
+    use super::super::{
+        AgentEvent,
+        test_support::{self, MockApi, Reply, text_reply, tool_reply},
+    };
     use serde_json::{Value, json};
     use std::time::Duration;
 
@@ -324,5 +379,68 @@ mod tests {
             assert_eq!(result["is_error"], true, "{input}");
             assert_eq!(result["content"], error, "{input}");
         }
+    }
+
+    fn describe(event: AgentEvent) -> Option<String> {
+        Some(match event {
+            AgentEvent::TaskStart { task, description } => format!("{task} start {description}"),
+            AgentEvent::Task { task, event } => format!("{task} {}", describe(*event)?),
+            AgentEvent::TaskDone { task, reply } => {
+                format!("{task} done {}", reply.unwrap_or_else(|error| error))
+            }
+            AgentEvent::Text(text) => format!("text {text}"),
+            AgentEvent::Thinking(text) => format!("thinking {text}"),
+            AgentEvent::ToolStart { name, .. } => format!("tool {name}"),
+            AgentEvent::ToolDone { name, error, .. } => format!("tool done {name} {error:?}"),
+            AgentEvent::Notice(text) => format!("notice {text}"),
+            AgentEvent::Stats(_) => "stats".into(),
+            AgentEvent::Queued(prompt) => format!("queued {prompt}"),
+        })
+    }
+
+    #[tokio::test]
+    async fn reports_what_each_subagent_does() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({
+                    "mode": "sequential",
+                    "tasks": [task("say hi", "say hi"), task("say bye", "say bye")],
+                }),
+            ),
+            tool_reply("call-2", "bash", json!({ "command": "true" })),
+            text_reply("hi"),
+            text_reply("bye"),
+            text_reply("done"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut events = Vec::new();
+        let result = agent
+            .prompt("go", &[], |event| events.extend(describe(event)))
+            .await;
+        test_support::remove_session(&agent);
+        result.unwrap();
+        let tasks: Vec<_> = events
+            .iter()
+            .skip_while(|event| *event != "tool agent")
+            .take_while(|event| !event.starts_with("tool done agent"))
+            .cloned()
+            .collect();
+        assert_eq!(
+            tasks,
+            [
+                "tool agent",
+                "0 start say hi",
+                "0 tool bash",
+                "0 tool done bash None",
+                "0 text hi",
+                "0 done hi",
+                "1 start say bye",
+                "1 text bye",
+                "1 done bye",
+            ]
+        );
     }
 }

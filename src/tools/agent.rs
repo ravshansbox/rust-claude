@@ -34,6 +34,14 @@ pub fn definition() -> Value {
     })
 }
 
+pub fn summary(input: &Value) -> String {
+    let mode = input["mode"].as_str().unwrap_or_default();
+    match input["tasks"].as_array().map_or(0, Vec::len) {
+        1 => format!("{mode}, 1 task"),
+        count => format!("{mode}, {count} tasks"),
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Mode {
     Sequential,

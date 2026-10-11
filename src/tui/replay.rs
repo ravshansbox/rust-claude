@@ -37,6 +37,9 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
+        UiEvent::Agent(
+            AgentEvent::TaskStart { .. } | AgentEvent::Task { .. } | AgentEvent::TaskDone { .. },
+        ) => {}
         UiEvent::McpRestarting {
             name,
             scope,
