@@ -15,10 +15,7 @@ pub fn set_dir(path: PathBuf) {
 }
 
 pub fn dir() -> Option<PathBuf> {
-    if let Some(path) = CONFIG_DIR.get() {
-        return Some(path.clone());
-    }
-    default_dir()
+    CONFIG_DIR.get().cloned().or_else(default_dir)
 }
 
 #[cfg(not(test))]
