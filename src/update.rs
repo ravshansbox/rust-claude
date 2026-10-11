@@ -89,6 +89,7 @@ pub struct Updater {
     pub rustc: Option<PathBuf>,
     pub build_dir: Option<PathBuf>,
     pub bin_dir: Option<PathBuf>,
+    pub update_dir: PathBuf,
     pub public_key: &'static str,
 }
 
@@ -103,6 +104,7 @@ impl Updater {
         if debug_build || settings.check_for_updates == Some(false) {
             return None;
         }
+        let config_dir = crate::config::dir()?;
         Some(Self {
             http: reqwest::Client::new(),
             releases_url: RELEASES_URL.into(),
@@ -110,8 +112,9 @@ impl Updater {
             current_version: env!("CARGO_PKG_VERSION"),
             cargo: find_on_path("cargo", std::env::var_os("PATH")),
             rustc: find_on_path("rustc", std::env::var_os("PATH")),
-            build_dir: crate::config::dir().map(|dir| dir.join("build")),
+            build_dir: Some(config_dir.join("build")),
             bin_dir: cargo_bin_dir(),
+            update_dir: config_dir.join("updates"),
             public_key: PUBLIC_KEY,
         })
     }
@@ -138,12 +141,14 @@ impl Updater {
             report(Progress::CargoMissing(version));
             return;
         };
-        let folder = std::env::temp_dir().join(format!(
-            "rust-coding-agent-update-{}-{}",
+        let folder = self.update_dir.join(format!(
+            "{}-{}",
             std::process::id(),
             RUNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
         ));
-        if let Err(error) = create_update_folder(&folder) {
+        if let Err(error) = crate::config::create_private_dir(&self.update_dir)
+            .and_then(|()| create_update_folder(&folder))
+        {
             report(Progress::Failed(
                 version,
                 format!("creating {}: {error}", folder.display()),
@@ -519,6 +524,8 @@ mod tests {
             rustc: None,
             build_dir: None,
             bin_dir: None,
+            update_dir: std::env::temp_dir()
+                .join(format!("rust-coding-agent-updates-{}", std::process::id())),
             public_key: TEST_PUBLIC_KEY,
         }
     }
@@ -648,6 +655,25 @@ mod tests {
             dir.join("build").display()
         );
         assert!(log.starts_with(&expected), "{log}");
+    }
+
+    #[tokio::test]
+    async fn unpacks_the_release_in_the_update_folder() {
+        let dir = temp_dir("update-folder");
+        let (base, _) = github("v0.2.0").await;
+        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
+        updater.update_dir = dir.join("updates");
+        run(updater).await;
+        let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
+        let path = log
+            .lines()
+            .next()
+            .unwrap()
+            .split(" --path ")
+            .nth(1)
+            .unwrap();
+        assert!(Path::new(path).starts_with(dir.join("updates")), "{log}");
+        assert!(log.contains("unpacked"), "{log}");
     }
 
     #[tokio::test]

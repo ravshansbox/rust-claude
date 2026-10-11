@@ -6,7 +6,11 @@ if ! command -v cargo >/dev/null 2>&1; then
   exit 1
 fi
 
-folder=$(mktemp -d)
+if [ ! -e "$HOME/.rust-coding-agent" ] && [ -d "$HOME/.rust-claude" ]; then
+  mv "$HOME/.rust-claude" "$HOME/.rust-coding-agent"
+fi
+(umask 077 && mkdir -p "$HOME/.rust-coding-agent")
+folder=$(mktemp -d "$HOME/.rust-coding-agent/install.XXXXXX")
 trap 'rm -rf "$folder"' EXIT
 
 url=https://github.com/ravshansbox/rust-coding-agent/releases/latest/download/rust-coding-agent.zip
@@ -22,9 +26,6 @@ else
   echo "minisign not found on PATH, installing without checking the signature" >&2
 fi
 unzip -q "$folder/rust-coding-agent.zip" -d "$folder"
-if [ ! -e "$HOME/.rust-coding-agent" ] && [ -d "$HOME/.rust-claude" ]; then
-  mv "$HOME/.rust-claude" "$HOME/.rust-coding-agent"
-fi
 build="$HOME/.rust-coding-agent/build"
 (umask 077 && mkdir -p "$build")
 if version=$(rustc -vV 2>/dev/null) && [ "$(cat "$build/rustc-version" 2>/dev/null)" != "$version" ]; then

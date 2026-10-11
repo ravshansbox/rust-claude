@@ -125,6 +125,18 @@ fn installs_the_latest_release_with_cargo() {
 }
 
 #[test]
+fn unpacks_the_release_in_the_config_folder() {
+    let setup = Setup::new("unpack-folder").with_cargo();
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    let folder = setup.read("folder");
+    assert!(
+        Path::new(folder.trim()).starts_with(setup.root.join("home/.rust-coding-agent")),
+        "{folder}"
+    );
+}
+
+#[test]
 fn checks_the_signature_with_minisign() {
     let setup = Setup::new("signed").with_cargo().with_minisign(0);
     let output = setup.install();
