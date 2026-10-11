@@ -235,17 +235,24 @@ fn well_known(url: &reqwest::Url, name: &str) -> String {
     )
 }
 
-async fn get_json(client: &reqwest::Client, url: &str) -> Option<Value> {
-    let response = client
-        .get(url)
-        .header(reqwest::header::ACCEPT, "application/json")
-        .send()
-        .await
-        .ok()?;
-    if !response.status().is_success() {
-        return None;
+async fn first_json(
+    client: &reqwest::Client,
+    urls: &[String],
+    check: impl Fn(&Value) -> bool,
+) -> Option<Value> {
+    for url in urls {
+        let request = client
+            .get(url)
+            .header(reqwest::header::ACCEPT, "application/json");
+        if let Ok(response) = request.send().await
+            && response.status().is_success()
+            && let Ok(metadata) = response.json::<Value>().await
+            && check(&metadata)
+        {
+            return Some(metadata);
+        }
     }
-    response.json().await.ok()
+    None
 }
 
 async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discovered, String> {
@@ -282,15 +289,10 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         "{}/.well-known/oauth-protected-resource",
         url.origin().ascii_serialization()
     ));
-    let mut resource_metadata = None;
-    for resource_url in &resource_urls {
-        if let Some(metadata) = get_json(client, resource_url).await
-            && metadata["authorization_servers"][0].is_string()
-        {
-            resource_metadata = Some(metadata);
-            break;
-        }
-    }
+    let resource_metadata = first_json(client, &resource_urls, |metadata| {
+        metadata["authorization_servers"][0].is_string()
+    })
+    .await;
     let issuer = match &resource_metadata {
         Some(metadata) => metadata["authorization_servers"][0]
             .as_str()
@@ -310,17 +312,11 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             issuer.trim_end_matches('/')
         ));
     }
-    let mut server_metadata = None;
-    for metadata_url in &metadata_urls {
-        if let Some(metadata) = get_json(client, metadata_url).await
-            && metadata["authorization_endpoint"].is_string()
-            && metadata["token_endpoint"].is_string()
-        {
-            server_metadata = Some(metadata);
-            break;
-        }
-    }
-    let Some(server_metadata) = server_metadata else {
+    let Some(server_metadata) = first_json(client, &metadata_urls, |metadata| {
+        metadata["authorization_endpoint"].is_string() && metadata["token_endpoint"].is_string()
+    })
+    .await
+    else {
         return Err(format!("cannot find the sign-in server for {server_url}"));
     };
     for kind in ["authorization", "token"] {
