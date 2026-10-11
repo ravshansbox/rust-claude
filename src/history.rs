@@ -135,16 +135,30 @@ pub fn newest_unique(entries: &[Entry]) -> Vec<Entry> {
 mod tests {
     use super::{Entry, MAX_ENTRIES, append, load, newest_unique, trim};
 
+    fn history_file(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir()
+            .join(format!(
+                "rust-coding-agent-{name}history-{}",
+                std::process::id()
+            ))
+            .join("history.jsonl")
+    }
+
+    fn write_full_history(path: &std::path::Path) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let text: String = (0..MAX_ENTRIES + 5)
+            .map(|index| format!("{{\"prompt\":\"p{index}\",\"cwd\":\"/project\"}}\n"))
+            .collect();
+        std::fs::write(path, text).unwrap();
+    }
+
     fn prompts(entries: &[Entry]) -> Vec<&str> {
         entries.iter().map(|entry| entry.prompt.as_str()).collect()
     }
 
     #[test]
     fn loads_newest_first_without_repeats() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-history-{}/history.jsonl",
-            std::process::id()
-        ));
+        let path = history_file("");
         for prompt in ["one", "two", "one", "three"] {
             append(&path, &Entry::here(prompt)).unwrap();
         }
@@ -168,10 +182,7 @@ mod tests {
 
     #[test]
     fn keeps_history_after_a_line_cut_short_inside_a_character() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-cut-history-{}/history.jsonl",
-            std::process::id()
-        ));
+        let path = history_file("cut-");
         append(&path, &Entry::here("one")).unwrap();
         std::fs::OpenOptions::new()
             .append(true)
@@ -186,10 +197,7 @@ mod tests {
 
     #[test]
     fn keeps_a_prompt_sent_after_a_line_cut_short_before_its_end() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-unended-history-{}/history.jsonl",
-            std::process::id()
-        ));
+        let path = history_file("unended-");
         append(&path, &Entry::here("one")).unwrap();
         std::fs::OpenOptions::new()
             .append(true)
@@ -204,20 +212,12 @@ mod tests {
 
     #[test]
     fn keeps_only_the_newest_prompts() {
-        let directory = std::env::temp_dir().join(format!(
-            "rust-coding-agent-long-history-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&directory).unwrap();
-        let path = directory.join("history.jsonl");
-        let text: String = (0..MAX_ENTRIES + 5)
-            .map(|index| format!("{{\"prompt\":\"p{index}\",\"cwd\":\"/project\"}}\n"))
-            .collect();
-        std::fs::write(&path, text).unwrap();
+        let path = history_file("long-");
+        write_full_history(&path);
         let mut entries = load(&path);
         let trimmed = trim(&path, &mut entries);
         let reloaded = load(&path);
-        std::fs::remove_dir_all(&directory).unwrap();
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         trimmed.unwrap();
         for entries in [entries, reloaded] {
             assert_eq!(entries.len(), MAX_ENTRIES);
@@ -232,22 +232,14 @@ mod tests {
 
     #[test]
     fn keeps_prompts_another_copy_sent_after_loading() {
-        let directory = std::env::temp_dir().join(format!(
-            "rust-coding-agent-shared-history-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&directory).unwrap();
-        let path = directory.join("history.jsonl");
-        let text: String = (0..MAX_ENTRIES + 5)
-            .map(|index| format!("{{\"prompt\":\"p{index}\",\"cwd\":\"/project\"}}\n"))
-            .collect();
-        std::fs::write(&path, text).unwrap();
+        let path = history_file("shared-");
+        write_full_history(&path);
         let mut entries = load(&path);
         // Another running copy sends a prompt after this one loaded.
         append(&path, &Entry::here("from other copy")).unwrap();
         let trimmed = trim(&path, &mut entries);
         let reloaded = load(&path);
-        std::fs::remove_dir_all(&directory).unwrap();
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         trimmed.unwrap();
         for entries in [entries, reloaded] {
             assert_eq!(entries.len(), MAX_ENTRIES);
