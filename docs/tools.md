@@ -11,7 +11,7 @@ The agent can use these tools:
 - `bash_stop`: stop a background command. See [Background commands](#background-commands)
 - `web_search`: search the web. See [Web search](#web-search)
 
-At start, the interface lists these tools on one line, after the MCP servers, such as `loaded tools: agent, bash, bash_stop, edit, read, web_search, write`.
+At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, bash, bash_stop, edit, read, web_search, write`.
 
 The agent can also use tools from [MCP servers](mcp.md).
 
