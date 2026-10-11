@@ -334,6 +334,16 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
     let Some(server_metadata) = server_metadata else {
         return Err(format!("cannot find the sign-in server for {server_url}"));
     };
+    for kind in ["authorization", "token"] {
+        let endpoint = server_metadata[format!("{kind}_endpoint")]
+            .as_str()
+            .unwrap_or_default();
+        if !secure_endpoint(endpoint) {
+            return Err(format!(
+                "the sign-in server's {kind} endpoint does not use HTTPS: {endpoint}"
+            ));
+        }
+    }
     let text = |value: &Value| value.as_str().map(str::to_string);
     let scope = challenge_parameter(&challenge, "scope").or_else(|| {
         let scopes: Vec<&str> = resource_metadata
@@ -356,6 +366,24 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             .unwrap_or_else(|| server_url.to_string()),
         scope,
     })
+}
+
+fn secure_endpoint(endpoint: &str) -> bool {
+    let Ok(url) = reqwest::Url::parse(endpoint) else {
+        return false;
+    };
+    let host = url.host_str().unwrap_or_default();
+    let host = host.trim_start_matches('[').trim_end_matches(']');
+    match url.scheme() {
+        "https" => true,
+        "http" => {
+            host == "localhost"
+                || host
+                    .parse::<std::net::IpAddr>()
+                    .is_ok_and(|address| address.is_loopback())
+        }
+        _ => false,
+    }
 }
 
 async fn register(
