@@ -291,9 +291,7 @@ mod tests {
             text_reply("done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("chain", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "chain", |_| {}).await;
         result.unwrap();
         let requests = api.requests().await;
         assert_eq!(requests.len(), 4);
@@ -329,9 +327,7 @@ mod tests {
             text_reply("done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("chain", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (_, result) = test_support::run_prompt(&api, "chain", |_| {}).await;
         result.unwrap();
         let requests = api.requests().await;
         assert_eq!(requests.len(), 3);
@@ -406,9 +402,7 @@ mod tests {
                 text_reply("done"),
             ])
             .await;
-            let mut agent = test_support::agent(&api, reqwest::Client::new());
-            let result = agent.prompt("go", &[], |_| {}).await;
-            test_support::remove_session(&agent);
+            let (_, result) = test_support::run_prompt(&api, "go", |_| {}).await;
             result.unwrap();
             let requests = api.requests().await;
             assert_eq!(requests.len(), 2, "{input}");
@@ -457,12 +451,9 @@ mod tests {
             text_reply("done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut events = Vec::new();
-        let result = agent
-            .prompt("go", &[], |event| events.extend(describe(event)))
-            .await;
-        test_support::remove_session(&agent);
+        let (_, result) =
+            test_support::run_prompt(&api, "go", |event| events.extend(describe(event))).await;
         result.unwrap();
         let tasks: Vec<_> = events
             .iter()
@@ -538,9 +529,7 @@ mod tests {
             text_reply("done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let result = agent.prompt("go", &[], |_| {}).await;
-        test_support::remove_session(&agent);
+        let (agent, result) = test_support::run_prompt(&api, "go", |_| {}).await;
         result.unwrap();
         assert_eq!(agent.stats().usage.input, 3);
     }

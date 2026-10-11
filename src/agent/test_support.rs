@@ -1,4 +1,4 @@
-use super::Agent;
+use super::{Agent, AgentEvent};
 use crate::auth::Credentials;
 use serde_json::{Value, json};
 use std::{collections::VecDeque, sync::Arc};
@@ -189,6 +189,25 @@ pub(crate) fn agent(api: &MockApi, http: reqwest::Client) -> Agent {
     let mut agent = Agent::new(http, credentials, "claude-opus-5-5".into()).unwrap();
     agent.api_base = api.base.clone();
     agent
+}
+
+pub(crate) async fn run_prompt(
+    api: &MockApi,
+    prompt: &str,
+    on_event: impl FnMut(AgentEvent),
+) -> (Agent, anyhow::Result<()>) {
+    let mut agent = agent(api, reqwest::Client::new());
+    let result = agent.prompt(prompt, &[], on_event).await;
+    remove_session(&agent);
+    (agent, result)
+}
+
+pub(crate) fn notices(notices: &mut Vec<String>) -> impl FnMut(AgentEvent) + '_ {
+    |event| {
+        if let AgentEvent::Notice(notice) = event {
+            notices.push(notice);
+        }
+    }
 }
 
 /// Removes the session files a test agent wrote under the test config folder.

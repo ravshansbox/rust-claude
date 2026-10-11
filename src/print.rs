@@ -215,14 +215,12 @@ mod tests {
             text_reply(&format!("done{ESCAPES}")),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut out = Vec::new();
         let mut err = Vec::new();
         let mut printer = Printer::new(&mut out, true, &mut err, true, true);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+        let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         printer.flush_reads();
         let finished = printer.finish(result);
-        test_support::remove_session(&agent);
         let _ = std::fs::remove_file(&path);
         finished.unwrap();
         let out = String::from_utf8(out).unwrap();
@@ -249,12 +247,11 @@ mod tests {
                 text_reply("done"),
             ])
             .await;
-            let mut agent = test_support::agent(&api, reqwest::Client::new());
             let mut err = Vec::new();
             let mut printer = Printer::new(std::io::sink(), true, &mut err, true, dark);
-            let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+            let (_, result) =
+                test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
             let finished = printer.finish(result);
-            test_support::remove_session(&agent);
             finished.unwrap();
             let err = String::from_utf8(err).unwrap();
             assert!(
@@ -275,12 +272,10 @@ mod tests {
             text_reply("done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut err = Vec::new();
         let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+        let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
-        test_support::remove_session(&agent);
         finished.unwrap();
         let err = String::from_utf8(err).unwrap();
         let plain = without_colours(&err);
@@ -296,12 +291,10 @@ mod tests {
     async fn writes_piped_answers_byte_for_byte() {
         let answer = format!("done{ESCAPES}\r\n");
         let api = MockApi::start(vec![text_reply(&answer)]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut out = Vec::new();
         let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+        let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
-        test_support::remove_session(&agent);
         finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), format!("{answer}\n"));
     }
@@ -357,13 +350,11 @@ mod tests {
             text_reply("done"),
         ])
         .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
         let mut out = Vec::new();
         let mut err = Vec::new();
         let mut printer = Printer::new(&mut out, false, &mut err, false, false);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
+        let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
-        test_support::remove_session(&agent);
         finished.unwrap();
         assert_eq!(String::from_utf8(out).unwrap(), "done\n");
         let err = String::from_utf8(err).unwrap();
