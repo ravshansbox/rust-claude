@@ -11,6 +11,7 @@ pub struct Settings {
     pub model: Option<String>,
     pub effort: Option<String>,
     pub check_for_updates: Option<bool>,
+    pub notifications: Option<bool>,
     pub last_version: Option<String>,
 }
 

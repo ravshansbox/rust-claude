@@ -437,6 +437,10 @@ pub(super) struct App {
     pub(super) copied_until: Option<Instant>,
     version_line: String,
     version_message: Option<usize>,
+    pub(super) notifications: bool,
+    pub(super) focused: bool,
+    /// The message to show in a terminal notification, until it is sent.
+    pub(super) notification: Option<String>,
 }
 
 struct McpGroup {
@@ -543,6 +547,9 @@ impl App {
             copied_until: None,
             version_line: VERSION_LINE.into(),
             version_message: None,
+            notifications: true,
+            focused: true,
+            notification: None,
         };
         app.show_version();
         app

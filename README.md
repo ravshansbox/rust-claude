@@ -102,6 +102,7 @@ Display:
 - Drag over the conversation to select text. Releasing the button copies it to the clipboard with an OSC 52 escape sequence, so the terminal must allow OSC 52. Each screen row is copied as its own line. A "Copied" box shows at the top right for 2 seconds
 - The view stays still while you read earlier text and a reply streams
 - Spinner with status text
+- Terminal notification when a run ends while the window is not in focus (see [Notifications](#notifications))
 
 Images:
 
@@ -291,6 +292,10 @@ The status line is a single line below the input. It shows the folder and Git br
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-coding-agent loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 1h16m` or `7d 81% 3d`. When the first unit is 2 or more, only that unit is shown, rounded to the nearest, so `2h40m` shows as `3h`.
 
+## Notifications
+
+When a run finishes or fails while the terminal window is not in focus, rust-coding-agent sends a terminal notification (OSC 9), for example `Done` or `Failed: overloaded`. Cancelled runs do not notify, and nor does print mode. Terminals that support OSC 9 include iTerm2, Ghostty, WezTerm, kitty and Windows Terminal; other terminals ignore it. Set `notifications` to `false` in `settings.json` to turn it off.
+
 ## Settings
 
 | Setting | Option | `~/.rust-coding-agent/settings.json` key | Default |
@@ -298,6 +303,7 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 | Model | `--model <id>` | `model` | `claude-opus-5-5` |
 | Effort level | `--effort <level>` | `effort` | `medium` |
 | Check for updates | | `check_for_updates` | `true` |
+| Notifications | | `notifications` | `true` |
 
 Effort levels: `off`, `low`, `medium`, `high`, `xhigh`, `max`.
 

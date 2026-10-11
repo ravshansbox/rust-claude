@@ -21,9 +21,9 @@ use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
 use crossterm::{
     clipboard::CopyToClipboard,
     event::{
-        DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture,
-        EventStream, KeyboardEnhancementFlags, PopKeyboardEnhancementFlags,
-        PushKeyboardEnhancementFlags,
+        DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
+        EnableFocusChange, EnableMouseCapture, EventStream, KeyboardEnhancementFlags,
+        PopKeyboardEnhancementFlags, PushKeyboardEnhancementFlags,
     },
     execute,
 };
@@ -140,7 +140,12 @@ struct InputModes<W: Write> {
 
 impl<W: Write> InputModes<W> {
     fn enable(mut output: W) -> std::io::Result<Self> {
-        execute!(output, EnableMouseCapture, EnableBracketedPaste)?;
+        execute!(
+            output,
+            EnableMouseCapture,
+            EnableBracketedPaste,
+            EnableFocusChange
+        )?;
         let keyboard_enhanced = execute!(
             output,
             PushKeyboardEnhancementFlags(KeyboardEnhancementFlags::DISAMBIGUATE_ESCAPE_CODES)
@@ -158,7 +163,12 @@ impl<W: Write> Drop for InputModes<W> {
         if self.keyboard_enhanced {
             let _ = execute!(self.output, PopKeyboardEnhancementFlags);
         }
-        let _ = execute!(self.output, DisableMouseCapture, DisableBracketedPaste);
+        let _ = execute!(
+            self.output,
+            DisableMouseCapture,
+            DisableBracketedPaste,
+            DisableFocusChange
+        );
     }
 }
 
@@ -321,6 +331,7 @@ async fn run_loop(
     }
     drop(mcp_tx);
     let settings = Settings::load();
+    app.notifications = settings.notifications != Some(false);
     if let Some(updater) = crate::update::Updater::for_this_build(&settings) {
         let current_version = updater.current_version;
         if current_version != "0.0.0" && settings.last_version.as_deref() != Some(current_version) {
@@ -460,6 +471,11 @@ async fn run_loop(
                 {
                     let _ = request_tx.send(Request::Prompt(prompt, images, app.effort));
                 }
+                if let Some(message) = app.notification.take()
+                    && !app.busy()
+                {
+                    let _ = notify(terminal.backend_mut(), &message);
+                }
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
             }
         }
@@ -575,9 +591,15 @@ fn copy_to_clipboard(output: &mut impl Write, text: &str) -> std::io::Result<()>
     execute!(output, CopyToClipboard::to_clipboard_from(text))
 }
 
+fn notify(output: &mut impl Write, message: &str) -> std::io::Result<()> {
+    let message: String = message.chars().filter(|c| !c.is_control()).collect();
+    write!(output, "\x1b]9;{message}\x07")?;
+    output.flush()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{HeldPanics, InputModes, UiEvent, copy_to_clipboard, history_writer};
+    use super::{HeldPanics, InputModes, UiEvent, copy_to_clipboard, history_writer, notify};
     use crate::{agent::AgentEvent, history};
     use std::sync::{Mutex, PoisonError};
 
@@ -635,6 +657,11 @@ mod tests {
         let written = String::from_utf8_lossy(&output);
         let (enabled, disabled) = written.split_at(written.find("\x1b[<1u").unwrap());
         assert!(enabled.contains("\x1b[?1000h") && enabled.contains("\x1b[?2004h"));
+        assert!(enabled.contains("\x1b[?1004h"), "{written:?}");
+        assert!(
+            disabled.contains("\x1b[?1004l"),
+            "focus reporting still on: {written:?}"
+        );
         assert!(
             disabled.contains("\x1b[?1000l"),
             "mouse capture still on: {written:?}"
@@ -643,6 +670,13 @@ mod tests {
             disabled.contains("\x1b[?2004l"),
             "bracketed paste still on: {written:?}"
         );
+    }
+
+    #[test]
+    fn notifies_with_an_osc_9_sequence_without_control_characters() {
+        let mut output = Vec::new();
+        notify(&mut output, "Failed: \x1b]52;c;aGk=\x07bad\u{9c}").unwrap();
+        assert_eq!(output, b"\x1b]9;Failed: ]52;c;aGk=bad\x07");
     }
 
     #[test]

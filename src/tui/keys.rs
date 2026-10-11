@@ -44,6 +44,11 @@ pub(super) fn may_change_screen(event: &Event) -> bool {
 }
 
 pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> bool {
+    match event {
+        Event::FocusGained => app.focused = true,
+        Event::FocusLost => app.focused = false,
+        _ => {}
+    }
     if let Event::Mouse(mouse) = event {
         match mouse.kind {
             MouseEventKind::ScrollUp => app.scroll_up(3),
