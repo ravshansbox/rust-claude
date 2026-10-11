@@ -452,16 +452,6 @@ impl Drop for HttpSession {
     }
 }
 
-fn error_chain(error: &dyn std::error::Error) -> String {
-    let mut text = error.to_string();
-    let mut source = error.source();
-    while let Some(error) = source {
-        text.push_str(&format!(": {error}"));
-        source = error.source();
-    }
-    text
-}
-
 /// Posts messages in order, without waiting for the answers to requests, so
 /// a notification never overtakes the request queued before it.
 async fn post_messages(
@@ -642,7 +632,11 @@ impl Http {
             request = request.header("mcp-protocol-version", version);
         }
         let response = request.send().await.map_err(|error| PostError {
-            message: format!("cannot reach {}: {}", self.url, error_chain(&error)),
+            message: format!(
+                "cannot reach {}: {:#}",
+                self.url,
+                anyhow::Error::from(error)
+            ),
             transient: true,
             expired: None,
         })?;
@@ -745,7 +739,10 @@ impl Http {
             .unwrap_or_default();
         let too_long = || format!("server sent a reply longer than {} MiB", MAX_LINE >> 20);
         let read_error = |error: reqwest::Error| {
-            format!("cannot read the reply to {method}: {}", error_chain(&error))
+            format!(
+                "cannot read the reply to {method}: {:#}",
+                anyhow::Error::from(error)
+            )
         };
         match content_type.as_str() {
             "application/json" => {
