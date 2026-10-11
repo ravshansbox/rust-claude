@@ -281,7 +281,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 ## Status line
 
-The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (TS), for example `↑4 ↓338 R6k W88 CH99% TS42`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`, or as a token count for a model with no known context window.
+The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W), the cache hit rate (CH) and the average output speed in tokens per second (TS), for example `↑4 ↓338 R6K W88 CH99% TS42`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200K`, or as a token count for a model with no known context window.
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-claude loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 2h16m` or `7d 81% 2d12h`.
 
