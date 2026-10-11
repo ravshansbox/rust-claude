@@ -1436,10 +1436,7 @@ mod tests {
             2
         );
         assert_eq!(
-            cancel_point(
-                &[prompt.clone(), tool_use.clone(), tool_result, tool_use],
-                0
-            ),
+            cancel_point(&[prompt, tool_use.clone(), tool_result, tool_use], 0),
             3
         );
     }

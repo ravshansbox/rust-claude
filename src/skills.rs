@@ -773,7 +773,7 @@ mod tests {
         assert_eq!(
             diagnostics,
             [Diagnostic::Warning {
-                path: missing.clone(),
+                path: missing,
                 message: "description is required".into(),
             }]
         );

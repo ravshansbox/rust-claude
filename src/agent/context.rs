@@ -148,7 +148,7 @@ mod tests {
             "content": [],
             "summary": "greeted",
         });
-        let messages = vec![prompt.clone(), reply, compaction.clone(), prompt.clone()];
+        let messages = vec![prompt.clone(), reply, compaction, prompt.clone()];
         let active = active_messages(&messages);
         assert_eq!(active.len(), 2);
         assert!(active[0]["content"].as_str().unwrap().ends_with("greeted"));

@@ -773,7 +773,7 @@ mod tests {
             [
                 format!("{idle} · 2 agents"),
                 format!("{idle} · 1 agent"),
-                idle.clone(),
+                idle,
             ]
         );
     }
