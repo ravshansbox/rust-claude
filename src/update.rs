@@ -194,11 +194,15 @@ impl Updater {
         }
     }
 
+    fn get(&self, url: &str) -> reqwest::RequestBuilder {
+        self.http
+            .get(url)
+            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
+    }
+
     async fn latest_release(&self) -> Result<Release> {
         Ok(self
-            .http
             .get(&self.releases_url)
-            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
             .header(reqwest::header::ACCEPT, "application/vnd.github+json")
             .send()
             .await?
@@ -209,9 +213,7 @@ impl Updater {
 
     async fn fetch(&self, url: &str) -> Result<Vec<u8>> {
         Ok(self
-            .http
             .get(url)
-            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
             .send()
             .await?
             .error_for_status()?
