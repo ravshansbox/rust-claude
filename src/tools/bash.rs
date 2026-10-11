@@ -6,7 +6,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::{io::AsyncReadExt, process::Child};
 
 pub(super) fn definition() -> Value {
     json!({
@@ -16,7 +16,8 @@ pub(super) fn definition() -> Value {
             "type": "object",
             "properties": {
                 "command": { "type": "string" },
-                "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" }
+                "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" },
+                "run_in_background": { "type": "boolean", "description": "Return at once and give the output in a later message when the command finishes, for long waits such as CI runs" }
             },
             "required": ["command"]
         }
@@ -24,36 +25,30 @@ pub(super) fn definition() -> Value {
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
+    let (child, timeout) = start(input)?;
+    wait(child, timeout).await
+}
+
+/// Starts the command of a `bash` call, and gives it with its timeout.
+pub(super) fn start(input: &Value) -> Result<(Child, Option<u64>), String> {
     let timeout = number(input, "timeout", 1)?;
     let mut command = tokio::process::Command::new("bash");
     command.args(["-c", argument(input, "command")?]);
-    run_command(command, None, timeout).await
-}
-
-pub(super) async fn run_command(
-    mut command: tokio::process::Command,
-    stdin: Option<String>,
-    timeout: Option<u64>,
-) -> Result<String, String> {
     command
-        .stdin(if stdin.is_some() {
-            Stdio::piped()
-        } else {
-            Stdio::null()
-        })
+        .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     new_session(&mut command);
-    let mut child = command
+    let child = command
         .spawn()
         .map_err(|error| format!("failed to run command: {error}"))?;
+    Ok((child, timeout))
+}
+
+/// Waits for a started command and gives its output.
+pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<String, String> {
     let mut process_group = ProcessGroup(child.id());
-    if let (Some(text), Some(mut pipe)) = (stdin, child.stdin.take()) {
-        tokio::spawn(async move {
-            let _ = pipe.write_all(text.as_bytes()).await;
-        });
-    }
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         return Err("failed to capture command output".into());
     };

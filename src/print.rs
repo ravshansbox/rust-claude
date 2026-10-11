@@ -1,8 +1,38 @@
 use crate::{
-    agent::{AgentEvent, Stats},
-    highlight, tools,
+    agent::{Agent, AgentEvent, Stats},
+    highlight,
+    images::Image,
+    tools,
 };
 use std::{collections::HashMap, io::Write};
+
+/// Answers `prompt`, then each background command as it finishes. While a
+/// turn runs, `checkpoint` holds where it started, so a stop can cancel it.
+pub async fn run<Out: Write, Err: Write>(
+    agent: &mut Agent,
+    printer: &mut Printer<Out, Err>,
+    prompt: &str,
+    images: &[Image],
+    checkpoint: &mut Option<usize>,
+) -> anyhow::Result<()> {
+    *checkpoint = Some(agent.history_len());
+    agent
+        .prompt(prompt, images, |event| printer.event(event))
+        .await?;
+    *checkpoint = None;
+    while let Some(message) = agent.next_background().await {
+        printer.flush_reads();
+        if let Some((summary, output)) = tools::background::display(&message) {
+            printer.tool(&crate::tui::tool_message("background", summary, output));
+        }
+        *checkpoint = Some(agent.history_len());
+        agent
+            .prompt(&message, &[], |event| printer.event(event))
+            .await?;
+        *checkpoint = None;
+    }
+    Ok(())
+}
 
 /// Writes a print mode run: the answer goes to `out`, tool activity and
 /// notices to `err`.
@@ -400,6 +430,35 @@ mod tests {
         assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
         assert!(plain.contains(" bash  printf"), "{plain:?}");
         assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
+    }
+
+    #[tokio::test]
+    async fn answers_each_background_command_when_it_finishes() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "bash",
+                json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
+            ),
+            text_reply("waiting"),
+            text_reply("seen it"),
+        ])
+        .await;
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut checkpoint = None;
+        let result = super::run(&mut agent, &mut printer, "go", &[], &mut checkpoint).await;
+        test_support::remove_session(&agent);
+        printer.finish(result).unwrap();
+        assert_eq!(checkpoint, None);
+        assert_eq!(String::from_utf8(out).unwrap(), "waiting\n\nseen it\n");
+        let err = String::from_utf8(err).unwrap();
+        assert!(
+            err.contains("background task 1 finished\nfinished"),
+            "{err}"
+        );
     }
 
     #[tokio::test]

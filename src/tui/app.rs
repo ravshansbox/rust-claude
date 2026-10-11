@@ -581,6 +581,14 @@ impl App {
         self.push(Role::Tool, tool_message("!", command.to_string(), diff));
     }
 
+    pub(super) fn push_background(&mut self, message: &str) -> bool {
+        let Some((summary, output)) = tools::background::display(message) else {
+            return false;
+        };
+        self.push(Role::Tool, tool_message("background", summary, output));
+        true
+    }
+
     /// Loads the prompt history once; prompts sent later are added to it.
     pub(super) fn load_history(&mut self, path: Option<PathBuf>) {
         self.history = path.as_deref().map(history::load).unwrap_or_default();
