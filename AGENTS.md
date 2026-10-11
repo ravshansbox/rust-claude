@@ -1,2 +1,2 @@
-- Keep README.md and site up to date with every change.
+- Keep README.md, docs and site up to date with every change.
 - Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` before commit.
