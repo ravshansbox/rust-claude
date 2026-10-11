@@ -69,6 +69,12 @@ fn time_until(reset: u64) -> String {
 fn format_duration(seconds: u64) -> String {
     let minutes = seconds / 60;
     let (days, hours, minutes) = (minutes / 1_440, minutes / 60 % 24, minutes % 60);
+    if days >= 2 || (days == 0 && hours >= 23 && minutes >= 30) {
+        return format!("{}d", (seconds + 43_200) / 86_400);
+    }
+    if days == 0 && hours >= 2 {
+        return format!("{}h", (seconds + 1_800) / 3_600);
+    }
     match (days, hours, minutes) {
         (0, 0, 0) => "<1m".to_string(),
         (0, 0, minutes) => format!("{minutes}m"),
@@ -160,9 +166,14 @@ mod tests {
         assert_eq!(format_duration(59), "<1m");
         assert_eq!(format_duration(45 * 60), "45m");
         assert_eq!(format_duration(2 * 3_600), "2h");
-        assert_eq!(format_duration(2 * 3_600 + 13 * 60), "2h13m");
+        assert_eq!(format_duration(3_600 + 13 * 60), "1h13m");
+        assert_eq!(format_duration(2 * 3_600 + 13 * 60), "2h");
+        assert_eq!(format_duration(2 * 3_600 + 40 * 60), "3h");
+        assert_eq!(format_duration(23 * 3_600 + 40 * 60), "1d");
+        assert_eq!(format_duration(86_400 + 4 * 3_600 + 5 * 60), "1d4h");
         assert_eq!(format_duration(3 * 86_400), "3d");
-        assert_eq!(format_duration(3 * 86_400 + 4 * 3_600 + 5 * 60), "3d4h");
+        assert_eq!(format_duration(3 * 86_400 + 4 * 3_600 + 5 * 60), "3d");
+        assert_eq!(format_duration(3 * 86_400 + 14 * 3_600), "4d");
     }
 
     #[test]
