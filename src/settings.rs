@@ -24,11 +24,11 @@ fn settings_path() -> Result<PathBuf> {
 }
 
 impl Settings {
-    /// Reads settings.json, or the defaults when it is missing or unreadable.
+    /// Reads settings.json, or the defaults when it is missing. When it
+    /// cannot be read, update checks are off, so a typo cannot turn them on.
     pub fn load() -> Self {
         settings_path()
-            .ok()
-            .and_then(|path| read_file(&path).ok())
+            .map(|path| load_file(&path))
             .unwrap_or_default()
     }
 
@@ -37,6 +37,13 @@ impl Settings {
     pub fn update(change: impl FnOnce(&mut Settings)) -> Result<()> {
         update_file(&settings_path()?, change)
     }
+}
+
+fn load_file(path: &Path) -> Settings {
+    read_file(path).unwrap_or_else(|_| Settings {
+        check_for_updates: Some(false),
+        ..Settings::default()
+    })
 }
 
 fn read_file(path: &Path) -> Result<Settings> {
@@ -63,7 +70,7 @@ fn update_file(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::update_file;
+    use super::{load_file, update_file};
 
     fn settings_file(name: &str) -> std::path::PathBuf {
         std::env::temp_dir()
@@ -102,6 +109,22 @@ mod tests {
         );
         assert!(error.ends_with("; fix or delete it"), "{error}");
         assert_eq!(text, broken);
+    }
+
+    #[test]
+    fn turns_update_checks_off_when_settings_cannot_be_read() {
+        let path = settings_file("broken-load");
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(&path, "{ \"check_for_updates\": false, }").unwrap();
+        let settings = load_file(&path);
+        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        assert_eq!(settings.check_for_updates, Some(false));
+    }
+
+    #[test]
+    fn checks_for_updates_when_settings_are_missing() {
+        let path = settings_file("missing-load");
+        assert_eq!(load_file(&path).check_for_updates, None);
     }
 
     #[test]

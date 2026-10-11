@@ -319,7 +319,7 @@ Options take priority over the settings file and apply to that run only. They wo
 
 An unknown effort level prints a warning to standard error and uses `medium`.
 
-Changing the model or effort level in the interface saves only the setting you changed. If rust-coding-agent cannot read `settings.json`, for example because it is not valid JSON or a setting has the wrong type, it uses the defaults, and changing a setting shows an error instead of replacing the file, so fix or delete it first.
+Changing the model or effort level in the interface saves only the setting you changed. If rust-coding-agent cannot read `settings.json`, for example because it is not valid JSON or a setting has the wrong type, it uses the defaults but does not check for updates, so a typo next to `"check_for_updates": false` cannot turn updates back on. Changing a setting shows an error instead of replacing the file, so fix or delete it first.
 
 ## Instructions
 
