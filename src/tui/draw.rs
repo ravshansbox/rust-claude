@@ -475,7 +475,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_a_reply_without_a_marker_or_indent() {
+    fn shows_a_reply_at_the_left_edge() {
         let mut app = crate::tui::test_support::new_app();
         app.push(Role::Assistant, "alpha beta gamma delta\n\nsecond part");
         let shown = screen_of_width(&mut app, 14);
@@ -488,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn shows_a_streamed_reply_without_a_marker_or_indent() {
+    fn shows_a_streamed_reply_at_the_left_edge() {
         let mut app = crate::tui::test_support::new_app();
         handle_agent_event(
             UiEvent::Agent(AgentEvent::Text("Before\n\n```\ncode\n```\n\nAfter".into())),
