@@ -25,7 +25,7 @@ Changing the model or effort level in the interface saves only the setting you c
 
 ## Instructions
 
-rust-coding-agent adds `AGENTS.md` from your home folder and from the current directory to the system prompt. At start, the interface lists the loaded files on one line, after the skills, MCP servers and tools, such as `loaded ~/AGENTS.md, ./AGENTS.md`.
+rust-coding-agent adds `AGENTS.md` from your home folder and from the current directory to the system prompt. At start, the interface lists the loaded files on one line, after the tools, MCP servers and skills, such as `loaded ~/AGENTS.md, ./AGENTS.md`.
 
 The system prompt tells the model to use plain English (ISO 24495-1). It also tells it to put questions to the user in bold and number them when there is more than one. Options are lettered, with the recommended option first and marked.
 
