@@ -32,7 +32,7 @@ use files::list_files;
 use futures::StreamExt;
 use keys::{Action, handle_input, may_change_screen};
 use ratatui::DefaultTerminal;
-use render::{THEME, Theme};
+use render::{BACKGROUND, THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
 use std::{
     backtrace::{Backtrace, BacktraceStatus},
@@ -125,7 +125,7 @@ async fn restart_mcp_server(
 use worker::{Request, UiEvent, agent_task, quit};
 
 pub fn dark_theme() -> bool {
-    matches!(Theme::detect(), Theme::Dark)
+    matches!(Theme::detect().0, Theme::Dark)
 }
 
 const REDRAW_INTERVAL: Duration = Duration::from_millis(16);
@@ -250,7 +250,9 @@ fn panic_message(thread: &std::thread::Thread, info: &PanicHookInfo<'_>) -> Stri
 }
 
 pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
-    THEME.get_or_init(Theme::detect);
+    let (theme, background) = Theme::detect();
+    THEME.get_or_init(|| theme);
+    BACKGROUND.get_or_init(|| background);
     let mut terminal = ratatui::init();
     let held = HeldPanics::install(std::io::stderr());
     let modes = match InputModes::enable(std::io::stdout()) {
