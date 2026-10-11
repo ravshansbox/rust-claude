@@ -74,6 +74,7 @@ Status line:
 
 Input and editing:
 
+- Input box marked with `❯`, with wrapped rows indented to line up
 - Multi-line input with Shift+Enter or Alt+Enter
 - Prompts queued while the agent works
 - `!command` to run a shell command and share its output with the model
