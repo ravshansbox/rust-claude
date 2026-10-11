@@ -376,6 +376,8 @@ pub(super) struct App {
     /// Every prompt in the history file and sent since, oldest first.
     pub(super) history: Vec<history::Entry>,
     pub(super) history_file: Option<PathBuf>,
+    /// Prompts to add to the history file, which happens off the interface.
+    pub(super) unsaved_history: Vec<(PathBuf, history::Entry)>,
     pub(super) history_search: Option<HistorySearch>,
     mcp_groups: Vec<McpGroup>,
     pub(super) selection: Option<Selection>,
@@ -483,6 +485,7 @@ impl App {
             queue: Queue::default(),
             history: Vec::new(),
             history_file: None,
+            unsaved_history: Vec::new(),
             history_search: None,
             mcp_groups: Vec::new(),
             selection: None,
@@ -582,17 +585,10 @@ impl App {
     pub(super) fn remember(&mut self, prompt: &str) {
         self.add_prompt(prompt.to_string());
         let entry = history::Entry::here(prompt);
-        let saved = self
-            .history_file
-            .as_deref()
-            .map(|path| history::append(path, &entry));
-        self.history.push(entry);
-        if let Some(Err(error)) = saved {
-            self.push(
-                Role::Event,
-                format!("failed to save prompt history: {error:#}"),
-            );
+        if let Some(path) = &self.history_file {
+            self.unsaved_history.push((path.clone(), entry.clone()));
         }
+        self.history.push(entry);
     }
 
     pub(super) fn open_history_search(&mut self) {
@@ -1335,5 +1331,29 @@ mod tests {
             let kept = rendered.lines[0] == Line::raw("cached");
             assert_eq!(kept, !depends_on_width, "{text}");
         }
+    }
+
+    #[test]
+    fn sends_a_prompt_while_another_copy_holds_the_history_lock() {
+        let folder = std::env::temp_dir().join(format!(
+            "rust-coding-agent-history-lock-{}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&folder).unwrap();
+        let path = folder.join("history.jsonl");
+        let lock = std::fs::File::create(path.with_extension("jsonl.lock")).unwrap();
+        lock.lock().unwrap();
+        let mut app = new_app();
+        app.history_file = Some(path);
+        handle_input(Event::Paste("hello".into()), &mut app, |_| {});
+        let (sent, received) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            crate::tui::test_support::press(&mut app, KeyCode::Enter);
+            let _ = sent.send(app.prompt_history.clone());
+        });
+        let history = received.recv_timeout(std::time::Duration::from_secs(2));
+        drop(lock);
+        let _ = std::fs::remove_dir_all(&folder);
+        assert_eq!(history, Ok(vec!["hello".to_string()]));
     }
 }

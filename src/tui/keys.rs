@@ -944,6 +944,12 @@ mod tests {
             search.matches(),
             [("third", None), ("first", None), ("second", None)]
         );
+        let (sender, writer) = crate::tui::history_writer(tokio::sync::mpsc::unbounded_channel().0);
+        app.unsaved_history
+            .drain(..)
+            .for_each(|entry| sender.send(entry).unwrap());
+        drop(sender);
+        writer.join().unwrap();
         let mut restarted = new_app();
         restarted.load_history(Some(path.clone()));
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
