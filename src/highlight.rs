@@ -105,7 +105,6 @@ pub fn highlight_tool(
 ) -> Option<Vec<HighlightedLine>> {
     let syntax = match name {
         "edit" | "write" => syntax_for_path(summary),
-        "python" => syntax_set().find_syntax_by_extension("py")?,
         "bash" => return Some(highlight_command(body, dark)),
         _ => return None,
     };
@@ -461,7 +460,7 @@ mod tests {
         let expected: Vec<String> = command.lines().map(|line| format!(" {line}")).collect();
         assert_eq!(texts(&lines), expected);
         let python =
-            highlight_tool("python", "", " import os\n def f(x):\n   return 1", true).unwrap();
+            highlight_tool("write", "f.py", " import os\n def f(x):\n   return 1", true).unwrap();
         assert_eq!(lines[1..4], python[..]);
         assert_eq!(lines[4], bash("python3 - <<'EOF'\nEOF")[1]);
     }

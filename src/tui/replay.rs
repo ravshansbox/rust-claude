@@ -23,7 +23,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push_tool(&name, summary, diff);
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
-            if name == "bash" || name == "python" {
+            if name == "bash" {
                 app.workspace_stale = true;
             }
             if let Some(error) = error {
@@ -612,11 +612,7 @@ mod tests {
             })
         };
         let finished_shell = || UiEvent::Shell("git switch other".into(), Ok(String::new()));
-        for event in [
-            finished_tool("bash"),
-            finished_tool("python"),
-            finished_shell(),
-        ] {
+        for event in [finished_tool("bash"), finished_shell()] {
             let mut app = new_app();
             app.workspace = "folder · stale-branch".into();
             handle_agent_event(event, &mut app);

@@ -4,7 +4,7 @@ pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "read" | "write" | "edit" => "path",
         super::web_search::NAME => "query",
-        "bash" | "python" => return String::new(),
+        "bash" => return String::new(),
         super::agent::NAME => return super::agent::summary(input),
         _ => return input.to_string(),
     };
@@ -72,9 +72,6 @@ const WRITE_PREVIEW_LINES: usize = 10;
 pub fn diff(name: &str, input: &Value) -> Option<String> {
     if name == "write" {
         return write_preview(input["content"].as_str()?);
-    }
-    if name == "python" {
-        return code_preview(input["code"].as_str()?);
     }
     if name == "bash" {
         return code_preview(input["command"].as_str()?);
@@ -238,23 +235,6 @@ mod tests {
         assert_eq!(
             diff("bash", &input),
             Some(" for x in a b; do\n  echo $x\n done".into())
-        );
-    }
-
-    #[test]
-    fn shows_all_python_code_with_one_space_per_indentation_level() {
-        let code = format!(
-            "def f():\n    if x:\n        return 1\n{}",
-            "pass\n".repeat(20)
-        );
-        let input = json!({ "code": code });
-        assert_eq!(summary("python", &input), "");
-        assert_eq!(
-            diff("python", &input),
-            Some(format!(
-                " def f():\n  if x:\n   return 1{}",
-                "\n pass".repeat(20)
-            ))
         );
     }
 
