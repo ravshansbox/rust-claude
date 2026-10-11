@@ -67,6 +67,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {
+            app.tasks.clear();
             // Esc may come just as the reply finishes; it still keeps the
             // queued prompts from being sent.
             let cancelled = app.activity == Some(Activity::Cancelling);
@@ -79,6 +80,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.finish(result, |_, ()| {});
         }
         UiEvent::Cancelled(result) => {
+            app.tasks.clear();
             app.push(Role::Event, "cancelled");
             app.restore_queued();
             app.finish(result, |_, ()| {});
@@ -743,6 +745,48 @@ mod tests {
         );
         let screen = screen(&mut app);
         assert!(screen.contains("[agent 1]  say hi"), "{screen}");
+    }
+
+    #[test]
+    fn shows_how_many_agents_run_on_the_status_line() {
+        fn status_line(app: &mut App) -> String {
+            screen(app).lines().last().unwrap().trim_end().to_string()
+        }
+        let mut app = new_app();
+        let idle = status_line(&mut app);
+        start_tasks(&mut app);
+        let mut shown = vec![status_line(&mut app)];
+        for task in 0..2 {
+            handle_agent_event(
+                UiEvent::Agent(AgentEvent::TaskDone {
+                    task,
+                    reply: Ok("done".into()),
+                    tool_calls: 0,
+                }),
+                &mut app,
+            );
+            shown.push(status_line(&mut app));
+        }
+        assert!(idle.ends_with("model:medium"), "{idle}");
+        assert_eq!(
+            shown,
+            [
+                format!("{idle} · 2 agents"),
+                format!("{idle} · 1 agent"),
+                idle.clone(),
+            ]
+        );
+    }
+
+    #[test]
+    fn stops_showing_agents_when_the_prompt_ends() {
+        for end in [UiEvent::Cancelled(Ok(())), UiEvent::Done(Ok(()))] {
+            let mut app = new_app();
+            start_tasks(&mut app);
+            handle_agent_event(end, &mut app);
+            let screen = screen(&mut app);
+            assert!(!screen.contains("agents"), "{screen}");
+        }
     }
 
     #[test]

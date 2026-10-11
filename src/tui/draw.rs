@@ -34,6 +34,11 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let mut footer_parts = vec![
         app.workspace.to_string(),
         format!("{}:{}", display_model(&app.model), app.effort),
+        match app.tasks.len() {
+            0 => String::new(),
+            1 => "1 agent".to_string(),
+            count => format!("{count} agents"),
+        },
         format_context(&app.stats),
         format_stats(&app.stats),
         format_quota(&app.stats),
