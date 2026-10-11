@@ -18,12 +18,10 @@ pub(super) fn format_stats(stats: &Stats) -> String {
     {
         parts.push(format!("CH{rate:.0}%"));
     }
-    let mut sections = vec![parts.join(" ")];
     if let Some(rate) = stats.tokens_per_second {
-        sections.push(format!("{rate:.0} tps"));
+        parts.push(format!("TS{rate:.0}"));
     }
-    sections.retain(|section| !section.is_empty());
-    sections.join(" · ")
+    parts.join(" ")
 }
 
 pub(super) fn format_quota(stats: &Stats) -> String {
@@ -117,6 +115,23 @@ mod tests {
             context_window: 0,
             quota,
         }
+    }
+
+    #[test]
+    fn joins_output_speed_to_stats() {
+        let stats = Stats {
+            usage: Usage {
+                input: 4,
+                output: 338,
+                cache_read: 6_000,
+                cache_write: 88,
+                duration_ms: 0,
+            },
+            cache_hit_rate: Some(99.0),
+            tokens_per_second: Some(42.0),
+            ..stats_with(Quota::default())
+        };
+        assert_eq!(format_stats(&stats), "↑4 ↓338 R6k W88 CH99% TS42");
     }
 
     #[test]
