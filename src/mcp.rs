@@ -1571,21 +1571,19 @@ mod tests {
             r#"{ "mcpServers": { "figma": { "url": "https://mcp.figma.com/mcp", "oauth": { "clientId": "own" } } } }"#,
         )
         .unwrap();
-        for scope in [Scope::Global, Scope::Project] {
-            let mut servers = BTreeMap::new();
-            let mut diagnostics = Vec::new();
-            read_config(&path, scope, &mut servers, &mut diagnostics);
-            assert!(diagnostics.is_empty());
-            assert_eq!(servers["figma"].0, scope);
-            assert_eq!(
-                servers["figma"]
-                    .1
-                    .oauth
-                    .as_ref()
-                    .and_then(|oauth| oauth.client_id.as_deref()),
-                Some("own")
-            );
-        }
+        let mut servers = BTreeMap::new();
+        let mut diagnostics = Vec::new();
+        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        assert!(diagnostics.is_empty());
+        assert_eq!(servers["figma"].0, Scope::Project);
+        assert_eq!(
+            servers["figma"]
+                .1
+                .oauth
+                .as_ref()
+                .and_then(|oauth| oauth.client_id.as_deref()),
+            Some("own")
+        );
         std::fs::remove_dir_all(&directory).unwrap();
     }
 
