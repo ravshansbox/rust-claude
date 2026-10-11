@@ -49,8 +49,8 @@ impl Theme {
         (shift(red), shift(green), shift(blue))
     }
 
-    fn tool_style(self) -> Style {
-        let (red, green, blue) = self.near_background(BACKGROUND.get().copied().flatten());
+    fn tool_style(self, background: Option<Colour>) -> Style {
+        let (red, green, blue) = self.near_background(background);
         Style::new().bg(Color::Rgb(red, green, blue))
     }
 
@@ -154,7 +154,7 @@ fn hard_line_breaks(text: &str) -> String {
         .join("\n")
 }
 
-pub(super) fn tool_message(name: &str, summary: String, diff: Option<String>) -> String {
+pub(crate) fn tool_message(name: &str, summary: String, diff: Option<String>) -> String {
     match diff {
         Some(diff) => format!("{name} {summary}\n{diff}"),
         None => format!("{name} {summary}"),
@@ -162,13 +162,95 @@ pub(super) fn tool_message(name: &str, summary: String, diff: Option<String>) ->
 }
 
 fn tool_message_lines(text: &str, width: u16) -> Vec<Line<'static>> {
+    let width = usize::from(width.max(1));
+    tool_lines(text, theme(), BACKGROUND.get().copied().flatten())
+        .iter()
+        .flat_map(|line| {
+            wrapped_rows(line, width).into_iter().map(move |row| {
+                let used: usize = row
+                    .iter()
+                    .map(|(grapheme, _)| usize::from(grapheme.cell_width()))
+                    .sum();
+                let mut spans = joined_spans(row);
+                spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
+                Line::from(spans).style(line.style)
+            })
+        })
+        .collect()
+}
+
+/// A tool call as lines with ANSI colour codes, for print mode. Each line
+/// ends by filling the rest of its row with its background, except a line
+/// that fills its last row, where clearing would remove the last character.
+pub(crate) fn ansi_tool_lines(
+    text: &str,
+    dark: bool,
+    background: Option<Colour>,
+    columns: Option<u16>,
+) -> Vec<String> {
+    let theme = if dark { Theme::Dark } else { Theme::Light };
+    tool_lines(text, theme, background)
+        .iter()
+        .map(|line| ansi_line(line, columns))
+        .collect()
+}
+
+fn ansi_line(line: &Line, columns: Option<u16>) -> String {
+    let sgr = |style: Style| {
+        let mut codes = String::new();
+        if let Some(Color::Rgb(red, green, blue)) = style.bg {
+            codes.push_str(&format!("\x1b[48;2;{red};{green};{blue}m"));
+        }
+        if let Some(Color::Rgb(red, green, blue)) = style.fg {
+            codes.push_str(&format!("\x1b[38;2;{red};{green};{blue}m"));
+        }
+        codes
+    };
+    let mut spans: Vec<(String, Style)> = line
+        .spans
+        .iter()
+        .map(|span| {
+            let text = crate::highlight::strip_controls(&span.content).into_owned();
+            (text, line.style.patch(span.style))
+        })
+        .collect();
+    while let Some((text, style)) = spans.last_mut()
+        && style.bg == line.style.bg
+    {
+        let trimmed = text.trim_end().len();
+        text.truncate(trimmed);
+        if !text.is_empty() {
+            break;
+        }
+        spans.pop();
+    }
+    let mut ansi = String::new();
+    let mut width = 0;
+    for (text, style) in &spans {
+        ansi.push_str("\x1b[0m");
+        ansi.push_str(&sgr(*style));
+        ansi.push_str(text);
+        width += usize::from(text.as_str().cell_width());
+    }
+    ansi.push_str(&sgr(Style::new().bg(line.style.bg.unwrap_or(Color::Reset))));
+    let fills_row =
+        columns.is_some_and(|columns| width > 0 && width % usize::from(columns.max(1)) == 0);
+    if !fills_row {
+        ansi.push_str("\x1b[K");
+    }
+    ansi.push_str("\x1b[0m");
+    ansi
+}
+
+/// The tool call's header and body, each line with the tool background.
+fn tool_lines(text: &str, theme: Theme, background: Option<Colour>) -> Vec<Line<'static>> {
     let (first, body) = match text.split_once('\n') {
         Some((first, body)) => (first, Some(body)),
         None => (text, None),
     };
     let (name, path) = first.split_once(' ').unwrap_or((first, ""));
-    let mut lines = vec![tool_header(first)];
-    let dark = matches!(theme(), Theme::Dark);
+    let mut lines = vec![tool_header(first, theme)];
+    let dark = matches!(theme, Theme::Dark);
     if let Some(body) = body {
         match crate::highlight::highlight_tool(name, path, body, dark) {
             Some(highlighted) => lines.extend(
@@ -182,32 +264,23 @@ fn tool_message_lines(text: &str, width: u16) -> Vec<Line<'static>> {
             ),
         }
     }
-    let width = usize::from(width.max(1));
-    let background = theme().tool_style();
+    let style = theme.tool_style(background);
     lines
-        .iter()
-        .flat_map(|line| {
-            let style = background.patch(line.style);
-            wrapped_rows(line, width).into_iter().map(move |row| {
-                let used: usize = row
-                    .iter()
-                    .map(|(grapheme, _)| usize::from(grapheme.cell_width()))
-                    .sum();
-                let mut spans = joined_spans(row);
-                spans.push(Span::raw(" ".repeat(width.saturating_sub(used))));
-                Line::from(spans).style(style)
-            })
+        .into_iter()
+        .map(|line| {
+            let line_style = style.patch(line.style);
+            line.style(line_style)
         })
         .collect()
 }
 
-fn tool_header(first: &str) -> Line<'static> {
+fn tool_header(first: &str, theme: Theme) -> Line<'static> {
     let (name, rest) = match first.split_once("] ") {
         Some((name, rest)) if name.starts_with('[') => (&first[..=name.len()], rest),
         _ => first.split_once(' ').unwrap_or((first, "")),
     };
     Line::from(vec![
-        Span::styled(format!(" {name} "), theme().highlight_style()),
+        Span::styled(format!(" {name} "), theme.highlight_style()),
         Span::raw(format!(" {rest}")),
     ])
 }
@@ -486,6 +559,26 @@ mod tests {
             }
         }
         assert_eq!(buffer[(0, 0)].bg, Color::Rgb(230, 230, 230));
+    }
+
+    #[test]
+    fn keeps_colours_but_not_escapes_from_the_text_in_print_mode() {
+        let text = "write notes.txt\n+a\x1b]52;c;aGk=\x07b\x1b[2J\u{9b}c\r";
+        let line = &ansi_tool_lines(text, true, None, None)[1];
+        assert!(line.starts_with("\x1b[0m\x1b[48;2;"), "{line:?}");
+        assert!(line.ends_with("\x1b[K\x1b[0m"), "{line:?}");
+        let text: String = line
+            .split('\x1b')
+            .map(|part| part.split_once(['m', 'K']).map_or(part, |(_, text)| text))
+            .collect();
+        assert_eq!(text, "+a]52;c;aGk=b[2Jc");
+    }
+
+    #[test]
+    fn leaves_a_print_mode_line_that_fills_its_row_uncleared() {
+        let lines = ansi_tool_lines("! ls\nabcd", false, None, Some(4));
+        assert!(!lines[1].contains("\x1b[K"), "{lines:?}");
+        assert!(lines[0].contains("\x1b[K"), "{lines:?}");
     }
 
     #[test]

@@ -12,6 +12,7 @@ pub struct Printer<Out, Err> {
     out_terminal: bool,
     colour: bool,
     dark: bool,
+    background: Option<highlight::Colour>,
     printed: bool,
     separate: bool,
     line_open: bool,
@@ -19,13 +20,21 @@ pub struct Printer<Out, Err> {
 }
 
 impl<Out: Write, Err: Write> Printer<Out, Err> {
-    pub fn new(out: Out, out_terminal: bool, err: Err, colour: bool, dark: bool) -> Self {
+    pub fn new(
+        out: Out,
+        out_terminal: bool,
+        err: Err,
+        colour: bool,
+        dark: bool,
+        background: Option<highlight::Colour>,
+    ) -> Self {
         Self {
             out,
             err,
             out_terminal,
             colour,
             dark,
+            background,
             printed: false,
             separate: false,
             line_open: false,
@@ -64,25 +73,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                     return;
                 }
                 self.flush_reads();
-                if summary.is_empty() {
-                    self.line(&name);
-                } else {
-                    self.line(&format!("{name} {summary}"));
-                }
-                if let Some(diff) = diff {
-                    match highlight::highlight_tool(&name, &summary, &diff, self.dark) {
-                        Some(lines) if self.colour => {
-                            for line in lines {
-                                let _ = writeln!(
-                                    self.err,
-                                    "{}",
-                                    highlight::ansi_line(&line, self.dark)
-                                );
-                            }
-                        }
-                        _ => self.line(&diff),
-                    }
-                }
+                self.tool(&name, summary, diff);
             }
             AgentEvent::ToolDone {
                 name,
@@ -134,9 +125,9 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
 
     pub fn flush_reads(&mut self) {
         if !self.reads.is_empty() {
-            let summary = format!("read {}", self.reads.summary());
-            self.line(&summary);
+            let summary = self.reads.summary();
             self.reads.clear();
+            self.tool("read", summary, None);
         }
     }
 
@@ -151,6 +142,25 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         };
         result?;
         Ok(ended?)
+    }
+
+    fn tool(&mut self, name: &str, summary: String, diff: Option<String>) {
+        if !self.colour {
+            if summary.is_empty() {
+                self.line(name);
+            } else {
+                self.line(&format!("{name} {summary}"));
+            }
+            if let Some(diff) = diff {
+                self.line(&diff);
+            }
+            return;
+        }
+        let columns = crossterm::terminal::size().ok().map(|(columns, _)| columns);
+        let text = crate::tui::tool_message(name, summary, diff);
+        for line in crate::tui::ansi_tool_lines(&text, self.dark, self.background, columns) {
+            let _ = writeln!(self.err, "{line}");
+        }
     }
 
     fn line(&mut self, text: &str) {
@@ -174,7 +184,7 @@ mod tests {
             plain.push_str(&rest[..start]);
             let code = &rest[start + 2..];
             match code.find(|c: char| !c.is_ascii_digit() && c != ';') {
-                Some(end) if code[end..].starts_with('m') => rest = &code[end + 1..],
+                Some(end) if code[end..].starts_with(['m', 'K']) => rest = &code[end + 1..],
                 _ => {
                     plain.push_str("\x1b[");
                     rest = code;
@@ -215,7 +225,7 @@ mod tests {
         .await;
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let mut printer = Printer::new(&mut out, true, &mut err, true, true);
+        let mut printer = Printer::new(&mut out, true, &mut err, true, true, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         printer.flush_reads();
         let finished = printer.finish(result);
@@ -225,11 +235,11 @@ mod tests {
         let err = String::from_utf8(err).unwrap();
 
         assert_eq!(out, "done]52;c;aGk=[2J2J\n");
-        assert!(err.contains("\x1b[39m"), "colours missing: {err:?}");
+        assert!(err.contains("\x1b[38;2;"), "colours missing: {err:?}");
         let plain = without_colours(&err);
         assert!(!has_controls(&plain), "control characters in {plain:?}");
         assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
-        assert!(plain.contains("bash\nprintf"), "{plain:?}");
+        assert!(plain.contains(" bash \nprintf"), "{plain:?}");
         assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
     }
 
@@ -246,7 +256,7 @@ mod tests {
             ])
             .await;
             let mut err = Vec::new();
-            let mut printer = Printer::new(std::io::sink(), true, &mut err, true, dark);
+            let mut printer = Printer::new(std::io::sink(), true, &mut err, true, dark, None);
             let (_, result) =
                 test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
             let finished = printer.finish(result);
@@ -271,14 +281,14 @@ mod tests {
         ])
         .await;
         let mut err = Vec::new();
-        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true);
+        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
         finished.unwrap();
         let err = String::from_utf8(err).unwrap();
         let plain = without_colours(&err);
         assert!(
-            plain.contains("bash\necho \"$HOME\" | wc -c\n"),
+            plain.contains(" bash \necho \"$HOME\" | wc -c\n"),
             "{plain:?}"
         );
         let command = err.lines().find(|line| line.contains("echo")).unwrap();
@@ -286,11 +296,47 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn fills_tool_calls_with_a_background_near_the_terminal_one() {
+        let api = MockApi::start(vec![
+            tool_reply("call-1", "bash", json!({ "command": "echo hi" })),
+            text_reply("done"),
+        ])
+        .await;
+        let mut err = Vec::new();
+        let mut printer = Printer::new(
+            std::io::sink(),
+            true,
+            &mut err,
+            true,
+            true,
+            Some((30, 30, 30)),
+        );
+        let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
+        printer.finish(result).unwrap();
+        let err = String::from_utf8(err).unwrap();
+        let lines: Vec<&str> = err.lines().take(2).collect();
+        assert!(
+            lines[0].starts_with("\x1b[0m\x1b[48;2;50;50;50m\x1b[38;2;220;220;220m bash "),
+            "{lines:?}"
+        );
+        for line in &lines {
+            assert!(
+                line.ends_with("\x1b[48;2;42;42;42m\x1b[K\x1b[0m"),
+                "{lines:?}"
+            );
+        }
+        assert_eq!(
+            without_colours(&err).lines().take(2).collect::<Vec<_>>(),
+            [" bash ", "echo hi"]
+        );
+    }
+
+    #[tokio::test]
     async fn writes_piped_answers_byte_for_byte() {
         let answer = format!("done{ESCAPES}\r\n");
         let api = MockApi::start(vec![text_reply(&answer)]).await;
         let mut out = Vec::new();
-        let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false);
+        let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
         finished.unwrap();
@@ -313,7 +359,7 @@ mod tests {
         let mut outputs = Vec::new();
         for _ in 0..2 {
             let mut out = Vec::new();
-            let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false);
+            let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false, None);
             let result = agent.prompt("go", &[], |event| printer.event(event)).await;
             let finished = printer.finish(result);
             outputs.push((String::from_utf8(out).unwrap(), finished.is_err()));
@@ -350,7 +396,7 @@ mod tests {
         .await;
         let mut out = Vec::new();
         let mut err = Vec::new();
-        let mut printer = Printer::new(&mut out, false, &mut err, false, false);
+        let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
         finished.unwrap();
