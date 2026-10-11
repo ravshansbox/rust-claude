@@ -114,12 +114,8 @@ mod tests {
 
     fn stats_with(quota: Quota) -> Stats {
         Stats {
-            usage: Usage::default(),
-            cache_hit_rate: None,
-            tokens_per_second: None,
-            context_tokens: None,
-            context_window: 0,
             quota,
+            ..Default::default()
         }
     }
 
