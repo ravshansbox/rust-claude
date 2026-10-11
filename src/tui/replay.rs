@@ -795,6 +795,32 @@ mod tests {
     }
 
     #[test]
+    fn shows_how_many_background_commands_run_on_the_status_line() {
+        let mut app = new_app();
+        let idle = screen(&mut app)
+            .lines()
+            .last()
+            .unwrap()
+            .trim_end()
+            .to_string();
+        start_tasks(&mut app);
+        handle_agent_event(
+            UiEvent::Agent(AgentEvent::Stats(crate::agent::Stats {
+                background: 2,
+                ..Default::default()
+            })),
+            &mut app,
+        );
+        let shown = screen(&mut app)
+            .lines()
+            .last()
+            .unwrap()
+            .trim_end()
+            .to_string();
+        assert_eq!(shown, format!("{idle} · 2 agents · 2 background"));
+    }
+
+    #[test]
     fn stops_showing_agents_when_the_prompt_ends() {
         for end in [UiEvent::Cancelled(Ok(())), UiEvent::Done(Ok(()))] {
             let mut app = new_app();

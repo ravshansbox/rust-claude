@@ -40,6 +40,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             1 => "1 agent".to_string(),
             count => format!("{count} agents"),
         },
+        match app.stats.background {
+            0 => String::new(),
+            count => format!("{count} background"),
+        },
         format_context(&app.stats),
         format_stats(&app.stats),
         format_quota(&app.stats),

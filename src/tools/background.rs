@@ -80,6 +80,10 @@ impl Background {
         self.running.is_empty()
     }
 
+    pub fn len(&self) -> usize {
+        self.running.len()
+    }
+
     /// Waits for the next command to finish, and gives the message that
     /// tells the model, or `None` when none is running.
     pub async fn next(&mut self) -> Option<String> {
