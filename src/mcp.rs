@@ -270,12 +270,6 @@ impl Drop for ServerGroup {
     }
 }
 
-fn frame(message: &Value) -> String {
-    let mut line = message.to_string();
-    line.push('\n');
-    line
-}
-
 /// Writes each queued line in full, even if the request that queued it was
 /// cancelled, so the server never sees a line cut off midway.
 async fn write_messages(
@@ -284,7 +278,7 @@ async fn write_messages(
     pending: Arc<Pending>,
 ) {
     while let Some(message) = messages.recv().await {
-        let line = frame(&message);
+        let line = format!("{message}\n");
         if stdin.write_all(line.as_bytes()).await.is_err() || stdin.flush().await.is_err() {
             break;
         }
