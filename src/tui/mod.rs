@@ -581,12 +581,13 @@ fn instructions_line<'a>(labels: impl IntoIterator<Item = &'a str>) -> Option<St
 
 fn tools_line() -> String {
     let definitions = crate::tools::definitions();
-    let names: Vec<&str> = definitions
+    let mut names: Vec<&str> = definitions
         .as_array()
         .into_iter()
         .flatten()
         .filter_map(|definition| definition["name"].as_str())
         .collect();
+    names.sort_unstable();
     format!("loaded tools: {}", names.join(", "))
 }
 
@@ -629,7 +630,7 @@ mod tests {
     fn lists_built_in_tools_on_one_line() {
         assert_eq!(
             tools_line(),
-            "loaded tools: bash, read, write, edit, agent, bash_stop, web_search"
+            "loaded tools: agent, bash, bash_stop, edit, read, web_search, write"
         );
     }
 
