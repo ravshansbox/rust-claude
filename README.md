@@ -64,7 +64,7 @@ Show all options with `-h` or `--help`.
 
 ## Development
 
-Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Run `git config core.hooksPath .githooks` once per clone to reject commit messages that are not [conventional commits](https://www.conventionalcommits.org). See [Development](docs/development.md) for CI, releases and the website.
+Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Write commit messages as [conventional commits](https://www.conventionalcommits.org). See [Development](docs/development.md) for CI, releases and the website.
 
 ## Licence
 

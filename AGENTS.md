@@ -1,2 +1,3 @@
 - Keep README.md, docs and site up to date with every change.
 - Run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test` before commit.
+- Write commit messages as conventional commits with type build, chore, ci, docs, feat, fix, perf, refactor, style or test.
