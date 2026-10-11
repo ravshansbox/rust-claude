@@ -169,3 +169,20 @@ fn stops_when_the_download_fails() {
     );
     assert!(setup.read("cargo.log").is_empty());
 }
+
+#[test]
+fn moves_the_old_config_folder_to_the_new_one() {
+    let setup = Setup::new("old-config").with_cargo();
+    let old = setup.root.join("home/.rust-claude");
+    std::fs::create_dir_all(&old).unwrap();
+    std::fs::write(old.join("auth.json"), "{}").unwrap();
+    let output = setup.install();
+    assert!(output.status.success(), "{}", stderr(&output));
+    assert!(
+        setup
+            .root
+            .join("home/.rust-coding-agent/auth.json")
+            .exists()
+    );
+    assert!(!old.exists());
+}

@@ -23,7 +23,13 @@ pub fn dir() -> Option<PathBuf> {
 
 #[cfg(not(test))]
 fn default_dir() -> Option<PathBuf> {
-    std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".rust-coding-agent"))
+    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let dir = home.join(".rust-coding-agent");
+    let old = home.join(".rust-claude");
+    if !dir.exists() && old.is_dir() {
+        let _ = std::fs::rename(&old, &dir);
+    }
+    Some(dir)
 }
 
 #[cfg(test)]
