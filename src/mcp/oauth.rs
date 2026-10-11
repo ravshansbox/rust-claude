@@ -306,13 +306,14 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         .and_then(|value| value.to_str().ok())
         .unwrap_or_default()
         .to_string();
-    let mut resource_urls = Vec::new();
-    resource_urls.extend(challenge_parameter(&challenge, "resource_metadata"));
-    resource_urls.push(well_known(&url, "oauth-protected-resource"));
-    resource_urls.push(format!(
-        "{}/.well-known/oauth-protected-resource",
-        url.origin().ascii_serialization()
-    ));
+    let origin = url.origin().ascii_serialization();
+    let resource_urls: Vec<String> = challenge_parameter(&challenge, "resource_metadata")
+        .into_iter()
+        .chain([
+            well_known(&url, "oauth-protected-resource"),
+            format!("{origin}/.well-known/oauth-protected-resource"),
+        ])
+        .collect();
     let resource_metadata = first_json(client, &resource_urls, |metadata| {
         metadata["authorization_servers"][0].is_string()
     })
@@ -322,7 +323,7 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             .as_str()
             .unwrap_or_default()
             .to_string(),
-        None => url.origin().ascii_serialization(),
+        None => origin,
     };
     let resource = resource_metadata
         .as_ref()
