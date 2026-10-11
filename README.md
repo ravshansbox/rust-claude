@@ -294,7 +294,7 @@ It also shows how much of the 5-hour and 7-day quota is left and when each reset
 
 ## Notifications
 
-When a run finishes or fails while the terminal window is not in focus, rust-coding-agent sends a terminal notification (OSC 9), for example `Done` or `Failed: overloaded`. Cancelled runs do not notify, and nor does print mode. Terminals that support OSC 9 include iTerm2, Ghostty, WezTerm, kitty and Windows Terminal; other terminals ignore it. Set `notifications` to `false` in `settings.json` to turn it off.
+When a run finishes or fails while the terminal window is not in focus, rust-coding-agent sends a terminal notification (OSC 9), for example `Done` or `Failed: overloaded`. Cancelled runs do not notify, and nor does print mode. Terminals that support OSC 9 include iTerm2, Ghostty, WezTerm, kitty and Windows Terminal; other terminals ignore it. Inside tmux, the notification goes through tmux passthrough, so set `allow-passthrough` to `on` in tmux, or to `all` to get notifications from panes that are not visible. Set `notifications` to `false` in `settings.json` to turn it off.
 
 ## Settings
 
