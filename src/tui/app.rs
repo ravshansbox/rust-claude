@@ -890,9 +890,10 @@ impl App {
     pub(super) fn finish_mcp_server(&mut self, added: crate::mcp::Added) {
         match self.mcp_server(&added.name) {
             Some((index, server)) => {
+                let needs_sign_in = added.summary == format!("{} (needs sign-in)", added.name);
                 server.summary = Some(added.summary);
                 self.show_mcp_group(index);
-                if added.failed {
+                if added.failed && !needs_sign_in {
                     self.push(Role::Event, added.status);
                 }
             }
@@ -1130,13 +1131,8 @@ mod tests {
             .expect(&shown);
         let project = shown.find("project MCP servers: ⠋ docs").expect(&shown);
         let hello = shown.find("hello").expect(&shown);
-        let failure = shown
-            .find("MCP server figma needs sign-in: run /mcp login figma")
-            .expect(&shown);
-        assert!(
-            global < project && project < hello && hello < failure,
-            "{shown}"
-        );
+        assert!(global < project && project < hello, "{shown}");
+        assert!(!shown.contains("MCP server figma needs sign-in"), "{shown}");
     }
 
     #[test]
