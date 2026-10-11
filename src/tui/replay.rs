@@ -823,7 +823,7 @@ mod tests {
         ] {
             handle_agent_event(UiEvent::Agent(event), &mut app);
         }
-        let shown = "[agent 1] say hi · 2 tool calls · 4%/1m · ↓71k 107t/s";
+        let shown = "[agent 1] say hi · 2 tool calls · 4%/1m · 107t/s";
         assert_eq!(texts(&app)[1], shown);
         handle_agent_event(
             UiEvent::Agent(AgentEvent::TaskDone {
