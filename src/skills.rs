@@ -293,21 +293,13 @@ fn split_frontmatter(content: &str) -> (Option<String>, String) {
 }
 
 fn parse_frontmatter(content: &str) -> Result<Value> {
-    match split_frontmatter(content).0 {
-        Some(yaml) => {
-            let value: Value = yaml_serde::from_str(&yaml)?;
-            Ok(if value.is_null() {
-                Value::Object(Default::default())
-            } else {
-                value
-            })
-        }
-        None => Ok(Value::Object(Default::default())),
-    }
-}
-
-fn strip_frontmatter(content: &str) -> String {
-    split_frontmatter(content).1
+    let value: Option<Value> = split_frontmatter(content)
+        .0
+        .map(|yaml| yaml_serde::from_str(&yaml))
+        .transpose()?;
+    Ok(value
+        .filter(|value| !value.is_null())
+        .unwrap_or_else(|| Value::Object(Default::default())))
 }
 
 fn validate_name(name: &str) -> Vec<String> {
@@ -478,7 +470,7 @@ pub fn expand_command(text: &str, skills: &[Skill]) -> Result<String> {
     };
     let content = std::fs::read_to_string(&skill.path)
         .with_context(|| format!("failed to read skill {}", skill.path.display()))?;
-    let body = strip_frontmatter(&content);
+    let body = split_frontmatter(&content).1;
     let block = format!(
         "<skill name=\"{}\" location=\"{}\">\nReferences are relative to {}.\n\n{}\n</skill>",
         escape_xml(&skill.name),
