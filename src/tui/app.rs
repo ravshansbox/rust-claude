@@ -569,18 +569,11 @@ impl App {
 
     fn show_version(&mut self) {
         let text = self.version_line.clone();
-        self.version_message = Some(self.show_event(self.version_message, text));
-    }
-
-    fn show_event(&mut self, message: Option<usize>, text: String) -> usize {
-        match message {
-            Some(message) => {
-                self.messages[message].replace(text);
-                message
-            }
+        match self.version_message {
+            Some(message) => self.messages[message].replace(text),
             None => {
                 self.push(Role::Event, text);
-                self.messages.len() - 1
+                self.version_message = Some(self.messages.len() - 1);
             }
         }
     }
@@ -939,8 +932,13 @@ impl App {
 
     fn show_mcp_group(&mut self, index: usize) {
         let text = group_text(self.spinner_frame, &self.mcp_groups[index]);
-        let message = self.show_event(self.mcp_groups[index].message, text);
-        self.mcp_groups[index].message = Some(message);
+        match self.mcp_groups[index].message {
+            Some(message) => self.messages[message].replace(text),
+            None => {
+                self.push(Role::Event, text);
+                self.mcp_groups[index].message = Some(self.messages.len() - 1);
+            }
+        }
     }
 
     pub(super) fn can_queue(&self) -> bool {
