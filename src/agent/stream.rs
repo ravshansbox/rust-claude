@@ -4,7 +4,6 @@ use super::{
 };
 use crate::{models, tools};
 use anyhow::{Result, bail};
-use futures::StreamExt;
 use serde_json::{Value, json};
 use std::time::Instant;
 
@@ -58,7 +57,7 @@ impl Agent {
         // The API may turn down a token before it expires, as when the
         // sign-in was revoked; renewing it is then worth one more try.
         let mut renewed = false;
-        let response = loop {
+        let mut response = loop {
             let response = self
                 .http
                 .post(format!("{}/v1/messages", self.api_base))
@@ -110,9 +109,8 @@ impl Agent {
         let mut usage = Usage::default();
         let mut first_token: Option<Instant> = None;
         let mut buffer: Vec<u8> = Vec::new();
-        let mut stream = response.bytes_stream();
 
-        while let Some(chunk) = stream.next().await {
+        while let Some(chunk) = response.chunk().await.transpose() {
             let chunk = match chunk {
                 Ok(chunk) => chunk,
                 Err(error) if content.is_empty() => {
