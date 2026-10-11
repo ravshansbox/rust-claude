@@ -43,6 +43,8 @@ struct ServerConfig {
     url: Option<String>,
     #[serde(default)]
     headers: HashMap<String, String>,
+    #[serde(rename = "headersHelper")]
+    headers_helper: Option<String>,
     oauth: Option<OAuthConfig>,
     enabled: Option<bool>,
     timeout: Option<u64>,
@@ -56,12 +58,13 @@ struct OAuthConfig {
 }
 
 /// HTTP servers sign in with OAuth unless their entry sets an
-/// `Authorization` header.
+/// `Authorization` header or a `headersHelper`.
 fn uses_oauth(config: &ServerConfig) -> bool {
-    !config
-        .headers
-        .keys()
-        .any(|name| name.eq_ignore_ascii_case("authorization"))
+    config.headers_helper.is_none()
+        && !config
+            .headers
+            .keys()
+            .any(|name| name.eq_ignore_ascii_case("authorization"))
 }
 
 fn valid_server_name(name: &str) -> bool {
@@ -372,6 +375,7 @@ async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mu
 
 const MAX_ERROR_BODY: usize = 500;
 const NEEDS_SIGN_IN: &str = "needs sign-in";
+const HEADERS_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
 
 struct PostError {
@@ -387,7 +391,10 @@ struct PostError {
 struct Http {
     client: reqwest::Client,
     url: String,
-    headers: reqwest::header::HeaderMap,
+    /// The headers from the entry, before the `headersHelper` ones.
+    static_headers: reqwest::header::HeaderMap,
+    headers: Mutex<reqwest::header::HeaderMap>,
+    headers_helper: Option<HeadersHelper>,
     session: Mutex<Option<String>>,
     protocol_version: Mutex<Option<String>>,
     timeout: Duration,
@@ -396,6 +403,60 @@ struct Http {
     renewing: tokio::sync::Mutex<()>,
     /// Set when the server signs in with OAuth.
     oauth: Option<OAuthSession>,
+}
+
+struct HeadersHelper {
+    command: String,
+    server_name: String,
+}
+
+impl HeadersHelper {
+    /// Runs the command and reads the JSON object of headers it prints.
+    async fn run(&self, url: &str) -> Result<reqwest::header::HeaderMap, String> {
+        let output = tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&self.command)
+            .env("CLAUDE_CODE_MCP_SERVER_NAME", &self.server_name)
+            .env("CLAUDE_CODE_MCP_SERVER_URL", url)
+            .stdin(Stdio::null())
+            .kill_on_drop(true)
+            .output();
+        let output = tokio::time::timeout(HEADERS_HELPER_TIMEOUT, output)
+            .await
+            .map_err(|_| {
+                format!(
+                    "headersHelper timed out after {} seconds",
+                    HEADERS_HELPER_TIMEOUT.as_secs()
+                )
+            })?
+            .map_err(|error| format!("cannot run headersHelper: {error}"))?;
+        if !output.status.success() {
+            let status = output
+                .status
+                .code()
+                .map_or("a signal".to_string(), |code| format!("status {code}"));
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            let stderr: String = stderr.trim().chars().take(MAX_ERROR_BODY).collect();
+            return Err(if stderr.is_empty() {
+                format!("headersHelper exited with {status}")
+            } else {
+                format!("headersHelper exited with {status}: {stderr}")
+            });
+        }
+        let invalid = || "headersHelper must print a JSON object of strings".to_string();
+        let headers: HashMap<String, Value> =
+            serde_json::from_slice(&output.stdout).map_err(|_| invalid())?;
+        let mut map = reqwest::header::HeaderMap::new();
+        for (name, value) in headers {
+            let value = value.as_str().ok_or_else(invalid)?;
+            let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| format!("headersHelper gave invalid header name {name:?}"))?;
+            let value = reqwest::header::HeaderValue::from_str(value)
+                .map_err(|_| format!("headersHelper gave invalid value for header {name}"))?;
+            map.insert(header_name, value);
+        }
+        Ok(map)
+    }
 }
 
 struct OAuthSession {
@@ -440,7 +501,7 @@ impl Drop for HttpSession {
             .0
             .client
             .delete(&self.0.url)
-            .headers(self.0.headers.clone())
+            .headers(self.0.current_headers())
             .header("mcp-session-id", session)
             .timeout(Duration::from_secs(1));
         if let Some(saved) = self.0.oauth.as_ref().and_then(OAuthSession::current) {
@@ -575,12 +636,52 @@ impl Http {
         Ok(Some(renewed.access_token))
     }
 
+    fn current_headers(&self) -> reqwest::header::HeaderMap {
+        self.headers
+            .lock()
+            .map(|headers| headers.clone())
+            .unwrap_or_default()
+    }
+
+    /// Runs the `headersHelper`, if any, and sends its headers from now on.
+    async fn run_headers_helper(&self) -> Result<(), PostError> {
+        let Some(helper) = &self.headers_helper else {
+            return Ok(());
+        };
+        let dynamic = helper.run(&self.url).await.map_err(|message| PostError {
+            message,
+            transient: false,
+            expired: None,
+        })?;
+        let mut headers = self.static_headers.clone();
+        for (name, value) in &dynamic {
+            headers.insert(name, value.clone());
+        }
+        if let Ok(mut current) = self.headers.lock() {
+            *current = headers;
+        }
+        Ok(())
+    }
+
     async fn post(&self, message: &Value) -> Result<reqwest::Response, PostError> {
+        let initialize = message["method"] == "initialize";
+        if initialize {
+            self.run_headers_helper().await?;
+        }
         let mut rejected = None;
+        let mut helper_ran_again = initialize;
         loop {
             let token = self.access_token(rejected.as_deref()).await?;
             let (response, session) = self.post_once(message, token.as_deref()).await?;
             let Some(oauth) = &self.oauth else {
+                if response.status().as_u16() == 401
+                    && self.headers_helper.is_some()
+                    && !helper_ran_again
+                {
+                    helper_ran_again = true;
+                    self.run_headers_helper().await?;
+                    continue;
+                }
                 return self.check(message, response, session).await;
             };
             let status = response.status().as_u16();
@@ -610,7 +711,7 @@ impl Http {
         let mut request = self
             .client
             .post(&self.url)
-            .headers(self.headers.clone())
+            .headers(self.current_headers())
             .header(
                 reqwest::header::ACCEPT,
                 "application/json, text/event-stream",
@@ -843,7 +944,12 @@ impl Connection {
         let http = Arc::new(Http {
             client,
             url: url.to_string(),
-            headers,
+            headers: Mutex::new(headers.clone()),
+            static_headers: headers,
+            headers_helper: config.headers_helper.clone().map(|command| HeadersHelper {
+                command,
+                server_name: name.to_string(),
+            }),
             session: Mutex::new(None),
             protocol_version: Mutex::new(None),
             timeout,
@@ -2056,6 +2162,130 @@ done
             mcp.add(start("unset".into(), Scope::Global, config).await)
                 .status,
             "MCP server unset failed: header Authorization uses RUST_CODING_AGENT_UNSET_TOKEN, which is not set"
+        );
+    }
+
+    #[tokio::test]
+    async fn sends_headers_from_the_headers_helper() {
+        let (url, requests) = http_server(http_mcp).await;
+        let mut config = http_config(&url);
+        config.headers.insert("X-Static".into(), "kept".into());
+        config
+            .headers
+            .insert("Authorization".into(), "Bearer static".into());
+        config.headers_helper = Some(
+            r#"printf '{"Authorization": "Bearer %s %s"}' "$CLAUDE_CODE_MCP_SERVER_NAME" "$CLAUDE_CODE_MCP_SERVER_URL""#
+                .into(),
+        );
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, config).await)
+                .status,
+            "loaded global MCP server: web (1 tools)"
+        );
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
+        for method in ["initialize", "tools/call"] {
+            let request = &requests_for(&requests, method)[0];
+            assert_eq!(
+                request.headers["authorization"],
+                format!("Bearer web {url}")
+            );
+            assert_eq!(request.headers["x-static"], "kept");
+        }
+    }
+
+    #[tokio::test]
+    async fn reports_a_failing_headers_helper() {
+        let (url, _) = http_server(http_mcp).await;
+        let mut mcp = Mcp::default();
+        for (helper, reason) in [
+            (
+                "echo oops >&2; exit 3",
+                "headersHelper exited with status 3: oops",
+            ),
+            (
+                "echo '[1]'",
+                "headersHelper must print a JSON object of strings",
+            ),
+            (
+                r#"echo '{"A": 1}'"#,
+                "headersHelper must print a JSON object of strings",
+            ),
+            (
+                r#"echo '{"A B": "c"}'"#,
+                "headersHelper gave invalid header name \"A B\"",
+            ),
+        ] {
+            let mut config = http_config(&url);
+            config.headers_helper = Some(helper.into());
+            assert_eq!(
+                mcp.add(start("web".into(), Scope::Global, config).await)
+                    .status,
+                format!("MCP server web failed: {reason}"),
+                "{helper}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn does_not_sign_in_with_oauth_when_a_headers_helper_is_set() {
+        let (url, _) = http_server(|_| HttpReply::status(401, "")).await;
+        let mut config = http_config(&url);
+        config.headers_helper = Some("echo '{}'".into());
+        let mut mcp = Mcp::default();
+        assert_eq!(
+            mcp.add(start("web".into(), Scope::Global, config).await)
+                .status,
+            "MCP server web failed: server answered initialize with status 401"
+        );
+    }
+
+    #[tokio::test]
+    async fn runs_the_headers_helper_again_after_401_and_for_a_new_session() {
+        let directory = std::env::temp_dir().join(format!("mcp-helper-{}", std::process::id()));
+        std::fs::create_dir_all(&directory).unwrap();
+        let counter = directory.join("count");
+        let _ = std::fs::remove_file(&counter);
+        let sessions = Arc::new(AtomicU64::new(0));
+        let issued = sessions.clone();
+        let (url, requests) = http_server(move |request| {
+            let session = request.headers.get("mcp-session-id").map(String::as_str);
+            let token = request.headers.get("authorization").map(String::as_str);
+            match request.body["method"].as_str() {
+                Some("initialize") => {
+                    let number = issued.fetch_add(1, Ordering::SeqCst) + 1;
+                    http_mcp(request).with_header("mcp-session-id", &format!("s{number}"))
+                }
+                Some("tools/call") if token == Some("Bearer t1") => HttpReply::status(401, ""),
+                Some("tools/call") if session == Some("s1") => HttpReply::status(404, ""),
+                _ => http_mcp(request),
+            }
+        })
+        .await;
+        let mut config = http_config(&url);
+        config.headers_helper = Some(format!(
+            r#"n=$(($(cat '{0}' 2>/dev/null || echo 0) + 1)); echo $n > '{0}'; printf '{{"Authorization": "Bearer t%s"}}' $n"#,
+            counter.display()
+        ));
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, config).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
+        let tokens = |method: &str| -> Vec<String> {
+            requests_for(&requests, method)
+                .iter()
+                .map(|request| request.headers["authorization"].clone())
+                .collect()
+        };
+        assert_eq!(tokens("initialize"), ["Bearer t1", "Bearer t3"]);
+        assert_eq!(
+            tokens("tools/call"),
+            ["Bearer t1", "Bearer t2", "Bearer t3"]
         );
     }
 
