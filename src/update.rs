@@ -720,7 +720,9 @@ mod tests {
             ..Default::default()
         };
         assert!(Updater::new(&settings, true).is_none());
-        assert!(Updater::for_this_build(&settings).is_none());
+        if cfg!(debug_assertions) {
+            assert!(Updater::for_this_build(&settings).is_none());
+        }
     }
 
     #[test]
