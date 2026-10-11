@@ -132,7 +132,7 @@ pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
 
 /// Follows symlinks at a path that does not exist yet to the file they would
 /// create, so writing it keeps the links.
-pub(crate) fn dangling_target(mut path: std::path::PathBuf) -> std::path::PathBuf {
+pub(crate) fn dangling_target(mut path: PathBuf) -> PathBuf {
     // Stops at a loop of links, as the system does.
     for _ in 0..40 {
         let Ok(link) = std::fs::read_link(&path) else {
