@@ -19,6 +19,8 @@ use anyhow::Result;
 use ratatui::{layout::Rect, text::Line};
 use std::{path::PathBuf, time::Instant};
 
+const VERSION_LINE: &str = concat!("rust-claude v", env!("CARGO_PKG_VERSION"));
+
 pub(super) struct Suggestions {
     pub(super) start: usize,
     pub(super) end: usize,
@@ -331,6 +333,7 @@ pub(super) struct App {
     pub(super) conversation_top: usize,
     /// When the notice that text was copied goes away.
     pub(super) copied_until: Option<Instant>,
+    version_message: Option<usize>,
 }
 
 struct McpGroup {
@@ -433,12 +436,25 @@ impl App {
             conversation_area: Rect::default(),
             conversation_top: 0,
             copied_until: None,
+            version_message: None,
         };
-        app.push(
-            Role::Event,
-            concat!("rust-claude v", env!("CARGO_PKG_VERSION")),
-        );
+        app.show_version("");
         app
+    }
+
+    pub(super) fn show_update(&mut self, progress: &crate::update::Progress) {
+        self.show_version(&format!(" · {}", progress.message()));
+    }
+
+    fn show_version(&mut self, suffix: &str) {
+        let text = format!("{VERSION_LINE}{suffix}");
+        match self.version_message {
+            Some(message) => self.messages[message].replace(text),
+            None => {
+                self.push(Role::Event, text);
+                self.version_message = Some(self.messages.len() - 1);
+            }
+        }
     }
 
     pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
@@ -927,6 +943,7 @@ impl App {
 
     pub(super) fn clear_session(&mut self) {
         self.messages.clear();
+        self.version_message = None;
         self.selection = None;
         for group in &mut self.mcp_groups {
             group.message = None;

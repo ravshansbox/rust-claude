@@ -52,7 +52,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
                 app.push(Role::Event, diagnostic);
             }
         }
-        UiEvent::Update(progress) => app.push(Role::Event, progress.message()),
+        UiEvent::Update(progress) => app.show_update(&progress),
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => {
@@ -248,20 +248,53 @@ mod tests {
     }
 
     #[test]
-    fn shows_update_progress() {
+    fn shows_update_progress_on_the_version_line() {
         let mut app = new_app();
-        for progress in [
-            crate::update::Progress::Available("v0.2.0".into()),
-            crate::update::Progress::Ready("v0.2.0".into(), std::time::Duration::from_secs(125)),
-        ] {
-            handle_agent_event(UiEvent::Update(progress), &mut app);
-        }
+        let version = concat!("rust-claude v", env!("CARGO_PKG_VERSION"));
+        app.push(Role::Event, "loaded AGENTS.md");
+        handle_agent_event(
+            UiEvent::Update(crate::update::Progress::Available("v0.2.0".into())),
+            &mut app,
+        );
         let shown = screen(&mut app);
-        let available = shown.find("update v0.2.0 available").expect(&shown);
-        let ready = shown
-            .find("installed v0.2.0 in 2m 5s, restart rust-claude to use it")
+        let available = shown
+            .find(&format!("{version} · update v0.2.0 available"))
             .expect(&shown);
-        assert!(available < ready, "{shown}");
+        assert!(available < shown.find("loaded AGENTS.md").expect(&shown));
+        handle_agent_event(
+            UiEvent::Update(crate::update::Progress::Ready(
+                "v0.2.0".into(),
+                std::time::Duration::from_secs(125),
+            )),
+            &mut app,
+        );
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains(&format!(
+                "{version} · installed v0.2.0 in 2m 5s, restart rust-claude to use it"
+            )),
+            "{shown}"
+        );
+        assert!(!shown.contains("available"), "{shown}");
+    }
+
+    #[test]
+    fn shows_update_progress_with_the_version_after_clearing() {
+        let mut app = new_app();
+        app.clear_session();
+        handle_agent_event(
+            UiEvent::Update(crate::update::Progress::Downloading("v0.2.0".into())),
+            &mut app,
+        );
+        let shown = screen(&mut app);
+        assert!(
+            shown.contains(concat!(
+                "rust-claude v",
+                env!("CARGO_PKG_VERSION"),
+                " · downloading v0.2.0"
+            )),
+            "{shown}"
+        );
     }
 
     #[test]
