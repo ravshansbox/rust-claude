@@ -266,7 +266,7 @@ In the interface, rust-coding-agent saves each prompt you send, including `!` co
 | Alt+Backspace / Ctrl+W | Delete previous word |
 | Tab | Complete a command or file |
 
-While a reply streams, the view follows new text only when it is scrolled to the bottom. If you scroll up, the view stays where it is.
+While a reply streams, the view follows new text only when it is scrolled to the bottom. If you scroll up, the view stays where it is. A link whose address comes later in the reply shows as plain text until the reply finishes.
 
 Shift+Enter works in terminals that support the kitty keyboard protocol, such as kitty, WezTerm, Ghostty and iTerm2. Other terminals send it as Enter, so use Alt+Enter there.
 
