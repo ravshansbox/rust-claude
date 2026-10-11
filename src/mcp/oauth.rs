@@ -29,6 +29,9 @@ pub(super) struct Saved {
     /// When the access token expires, in milliseconds since 1970.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<u128>,
+    /// Whether `client_secret` comes from mcp.json, so it is not saved.
+    #[serde(skip)]
+    pub secret_from_config: bool,
 }
 
 impl Saved {
@@ -66,10 +69,28 @@ pub(super) fn load(server_url: &str) -> Option<Saved> {
     read_all().remove(server_url)
 }
 
+/// Loads the sign-in for `server_url`, with the client secret from
+/// mcp.json when it is for the client `oauth` names.
+pub(super) fn load_for(server_url: &str, oauth: Option<&super::OAuthConfig>) -> Option<Saved> {
+    let mut saved = load(server_url)?;
+    if let Some(oauth) = oauth
+        && oauth.client_id.as_deref() == Some(saved.client_id.as_str())
+        && let Some(secret) = &oauth.client_secret
+    {
+        saved.client_secret = super::expand_variables(secret).ok();
+        saved.secret_from_config = true;
+    }
+    Some(saved)
+}
+
 pub(super) fn save(server_url: &str, saved: &Saved) -> Result<(), String> {
     let _file = FILE.lock();
     let mut all = read_all();
-    all.insert(server_url.to_string(), saved.clone());
+    let mut saved = saved.clone();
+    if saved.secret_from_config {
+        saved.client_secret = None;
+    }
+    all.insert(server_url.to_string(), saved);
     write_all(&all)
 }
 
@@ -441,6 +462,7 @@ pub(super) async fn begin(
         .map_err(|error| error.to_string())?
         .port();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
+    let secret_from_config = oauth.client_id.is_some() && oauth.client_secret.is_some();
     let (client_id, client_secret) = match &oauth.client_id {
         Some(client_id) => {
             let client_secret = oauth
@@ -494,6 +516,7 @@ pub(super) async fn begin(
             access_token: String::new(),
             refresh_token: None,
             expires_at: None,
+            secret_from_config,
         },
     })
 }
