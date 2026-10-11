@@ -851,18 +851,7 @@ impl App {
     ) {
         let mut changed = Vec::new();
         for (name, scope) in servers {
-            let found = self
-                .mcp_groups
-                .iter_mut()
-                .enumerate()
-                .find_map(|(index, group)| {
-                    let server = group
-                        .servers
-                        .iter_mut()
-                        .find(|server| server.name == name && !server.overridden)?;
-                    Some((index, server))
-                });
-            if let Some((index, server)) = found {
+            if let Some((index, server)) = self.mcp_server(name) {
                 server.summary = None;
                 changed.push(index);
                 continue;
@@ -922,19 +911,21 @@ impl App {
             .unwrap_or_default()
     }
 
-    pub(super) fn finish_mcp_server(&mut self, added: crate::mcp::Added) {
-        let found = self
-            .mcp_groups
+    fn mcp_server(&mut self, name: &str) -> Option<(usize, &mut McpEntry)> {
+        self.mcp_groups
             .iter_mut()
             .enumerate()
             .find_map(|(index, group)| {
                 let server = group
                     .servers
                     .iter_mut()
-                    .find(|server| server.name == added.name && !server.overridden)?;
+                    .find(|server| server.name == name && !server.overridden)?;
                 Some((index, server))
-            });
-        match found {
+            })
+    }
+
+    pub(super) fn finish_mcp_server(&mut self, added: crate::mcp::Added) {
+        match self.mcp_server(&added.name) {
             Some((index, server)) => {
                 server.summary = Some(added.summary);
                 self.show_mcp_group(index);
