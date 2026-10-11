@@ -39,17 +39,28 @@ pub(super) fn shorten_tool_results(messages: &[Value], limit: usize) -> Vec<Valu
         .filter_map(|message| message["content"].as_array_mut())
         .flatten();
     for block in blocks.filter(|block| block["type"] == "tool_result") {
-        let Some(text) = block["content"].as_str() else {
-            continue;
-        };
-        if text.chars().count() > limit {
-            let kept: String = text.chars().take(limit).collect();
-            block["content"] = json!(format!(
-                "{kept}\n[the rest of this output was left out to fit the context window]"
-            ));
+        match &mut block["content"] {
+            Value::Array(parts) => {
+                for part in parts.iter_mut().filter(|part| part["type"] == "text") {
+                    shorten(&mut part["text"], limit);
+                }
+            }
+            content => shorten(content, limit),
         }
     }
     messages
+}
+
+fn shorten(text: &mut Value, limit: usize) {
+    let Some(content) = text.as_str() else {
+        return;
+    };
+    if content.chars().count() > limit {
+        let kept: String = content.chars().take(limit).collect();
+        *text = json!(format!(
+            "{kept}\n[the rest of this output was left out to fit the context window]"
+        ));
+    }
 }
 
 pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
@@ -191,7 +202,8 @@ pub(super) fn context_tokens(messages: &[Value], system_tokens: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        active_messages, context_tokens, has_uncompacted, scale_parts, with_cache_breakpoint,
+        active_messages, context_tokens, has_uncompacted, scale_parts, shorten_tool_results,
+        with_cache_breakpoint,
     };
     use serde_json::json;
 
@@ -304,5 +316,29 @@ mod tests {
     fn estimates_context_without_usage() {
         let messages = vec![json!({ "role": "user", "content": "12345" })];
         assert_eq!(context_tokens(&messages, 50), 52);
+    }
+
+    #[test]
+    fn shortens_each_text_block_of_a_tool_result() {
+        let messages = vec![json!({
+            "role": "user",
+            "content": [{
+                "type": "tool_result",
+                "tool_use_id": "call-1",
+                "content": [
+                    { "type": "text", "text": "abcdef" },
+                    { "type": "text", "text": "abc" },
+                ],
+            }],
+        })];
+        let shortened = shorten_tool_results(&messages, 3);
+        let cut = "\n[the rest of this output was left out to fit the context window]";
+        assert_eq!(
+            shortened[0]["content"][0]["content"],
+            json!([
+                { "type": "text", "text": format!("abc{cut}") },
+                { "type": "text", "text": "abc" },
+            ])
+        );
     }
 }
