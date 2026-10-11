@@ -346,10 +346,9 @@ mod tests {
     use crate::skills::{Scope, Skill};
     use crate::tui::{
         App, Role, UiEvent, handle_agent_event, handle_input,
-        test_support::{app_with_reply, press, screen},
+        test_support::{app_with_reply, press, screen, screen_of_width},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
-    use ratatui::{Terminal, backend::TestBackend};
 
     #[test]
     fn keeps_scrolled_view_still_while_content_grows() {
@@ -373,18 +372,6 @@ mod tests {
         press(&mut app, KeyCode::PageDown);
         let shown = screen(&mut app);
         assert!(shown.contains("event 10"), "{shown}");
-    }
-
-    fn screen_of_width(app: &mut App, width: u16) -> String {
-        let mut terminal = Terminal::new(TestBackend::new(width, 24)).unwrap();
-        terminal.draw(|frame| super::draw(frame, app)).unwrap();
-        let buffer = terminal.backend().buffer();
-        buffer
-            .content()
-            .chunks(buffer.area.width as usize)
-            .map(|row| row.iter().map(|cell| cell.symbol()).collect::<String>())
-            .collect::<Vec<_>>()
-            .join("\n")
     }
 
     #[test]
