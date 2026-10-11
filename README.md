@@ -415,7 +415,7 @@ The `agent` tool takes a list of tasks, each with a short `description` and a `p
 
 Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run.
 
-The input, output and cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use, cache hit rate and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens they used are not counted.
+The input, output and cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use, cache hit rate and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count.
 
 In the interface, the `agent` call shows its mode and number of tasks, such as `agent parallel, 2 tasks`. Below it, each task shows its number and description, such as `[1] list files`. While a subagent works, its task shows the last 5 lines of its text, tool calls, failures and notices, and scrolls as it works. When it finishes, these lines are replaced by the first 10 lines of its final reply, followed by `…` when the reply is longer, or by why it failed or did not run. A resumed session shows each task with the start of its final reply.
 
