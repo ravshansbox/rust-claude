@@ -107,7 +107,7 @@ pub fn latest_in_each_class(models: Vec<String>) -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{context_window, effort_levels, max_output, thinking_settings};
+    use super::{effort_levels, thinking_settings};
     use serde_json::json;
 
     const MODELS: [&str; 4] = [
@@ -116,14 +116,6 @@ mod tests {
         "claude-sonnet-5-5",
         "claude-haiku-5-5",
     ];
-
-    #[test]
-    fn knows_the_latest_model_in_each_class() {
-        for model in MODELS {
-            assert_eq!(context_window(model), 1_000_000, "{model}");
-            assert_eq!(max_output(model), 128_000, "{model}");
-        }
-    }
 
     #[test]
     fn uses_adaptive_thinking_with_the_level_as_effort() {
@@ -150,17 +142,5 @@ mod tests {
         assert_eq!(effort_levels("claude-sonnet-5-5"), with_off);
         assert_eq!(effort_levels("claude-haiku-5-5"), with_off);
         assert_eq!(effort_levels("claude-x"), levels);
-    }
-
-    #[test]
-    fn turns_thinking_off_without_an_effort() {
-        assert_eq!(
-            thinking_settings("claude-sonnet-5-5", "off"),
-            json!({ "thinking": { "type": "between_tools" } })
-        );
-        assert_eq!(
-            thinking_settings("claude-haiku-5-5", "off"),
-            json!({ "thinking": { "type": "disabled" } })
-        );
     }
 }

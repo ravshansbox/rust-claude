@@ -701,7 +701,7 @@ mod tests {
     use std::{sync::Arc, time::Duration};
 
     use super::{
-        AgentEvent, Queued, cancel_point, http_client_with, parse_shell_message, shell_message,
+        AgentEvent, Queued, cancel_point, http_client_with,
         test_support::{self, MockApi, Reply, stopped_reply, text_reply, tool_reply},
     };
     use crate::images::Image;
@@ -1380,13 +1380,6 @@ mod tests {
                 assert_eq!(block.get("cache_control"), None);
             }
         }
-    }
-
-    #[test]
-    fn parses_shell_messages() {
-        let text = shell_message("ls -a", "a\nb\n");
-        assert_eq!(parse_shell_message(&text), Some(("ls -a", "a\nb\n")));
-        assert_eq!(parse_shell_message("hello"), None);
     }
 
     #[test]

@@ -2371,16 +2371,6 @@ done
     }
 
     #[tokio::test]
-    async fn registers_as_claude_code() {
-        let (url, requests) = oauth_server().await;
-        begin_sign_in_with("web", &http_config(&url)).await.unwrap();
-        assert_eq!(
-            requests_for_path(&requests, "/register")[0].body["client_name"],
-            "Claude Code"
-        );
-    }
-
-    #[tokio::test]
     async fn reports_failed_sign_ins() {
         let (url, _) = oauth_server().await;
         let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();

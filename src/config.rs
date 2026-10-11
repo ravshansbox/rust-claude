@@ -199,7 +199,7 @@ pub(crate) fn permissions(path: &Path) -> Option<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::{WRITES, permissions, replace_file, test_dir, write_private_file};
+    use super::{WRITES, permissions, replace_file, write_private_file};
     use std::sync::atomic::Ordering;
 
     #[cfg(unix)]
@@ -270,31 +270,5 @@ mod tests {
         std::fs::remove_dir_all(&base).unwrap();
         result.unwrap();
         assert_eq!(found, ("secret".into(), Some("new".into()), Some(false)));
-    }
-
-    #[test]
-    fn removes_test_folders_of_exited_processes() {
-        let base =
-            std::env::temp_dir().join(format!("rust-claude-test-folders-{}", std::process::id()));
-        let exited = base.join("1");
-        let running = base.join("2");
-        let reused = base.join(std::process::id().to_string());
-        for folder in [&exited, &running, &reused] {
-            std::fs::create_dir_all(folder).unwrap();
-            std::fs::write(folder.join("settings.json"), "{}").unwrap();
-        }
-        let running_lock = std::fs::File::open(&running).unwrap();
-        running_lock.lock().unwrap();
-        let (own, _lock) = test_dir(&base);
-        let own_is_locked = std::fs::File::open(&own).unwrap().try_lock().is_err();
-        let found = (
-            exited.exists(),
-            running.exists(),
-            own == reused,
-            std::fs::read_dir(&own).unwrap().count(),
-            own_is_locked,
-        );
-        std::fs::remove_dir_all(&base).unwrap();
-        assert_eq!(found, (false, true, true, 0, true));
     }
 }

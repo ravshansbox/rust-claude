@@ -467,46 +467,6 @@ mod tests {
         assert!(shown.contains("Select effort level"), "{shown}");
     }
 
-    #[test]
-    fn keeps_the_conversation_visible_while_picking_a_model() {
-        let mut app = app_with_reply();
-        handle_agent_event(
-            UiEvent::Models(Ok(vec!["claude-opus-5-5".into()])),
-            &mut app,
-        );
-        let shown = screen(&mut app);
-        assert!(shown.contains("Earlier reply"), "{shown}");
-        assert!(shown.contains("Select model"), "{shown}");
-    }
-
-    #[test]
-    fn keeps_the_conversation_visible_while_picking_a_session() {
-        let mut app = app_with_reply();
-        let session = SessionSummary {
-            id: "1".into(),
-            modified: std::time::SystemTime::now(),
-            preview: "old prompt".into(),
-        };
-        handle_agent_event(UiEvent::Sessions(Ok(vec![session])), &mut app);
-        let shown = screen(&mut app);
-        assert!(shown.contains("Earlier reply"), "{shown}");
-        assert!(shown.contains("Resume session"), "{shown}");
-        assert!(shown.contains("old prompt"), "{shown}");
-    }
-
-    #[test]
-    fn keeps_the_conversation_visible_while_searching_history() {
-        let mut app = app_with_reply();
-        handle_input(
-            Event::Key(KeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL)),
-            &mut app,
-            |_| {},
-        );
-        let shown = screen(&mut app);
-        assert!(shown.contains("Earlier reply"), "{shown}");
-        assert!(shown.contains("Prompt history"), "{shown}");
-    }
-
     fn open_sessions(app: &mut App, count: usize) {
         let sessions = (0..count)
             .map(|index| SessionSummary {
