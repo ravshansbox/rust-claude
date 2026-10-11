@@ -1407,8 +1407,10 @@ pub fn startup() -> Startup {
     }
 }
 
-fn is_sign_in_failure(name: &str, failed: &str) -> bool {
-    failed.starts_with(&format!("MCP server {name} {NEEDS_SIGN_IN}"))
+fn sign_in_summary(name: &str, failed: &str) -> Option<String> {
+    failed
+        .starts_with(&format!("MCP server {name} {NEEDS_SIGN_IN}"))
+        .then(|| format!("{name} ({NEEDS_SIGN_IN})"))
 }
 
 impl Mcp {
@@ -1429,11 +1431,8 @@ impl Mcp {
             let (diagnostics, status) = mcp.add_server(started);
             mcp.diagnostics.extend(diagnostics);
             if let Err(failed) = status {
-                mcp.diagnostics.push(if is_sign_in_failure(&name, &failed) {
-                    format!("{name} ({NEEDS_SIGN_IN})")
-                } else {
-                    failed
-                });
+                mcp.diagnostics
+                    .push(sign_in_summary(&name, &failed).unwrap_or(failed));
             }
         }
         mcp
@@ -1447,10 +1446,9 @@ impl Mcp {
                 let tools = self.servers.last().map_or(0, |server| server.tools.len());
                 format!("{name} ({tools} tools)")
             }
-            Err(failed) if is_sign_in_failure(&name, failed) => {
-                format!("{name} ({NEEDS_SIGN_IN})")
+            Err(failed) => {
+                sign_in_summary(&name, failed).unwrap_or_else(|| format!("{name} (failed)"))
             }
-            Err(_) => format!("{name} (failed)"),
         };
         Added {
             name,
