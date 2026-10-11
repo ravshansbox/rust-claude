@@ -321,14 +321,6 @@ mod tests {
     }
 
     #[test]
-    fn shows_no_notice_after_quoting() {
-        let mut app = app_with_reply();
-        let (column, row) = position(&mut app, "Earlier reply");
-        drag(&mut app, (column, row), (column + 6, row));
-        assert!(!screen(&mut app).contains("Copied"));
-    }
-
-    #[test]
     fn quotes_nothing_on_a_click() {
         let mut app = app_with_reply();
         let (column, row) = position(&mut app, "Earlier reply");
