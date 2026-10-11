@@ -344,14 +344,30 @@ mod tests {
         net::TcpListener,
     };
 
-    fn temp_dir(name: &str) -> PathBuf {
+    struct TemporaryDir(PathBuf);
+
+    impl std::ops::Deref for TemporaryDir {
+        type Target = Path;
+
+        fn deref(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TemporaryDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn temp_dir(name: &str) -> TemporaryDir {
         let dir = std::env::temp_dir().join(format!(
             "rust-coding-agent-update-{name}-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
-        dir
+        TemporaryDir(dir)
     }
 
     fn source_zip() -> Vec<u8> {
@@ -740,7 +756,7 @@ mod tests {
     fn finds_programs_on_path() {
         let dir = temp_dir("path");
         let cargo = fake_cargo(&dir, 0);
-        let path = std::env::join_paths([dir.join("missing"), dir.clone()]).unwrap();
+        let path = std::env::join_paths([dir.join("missing"), dir.to_path_buf()]).unwrap();
         assert_eq!(find_on_path("cargo", Some(path.clone())), Some(cargo));
         assert_eq!(find_on_path("rustc", Some(path)), None);
         assert_eq!(find_on_path("cargo", None), None);
