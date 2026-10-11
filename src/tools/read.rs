@@ -9,7 +9,7 @@ use std::{
 pub(super) fn definition() -> Value {
     json!({
         "name": "read",
-        "description": "Read a UTF-8 file from the current project. Long output is cut at whole lines; use offset and limit to read the rest",
+        "description": "Read a UTF-8 file from the current folder. Long output is cut at whole lines; use offset and limit to read the rest",
         "input_schema": {
             "type": "object",
             "properties": {
