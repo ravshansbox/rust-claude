@@ -11,7 +11,7 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use super::{Agent, AgentEvent, Queue, Usage};
+use super::{Agent, AgentEvent, Queue, Usage, text_of};
 use crate::{
     session::Session,
     skills::Skills,
@@ -189,11 +189,7 @@ fn final_reply(messages: &[Value]) -> String {
         .iter()
         .rfind(|message| message["role"] == "assistant" && message.get("stop_reason").is_none())
         .and_then(|message| message["content"].as_array())
-        .into_iter()
-        .flatten()
-        .filter(|block| block["type"] == "text")
-        .filter_map(|block| block["text"].as_str())
-        .collect()
+        .map_or_else(String::new, |content| text_of(content))
 }
 
 #[cfg(test)]

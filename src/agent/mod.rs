@@ -87,6 +87,14 @@ pub enum AgentEvent {
     },
 }
 
+fn text_of(blocks: &[Value]) -> String {
+    blocks
+        .iter()
+        .filter(|block| block["type"] == "text")
+        .filter_map(|block| block["text"].as_str())
+        .collect()
+}
+
 pub fn shell_message(command: &str, output: &str) -> String {
     format!("<bash-input>{command}</bash-input>\n<bash-output>{output}</bash-output>")
 }
@@ -469,12 +477,7 @@ impl Agent {
                 bail!("the summary was cut off ({reason}); the conversation was not compacted")
             }
         }
-        let summary: String = response
-            .content
-            .iter()
-            .filter(|block| block["type"] == "text")
-            .filter_map(|block| block["text"].as_str())
-            .collect();
+        let summary = text_of(&response.content);
         if summary.trim().is_empty() {
             bail!("compaction returned no summary");
         }
