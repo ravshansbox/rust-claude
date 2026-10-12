@@ -103,13 +103,13 @@ impl Session {
         let drop_line = self
             .drops_mismatched_thinking_unsaved
             .then(drop_mismatched_thinking_line);
-        let mut lines = String::new();
+        let mut lines = Vec::new();
         for line in header.iter().chain(new_messages).chain(&drop_line) {
-            lines.push_str(&serde_json::to_string(line)?);
-            lines.push('\n');
+            serde_json::to_writer(&mut lines, line)?;
+            lines.push(b'\n');
         }
         let length = file.metadata()?.len();
-        if let Err(error) = file.write_all(lines.as_bytes()) {
+        if let Err(error) = file.write_all(&lines) {
             // Remove a partly written line, so the next save starts on a new line.
             let _ = file.set_len(length);
             return Err(error.into());
