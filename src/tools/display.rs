@@ -1,5 +1,6 @@
 use serde_json::Value;
 use std::borrow::Cow;
+use std::fmt::Write;
 
 pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
@@ -173,7 +174,7 @@ fn write_preview(content: &str) -> Option<String> {
     let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
     if remaining > 0 {
         let noun = if remaining == 1 { "line" } else { "lines" };
-        preview.push_str(&format!("\n… {remaining} more {noun}"));
+        let _ = write!(preview, "\n… {remaining} more {noun}");
     }
     Some(preview)
 }
