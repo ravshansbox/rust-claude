@@ -1709,18 +1709,17 @@ mod tests {
 
     #[test]
     fn reports_an_unreadable_config() {
-        let path = std::env::temp_dir().join(format!("mcp-unreadable-{}.json", std::process::id()));
-        std::fs::create_dir_all(&path).unwrap();
+        let directory = TemporaryDir::new("mcp-unreadable");
+        let path = directory.path();
         let mut servers = BTreeMap::new();
         let mut diagnostics = Vec::new();
-        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        read_config(path, Scope::Project, &mut servers, &mut diagnostics);
         read_config(
             &path.join("missing.json"),
             Scope::Project,
             &mut servers,
             &mut diagnostics,
         );
-        std::fs::remove_dir_all(&path).unwrap();
         assert_eq!(diagnostics.len(), 1);
         assert!(diagnostics[0].starts_with(&format!("MCP: cannot read {}: ", path.display())));
     }
