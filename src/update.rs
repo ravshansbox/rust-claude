@@ -226,7 +226,7 @@ impl Updater {
             .error_for_status()?
             .bytes()
             .await?
-            .to_vec())
+            .into())
     }
 
     /// Downloads the zip and unpacks it, once its signature shows it was
