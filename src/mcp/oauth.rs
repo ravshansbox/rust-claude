@@ -76,13 +76,16 @@ pub(super) fn load(server_url: &str) -> Option<Saved> {
 
 /// Loads the sign-in for `server_url`, with the client secret from
 /// mcp.json when it is for the client `oauth` names.
-pub(super) fn load_for(server_url: &str, oauth: Option<&super::OAuthConfig>) -> Option<Saved> {
+pub(super) fn load_for(
+    server_url: &str,
+    oauth: Option<&super::config_file::OAuthConfig>,
+) -> Option<Saved> {
     let mut saved = load(server_url)?;
     if let Some(oauth) = oauth
         && oauth.client_id.as_deref() == Some(saved.client_id.as_str())
         && let Some(secret) = &oauth.client_secret
     {
-        saved.client_secret = super::expand_variables(secret).ok();
+        saved.client_secret = super::config_file::expand_variables(secret).ok();
         saved.secret_from_config = true;
     }
     Some(saved)
@@ -480,7 +483,7 @@ async fn register(
 pub(super) async fn begin(
     client: &reqwest::Client,
     server_url: &str,
-    oauth: Option<&super::OAuthConfig>,
+    oauth: Option<&super::config_file::OAuthConfig>,
 ) -> Result<Pending, String> {
     let discovered = discover(client, server_url).await?;
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -497,7 +500,7 @@ pub(super) async fn begin(
     let (client_id, client_secret) = match client_id {
         Some(client_id) => {
             let client_secret = client_secret
-                .map(super::expand_variables)
+                .map(super::config_file::expand_variables)
                 .transpose()
                 .map_err(|variable| {
                     format!("oauth clientSecret uses {variable}, which is not set")
