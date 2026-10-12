@@ -7,6 +7,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
+use crate::config;
+
 pub const RELEASES_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/latest";
 const ASSET: &str = "rust-coding-agent.zip";
@@ -103,7 +105,7 @@ impl Updater {
         if debug_build || settings.check_for_updates == Some(false) {
             return None;
         }
-        let config_dir = crate::config::dir()?;
+        let config_dir = config::dir()?;
         Some(Self {
             http: reqwest::Client::new(),
             releases_url: RELEASES_URL.into(),
@@ -144,7 +146,7 @@ impl Updater {
             std::process::id(),
             RUNS.fetch_add(1, Ordering::Relaxed)
         ));
-        if let Err(error) = crate::config::create_private_dir(&self.update_dir)
+        if let Err(error) = config::create_private_dir(&self.update_dir)
             .and_then(|()| create_update_folder(&folder))
         {
             report(Progress::Failed(
