@@ -882,3 +882,64 @@ async fn reports_a_skill_whose_file_was_removed_without_sending_the_prompt() {
     assert!(agent.messages().is_empty());
     assert!(api.requests().await.is_empty());
 }
+
+#[tokio::test]
+async fn sends_pasted_images_before_the_prompt() {
+    let api = MockApi::start(vec![text_reply("a red square")]).await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let image = Image {
+        media_type: "image/png",
+        data: b"png".to_vec(),
+    };
+    let result = agent.prompt("what is this?", &[image], |_| {}).await;
+    test_support::remove_session(&agent);
+    result.unwrap();
+    let requests = api.requests().await;
+    assert_eq!(
+        requests[0]["messages"][0]["content"],
+        json!([
+            { "type": "image", "source": { "type": "base64", "media_type": "image/png", "data": "cG5n" } },
+            { "type": "text", "text": "what is this?", "cache_control": { "type": "ephemeral" } },
+        ])
+    );
+}
+
+#[tokio::test]
+async fn shows_thinking_as_it_streams_and_sends_it_back_signed() {
+    let api = MockApi::start(vec![
+        Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "" } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "Let me " } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "check." } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "signature_delta", "signature": "sig" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "text", "text": "" } }),
+            json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "text_delta", "text": "Done." } }),
+            json!({ "type": "content_block_stop", "index": 1 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+            json!({ "type": "message_stop" }),
+        ]),
+        text_reply("again"),
+    ])
+    .await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut thinking = Vec::new();
+    let result = agent
+        .prompt("hi", &[], |event| {
+            if let AgentEvent::Thinking(delta) = event {
+                thinking.push(delta);
+            }
+        })
+        .await;
+    let next = agent.prompt("more", &[], |_| {}).await;
+    test_support::remove_session(&agent);
+    result.unwrap();
+    next.unwrap();
+    assert_eq!(thinking, ["Let me ", "check."]);
+    let requests = api.requests().await;
+    assert_eq!(
+        requests[1]["messages"][1]["content"][0],
+        json!({ "type": "thinking", "thinking": "Let me check.", "signature": "sig" })
+    );
+}
