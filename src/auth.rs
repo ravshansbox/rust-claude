@@ -587,6 +587,26 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
+    async fn keeps_a_turned_down_sign_in_when_renewing_is_rate_limited_or_times_out() {
+        let _lock = AUTH_FILE.lock().await;
+        for status in ["429 Too Many Requests", "408 Request Timeout"] {
+            answer_token_requests(status, json!({ "error": "slow down" })).await;
+            let saved = json!({ "access": "old", "refresh": "first", "expires": u64::MAX });
+            let path = credentials_file(&saved.to_string());
+            let mut credentials: Credentials = serde_json::from_value(saved.clone()).unwrap();
+            let result = credentials
+                .renew_rejected(&reqwest::Client::new(), "old")
+                .await;
+            let after: Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+            let _ = std::fs::remove_file(&path);
+            let error = result.unwrap_err();
+            assert!(retry_delay(&error, 0).is_some(), "{status}: {error:#}");
+            assert_eq!(after, saved, "{status}");
+        }
+    }
+
+    #[tokio::test]
     async fn asks_to_sign_in_again_when_the_server_turns_the_renewal_down() {
         let _lock = AUTH_FILE.lock().await;
         let _endpoint = TokenEndpoint::start("other", false).await;
