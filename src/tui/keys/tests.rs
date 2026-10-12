@@ -491,6 +491,36 @@ fn sets_the_effort_level_picked_from_the_list() {
 }
 
 #[test]
+fn stops_the_picker_selection_at_either_end_and_closes_it_with_esc() {
+    let mut app = new_app();
+    handle_input(Event::Paste("/effort".into()), &mut app, |_| {});
+    press(&mut app, KeyCode::Enter);
+    let levels: Vec<String> = app
+        .picker
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|(level, _)| level.clone())
+        .collect();
+    let selected = |app: &App| {
+        let picker = app.picker.as_ref().unwrap();
+        picker.items[picker.selected].0.clone()
+    };
+    for _ in 0..=levels.len() {
+        press(&mut app, KeyCode::Up);
+    }
+    assert_eq!(selected(&app), levels[0]);
+    for _ in 0..=levels.len() {
+        press(&mut app, KeyCode::Down);
+    }
+    assert_eq!(&selected(&app), levels.last().unwrap());
+    press(&mut app, KeyCode::Esc);
+    assert!(!screen(&mut app).contains("Select effort level"));
+    assert_eq!(app.effort, "medium");
+}
+
+#[test]
 fn searches_prompt_history_in_tabs() {
     let folder = TemporaryDir::new("tui-history");
     let path = folder.path().join("history.jsonl");
