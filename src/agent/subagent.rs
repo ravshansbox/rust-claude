@@ -202,6 +202,7 @@ mod tests {
         AgentEvent,
         test_support::{self, MockApi, Reply, text_reply, tool_reply},
     };
+    use crate::config;
     use serde_json::{Value, json};
     use std::time::Duration;
 
@@ -244,7 +245,7 @@ mod tests {
         .await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
         let result = agent.prompt("ask a subagent", &[], |_| {}).await;
-        let sessions = crate::config::dir().unwrap().join("sessions");
+        let sessions = config::dir().unwrap().join("sessions");
         let saved_with_prompt = std::fs::read_dir(&sessions)
             .unwrap()
             .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path()).ok())
