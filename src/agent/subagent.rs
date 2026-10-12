@@ -74,7 +74,7 @@ impl Agent {
                     .await
                 }
                 Mode::Sequential => {
-                    let mut replies: Vec<Result<String, String>> = Vec::new();
+                    let mut replies = Vec::new();
                     for (index, task) in tasks.into_iter().enumerate() {
                         let prompt = match replies.last() {
                             Some(Err(_)) => {

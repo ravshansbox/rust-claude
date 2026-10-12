@@ -106,7 +106,7 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
     let with_scope =
         |files: Vec<PathBuf>, scope: Scope| files.into_iter().map(move |path| (path, scope));
     let project_dir = cwd.join(".rust-coding-agent");
-    let mut paths: Vec<(PathBuf, Scope)> = Vec::new();
+    let mut paths = Vec::new();
     if !config_dir.is_some_and(|config_dir| same_dir(config_dir, &project_dir)) {
         paths.extend(with_scope(
             collect_skill_files(&project_dir.join("skills"), Mode::RustClaude),

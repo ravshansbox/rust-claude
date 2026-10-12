@@ -18,7 +18,7 @@ pub struct Instructions {
 pub(super) fn load_instructions() -> Vec<Instructions> {
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let cwd = std::env::current_dir().ok();
-    let mut candidates: Vec<(String, PathBuf)> = Vec::new();
+    let mut candidates = Vec::new();
     if let Some(home) = &home {
         candidates.push((
             format!("~/{INSTRUCTIONS_FILE}"),

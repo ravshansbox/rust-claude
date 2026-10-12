@@ -102,7 +102,7 @@ impl Agent {
             bail!(message);
         }
 
-        let mut content: Vec<Value> = Vec::new();
+        let mut content = Vec::new();
         let mut partial_json = String::new();
         let mut input_error = None;
         let mut stop_reason = String::new();
@@ -111,7 +111,7 @@ impl Agent {
         let retried = self.pending_usage;
         let mut usage = Usage::default();
         let mut first_token: Option<Instant> = None;
-        let mut buffer: Vec<u8> = Vec::new();
+        let mut buffer = Vec::new();
 
         while let Some(chunk) = response.chunk().await.transpose() {
             let chunk = match chunk {

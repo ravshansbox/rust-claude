@@ -972,7 +972,7 @@ impl App {
         if queued.is_empty() {
             return;
         }
-        let mut parts: Vec<String> = Vec::new();
+        let mut parts = Vec::new();
         for queued in queued {
             parts.push(queued.prompt);
             self.images.extend(queued.images);
