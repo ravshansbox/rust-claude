@@ -111,35 +111,33 @@ impl FileList {
 #[cfg(test)]
 mod tests {
     use super::{FileList, file_query, files_in, walk};
+    use crate::tools::test_support::TemporaryDir;
     use std::process::Command;
 
     #[test]
     fn lists_git_files_with_non_ascii_names() {
-        let root =
-            std::env::temp_dir().join(format!("rust-coding-agent-files-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let folder = TemporaryDir::new("files");
+        let root = folder.path();
         std::fs::create_dir_all(root.join("src")).unwrap();
         std::fs::write(root.join("src/café.rs"), "").unwrap();
         std::fs::write(root.join("plain.rs"), "").unwrap();
         let initialised = Command::new("git")
             .args(["init", "-q"])
-            .current_dir(&root)
+            .current_dir(root)
             .status()
             .unwrap()
             .success();
-        let files = files_in(&root);
-        let _ = std::fs::remove_dir_all(&root);
+        let files = files_in(root);
         assert!(initialised);
         assert_eq!(files, ["plain.rs", "src/café.rs"]);
     }
 
     #[test]
     fn skips_ignored_files_outside_git() {
-        let root =
-            std::env::temp_dir().join(format!("rust-coding-agent-walk-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
-        for folder in ["target", ".hidden", "logs"] {
-            std::fs::create_dir_all(root.join(folder)).unwrap();
+        let folder = TemporaryDir::new("walk");
+        let root = folder.path();
+        for subfolder in ["target", ".hidden", "logs"] {
+            std::fs::create_dir_all(root.join(subfolder)).unwrap();
         }
         for file in [
             "a.rs",
@@ -153,23 +151,20 @@ mod tests {
         }
         std::fs::write(root.join(".gitignore"), "*.log\n").unwrap();
         std::fs::write(root.join(".ignore"), "logs/\n").unwrap();
-        let files = files_in(&root);
-        let _ = std::fs::remove_dir_all(&root);
+        let files = files_in(root);
         assert_eq!(files, ["a.rs", "b.rs"]);
     }
 
     #[test]
     fn stops_walking_at_the_file_limit() {
-        let root =
-            std::env::temp_dir().join(format!("rust-coding-agent-limit-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&root);
+        let folder = TemporaryDir::new("limit");
+        let root = folder.path();
         std::fs::create_dir_all(root.join("src")).unwrap();
         for file in ["a.rs", "b.rs", "src/c.rs", "src/d.rs"] {
             std::fs::write(root.join(file), "").unwrap();
         }
-        let all = walk(&root, 10);
-        let capped = walk(&root, 3);
-        let _ = std::fs::remove_dir_all(&root);
+        let all = walk(root, 10);
+        let capped = walk(root, 3);
         assert_eq!(all, ["a.rs", "b.rs", "src/c.rs", "src/d.rs"]);
         assert_eq!(capped.len(), 3);
     }

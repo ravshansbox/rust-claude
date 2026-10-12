@@ -52,17 +52,17 @@ impl Drop for TemporaryFile {
 }
 
 /// A folder removed with everything in it when dropped.
-pub(super) struct TemporaryDir(PathBuf);
+pub(crate) struct TemporaryDir(PathBuf);
 
 impl TemporaryDir {
-    pub(super) fn new(name: &str) -> Self {
+    pub(crate) fn new(name: &str) -> Self {
         let path = temporary_path(name);
         let _ = std::fs::remove_dir_all(&path);
         std::fs::create_dir(&path).unwrap();
         Self(path)
     }
 
-    pub(super) fn path(&self) -> &Path {
+    pub(crate) fn path(&self) -> &Path {
         &self.0
     }
 
