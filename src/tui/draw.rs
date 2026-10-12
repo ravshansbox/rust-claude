@@ -246,9 +246,11 @@ fn status_lines(app: &App) -> Vec<Line<'static>> {
         lines.push(Line::default());
         let frame = SPINNER_FRAMES[app.spinner_frame % SPINNER_FRAMES.len()];
         lines.push(Line::from(format!("{frame} {activity}").dark_gray()));
-        for prompt in app.queued_prompts() {
-            let first_line = prompt.lines().next().unwrap_or_default();
-            lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
+        if let Ok(queue) = app.queue.lock() {
+            for queued in queue.iter() {
+                let first_line = queued.prompt.lines().next().unwrap_or_default();
+                lines.push(Line::from(format!("queued: {first_line}").dark_gray()));
+            }
         }
     }
     lines

@@ -936,6 +936,7 @@ impl App {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn queued_prompts(&self) -> Vec<String> {
         self.queue
             .lock()
