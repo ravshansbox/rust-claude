@@ -113,14 +113,7 @@ mod tests {
         .await;
         let mut agent = test_support::agent(&api, reqwest::Client::new());
         let started = agent.prompt("start it", &[], |_| {}).await;
-        let mut pid = String::new();
-        for _ in 0..100 {
-            pid = pid_file.content();
-            if !pid.trim().is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        let pid = pid_file.wait_for_content().await;
         let stopped = agent.prompt("stop it", &[], |_| {}).await;
         tokio::time::sleep(Duration::from_millis(200)).await;
         test_support::remove_session(&agent);

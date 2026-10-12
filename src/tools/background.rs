@@ -149,14 +149,7 @@ mod tests {
         background
             .start(&json!({ "command": command, "run_in_background": true }))
             .unwrap();
-        let mut pid = String::new();
-        for _ in 0..100 {
-            pid = pid_file.content();
-            if !pid.trim().is_empty() {
-                break;
-            }
-            tokio::time::sleep(Duration::from_millis(50)).await;
-        }
+        let pid = pid_file.wait_for_content().await;
         drop(background);
         std::thread::sleep(Duration::from_millis(200));
         assert!(!is_running(&pid), "process {pid} still running");

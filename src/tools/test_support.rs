@@ -43,6 +43,20 @@ impl TemporaryFile {
     pub(crate) fn content(&self) -> String {
         std::fs::read_to_string(&self.0).unwrap()
     }
+
+    /// Waits up to five seconds for the file to hold more than white space,
+    /// and gives what it holds.
+    pub(crate) async fn wait_for_content(&self) -> String {
+        let mut content = String::new();
+        for _ in 0..100 {
+            content = self.content();
+            if !content.trim().is_empty() {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        }
+        content
+    }
 }
 
 impl Drop for TemporaryFile {
