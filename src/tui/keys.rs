@@ -554,7 +554,7 @@ mod tests {
         let mut app = new_app();
         queue_while_working(&mut app, "first");
         queue_while_working(&mut app, "second");
-        assert!(app.input.is_empty());
+        assert_eq!(app.input, "");
         assert_eq!(app.queued_prompts(), ["first", "second"]);
         handle_agent_event(UiEvent::Done(Ok(())), &mut app);
         let (prompt, images) = app.send_queued().unwrap();
@@ -636,7 +636,7 @@ mod tests {
             }
         });
         assert_eq!(signing_in, ["figma"]);
-        assert!(app.input.is_empty());
+        assert_eq!(app.input, "");
         handle_input(Event::Paste("/mcp logout l".into()), &mut app, |_| {});
         assert_eq!(suggested(&app), ["/mcp logout linear"]);
         let mut signing_out = Vec::new();
@@ -807,7 +807,7 @@ mod tests {
         let shown = screen(&mut app);
         assert!(shown.contains("model: haiku-5-5"), "{shown}");
         assert!(shown.contains("fable-5-1:medium"), "{shown}");
-        assert!(app.input.is_empty());
+        assert_eq!(app.input, "");
     }
 
     #[test]

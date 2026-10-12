@@ -231,7 +231,7 @@ fn stops_when_cargo_is_missing() {
         "{}",
         stderr(&output)
     );
-    assert!(setup.read("curl.log").is_empty());
+    assert_eq!(setup.read("curl.log"), "");
 }
 
 #[test]
@@ -248,7 +248,7 @@ fn stops_when_the_download_fails() {
         "{}",
         stderr(&output)
     );
-    assert!(setup.read("cargo.log").is_empty());
+    assert_eq!(setup.read("cargo.log"), "");
 }
 
 #[test]
