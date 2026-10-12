@@ -1212,31 +1212,37 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
 }
 
 fn result_text(result: &Value) -> String {
-    let mut parts = Vec::new();
-    for block in result["content"].as_array().into_iter().flatten() {
+    let blocks = result["content"].as_array().map_or(&[][..], Vec::as_slice);
+    if blocks.is_empty() && !result["structuredContent"].is_null() {
+        return result["structuredContent"].to_string();
+    }
+    let mut text = String::new();
+    for (index, block) in blocks.iter().enumerate() {
+        if index > 0 {
+            text.push('\n');
+        }
         let mime_type = block["mimeType"].as_str().unwrap_or("unknown type");
-        parts.push(match block["type"].as_str() {
-            Some("text") => block["text"].as_str().unwrap_or_default().to_string(),
-            Some("image") => format!("[image: {mime_type}]"),
-            Some("audio") => format!("[audio: {mime_type}]"),
-            Some("resource_link") => format!(
+        let _ = match block["type"].as_str() {
+            Some("text") => text.write_str(block["text"].as_str().unwrap_or_default()),
+            Some("image") => write!(text, "[image: {mime_type}]"),
+            Some("audio") => write!(text, "[audio: {mime_type}]"),
+            Some("resource_link") => write!(
+                text,
                 "[resource link: {}]",
                 block["uri"].as_str().unwrap_or("unknown")
             ),
             Some("resource") => match block["resource"]["text"].as_str() {
-                Some(text) => text.to_string(),
-                None => format!(
+                Some(resource_text) => text.write_str(resource_text),
+                None => write!(
+                    text,
                     "[resource: {}]",
                     block["resource"]["uri"].as_str().unwrap_or("unknown")
                 ),
             },
-            _ => block.to_string(),
-        });
+            _ => write!(text, "{block}"),
+        };
     }
-    if parts.is_empty() && !result["structuredContent"].is_null() {
-        return result["structuredContent"].to_string();
-    }
-    parts.join("\n")
+    text
 }
 
 /// The URL of an HTTP server entry, or `None` for a stdio one.
