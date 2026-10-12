@@ -7,6 +7,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::{config, session};
+
 /// How many prompts history.jsonl keeps; older ones are dropped.
 const MAX_ENTRIES: usize = 10_000;
 
@@ -22,7 +24,7 @@ impl Entry {
     pub fn here(prompt: &str) -> Self {
         Self {
             prompt: prompt.to_string(),
-            folder: crate::session::current_folder(),
+            folder: session::current_folder(),
         }
     }
 
@@ -34,15 +36,15 @@ impl Entry {
 }
 
 pub fn history_path() -> Option<PathBuf> {
-    Some(crate::config::dir()?.join("history.jsonl"))
+    Some(config::dir()?.join("history.jsonl"))
 }
 
 /// Locks the history file against other running copies until the returned
 /// file is dropped. The lock is on a file next to it, because trimming
 /// replaces history.jsonl itself.
 fn lock(path: &Path) -> Result<std::fs::File> {
-    crate::config::create_private_dir(path.parent().context("invalid history path")?)?;
-    let lock = crate::config::private_file()
+    config::create_private_dir(path.parent().context("invalid history path")?)?;
+    let lock = config::private_file()
         .create(true)
         .truncate(false)
         .write(true)
@@ -53,7 +55,7 @@ fn lock(path: &Path) -> Result<std::fs::File> {
 
 pub fn append(path: &Path, entry: &Entry) -> Result<()> {
     let _lock = lock(path)?;
-    let mut file = crate::config::private_file()
+    let mut file = config::private_file()
         .create(true)
         .append(true)
         .read(true)
@@ -102,7 +104,7 @@ pub fn trim(path: &Path, entries: &mut Vec<Entry>) -> Result<()> {
         .iter()
         .map(Entry::line)
         .collect::<Result<String>>()?;
-    crate::config::write_private_file(path, text.as_bytes())?;
+    config::write_private_file(path, text.as_bytes())?;
     *entries = current;
     Ok(())
 }
