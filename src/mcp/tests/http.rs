@@ -111,8 +111,10 @@ async fn fails_calls_when_an_http_reply_is_too_long() {
             _ => http_mcp(request),
         })
         .await;
+        let mut config = http_config(&url);
+        config.timeout = Some(60);
         let mut mcp = Mcp::default();
-        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        mcp.add(start("web".into(), Scope::Global, config).await);
         assert_eq!(
             mcp.call("mcp__web__echo", &json!({})).await,
             Some(Err("server sent a reply longer than 32 MiB".into())),
