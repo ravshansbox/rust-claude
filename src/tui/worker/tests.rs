@@ -5,11 +5,12 @@ use crate::{
         test_support::{self, MockApi, Reply},
     },
     auth::{Credentials, tests::AUTH_FILE},
-    config, mcp,
+    config,
+    mcp::{self, Started},
 };
 use serde_json::json;
 use std::time::Duration;
-use tokio::sync::mpsc;
+use tokio::{sync::mpsc, task::JoinHandle};
 
 fn agent() -> Agent {
     let credentials: Credentials = serde_json::from_value(json!({
@@ -21,6 +22,50 @@ fn agent() -> Agent {
     let mut agent = Agent::new(reqwest::Client::new(), credentials, "model".into()).unwrap();
     agent.api_base = "http://127.0.0.1:1".into();
     agent
+}
+
+struct Worker {
+    requests: mpsc::UnboundedSender<Request>,
+    cancel: mpsc::UnboundedSender<()>,
+    mcp_servers: mpsc::UnboundedSender<Started>,
+    events: mpsc::UnboundedReceiver<UiEvent>,
+    task: JoinHandle<()>,
+}
+
+impl Worker {
+    fn spawn(agent: Agent) -> Self {
+        let (requests, request_rx) = mpsc::unbounded_channel();
+        let (cancel, cancel_rx) = mpsc::unbounded_channel();
+        let (mcp_servers, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, events) = mpsc::unbounded_channel();
+        let task = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        Self {
+            requests,
+            cancel,
+            mcp_servers,
+            events,
+            task,
+        }
+    }
+
+    async fn wait_for(&mut self, matches: impl Fn(&UiEvent) -> bool) -> bool {
+        let wait = async {
+            while let Some(event) = self.events.recv().await {
+                if matches(&event) {
+                    return true;
+                }
+            }
+            false
+        };
+        tokio::time::timeout(Duration::from_secs(5), wait)
+            .await
+            .unwrap_or(false)
+    }
+
+    fn quit(self) -> JoinHandle<()> {
+        quit(self.requests, self.cancel);
+        self.task
+    }
 }
 
 #[tokio::test]
@@ -48,15 +93,13 @@ async fn does_not_start_requests_sent_before_quitting() {
 async fn stops_running_request_when_quitting() {
     let agent = agent();
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, _event_rx) = mpsc::unbounded_channel();
-    request_tx.send(Request::Shell("sleep 30".into())).unwrap();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+    let worker = Worker::spawn(agent);
+    worker
+        .requests
+        .send(Request::Shell("sleep 30".into()))
+        .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
-    quit(request_tx, cancel_tx);
-    let stopped = tokio::time::timeout(Duration::from_secs(5), worker).await;
+    let stopped = tokio::time::timeout(Duration::from_secs(5), worker.quit()).await;
     test_support::remove_session_files(&session_id);
     assert!(stopped.is_ok());
 }
@@ -82,14 +125,9 @@ async fn agent_renewing_sign_in() -> (Agent, MockApi) {
 async fn quits_while_renewing_the_sign_in() {
     let _lock = AUTH_FILE.lock().await;
     let (agent, _api) = agent_renewing_sign_in().await;
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, _event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+    let worker = Worker::spawn(agent);
     tokio::time::sleep(Duration::from_millis(200)).await;
-    quit(request_tx, cancel_tx);
-    let stopped = tokio::time::timeout(Duration::from_secs(5), worker).await;
+    let stopped = tokio::time::timeout(Duration::from_secs(5), worker.quit()).await;
     assert!(stopped.is_ok());
 }
 
@@ -98,22 +136,17 @@ async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
     let _lock = AUTH_FILE.lock().await;
     let (agent, _api) = agent_renewing_sign_in().await;
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+    let mut worker = Worker::spawn(agent);
     tokio::time::sleep(Duration::from_millis(200)).await;
-    request_tx
+    worker
+        .requests
         .send(Request::Prompt("hello".into(), Vec::new(), "off"))
         .unwrap();
-    cancel_tx.send(()).unwrap();
-    let cancelled = wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Cancelled(Ok(())))
-    })
-    .await;
-    quit(request_tx, cancel_tx);
-    worker.abort();
+    worker.cancel.send(()).unwrap();
+    let cancelled = worker
+        .wait_for(|event| matches!(event, UiEvent::Cancelled(Ok(()))))
+        .await;
+    worker.quit().abort();
     let session = config::dir()
         .map(|dir| dir.join("sessions").join(format!("{session_id}.jsonl")))
         .unwrap();
@@ -121,23 +154,6 @@ async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
     let _ = std::fs::remove_file(&session);
     assert!(cancelled);
     assert!(saved.contains("hello"), "session file: {saved:?}");
-}
-
-async fn wait_for_event(
-    events: &mut mpsc::UnboundedReceiver<UiEvent>,
-    matches: impl Fn(&UiEvent) -> bool,
-) -> bool {
-    let wait = async {
-        while let Some(event) = events.recv().await {
-            if matches(&event) {
-                return true;
-            }
-        }
-        false
-    };
-    tokio::time::timeout(Duration::from_secs(5), wait)
-        .await
-        .unwrap_or(false)
 }
 
 #[tokio::test]
@@ -155,24 +171,22 @@ async fn uses_an_effort_the_new_model_supports_for_background_turns() {
     let mut agent = test_support::agent(&api, reqwest::Client::new());
     agent.model = "claude-haiku-5-5".into();
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-    request_tx
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
         .send(Request::Prompt("go".into(), Vec::new(), "off"))
         .unwrap();
-    request_tx
+    worker
+        .requests
         .send(Request::SetModel("claude-opus-5-5".into()))
         .unwrap();
-    wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Background(_))
-    })
-    .await;
-    wait_for_event(&mut event_rx, |event| matches!(event, UiEvent::Done(_))).await;
-    quit(request_tx, cancel_tx);
-    worker.abort();
+    worker
+        .wait_for(|event| matches!(event, UiEvent::Background(_)))
+        .await;
+    worker
+        .wait_for(|event| matches!(event, UiEvent::Done(_)))
+        .await;
+    worker.quit().abort();
     test_support::remove_session_files(&session_id);
     let requests = api.requests().await;
     assert_eq!(requests.len(), 3);
@@ -194,22 +208,19 @@ async fn uses_the_effort_chosen_since_the_last_prompt_for_background_turns() {
     .await;
     let agent = test_support::agent(&api, reqwest::Client::new());
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-    request_tx
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
         .send(Request::Prompt("go".into(), Vec::new(), "medium"))
         .unwrap();
-    request_tx.send(Request::SetEffort("high")).unwrap();
-    wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Background(_))
-    })
-    .await;
-    wait_for_event(&mut event_rx, |event| matches!(event, UiEvent::Done(_))).await;
-    quit(request_tx, cancel_tx);
-    worker.abort();
+    worker.requests.send(Request::SetEffort("high")).unwrap();
+    worker
+        .wait_for(|event| matches!(event, UiEvent::Background(_)))
+        .await;
+    worker
+        .wait_for(|event| matches!(event, UiEvent::Done(_)))
+        .await;
+    worker.quit().abort();
     test_support::remove_session_files(&session_id);
     let requests = api.requests().await;
     assert_eq!(requests.len(), 3);
@@ -221,31 +232,29 @@ async fn uses_the_effort_chosen_since_the_last_prompt_for_background_turns() {
 async fn runs_requests_while_mcp_servers_start() {
     let agent = agent();
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-    request_tx.send(Request::Shell("echo hi".into())).unwrap();
-    let ran = wait_for_event(
-        &mut event_rx,
-        |event| matches!(event, UiEvent::Shell(_, Ok(output)) if output == "hi\n"),
-    )
-    .await;
-    mcp_tx
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
+        .send(Request::Shell("echo hi".into()))
+        .unwrap();
+    let ran = worker
+        .wait_for(|event| matches!(event, UiEvent::Shell(_, Ok(output)) if output == "hi\n"))
+        .await;
+    worker
+        .mcp_servers
         .send(mcp::failed_start("slow", "initialize timed out"))
         .unwrap();
-    let reported = wait_for_event(&mut event_rx, |event| {
-        matches!(
-            event,
-            UiEvent::McpServer(added)
-                if added.name == "slow"
-                    && added.status == "MCP server slow failed: initialize timed out"
-        )
-    })
-    .await;
-    quit(request_tx, cancel_tx);
-    let _ = worker.await;
+    let reported = worker
+        .wait_for(|event| {
+            matches!(
+                event,
+                UiEvent::McpServer(added)
+                    if added.name == "slow"
+                        && added.status == "MCP server slow failed: initialize timed out"
+            )
+        })
+        .await;
+    let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(ran);
     assert!(reported);
@@ -265,29 +274,21 @@ async fn starts_a_turn_when_a_background_command_finishes() {
     .await;
     let agent = test_support::agent(&api, reqwest::Client::new());
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-    request_tx
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
         .send(Request::Prompt("watch it".into(), Vec::new(), "off"))
         .unwrap();
-    let first = wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Done(Ok(())))
-    })
-    .await;
-    let delivered = wait_for_event(
-        &mut event_rx,
-        |event| matches!(event, UiEvent::Background(text) if text.contains("finished")),
-    )
-    .await;
-    let second = wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Done(Ok(())))
-    })
-    .await;
-    quit(request_tx, cancel_tx);
-    let _ = worker.await;
+    let first = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    let delivered = worker
+        .wait_for(|event| matches!(event, UiEvent::Background(text) if text.contains("finished")))
+        .await;
+    let second = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(first && delivered && second);
     let requests = api.requests().await;
@@ -302,31 +303,26 @@ async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
     let api = MockApi::start(vec![Reply::Stall, test_support::text_reply("hi")]).await;
     let agent = test_support::agent(&api, reqwest::Client::new());
     let session_id = agent.session.id.clone();
-    let (request_tx, request_rx) = mpsc::unbounded_channel();
-    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
-    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
-    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
-    request_tx
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
         .send(Request::Prompt("first".into(), Vec::new(), "off"))
         .unwrap();
     while api.requests().await.is_empty() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
-    cancel_tx.send(()).unwrap();
-    let cancelled = wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Cancelled(Ok(())))
-    })
-    .await;
-    request_tx
+    worker.cancel.send(()).unwrap();
+    let cancelled = worker
+        .wait_for(|event| matches!(event, UiEvent::Cancelled(Ok(()))))
+        .await;
+    worker
+        .requests
         .send(Request::Prompt("second".into(), Vec::new(), "off"))
         .unwrap();
-    let done = wait_for_event(&mut event_rx, |event| {
-        matches!(event, UiEvent::Done(Ok(())))
-    })
-    .await;
-    quit(request_tx, cancel_tx);
-    let _ = worker.await;
+    let done = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(cancelled && done);
     let requests = api.requests().await;
