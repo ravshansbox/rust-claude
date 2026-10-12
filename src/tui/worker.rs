@@ -204,7 +204,7 @@ mod tests {
             test_support::{MockApi, Reply},
         },
         auth::Credentials,
-        mcp,
+        config, mcp,
     };
     use serde_json::json;
     use std::time::Duration;
@@ -223,7 +223,7 @@ mod tests {
     }
 
     fn remove_session(session_id: &str) {
-        if let Some(config_dir) = crate::config::dir() {
+        if let Some(config_dir) = config::dir() {
             let sessions = config_dir.join("sessions");
             let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
         }
@@ -320,7 +320,7 @@ mod tests {
         .await;
         quit(request_tx, cancel_tx);
         worker.abort();
-        let session = crate::config::dir()
+        let session = config::dir()
             .map(|dir| dir.join("sessions").join(format!("{session_id}.jsonl")))
             .unwrap();
         let saved = std::fs::read_to_string(&session).unwrap_or_default();
