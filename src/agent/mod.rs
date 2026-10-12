@@ -425,12 +425,20 @@ impl Agent {
                 .is_some_and(|tokens| tokens * 100 >= stats.context_window * COMPACT_AT_PERCENT)
     }
 
-    async fn compact_if_full(&mut self, end: usize, on_event: &mut impl FnMut(AgentEvent)) {
-        if self.context_full()
-            && has_uncompacted(&self.messages[..end])
-            && let Err(error) = self.compact_history(end, on_event).await
-        {
-            on_event(AgentEvent::Notice(format!("{error:#}")));
+    async fn compact_if_full(
+        &mut self,
+        end: usize,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> usize {
+        if !self.context_full() || !has_uncompacted(&self.messages[..end]) {
+            return end;
+        }
+        match self.compact_history(end, on_event).await {
+            Ok(()) => end + 1,
+            Err(error) => {
+                on_event(AgentEvent::Notice(format!("{error:#}")));
+                end
+            }
         }
     }
 
@@ -568,8 +576,9 @@ impl Agent {
     ) -> Result<()> {
         self.push_prompt(prompt, images)?;
         on_event(AgentEvent::Stats(self.stats()));
-        let mut end = self.messages.len() - 1;
-        self.compact_if_full(end, &mut on_event).await;
+        let mut end = self
+            .compact_if_full(self.messages.len() - 1, &mut on_event)
+            .await;
 
         loop {
             let messages = with_cache_breakpoint(&active_messages(&self.messages));
@@ -663,8 +672,9 @@ impl Agent {
             }
             // Compact before adding queued prompts, so they follow the summary
             // word for word instead of being summarised.
-            end = self.messages.len();
-            self.compact_if_full(end, &mut on_event).await;
+            end = self
+                .compact_if_full(self.messages.len(), &mut on_event)
+                .await;
             if let Some(prompts) = self.take_queued_prompts(&mut on_event)? {
                 self.messages
                     .push(json!({ "role": "user", "content": prompts }));
@@ -1190,6 +1200,42 @@ mod tests {
             after_compaction.contains("also update the README"),
             "{after_compaction}"
         );
+    }
+
+    #[tokio::test]
+    async fn does_not_summarise_again_when_the_request_after_compaction_is_too_long() {
+        let full_context_tool_call = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "true" } } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        ]);
+        let api = MockApi::start_with_message_limit(
+            vec![
+                full_context_tool_call,
+                text_reply("summary of the work"),
+                text_reply("second summary"),
+            ],
+            10_000,
+        )
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        agent.queue.lock().unwrap().push(Queued {
+            prompt: "x".repeat(15_000),
+            images: Vec::new(),
+        });
+        let mut notices = Vec::new();
+        let result = agent
+            .prompt("fix the bug", &[], test_support::notices(&mut notices))
+            .await;
+        test_support::remove_session(&agent);
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("prompt is too long"), "{message}");
+        let compactions = notices
+            .iter()
+            .filter(|notice| *notice == "compacting conversation")
+            .count();
+        assert_eq!(compactions, 1, "{notices:?}");
     }
 
     #[tokio::test]
