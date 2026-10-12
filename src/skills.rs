@@ -7,6 +7,8 @@ use anyhow::{Context, Result};
 use ignore::gitignore::{Gitignore, GitignoreBuilder};
 use serde_json::{Value, json};
 
+use crate::config;
+
 const MAX_NAME_LENGTH: usize = 64;
 const MAX_DESCRIPTION_LENGTH: usize = 1024;
 const IGNORE_FILE_NAMES: [&str; 3] = [".gitignore", ".ignore", ".fdignore"];
@@ -84,7 +86,7 @@ enum Mode {
 }
 
 pub fn load() -> Skills {
-    let config_dir = crate::config::dir();
+    let config_dir = config::dir();
     let home = std::env::var_os("HOME").map(PathBuf::from);
     let cwd = std::env::current_dir().unwrap_or_default();
     load_from(config_dir.as_deref(), home.as_deref(), &cwd)
