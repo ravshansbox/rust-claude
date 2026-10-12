@@ -402,13 +402,14 @@ async fn run_loop(
                     None => break Ok(()),
                 };
                 dirty |= may_change_screen(&event);
+                let send = |request| {
+                    let _ = request_tx.send(request);
+                };
                 let quit = handle_input(event, &mut app, |action| match action {
                     Action::Submit(prompt, images, effort) => {
-                        let _ = request_tx.send(Request::Prompt(prompt, images, effort));
+                        send(Request::Prompt(prompt, images, effort));
                     }
-                    Action::Shell(command) => {
-                        let _ = request_tx.send(Request::Shell(command));
-                    }
+                    Action::Shell(command) => send(Request::Shell(command)),
                     Action::PasteImage => {
                         let events = background_events.clone();
                         tokio::spawn(async move {
@@ -418,21 +419,11 @@ async fn run_loop(
                             let _ = events.send(UiEvent::ImagePasted(result));
                         });
                     }
-                    Action::Compact(effort) => {
-                        let _ = request_tx.send(Request::Compact(effort));
-                    }
-                    Action::ListSessions => {
-                        let _ = request_tx.send(Request::ListSessions);
-                    }
-                    Action::Resume(id) => {
-                        let _ = request_tx.send(Request::Resume(id));
-                    }
-                    Action::SetModel(model) => {
-                        let _ = request_tx.send(Request::SetModel(model));
-                    }
-                    Action::NewSession => {
-                        let _ = request_tx.send(Request::NewSession);
-                    }
+                    Action::Compact(effort) => send(Request::Compact(effort)),
+                    Action::ListSessions => send(Request::ListSessions),
+                    Action::Resume(id) => send(Request::Resume(id)),
+                    Action::SetModel(model) => send(Request::SetModel(model)),
+                    Action::NewSession => send(Request::NewSession),
                     Action::McpSignIn(name) => {
                         tokio::spawn(sign_in_to_mcp_server(
                             name,
