@@ -106,3 +106,14 @@ fn leaves_input_to_scripts_as_bash() {
     let lines = bash("python3 script.py <<EOF\nimport os\nEOF");
     assert_eq!(colour_of(&lines, "import"), None);
 }
+
+#[test]
+fn recognises_versioned_python_by_path() {
+    let keyword = keyword_colour("x.py", "import sys", "import");
+    let versioned = bash("/usr/bin/python3.12 -c 'import sys'");
+    assert_eq!(colour_of(&versioned, "import"), Some(keyword));
+    for program in ["python3.", "python3.x", "python2"] {
+        let lines = bash(&format!("{program} -c 'import sys'"));
+        assert_eq!(colour_of(&lines, "import"), None, "{program}");
+    }
+}
