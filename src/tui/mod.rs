@@ -6,6 +6,7 @@ mod input;
 mod keys;
 mod mcp_status;
 mod message;
+mod prompt_history;
 mod render;
 mod replay;
 mod selection;
@@ -28,13 +29,14 @@ use crate::{
     update::Updater,
 };
 use anyhow::Result;
-use app::{Activity, App, HistorySearch, Picker, PickerKind};
+use app::{Activity, App, Picker, PickerKind};
 use crossterm::event::EventStream;
 use draw::draw;
 use files::list_files;
 use futures::StreamExt;
 use keys::{Action, handle_input, may_change_screen};
 use message::Role;
+use prompt_history::HistorySearch;
 use ratatui::DefaultTerminal;
 use render::{BACKGROUND, THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
