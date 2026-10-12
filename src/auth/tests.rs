@@ -419,6 +419,36 @@ async fn renews_a_sign_in_the_api_turned_down_and_sends_the_request_again() {
 }
 
 #[tokio::test]
+async fn renews_an_expired_sign_in_before_a_prompt_and_says_so() {
+    let _lock = AUTH_FILE.lock().await;
+    let endpoint = TokenEndpoint::start("refresh", false).await;
+    let path = no_credentials_file();
+    let api = MockApi::start(vec![text_reply("hello")]).await;
+    let mut agent = crate::agent::Agent::new(
+        reqwest::Client::new(),
+        expired("refresh"),
+        "claude-opus-5-5".into(),
+    )
+    .unwrap();
+    agent.api_base = api.base.clone();
+    let mut notices = Vec::new();
+    let result = agent
+        .prompt("hi", &[], test_support::notices(&mut notices))
+        .await;
+    test_support::remove_session(&agent);
+    let _ = std::fs::remove_file(&path);
+    result.unwrap();
+    assert_eq!(notices, ["renewed sign-in token"]);
+    assert_eq!(*endpoint.received.lock().await, ["refresh"]);
+    let headers = api.headers().await;
+    assert!(
+        headers[0].contains("authorization: bearer access from refresh"),
+        "{}",
+        headers[0]
+    );
+}
+
+#[tokio::test]
 async fn uses_a_sign_in_another_instance_renewed_after_the_api_turned_ours_down() {
     let _lock = AUTH_FILE.lock().await;
     let endpoint = TokenEndpoint::start("refresh", false).await;
