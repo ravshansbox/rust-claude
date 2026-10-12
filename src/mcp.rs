@@ -1769,8 +1769,8 @@ mod tests {
 
     #[test]
     fn restarts_only_enabled_servers() {
-        let directory = std::env::temp_dir().join(format!("mcp-restart-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
+        let temporary = TemporaryDir::new("mcp-restart");
+        let directory = temporary.path();
         std::fs::write(
             directory.join("mcp.json"),
             r#"{ "mcpServers": {
@@ -1779,10 +1779,9 @@ mod tests {
             } }"#,
         )
         .unwrap();
-        let configs = || read_configs(Some(&directory), &directory).0;
+        let configs = || read_configs(Some(directory), directory).0;
         let docs = restart_from(configs(), "docs").map(|server| server.name);
         let off = restart_from(configs(), "off").map(|server| server.name);
-        std::fs::remove_dir_all(&directory).unwrap();
         assert_eq!(docs.as_deref(), Some("docs"));
         assert_eq!(off.as_deref(), None);
     }
