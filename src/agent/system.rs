@@ -25,10 +25,10 @@ pub(super) fn load_instructions() -> Vec<Instructions> {
             home.join(INSTRUCTIONS_FILE),
         ));
     }
-    let same_dir = match (&home, &cwd) {
-        (Some(home), Some(cwd)) => same_path(home, cwd),
-        _ => false,
-    };
+    let same_dir = home
+        .as_deref()
+        .zip(cwd.as_deref())
+        .is_some_and(|(home, cwd)| same_path(home, cwd));
     if !same_dir {
         candidates.push((
             format!("./{INSTRUCTIONS_FILE}"),
