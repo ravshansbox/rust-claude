@@ -18,9 +18,12 @@ impl std::fmt::Display for Retryable {
 
 impl std::error::Error for Retryable {}
 
-pub(crate) fn retryable(message: impl ToString, retry_after: Option<Duration>) -> anyhow::Error {
+pub(crate) fn retryable(
+    message: impl Into<String>,
+    retry_after: Option<Duration>,
+) -> anyhow::Error {
     Retryable {
-        message: message.to_string(),
+        message: message.into(),
         retry_after,
     }
     .into()
