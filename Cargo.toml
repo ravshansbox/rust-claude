@@ -21,10 +21,10 @@ similar = "3.2.0"
 syntect = "5"
 terminal-colorsaurus = "1.0.3"
 tokio = { version = "1", features = ["full"] }
-tui-markdown = "0.3.10"
+tui-markdown = "0.3.11"
 unicode-segmentation = "1.13.3"
 yaml_serde = "0.10.7"
-zip = { version = "9.0.1", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+zip = { version = "9.0.2", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
