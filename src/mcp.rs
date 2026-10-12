@@ -2642,6 +2642,29 @@ done
     }
 
     #[tokio::test]
+    async fn reads_sign_in_parameters_outside_quoted_values() {
+        let base = Arc::new(Mutex::new(String::new()));
+        let shared = base.clone();
+        let (url, _) = http_server(move |request| {
+            let base = shared.lock().unwrap().clone();
+            let reply = oauth_mcp(&base, request);
+            if reply.status != 401 {
+                return reply;
+            }
+            HttpReply::status(401, "").with_header(
+                "www-authenticate",
+                &format!(
+                    r#"Bearer error="insufficient_scope", error_description="needs scope=admin, see resource_metadata=https://elsewhere.example", resource_metadata="{base}/.well-known/oauth-protected-resource/mcp", scope="mcp:connect""#
+                ),
+            )
+        })
+        .await;
+        *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
+        let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+        assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
+    }
+
+    #[tokio::test]
     async fn refuses_sign_in_endpoints_without_https() {
         let base = Arc::new(Mutex::new(String::new()));
         let shared = base.clone();

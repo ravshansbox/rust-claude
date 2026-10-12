@@ -223,17 +223,33 @@ pub(super) struct Pending {
 }
 
 /// Reads a `key="value"` or `key=value` parameter of a `WWW-Authenticate`
-/// challenge.
+/// challenge, skipping text inside quoted values.
 fn challenge_parameter(challenge: &str, key: &str) -> Option<String> {
-    let mut rest = challenge;
-    while let Some(start) = rest.find(key) {
-        let before = rest[..start].chars().next_back();
-        let after = &rest[start + key.len()..];
-        rest = after;
-        if before.is_some_and(|character| character.is_ascii_alphanumeric() || character == '_') {
+    let mut quoted = false;
+    let mut escaped = false;
+    let mut before = None;
+    for (start, character) in challenge.char_indices() {
+        let at_key = !quoted
+            && !before.is_some_and(|before: char| before.is_ascii_alphanumeric() || before == '_');
+        before = Some(character);
+        if quoted {
+            match character {
+                _ if escaped => escaped = false,
+                '\\' => escaped = true,
+                '"' => quoted = false,
+                _ => {}
+            }
             continue;
         }
-        let Some(value) = after.trim_start().strip_prefix('=') else {
+        if character == '"' {
+            quoted = true;
+            continue;
+        }
+        let Some(value) = challenge[start..]
+            .strip_prefix(key)
+            .filter(|_| at_key)
+            .and_then(|after| after.trim_start().strip_prefix('='))
+        else {
             continue;
         };
         let value = value.trim_start();
