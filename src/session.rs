@@ -11,7 +11,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::{config, images::Image};
+use crate::{agent, config, images::Image, skills};
 
 pub struct SessionSummary {
     pub id: String,
@@ -331,10 +331,10 @@ fn read_preview(path: &Path) -> Result<String> {
         }) else {
             continue;
         };
-        if let Some((command, _)) = crate::agent::parse_shell_message(text) {
+        if let Some((command, _)) = agent::parse_shell_message(text) {
             return Ok(format!("!{command}"));
         }
-        if let Some(block) = crate::skills::parse_block(text) {
+        if let Some(block) = skills::parse_block(text) {
             return Ok(match block.user_message {
                 Some(user_message) => format!("/skill:{} {user_message}", block.name),
                 None => format!("/skill:{}", block.name),
