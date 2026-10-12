@@ -820,3 +820,42 @@ async fn continues_a_reply_the_api_paused() {
     assert_eq!(last["role"], "assistant");
     assert!(last.to_string().contains("searching"), "{last}");
 }
+
+#[tokio::test]
+async fn reads_the_quota_left_and_keeps_the_figures_replies_reported() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut chunk = [0; 1024];
+        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+            let read = stream.read(&mut chunk).await.unwrap();
+            request.extend_from_slice(&chunk[..read]);
+        }
+        assert!(request.starts_with(b"GET /api/oauth/usage "));
+        let body = json!({
+            "five_hour": { "utilization": 25.0, "resets_at": "1970-01-01T01:00:00Z" },
+            "seven_day": { "utilization": 90.0, "resets_at": "1970-01-08T00:00:00+00:00" },
+        })
+        .to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+    });
+    let api = MockApi::start(Vec::new()).await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    agent.api_base = base;
+    agent.quota.five_hour_remaining = Some(40.0);
+    let quota = agent.quota_request().await.unwrap().await.unwrap();
+    agent.merge_quota(quota);
+    test_support::remove_session(&agent);
+    let quota = agent.stats().quota;
+    assert_eq!(quota.five_hour_remaining, Some(40.0));
+    assert_eq!(quota.five_hour_reset, Some(3_600));
+    assert_eq!(quota.seven_day_remaining, Some(10.0));
+    assert_eq!(quota.seven_day_reset, Some(604_800));
+}
