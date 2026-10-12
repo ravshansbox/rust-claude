@@ -33,25 +33,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             Line::raw(format!("{marker}{row}"))
         })
         .collect();
-    let mut footer_parts: Vec<Cow<str>> = vec![
-        Cow::Borrowed(&app.workspace),
-        format!("{}:{}", display_model(&app.model), app.effort).into(),
-        match app.tasks.len() {
-            0 => Cow::Borrowed(""),
-            1 => Cow::Borrowed("1 agent"),
-            count => format!("{count} agents").into(),
-        },
-        match app.stats.background {
-            0 => Cow::Borrowed(""),
-            count => format!("{count} background").into(),
-        },
-        format_context(&app.stats).into(),
-        format_stats(&app.stats).into(),
-        format_quota(&app.stats).into(),
-    ];
-    footer_parts.retain(|part| !part.is_empty());
-    let footer_paragraph =
-        Paragraph::new(Line::raw(footer_parts.join(" · "))).wrap(Wrap { trim: false });
+    let footer_paragraph = footer(app);
     let footer_height = footer_paragraph
         .line_count(frame.area().width)
         .min(u16::MAX as usize) as u16;
@@ -194,54 +176,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         }
     }
 
-    if let Some(suggestions) = app
-        .visible_suggestions()
-        .filter(|_| app.history_search.is_none() && app.picker.is_none())
-    {
-        let matches = suggestions.items;
-        let height = (matches.len().min(MAX_LIST_ROWS) as u16).min(chat.height);
-        let selected = app.command_selected.min(matches.len() - 1);
-        let first = (selected + 1).saturating_sub(height as usize);
-        let name_width = matches
-            .iter()
-            .map(|(name, _)| name.chars().count() + 1)
-            .max()
-            .unwrap_or_default()
-            .max(12);
-        let texts: Vec<String> = matches
-            .iter()
-            .map(|(name, description)| format!(" {name:<name_width$}{description} "))
-            .collect();
-        let width = texts
-            .iter()
-            .map(|text| Line::raw(text.as_str()).width())
-            .max()
-            .unwrap_or_default();
-        let lines: Vec<Line> = texts
-            .into_iter()
-            .enumerate()
-            .skip(first)
-            .take(height as usize)
-            .map(|(index, text)| {
-                let text = format!("{text:<width$}");
-                if index == selected {
-                    Line::from(text.reversed())
-                } else {
-                    Line::raw(text)
-                }
-            })
-            .collect();
-        let width = width.min(chat.width as usize) as u16;
-        let area = Rect {
-            y: chat.y + chat.height - height,
-            height,
-            width,
-            ..chat
-        };
-        frame.render_widget(Clear, area);
-        frame.render_widget(Paragraph::new(lines).style(theme().subtle_style()), area);
-        render_list_scrollbar(frame, area, matches.len(), selected);
-    }
+    draw_suggestions(frame, app, chat);
 
     let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
@@ -256,6 +191,79 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     ));
 
     frame.render_widget(footer_paragraph, footer);
+}
+
+fn footer(app: &App) -> Paragraph<'static> {
+    let mut footer_parts: Vec<Cow<str>> = vec![
+        Cow::Borrowed(&app.workspace),
+        format!("{}:{}", display_model(&app.model), app.effort).into(),
+        match app.tasks.len() {
+            0 => Cow::Borrowed(""),
+            1 => Cow::Borrowed("1 agent"),
+            count => format!("{count} agents").into(),
+        },
+        match app.stats.background {
+            0 => Cow::Borrowed(""),
+            count => format!("{count} background").into(),
+        },
+        format_context(&app.stats).into(),
+        format_stats(&app.stats).into(),
+        format_quota(&app.stats).into(),
+    ];
+    footer_parts.retain(|part| !part.is_empty());
+    Paragraph::new(Line::raw(footer_parts.join(" · "))).wrap(Wrap { trim: false })
+}
+
+fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
+    let Some(suggestions) = app
+        .visible_suggestions()
+        .filter(|_| app.history_search.is_none() && app.picker.is_none())
+    else {
+        return;
+    };
+    let matches = suggestions.items;
+    let height = (matches.len().min(MAX_LIST_ROWS) as u16).min(chat.height);
+    let selected = app.command_selected.min(matches.len() - 1);
+    let first = (selected + 1).saturating_sub(height as usize);
+    let name_width = matches
+        .iter()
+        .map(|(name, _)| name.chars().count() + 1)
+        .max()
+        .unwrap_or_default()
+        .max(12);
+    let texts: Vec<String> = matches
+        .iter()
+        .map(|(name, description)| format!(" {name:<name_width$}{description} "))
+        .collect();
+    let width = texts
+        .iter()
+        .map(|text| Line::raw(text.as_str()).width())
+        .max()
+        .unwrap_or_default();
+    let lines: Vec<Line> = texts
+        .into_iter()
+        .enumerate()
+        .skip(first)
+        .take(height as usize)
+        .map(|(index, text)| {
+            let text = format!("{text:<width$}");
+            if index == selected {
+                Line::from(text.reversed())
+            } else {
+                Line::raw(text)
+            }
+        })
+        .collect();
+    let width = width.min(chat.width as usize) as u16;
+    let area = Rect {
+        y: chat.y + chat.height - height,
+        height,
+        width,
+        ..chat
+    };
+    frame.render_widget(Clear, area);
+    frame.render_widget(Paragraph::new(lines).style(theme().subtle_style()), area);
+    render_list_scrollbar(frame, area, matches.len(), selected);
 }
 
 fn status_lines(app: &App) -> Vec<Line<'static>> {
