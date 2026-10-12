@@ -1,4 +1,4 @@
-use std::{io::Cursor, sync::OnceLock};
+use std::{borrow::Cow, io::Cursor, sync::OnceLock};
 
 use syntect::{
     easy::HighlightLines,
@@ -258,7 +258,11 @@ fn quoted_body(command: &str, start: usize, quote: char) -> std::ops::Range<usiz
 
 fn highlight_command(body: &str, dark: bool) -> Vec<HighlightedLine> {
     let bash = syntax_by_extension("sh");
-    let command = body.lines().collect::<Vec<_>>().join("\n");
+    let command = if body.contains('\r') || body.ends_with('\n') {
+        Cow::Owned(body.lines().collect::<Vec<_>>().join("\n"))
+    } else {
+        Cow::Borrowed(body)
+    };
     let embedded = embedded_code(&command);
     let mut bash_highlighter = HighlightLines::new(bash, theme(dark));
     let mut embedded_highlighters: Vec<HighlightLines> = embedded
