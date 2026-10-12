@@ -1117,9 +1117,9 @@ fn qualified_name(server: &str, tool: &str) -> String {
         .collect()
 }
 
-fn tool_definition(qualified_name: &str, tool: &Value) -> Value {
-    let mut schema = match &tool["inputSchema"] {
-        Value::Object(schema) => schema.clone(),
+fn tool_definition(qualified_name: &str, mut tool: Value) -> Value {
+    let mut schema = match tool["inputSchema"].take() {
+        Value::Object(schema) => schema,
         _ => serde_json::Map::new(),
     };
     for key in ["anyOf", "oneOf", "allOf"] {
@@ -1134,11 +1134,12 @@ fn tool_definition(qualified_name: &str, tool: &Value) -> Value {
         .or_else(|| tool["title"].as_str())
         .or_else(|| tool["name"].as_str())
         .unwrap_or_default();
-    json!({
+    let mut definition = json!({
         "name": qualified_name,
         "description": description,
-        "input_schema": schema,
-    })
+    });
+    definition["input_schema"] = Value::Object(schema);
+    definition
 }
 
 async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
@@ -1194,12 +1195,12 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
     }
     let tools = list_tools(&connection)
         .await?
-        .iter()
+        .into_iter()
         .filter_map(|tool| {
-            let tool_name = tool["name"].as_str()?;
-            let qualified_name = qualified_name(&name, tool_name);
+            let tool_name = tool["name"].as_str()?.to_string();
+            let qualified_name = qualified_name(&name, &tool_name);
             Some(Tool {
-                name: tool_name.to_string(),
+                name: tool_name,
                 definition: tool_definition(&qualified_name, tool),
                 qualified_name,
             })
@@ -1593,7 +1594,7 @@ mod tests {
     fn makes_object_schemas() {
         let definition = tool_definition(
             "mcp__docs__search",
-            &json!({ "name": "search", "inputSchema": { "type": "object" } }),
+            json!({ "name": "search", "inputSchema": { "type": "object" } }),
         );
         assert_eq!(
             definition,
@@ -1609,7 +1610,7 @@ mod tests {
     fn drops_top_level_schema_combinators() {
         let definition = tool_definition(
             "mcp__docs__search",
-            &json!({
+            json!({
                 "name": "search",
                 "inputSchema": {
                     "type": "object",
