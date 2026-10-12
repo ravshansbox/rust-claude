@@ -404,7 +404,10 @@ fn covers(resource: &str, url: &reqwest::Url) -> bool {
     let parent = resource.path().trim_end_matches('/');
     let path = url.path();
     resource.origin() == url.origin()
-        && (path.trim_end_matches('/') == parent || path.starts_with(&format!("{parent}/")))
+        && (path.trim_end_matches('/') == parent
+            || path
+                .strip_prefix(parent)
+                .is_some_and(|rest| rest.starts_with('/')))
 }
 
 fn secure_endpoint(endpoint: &str) -> bool {
