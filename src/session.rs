@@ -401,8 +401,8 @@ fn has_tool_calls(message: &Value) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{
-        Session, current_folder, inline_images, latest_in_folder, new_uuid, read_folder,
-        read_preview, sessions_directory,
+        Image, Session, agent, current_folder, inline_images, latest_in_folder, new_uuid,
+        read_folder, read_preview, sessions_directory,
     };
     use serde_json::json;
     use std::{
@@ -459,7 +459,7 @@ mod tests {
         ));
         let message = json!({
             "role": "user",
-            "content": crate::agent::shell_message("ls -la", "file\n"),
+            "content": agent::shell_message("ls -la", "file\n"),
         });
         std::fs::write(&path, format!("{message}\n")).unwrap();
         let preview = read_preview(&path);
@@ -647,7 +647,7 @@ mod tests {
         session
             .save(&[json!({ "role": "user", "content": "secret" })])
             .unwrap();
-        let image = session.save_image(&crate::images::Image {
+        let image = session.save_image(&Image {
             media_type: "image/png",
             data: b"png".to_vec(),
         });
@@ -669,7 +669,7 @@ mod tests {
     #[test]
     fn replaces_an_image_a_failed_save_cut_short() {
         let session = Session::new().unwrap();
-        let image = crate::images::Image {
+        let image = Image {
             media_type: "image/png",
             data: b"png".to_vec(),
         };
