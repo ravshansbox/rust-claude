@@ -48,7 +48,7 @@ impl Worker {
         }
     }
 
-    async fn wait_for(&mut self, matches: impl Fn(&UiEvent) -> bool) -> bool {
+    async fn wait_for(&mut self, mut matches: impl FnMut(&UiEvent) -> bool) -> bool {
         let wait = async {
             while let Some(event) = self.events.recv().await {
                 if matches(&event) {
@@ -329,4 +329,87 @@ async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
     assert_eq!(requests.len(), 2);
     let sent = requests[1]["messages"].to_string();
     assert!(sent.contains("first") && sent.contains("second"), "{sent}");
+}
+
+#[tokio::test]
+async fn starts_lists_and_resumes_sessions() {
+    let api = MockApi::start(vec![
+        test_support::text_reply("one"),
+        test_support::text_reply("two"),
+        test_support::text_reply("three"),
+    ])
+    .await;
+    let agent = test_support::agent(&api, reqwest::Client::new());
+    let first_id = agent.session.id.clone();
+    let second_prompt = format!("after {first_id}");
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
+        .send(Request::Prompt("first".into(), Vec::new(), "off"))
+        .unwrap();
+    let first = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    worker.requests.send(Request::NewSession).unwrap();
+    worker
+        .requests
+        .send(Request::Prompt(second_prompt.clone(), Vec::new(), "off"))
+        .unwrap();
+    let second = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    worker.requests.send(Request::ListSessions).unwrap();
+    let listed = worker
+        .wait_for(|event| {
+            matches!(event, UiEvent::Sessions(Ok(sessions))
+                if sessions.iter().any(|session| session.id == first_id))
+        })
+        .await;
+    worker
+        .requests
+        .send(Request::Resume(first_id.clone()))
+        .unwrap();
+    let resumed = worker
+        .wait_for(|event| {
+            matches!(event, UiEvent::Resumed(Ok(messages))
+                if serde_json::to_string(messages).unwrap().contains("first"))
+        })
+        .await;
+    worker.requests.send(Request::ListSessions).unwrap();
+    let mut second_id = None;
+    worker
+        .wait_for(|event| {
+            let UiEvent::Sessions(Ok(sessions)) = event else {
+                return false;
+            };
+            second_id = sessions
+                .iter()
+                .find(|session| session.preview.contains(&second_prompt))
+                .map(|session| session.id.clone());
+            true
+        })
+        .await;
+    worker
+        .requests
+        .send(Request::Prompt("third".into(), Vec::new(), "off"))
+        .unwrap();
+    let third = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    let _ = worker.quit().await;
+    test_support::remove_session_files(&first_id);
+    if let Some(id) = &second_id {
+        test_support::remove_session_files(id);
+    }
+    assert!(first && second && listed && resumed && third);
+    assert!(second_id.is_some());
+    let sent: Vec<String> = api
+        .requests()
+        .await
+        .iter()
+        .map(|request| request["messages"].to_string())
+        .collect();
+    assert!(!sent[1].contains("first"), "{}", sent[1]);
+    assert!(sent[2].contains("first") && sent[2].contains("third"));
+    assert!(!sent[2].contains(&second_prompt), "{}", sent[2]);
 }
