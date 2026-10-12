@@ -1,5 +1,6 @@
 use super::{argument, replace_file};
 use serde_json::{Value, json};
+use std::io;
 
 pub(super) fn definition() -> Value {
     json!({
@@ -24,7 +25,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     {
         return Err(format!("{path} is not a regular file"));
     }
-    let failed = |error: std::io::Error| format!("failed to write {path}: {error}");
+    let failed = |error: io::Error| format!("failed to write {path}: {error}");
     if let Some(parent) = std::path::Path::new(path).parent()
         && !parent.as_os_str().is_empty()
     {
