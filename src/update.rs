@@ -470,13 +470,12 @@ mod tests {
                     }
                 }
                 let request = String::from_utf8_lossy(&data).into_owned();
-                let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
-                recorded.lock().unwrap().push(request);
-                let body = match path.as_str() {
-                    "/rust-coding-agent.zip" => &zip,
-                    "/rust-coding-agent.zip.minisig" => &signature,
+                let body = match request.split_whitespace().nth(1) {
+                    Some("/rust-coding-agent.zip") => &zip,
+                    Some("/rust-coding-agent.zip.minisig") => &signature,
                     _ => &release,
                 };
+                recorded.lock().unwrap().push(request);
                 let head = format!(
                     "HTTP/1.1 200 OK\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
                     body.len()
