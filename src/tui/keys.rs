@@ -5,7 +5,9 @@ use super::{
     },
 };
 use crate::{images::Image, models, skills};
-use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, MouseButton, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
+};
 use ratatui::layout::Position;
 
 pub(super) enum Action {
@@ -41,112 +43,55 @@ pub(super) fn may_change_screen(event: &Event) -> bool {
     }
 }
 
-pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Action)) -> bool {
+pub(super) fn handle_input(event: Event, app: &mut App, act: impl FnMut(Action)) -> bool {
     match event {
         Event::FocusGained => app.focused = true,
         Event::FocusLost => app.focused = false,
         Event::Resize(..) => app.selection = None,
+        Event::Mouse(mouse) => handle_mouse(mouse, app),
+        Event::Paste(text) => handle_paste(&text, app),
+        Event::Key(key) if key.kind == KeyEventKind::Press => return handle_key(key, app, act),
+        Event::Key(_) => {}
+    }
+    false
+}
+
+fn handle_mouse(mouse: MouseEvent, app: &mut App) {
+    match mouse.kind {
+        MouseEventKind::ScrollUp => app.scroll_up(3),
+        MouseEventKind::ScrollDown => app.scroll_down(3),
+        MouseEventKind::Down(MouseButton::Left)
+            if app
+                .bottom_button
+                .contains(Position::new(mouse.column, mouse.row)) =>
+        {
+            app.scroll_to_bottom();
+        }
+        MouseEventKind::Down(MouseButton::Left) => app.press_mouse(mouse.column, mouse.row),
+        MouseEventKind::Drag(MouseButton::Left) => app.drag_mouse(mouse.column, mouse.row),
+        MouseEventKind::Up(MouseButton::Left) => app.release_mouse(mouse.column, mouse.row),
         _ => {}
     }
-    if let Event::Mouse(mouse) = event {
-        match mouse.kind {
-            MouseEventKind::ScrollUp => app.scroll_up(3),
-            MouseEventKind::ScrollDown => app.scroll_down(3),
-            MouseEventKind::Down(MouseButton::Left)
-                if app
-                    .bottom_button
-                    .contains(Position::new(mouse.column, mouse.row)) =>
-            {
-                app.scroll_to_bottom();
-            }
-            MouseEventKind::Down(MouseButton::Left) => app.press_mouse(mouse.column, mouse.row),
-            MouseEventKind::Drag(MouseButton::Left) => app.drag_mouse(mouse.column, mouse.row),
-            MouseEventKind::Up(MouseButton::Left) => app.release_mouse(mouse.column, mouse.row),
-            _ => {}
-        }
-        return false;
-    }
-    if let Event::Paste(text) = event {
-        if let Some(search) = &mut app.history_search {
-            search.query.push_str(&text.replace(['\r', '\n'], " "));
-            search.selected = 0;
-        } else if app.picker.is_none() {
-            app.insert(&text.replace("\r\n", "\n").replace('\r', "\n"));
-        }
-        return false;
-    }
-    let Event::Key(key) = event else { return false };
-    if key.kind != KeyEventKind::Press {
-        return false;
-    }
+}
 
-    if let Some(picker) = &mut app.picker {
-        match key.code {
-            KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
-            KeyCode::Down => picker.selected = (picker.selected + 1).min(picker.items.len() - 1),
-            KeyCode::Enter => {
-                let kind = picker.kind;
-                let value = std::mem::take(&mut picker.items[picker.selected].0);
-                app.picker = None;
-                match kind {
-                    PickerKind::Session => {
-                        app.start(Activity::Resuming);
-                        act(Action::Resume(value));
-                    }
-                    PickerKind::Effort => {
-                        app.set_effort(&value);
-                    }
-                    PickerKind::Model => {
-                        app.set_model(&value);
-                        act(Action::SetModel(value));
-                    }
-                }
-            }
-            KeyCode::Esc => app.picker = None,
-            KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => app.picker = None,
-            _ => {}
-        }
-        return false;
-    }
-
+fn handle_paste(text: &str, app: &mut App) {
     if let Some(search) = &mut app.history_search {
-        let count = search.matches().len();
-        match (key.code, key.modifiers) {
-            (KeyCode::Up, _) => search.selected = search.selected.saturating_sub(1),
-            (KeyCode::Down, _) => {
-                search.selected = (search.selected + 1).min(count.saturating_sub(1));
-            }
-            (KeyCode::Left | KeyCode::Right, _) => {
-                search.all = !search.all;
-                search.selected = 0;
-            }
-            (KeyCode::Backspace, _) => {
-                let end = previous_grapheme(&search.query, search.query.len());
-                search.query.truncate(end);
-                search.selected = 0;
-            }
-            (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
-                search.query.push(character);
-                search.selected = 0;
-            }
-            (KeyCode::Enter, _) => {
-                let prompt = search
-                    .matches()
-                    .get(search.selected)
-                    .map(|(prompt, _)| prompt.to_string());
-                app.history_search = None;
-                if let Some(prompt) = prompt {
-                    app.restore_input(prompt);
-                }
-            }
-            (KeyCode::Esc, _) | (KeyCode::Char('r' | 'c'), KeyModifiers::CONTROL) => {
-                app.history_search = None;
-            }
-            _ => {}
-        }
+        search.query.push_str(&text.replace(['\r', '\n'], " "));
+        search.selected = 0;
+    } else if app.picker.is_none() {
+        app.insert(&text.replace("\r\n", "\n").replace('\r', "\n"));
+    }
+}
+
+fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool {
+    if app.picker.is_some() {
+        handle_picker_key(key, app, act);
         return false;
     }
-
+    if app.history_search.is_some() {
+        handle_history_search_key(key, app);
+        return false;
+    }
     if key.code == KeyCode::Enter
         && key
             .modifiers
@@ -155,39 +100,8 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
         app.insert("\n");
         return false;
     }
-
-    if let Some(suggestions) = app.visible_suggestions() {
-        let count = suggestions.items.len();
-        app.command_selected = app.command_selected.min(count - 1);
-        match key.code {
-            KeyCode::Up => {
-                app.command_selected = (app.command_selected + count - 1) % count;
-                return false;
-            }
-            KeyCode::Down => {
-                app.command_selected = (app.command_selected + 1) % count;
-                return false;
-            }
-            KeyCode::Enter if suggestions.files => {
-                app.accept_suggestion(&suggestions);
-                app.input_changed();
-                return false;
-            }
-            KeyCode::Enter if !app.busy() => app.accept_suggestion(&suggestions),
-            KeyCode::Tab => {
-                app.accept_suggestion(&suggestions);
-                app.command_selected = 0;
-                if suggestions.files {
-                    app.input_changed();
-                }
-                return false;
-            }
-            KeyCode::Esc => {
-                app.commands_dismissed = true;
-                return false;
-            }
-            _ => {}
-        }
+    if handle_suggestion_key(key, app) {
+        return false;
     }
 
     match (key.code, key.modifiers) {
@@ -244,99 +158,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 return false;
             }
             if prompt.starts_with('/') {
-                let trimmed = prompt.trim();
-                let (command, argument) = trimmed
-                    .split_once(char::is_whitespace)
-                    .map_or((trimmed, ""), |(command, argument)| {
-                        (command, argument.trim())
-                    });
-                match command {
-                    "/quit" => return true,
-                    "/new" => {
-                        app.start(Activity::StartingNewSession);
-                        act(Action::NewSession);
-                    }
-                    "/compact" => {
-                        app.start(Activity::Compacting);
-                        act(Action::Compact(app.effort));
-                    }
-                    "/effort" if argument.is_empty() => {
-                        let levels = models::effort_levels(&app.model);
-                        app.open_picker(Picker {
-                            kind: PickerKind::Effort,
-                            title: "Select effort level",
-                            items: levels
-                                .iter()
-                                .map(|level| (level.to_string(), level.to_string()))
-                                .collect(),
-                            selected: levels
-                                .iter()
-                                .position(|level| *level == app.effort)
-                                .unwrap_or_default(),
-                        });
-                    }
-                    "/effort" => {
-                        if !app.set_effort(argument) {
-                            app.restore_input(prompt);
-                        }
-                    }
-                    "/model" if argument.is_empty() => {
-                        app.open_picker(Picker {
-                            kind: PickerKind::Model,
-                            title: "Select model",
-                            items: models::known()
-                                .map(|model| (model.to_string(), display_model(model).to_string()))
-                                .collect(),
-                            selected: models::known()
-                                .position(|model| model == app.model)
-                                .unwrap_or_default(),
-                        });
-                    }
-                    "/model" if models::is_known(argument) => {
-                        app.set_model(argument);
-                        act(Action::SetModel(argument.to_string()));
-                    }
-                    "/model" => {
-                        app.push(Role::Event, models::unknown(argument));
-                        app.restore_input(prompt);
-                    }
-                    "/resume" => {
-                        app.start(Activity::LoadingSessions);
-                        act(Action::ListSessions);
-                    }
-                    "/mcp" => match argument.split_once(char::is_whitespace) {
-                        Some(("login", server)) if !server.trim().is_empty() => {
-                            act(Action::McpSignIn(server.trim().to_string()));
-                        }
-                        Some(("logout", server)) if !server.trim().is_empty() => {
-                            act(Action::McpSignOut(server.trim().to_string()));
-                        }
-                        _ => {
-                            app.push(
-                                Role::Event,
-                                "usage: /mcp login <server> or /mcp logout <server>",
-                            );
-                            app.restore_input(prompt);
-                        }
-                    },
-                    _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
-                        if !app.skills.iter().any(|skill| skill.name == name) {
-                            app.push(Role::Event, format!("unknown skill: {name}"));
-                            app.restore_input(prompt);
-                            return false;
-                        }
-                        app.push(Role::Event, format!("[skill] {name}"));
-                        if !arguments.is_empty() {
-                            app.push(Role::User, arguments);
-                        }
-                        act(app.submit(prompt));
-                    }
-                    command => {
-                        app.push(Role::Event, format!("unknown command: {command}"));
-                        app.restore_input(prompt);
-                    }
-                }
-                return false;
+                return run_command(prompt, app, act);
             }
             app.push(Role::User, prompt.clone());
             act(app.submit(prompt));
@@ -363,6 +185,205 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             app.insert(character.encode_utf8(&mut [0; 4]));
         }
         _ => {}
+    }
+    false
+}
+
+fn handle_picker_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) {
+    let Some(picker) = &mut app.picker else {
+        return;
+    };
+    match key.code {
+        KeyCode::Up => picker.selected = picker.selected.saturating_sub(1),
+        KeyCode::Down => picker.selected = (picker.selected + 1).min(picker.items.len() - 1),
+        KeyCode::Enter => {
+            let kind = picker.kind;
+            let value = std::mem::take(&mut picker.items[picker.selected].0);
+            app.picker = None;
+            match kind {
+                PickerKind::Session => {
+                    app.start(Activity::Resuming);
+                    act(Action::Resume(value));
+                }
+                PickerKind::Effort => {
+                    app.set_effort(&value);
+                }
+                PickerKind::Model => {
+                    app.set_model(&value);
+                    act(Action::SetModel(value));
+                }
+            }
+        }
+        KeyCode::Esc => app.picker = None,
+        KeyCode::Char('c') if key.modifiers == KeyModifiers::CONTROL => app.picker = None,
+        _ => {}
+    }
+}
+
+fn handle_history_search_key(key: KeyEvent, app: &mut App) {
+    let Some(search) = &mut app.history_search else {
+        return;
+    };
+    let count = search.matches().len();
+    match (key.code, key.modifiers) {
+        (KeyCode::Up, _) => search.selected = search.selected.saturating_sub(1),
+        (KeyCode::Down, _) => {
+            search.selected = (search.selected + 1).min(count.saturating_sub(1));
+        }
+        (KeyCode::Left | KeyCode::Right, _) => {
+            search.all = !search.all;
+            search.selected = 0;
+        }
+        (KeyCode::Backspace, _) => {
+            let end = previous_grapheme(&search.query, search.query.len());
+            search.query.truncate(end);
+            search.selected = 0;
+        }
+        (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
+            search.query.push(character);
+            search.selected = 0;
+        }
+        (KeyCode::Enter, _) => {
+            let prompt = search
+                .matches()
+                .get(search.selected)
+                .map(|(prompt, _)| prompt.to_string());
+            app.history_search = None;
+            if let Some(prompt) = prompt {
+                app.restore_input(prompt);
+            }
+        }
+        (KeyCode::Esc, _) | (KeyCode::Char('r' | 'c'), KeyModifiers::CONTROL) => {
+            app.history_search = None;
+        }
+        _ => {}
+    }
+}
+
+/// Handles keys that move through or accept the visible suggestions, and
+/// returns whether the key was used up.
+fn handle_suggestion_key(key: KeyEvent, app: &mut App) -> bool {
+    let Some(suggestions) = app.visible_suggestions() else {
+        return false;
+    };
+    let count = suggestions.items.len();
+    app.command_selected = app.command_selected.min(count - 1);
+    match key.code {
+        KeyCode::Up => app.command_selected = (app.command_selected + count - 1) % count,
+        KeyCode::Down => app.command_selected = (app.command_selected + 1) % count,
+        KeyCode::Enter if suggestions.files => {
+            app.accept_suggestion(&suggestions);
+            app.input_changed();
+        }
+        KeyCode::Enter if !app.busy() => {
+            app.accept_suggestion(&suggestions);
+            return false;
+        }
+        KeyCode::Tab => {
+            app.accept_suggestion(&suggestions);
+            app.command_selected = 0;
+            if suggestions.files {
+                app.input_changed();
+            }
+        }
+        KeyCode::Esc => app.commands_dismissed = true,
+        _ => return false,
+    }
+    true
+}
+
+fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Action)) -> bool {
+    let trimmed = prompt.trim();
+    let (command, argument) = trimmed
+        .split_once(char::is_whitespace)
+        .map_or((trimmed, ""), |(command, argument)| {
+            (command, argument.trim())
+        });
+    match command {
+        "/quit" => return true,
+        "/new" => {
+            app.start(Activity::StartingNewSession);
+            act(Action::NewSession);
+        }
+        "/compact" => {
+            app.start(Activity::Compacting);
+            act(Action::Compact(app.effort));
+        }
+        "/effort" if argument.is_empty() => {
+            let levels = models::effort_levels(&app.model);
+            app.open_picker(Picker {
+                kind: PickerKind::Effort,
+                title: "Select effort level",
+                items: levels
+                    .iter()
+                    .map(|level| (level.to_string(), level.to_string()))
+                    .collect(),
+                selected: levels
+                    .iter()
+                    .position(|level| *level == app.effort)
+                    .unwrap_or_default(),
+            });
+        }
+        "/effort" => {
+            if !app.set_effort(argument) {
+                app.restore_input(prompt);
+            }
+        }
+        "/model" if argument.is_empty() => {
+            app.open_picker(Picker {
+                kind: PickerKind::Model,
+                title: "Select model",
+                items: models::known()
+                    .map(|model| (model.to_string(), display_model(model).to_string()))
+                    .collect(),
+                selected: models::known()
+                    .position(|model| model == app.model)
+                    .unwrap_or_default(),
+            });
+        }
+        "/model" if models::is_known(argument) => {
+            app.set_model(argument);
+            act(Action::SetModel(argument.to_string()));
+        }
+        "/model" => {
+            app.push(Role::Event, models::unknown(argument));
+            app.restore_input(prompt);
+        }
+        "/resume" => {
+            app.start(Activity::LoadingSessions);
+            act(Action::ListSessions);
+        }
+        "/mcp" => match argument.split_once(char::is_whitespace) {
+            Some(("login", server)) if !server.trim().is_empty() => {
+                act(Action::McpSignIn(server.trim().to_string()));
+            }
+            Some(("logout", server)) if !server.trim().is_empty() => {
+                act(Action::McpSignOut(server.trim().to_string()));
+            }
+            _ => {
+                app.push(
+                    Role::Event,
+                    "usage: /mcp login <server> or /mcp logout <server>",
+                );
+                app.restore_input(prompt);
+            }
+        },
+        _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
+            if !app.skills.iter().any(|skill| skill.name == name) {
+                app.push(Role::Event, format!("unknown skill: {name}"));
+                app.restore_input(prompt);
+                return false;
+            }
+            app.push(Role::Event, format!("[skill] {name}"));
+            if !arguments.is_empty() {
+                app.push(Role::User, arguments);
+            }
+            act(app.submit(prompt));
+        }
+        command => {
+            app.push(Role::Event, format!("unknown command: {command}"));
+            app.restore_input(prompt);
+        }
     }
     false
 }
