@@ -19,6 +19,8 @@ pub(crate) enum Reply {
     CutOffOverloaded,
     /// A 401 `authentication_error`, as for a sign-in the API turned down.
     Unauthorized,
+    /// These events, after which the connection closes before the body ends.
+    CutOff(Vec<Value>),
 }
 
 pub(crate) fn text_reply(text: &str) -> Reply {
@@ -177,6 +179,15 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
             let _ = stream
                 .write_all(b"HTTP/1.1 529 Overloaded\r\nretry-after: 0\r\ncontent-type: application/json\r\ncontent-length: 100\r\nconnection: close\r\n\r\n{\"type\":")
                 .await;
+        }
+        Some(Reply::CutOff(events)) => {
+            let body = event_stream(&events);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len() + 100
+            );
+            let _ = stream.write_all(head.as_bytes()).await;
+            let _ = stream.write_all(body.as_bytes()).await;
         }
         Some(Reply::BadRequest(message)) => bad_request(stream, &message).await,
         Some(Reply::Unauthorized) => {

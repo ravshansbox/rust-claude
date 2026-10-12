@@ -296,6 +296,26 @@ async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
 }
 
 #[tokio::test]
+async fn does_not_retry_a_reply_cut_off_after_text_arrived() {
+    let cut_off = Reply::CutOff(vec![
+        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
+    ]);
+    let api = MockApi::start(vec![cut_off, text_reply("hello")]).await;
+    let mut text = String::new();
+    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
+        if let AgentEvent::Text(delta) = event {
+            text.push_str(&delta);
+        }
+    })
+    .await;
+    assert!(result.is_err());
+    assert_eq!(text, "partial");
+    assert_eq!(api.requests().await.len(), 1);
+}
+
+#[tokio::test]
 async fn keeps_tokens_of_a_failed_attempt_out_of_the_context_size() {
     let overloaded = Reply::Events(vec![
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 500, "cache_read_input_tokens": 500, "output_tokens": 1 } } }),
