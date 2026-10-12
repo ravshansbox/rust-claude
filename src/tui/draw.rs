@@ -33,21 +33,21 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             Line::raw(format!("{marker}{row}"))
         })
         .collect();
-    let mut footer_parts = vec![
-        app.workspace.clone(),
-        format!("{}:{}", display_model(&app.model), app.effort),
+    let mut footer_parts: Vec<Cow<str>> = vec![
+        Cow::Borrowed(&app.workspace),
+        format!("{}:{}", display_model(&app.model), app.effort).into(),
         match app.tasks.len() {
-            0 => String::new(),
-            1 => "1 agent".to_string(),
-            count => format!("{count} agents"),
+            0 => Cow::Borrowed(""),
+            1 => Cow::Borrowed("1 agent"),
+            count => format!("{count} agents").into(),
         },
         match app.stats.background {
-            0 => String::new(),
-            count => format!("{count} background"),
+            0 => Cow::Borrowed(""),
+            count => format!("{count} background").into(),
         },
-        format_context(&app.stats),
-        format_stats(&app.stats),
-        format_quota(&app.stats),
+        format_context(&app.stats).into(),
+        format_stats(&app.stats).into(),
+        format_quota(&app.stats).into(),
     ];
     footer_parts.retain(|part| !part.is_empty());
     let footer_paragraph =
