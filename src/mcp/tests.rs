@@ -156,6 +156,53 @@ fn rejects_a_zero_timeout() {
 }
 
 #[test]
+fn reports_invalid_server_entries_and_keeps_the_rest() {
+    let global = TemporaryFile::new(
+        "mcp-invalid-global",
+        r#"{ "mcpServers": { "docs": { "command": "a" } } }"#,
+    );
+    let project = TemporaryFile::new(
+        "mcp-invalid-project",
+        r#"{ "mcpServers": { "bad name": { "command": "a" }, "docs": { "command": 5 }, "ok": { "command": "b" } } }"#,
+    );
+    let mut servers = BTreeMap::new();
+    let mut diagnostics = Vec::new();
+    read_config(global.path(), Scope::Global, &mut servers, &mut diagnostics);
+    read_config(
+        project.path(),
+        Scope::Project,
+        &mut servers,
+        &mut diagnostics,
+    );
+    assert_eq!(servers.keys().collect::<Vec<_>>(), ["ok"]);
+    assert_eq!(diagnostics.len(), 2, "{diagnostics:?}");
+    assert_eq!(
+        diagnostics[0],
+        "MCP: server name \"bad name\" may only contain letters, digits, _ and -"
+    );
+    assert!(
+        diagnostics[1].starts_with("MCP server docs: invalid entry: "),
+        "{diagnostics:?}"
+    );
+}
+
+#[test]
+fn reports_mcp_servers_that_are_not_an_object() {
+    let file = TemporaryFile::new("mcp-array", r#"{ "mcpServers": [] }"#);
+    let mut servers = BTreeMap::new();
+    let mut diagnostics = Vec::new();
+    read_config(file.path(), Scope::Project, &mut servers, &mut diagnostics);
+    assert!(servers.is_empty());
+    assert_eq!(
+        diagnostics,
+        [format!(
+            "MCP: mcpServers in {} must be an object",
+            file.path().display()
+        )]
+    );
+}
+
+#[test]
 fn reports_an_unreadable_config() {
     let directory = TemporaryDir::new("mcp-unreadable");
     let path = directory.path();
@@ -1711,6 +1758,19 @@ async fn calls_stdio_server_tools() {
         Some(Ok("pong".into()))
     );
     assert_eq!(mcp.call("bash", &json!({})).await, None);
+}
+
+#[tokio::test]
+async fn reports_tool_calls_the_server_marks_as_errors() {
+    let server = server_answering_calls_with(
+        r#"printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":"no such page"}]}}\n' "$id""#,
+    );
+    let mut mcp = Mcp::default();
+    mcp.add(start("test".into(), Scope::Project, server).await);
+    assert_eq!(
+        mcp.call("mcp__test__echo", &json!({})).await,
+        Some(Err("no such page".into()))
+    );
 }
 
 #[tokio::test]
