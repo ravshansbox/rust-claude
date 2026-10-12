@@ -47,7 +47,7 @@ The `agent` tool takes a list of tasks, each with a short `description` and a `p
 - `parallel` runs the tasks at the same time
 - `sequential` runs them one after another, and adds each task's final reply to the next task's prompt. If a task fails, the tasks after it do not run
 
-Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run.
+Each task runs in its own subagent with a new conversation. A subagent uses the same model, effort level, system prompt, instructions, skills and tools as the main agent, except `agent`, so it cannot start subagents of its own. Its conversation is not saved. The main agent gets one text block per task, with that task's final reply, or why it failed or did not run. If a task finishes without any reply text, its block says so instead of being empty.
 
 The cache tokens that subagents use count towards the totals on the status line, which update while the subagents work and stay the same in resumed sessions. Context use and output speed come from the main agent only. If you cancel a prompt while subagents work, the tokens of the subagent replies that had finished still count. The tokens of a subagent that fails still count too.
 

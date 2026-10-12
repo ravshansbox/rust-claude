@@ -23,6 +23,7 @@ use crate::{
 
 const NOT_RUN: &str = "This task did not run, because an earlier task failed.";
 const FAILED: &str = "This task failed: ";
+const NO_REPLY: &str = "This task finished without a reply.";
 
 pub(crate) fn is_failure(reply: &str) -> bool {
     reply.starts_with(FAILED) || reply == NOT_RUN
@@ -196,12 +197,17 @@ fn final_reply(messages: &[Value]) -> String {
         .iter()
         .rposition(|message| message["role"] == "user")
         .map_or(0, |index| index + 1);
-    messages[start..]
+    let reply: String = messages[start..]
         .iter()
         .filter(|message| message["role"] == "assistant" && message.get("stop_reason").is_none())
         .filter_map(|message| message["content"].as_array())
         .map(|content| text_of(content))
-        .collect()
+        .collect();
+    if reply.trim().is_empty() {
+        NO_REPLY.to_string()
+    } else {
+        reply
+    }
 }
 
 #[cfg(test)]
@@ -362,6 +368,28 @@ mod tests {
         assert_eq!(
             tool_result(&requests[3])["content"],
             json!([{ "type": "text", "text": "The answer is 42." }])
+        );
+    }
+
+    #[tokio::test]
+    async fn says_when_a_subagent_finished_without_a_reply() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({ "mode": "sequential", "tasks": [task("search", "find it")] }),
+            ),
+            text_reply(""),
+            text_reply("done"),
+        ])
+        .await;
+        let (_, result) = test_support::run_prompt(&api, "ask", |_| {}).await;
+        result.unwrap();
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 3);
+        assert_eq!(
+            tool_result(&requests[2])["content"],
+            json!([{ "type": "text", "text": "This task finished without a reply." }])
         );
     }
 
