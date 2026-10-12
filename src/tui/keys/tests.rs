@@ -6,7 +6,7 @@ use crate::skills::{Scope, Skill};
 use crate::tools::test_support::TemporaryDir;
 use crate::tui::{
     Activity, App, UiEvent, handle_agent_event, history_writer,
-    test_support::{new_app, press, press_with, screen},
+    test_support::{app_with_reply, new_app, press, press_with, screen},
 };
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
@@ -957,4 +957,35 @@ fn sends_pasted_images_whose_markers_remain() {
         Some(("[image 1][image 2 look".into(), vec![image(1)]))
     );
     assert!(app.images.is_empty());
+}
+
+#[test]
+fn starts_a_new_session_without_the_earlier_conversation() {
+    let mut app = app_with_reply();
+    let mut started = false;
+    handle_input(Event::Paste("/new".into()), &mut app, |_| {});
+    press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+        started |= matches!(action, Action::NewSession);
+    });
+    assert!(started);
+    assert!(screen(&mut app).contains("starting new session"));
+    handle_agent_event(UiEvent::NewSession(Ok(())), &mut app);
+    let shown = screen(&mut app);
+    assert!(!shown.contains("Earlier reply"), "{shown}");
+    assert!(shown.contains("new session"), "{shown}");
+    assert!(!shown.contains("starting new session"), "{shown}");
+}
+
+#[test]
+fn compacts_at_the_chosen_effort_level() {
+    let mut app = app_with_reply();
+    let mut effort = None;
+    handle_input(Event::Paste("/compact".into()), &mut app, |_| {});
+    press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+        if let Action::Compact(level) = action {
+            effort = Some(level);
+        }
+    });
+    assert_eq!(effort, Some("medium"));
+    assert!(screen(&mut app).contains("compacting"));
 }
