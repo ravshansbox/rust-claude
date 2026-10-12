@@ -19,7 +19,7 @@ use crate::{
 };
 use anyhow::Result;
 use ratatui::{layout::Rect, text::Line};
-use std::path::PathBuf;
+use std::{borrow::Cow, path::PathBuf};
 
 const VERSION_LINE: &str = concat!("Rust Coding Agent v", env!("CARGO_PKG_VERSION"));
 
@@ -742,9 +742,9 @@ impl App {
     pub(super) fn accept_suggestion(&mut self, suggestions: &Suggestions) {
         let name = &suggestions.items[self.command_selected].0;
         let replacement = if suggestions.files {
-            format!("@{name} ")
+            Cow::Owned(format!("@{name} "))
         } else {
-            name.clone()
+            Cow::Borrowed(name.as_str())
         };
         self.input
             .replace_range(suggestions.start..suggestions.end, &replacement);
