@@ -61,7 +61,7 @@ fn walk(root: &Path, limit: usize) -> Vec<String> {
 
 pub(super) fn file_query(input: &str, cursor: usize) -> Option<(usize, &str)> {
     let before = &input[..cursor];
-    let word = before.rsplit(char::is_whitespace).next().unwrap_or(before);
+    let word = before.rsplit(char::is_whitespace).next()?;
     word.strip_prefix('@')
         .map(|query| (cursor - word.len(), query))
 }
