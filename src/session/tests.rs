@@ -51,12 +51,15 @@ fn previews_shell_command_without_markup() {
 
 #[test]
 fn previews_skill_command_without_markup() {
-    let message = json!({
-        "role": "user",
-        "content": "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nDo the demo.\n</skill>\n\nfix it",
-    });
-    let file = TemporaryFile::new("skill-preview", &format!("{message}\n"));
-    assert_eq!(read_preview(file.path()).unwrap(), "/skill:demo fix it");
+    let block = "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nDo the demo.\n</skill>";
+    for (content, preview) in [
+        (format!("{block}\n\nfix it"), "/skill:demo fix it"),
+        (block.to_string(), "/skill:demo"),
+    ] {
+        let message = json!({ "role": "user", "content": content });
+        let file = TemporaryFile::new("skill-preview", &format!("{message}\n"));
+        assert_eq!(read_preview(file.path()).unwrap(), preview);
+    }
 }
 
 #[test]
