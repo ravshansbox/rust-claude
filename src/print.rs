@@ -290,6 +290,7 @@ mod tests {
     use super::{AgentEvent, Printer};
     use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
     use serde_json::json;
+    use std::io;
 
     const ESCAPES: &str = "\x1b]52;c;aGk=\x07\x1b[2J\u{9b}2J\r";
 
@@ -347,7 +348,7 @@ mod tests {
     #[test]
     fn leaves_one_blank_line_after_thinking_that_ends_with_newlines() {
         let mut err = Vec::new();
-        let mut printer = Printer::new(std::io::sink(), false, &mut err, false, false, None);
+        let mut printer = Printer::new(io::sink(), false, &mut err, false, false, None);
         printer.event(AgentEvent::Thinking("one\n\n".into()));
         printer.event(AgentEvent::Thinking("two.\n".into()));
         printer.event(AgentEvent::Thinking("\n".into()));
@@ -363,7 +364,7 @@ mod tests {
     #[test]
     fn shows_thinking_in_grey_italics() {
         let mut err = Vec::new();
-        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true, None);
+        let mut printer = Printer::new(io::sink(), true, &mut err, true, true, None);
         printer.event(AgentEvent::Thinking("hmm\x1b[2J".into()));
         assert_eq!(
             String::from_utf8(err).unwrap(),
@@ -374,12 +375,12 @@ mod tests {
     #[test]
     fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
         struct Screen<'a>(&'a std::cell::RefCell<Vec<u8>>);
-        impl std::io::Write for Screen<'_> {
-            fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        impl io::Write for Screen<'_> {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
                 self.0.borrow_mut().extend_from_slice(bytes);
                 Ok(bytes.len())
             }
-            fn flush(&mut self) -> std::io::Result<()> {
+            fn flush(&mut self) -> io::Result<()> {
                 Ok(())
             }
         }
@@ -479,7 +480,7 @@ mod tests {
             ])
             .await;
             let mut err = Vec::new();
-            let mut printer = Printer::new(std::io::sink(), true, &mut err, true, dark, None);
+            let mut printer = Printer::new(io::sink(), true, &mut err, true, dark, None);
             let (_, result) =
                 test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
             let finished = printer.finish(result);
@@ -504,7 +505,7 @@ mod tests {
         ])
         .await;
         let mut err = Vec::new();
-        let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true, None);
+        let mut printer = Printer::new(io::sink(), true, &mut err, true, true, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
         finished.unwrap();
@@ -526,14 +527,7 @@ mod tests {
         ])
         .await;
         let mut err = Vec::new();
-        let mut printer = Printer::new(
-            std::io::sink(),
-            true,
-            &mut err,
-            true,
-            true,
-            Some((30, 30, 30)),
-        );
+        let mut printer = Printer::new(io::sink(), true, &mut err, true, true, Some((30, 30, 30)));
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         printer.finish(result).unwrap();
         let err = String::from_utf8(err).unwrap();
@@ -559,7 +553,7 @@ mod tests {
         let answer = format!("done{ESCAPES}\r\n");
         let api = MockApi::start(vec![text_reply(&answer)]).await;
         let mut out = Vec::new();
-        let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false, None);
+        let mut printer = Printer::new(&mut out, false, io::sink(), false, false, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         let finished = printer.finish(result);
         finished.unwrap();
@@ -582,7 +576,7 @@ mod tests {
         let mut outputs = Vec::new();
         for _ in 0..2 {
             let mut out = Vec::new();
-            let mut printer = Printer::new(&mut out, false, std::io::sink(), false, false, None);
+            let mut printer = Printer::new(&mut out, false, io::sink(), false, false, None);
             let result = agent.prompt("go", &[], |event| printer.event(event)).await;
             let finished = printer.finish(result);
             outputs.push((String::from_utf8(out).unwrap(), finished.is_err()));
