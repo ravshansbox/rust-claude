@@ -209,7 +209,10 @@ mod tests {
 
     #[test]
     fn rejects_data_that_is_not_an_image() {
-        assert!(prepare(b"not an image".to_vec()).is_err());
+        assert_eq!(
+            prepare(b"not an image".to_vec()).unwrap_err().to_string(),
+            "unsupported image format"
+        );
     }
 
     #[test]

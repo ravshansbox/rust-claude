@@ -943,7 +943,12 @@ pub(crate) mod tests {
 
     #[test]
     fn rejects_a_pasted_code_with_another_state() {
-        assert!(parse_pasted_code("abc#other", "xyz").is_err());
+        assert_eq!(
+            parse_pasted_code("abc#other", "xyz")
+                .unwrap_err()
+                .to_string(),
+            "OAuth state mismatch"
+        );
     }
 
     #[test]

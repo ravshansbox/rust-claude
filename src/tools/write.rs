@@ -53,7 +53,7 @@ mod tests {
         let input = json!({ "path": path.to_str().unwrap(), "content": "hello" });
         let result = call("write", &input).await;
         let content = std::fs::read_to_string(&path);
-        assert!(result.is_ok());
+        assert_eq!(result, Ok(format!("wrote {}", path.display())));
         assert_eq!(content.unwrap(), "hello");
     }
 
