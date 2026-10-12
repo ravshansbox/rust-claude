@@ -1,6 +1,6 @@
 use std::{
     fs::{File, TryLockError},
-    io::Write,
+    io::{self, Write},
     path::PathBuf,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -265,11 +265,11 @@ async fn login(http: &reqwest::Client) -> Result<Credentials> {
 
     eprintln!("Open this URL and sign in with your Claude Pro/Max account:\n\n{url}\n");
     eprint!("Paste the code: ");
-    std::io::stderr().flush()?;
+    io::stderr().flush()?;
     // Read off the runtime, so a stop signal is handled while waiting.
     let input = tokio::task::spawn_blocking(|| {
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input).map(|_| input)
+        io::stdin().read_line(&mut input).map(|_| input)
     })
     .await??;
 
