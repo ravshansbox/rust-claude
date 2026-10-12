@@ -45,15 +45,32 @@ fn labels_single_quota_window() {
 }
 
 #[test]
+fn shows_how_long_until_each_quota_window_resets() {
+    let now = SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let quota = Quota {
+        five_hour_remaining: Some(40.0),
+        five_hour_reset: Some(now + 2 * 3_600 + 30),
+        seven_day_remaining: Some(81.0),
+        seven_day_reset: Some(now - 60),
+    };
+    assert_eq!(format_quota(&stats_with(quota)), "40% 2h · 81% <1m");
+}
+
+#[test]
 fn formats_durations() {
     assert_eq!(format_duration(0), "<1m");
     assert_eq!(format_duration(59), "<1m");
     assert_eq!(format_duration(45 * 60), "45m");
+    assert_eq!(format_duration(3_600), "1h");
     assert_eq!(format_duration(2 * 3_600), "2h");
     assert_eq!(format_duration(3_600 + 13 * 60), "1h13m");
     assert_eq!(format_duration(2 * 3_600 + 13 * 60), "2h");
     assert_eq!(format_duration(2 * 3_600 + 40 * 60), "3h");
     assert_eq!(format_duration(23 * 3_600 + 40 * 60), "1d");
+    assert_eq!(format_duration(86_400 + 10 * 60), "1d");
     assert_eq!(format_duration(86_400 + 4 * 3_600 + 5 * 60), "1d4h");
     assert_eq!(format_duration(3 * 86_400), "3d");
     assert_eq!(format_duration(3 * 86_400 + 4 * 3_600 + 5 * 60), "3d");
