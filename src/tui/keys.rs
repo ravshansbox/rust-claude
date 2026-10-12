@@ -372,6 +372,7 @@ mod tests {
     use crate::history;
     use crate::images::Image;
     use crate::skills::{Scope, Skill};
+    use crate::tools::test_support::TemporaryDir;
     use crate::tui::{
         Activity, App, UiEvent, handle_agent_event, history_writer,
         test_support::{new_app, press, press_with, screen},
@@ -736,11 +737,8 @@ mod tests {
 
     #[test]
     fn searches_prompt_history_in_tabs() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-tui-history-{}/history.jsonl",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let folder = TemporaryDir::new("tui-history");
+        let path = folder.path().join("history.jsonl");
         std::fs::write(
             &path,
             "{\"prompt\":\"elsewhere fix\",\"cwd\":\"/somewhere/else\"}\n",
@@ -752,7 +750,7 @@ mod tests {
             app.remember(prompt);
         }
         // Searching uses the history loaded at start-up, not the file.
-        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        drop(folder);
         press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
         let search = app.history_search.as_ref().unwrap();
         assert_eq!(search.matches(), [("fix tests", None), ("add docs", None)]);
@@ -846,10 +844,8 @@ mod tests {
 
     #[test]
     fn keeps_folder_prompt_history_across_restarts_and_new_sessions() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-tui-saved-history-{}/history.jsonl",
-            std::process::id()
-        ));
+        let folder = TemporaryDir::new("tui-saved-history");
+        let path = folder.path().join("history.jsonl");
         for prompt in ["first", "second", "first"] {
             history::append(&path, &history::Entry::here(prompt)).unwrap();
         }
@@ -885,7 +881,7 @@ mod tests {
         writer.join().unwrap();
         let mut restarted = new_app();
         restarted.load_history(Some(path.clone()));
-        std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
+        drop(folder);
         assert_eq!(press(&mut restarted, KeyCode::Up), "third");
         assert_eq!(press(&mut restarted, KeyCode::Up), "first");
     }
