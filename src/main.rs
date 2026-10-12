@@ -344,6 +344,26 @@ mod tests {
     }
 
     #[test]
+    fn rejects_options_given_twice() {
+        assert_eq!(parse(&["--model", "a", "--model", "b"]), None);
+        assert_eq!(parse(&["--effort", "low", "--effort", "high"]), None);
+        assert_eq!(parse(&["-p", "one", "--print", "two"]), None);
+        assert_eq!(parse(&["-c", "--continue"]), None);
+        assert_eq!(parse(&["--config-dir", "/a", "--config-dir", "/b"]), None);
+    }
+
+    #[test]
+    fn reads_a_prompt_that_looks_like_an_option() {
+        assert_eq!(
+            parse(&["-p", "--help"]),
+            Some(Command::Print {
+                prompt: "--help".into(),
+                images: Vec::new(),
+            })
+        );
+    }
+
+    #[test]
     fn parses_print_and_interactive() {
         assert_eq!(parse(&[]), Some(Command::Interactive));
         assert_eq!(
