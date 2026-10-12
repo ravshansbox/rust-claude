@@ -1102,8 +1102,9 @@ struct Server {
 }
 
 fn qualified_name(server: &str, tool: &str) -> String {
-    format!("mcp__{server}__{tool}")
-        .chars()
+    ["mcp__", server, "__", tool]
+        .into_iter()
+        .flat_map(str::chars)
         .map(|character| {
             if character.is_ascii_alphanumeric() || character == '_' || character == '-' {
                 character
