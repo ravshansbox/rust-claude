@@ -48,13 +48,11 @@ mod tests {
 
     #[tokio::test]
     async fn writes_file_in_new_directory() {
-        let directory =
-            std::env::temp_dir().join(format!("rust-coding-agent-{}", std::process::id()));
-        let path = directory.join("nested").join("file.txt");
+        let directory = TemporaryDir::new("write-new-directory");
+        let path = directory.path().join("nested").join("file.txt");
         let input = json!({ "path": path.to_str().unwrap(), "content": "hello" });
         let result = call("write", &input).await;
         let content = std::fs::read_to_string(&path);
-        std::fs::remove_dir_all(&directory).unwrap();
         assert!(result.is_ok());
         assert_eq!(content.unwrap(), "hello");
     }
