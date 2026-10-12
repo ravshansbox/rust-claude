@@ -1571,6 +1571,7 @@ impl Mcp {
 mod tests {
     use super::*;
     use crate::auth::now_millis;
+    use crate::tools::test_support::TemporaryFile;
 
     #[test]
     fn qualifies_tool_names() {
@@ -2950,10 +2951,11 @@ done
 
     #[tokio::test]
     async fn reaps_a_server_that_exits_mid_session() {
-        let pid_file = std::env::temp_dir().join(format!("mcp-reap-{}", std::process::id()));
-        let _ = std::fs::remove_file(&pid_file);
-        let config =
-            server_answering_calls_with(&format!("echo $$ > '{}'; exit 0", pid_file.display()));
+        let pid_file = TemporaryFile::new("mcp-reap", "");
+        let config = server_answering_calls_with(&format!(
+            "echo $$ > '{}'; exit 0",
+            pid_file.path().display()
+        ));
         let mut mcp = Mcp::default();
         mcp.add(start("test".into(), Scope::Project, config).await);
         assert!(
@@ -2962,8 +2964,7 @@ done
                 .unwrap()
                 .is_err()
         );
-        let pid = std::fs::read_to_string(&pid_file).unwrap();
-        let _ = std::fs::remove_file(&pid_file);
+        let pid = pid_file.content();
         assert_eq!(
             wait_until_gone(pid.trim()).await,
             "",
@@ -2974,11 +2975,10 @@ done
 
     #[tokio::test]
     async fn stops_what_a_server_left_running_when_it_exits() {
-        let pid_file = std::env::temp_dir().join(format!("mcp-leftover-{}", std::process::id()));
-        let _ = std::fs::remove_file(&pid_file);
+        let pid_file = TemporaryFile::new("mcp-leftover", "");
         let config = server_answering_calls_with(&format!(
             "sleep 30 >/dev/null 2>&1 & echo $! > '{}'; exit 0",
-            pid_file.display()
+            pid_file.path().display()
         ));
         let mut mcp = Mcp::default();
         mcp.add(start("test".into(), Scope::Project, config).await);
@@ -2988,8 +2988,7 @@ done
                 .unwrap()
                 .is_err()
         );
-        let pid = std::fs::read_to_string(&pid_file).unwrap();
-        let _ = std::fs::remove_file(&pid_file);
+        let pid = pid_file.content();
         assert_eq!(
             wait_until_gone(pid.trim()).await,
             "",
@@ -3022,16 +3021,16 @@ done
 
     #[tokio::test]
     async fn stops_the_server_when_dropped() {
-        let pid_file = std::env::temp_dir().join(format!("mcp-drop-{}", std::process::id()));
-        let _ = std::fs::remove_file(&pid_file);
-        let mut config =
-            server_answering_calls_with(&format!("echo $$ > '{}'; sleep 30", pid_file.display()));
+        let pid_file = TemporaryFile::new("mcp-drop", "");
+        let mut config = server_answering_calls_with(&format!(
+            "echo $$ > '{}'; sleep 30",
+            pid_file.path().display()
+        ));
         config.timeout = Some(1);
         let mut mcp = Mcp::default();
         mcp.add(start("test".into(), Scope::Project, config).await);
         let _ = mcp.call("mcp__test__echo", &json!({})).await;
-        let pid = std::fs::read_to_string(&pid_file).unwrap();
-        let _ = std::fs::remove_file(&pid_file);
+        let pid = pid_file.content();
         drop(mcp);
         assert_eq!(wait_until_gone(pid.trim()).await, "");
     }
