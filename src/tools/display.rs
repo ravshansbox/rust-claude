@@ -162,17 +162,20 @@ fn write_preview(content: &str) -> Option<String> {
         return None;
     }
     let unit = indent_unit(lines.iter().copied());
-    let mut preview: Vec<String> = lines
-        .iter()
-        .take(WRITE_PREVIEW_LINES)
-        .map(|line| format!(" {}", compact_indent(line, unit)))
-        .collect();
+    let mut preview = String::with_capacity(content.len());
+    for (index, line) in lines.iter().take(WRITE_PREVIEW_LINES).enumerate() {
+        if index > 0 {
+            preview.push('\n');
+        }
+        preview.push(' ');
+        preview.push_str(&compact_indent(line, unit));
+    }
     let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
     if remaining > 0 {
         let noun = if remaining == 1 { "line" } else { "lines" };
-        preview.push(format!("… {remaining} more {noun}"));
+        preview.push_str(&format!("\n… {remaining} more {noun}"));
     }
-    Some(preview.join("\n"))
+    Some(preview)
 }
 
 #[cfg(test)]
