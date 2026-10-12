@@ -58,10 +58,9 @@ fn encode_jpeg(image: &DynamicImage, quality: u8) -> Result<Image> {
         let rgba = image.to_rgba8();
         RgbImage::from_fn(rgba.width(), rgba.height(), |x, y| {
             let [red, green, blue, alpha] = rgba.get_pixel(x, y).0;
-            let blend = |channel: u8| {
-                ((u16::from(channel) * u16::from(alpha) + 255 * (255 - u16::from(alpha))) / 255)
-                    as u8
-            };
+            let alpha = u16::from(alpha);
+            let blend =
+                |channel: u8| ((u16::from(channel) * alpha + 255 * (255 - alpha)) / 255) as u8;
             Rgb([blend(red), blend(green), blend(blue)])
         })
     } else {
