@@ -733,4 +733,20 @@ mod tests {
             "{lines:?}"
         );
     }
+
+    #[test]
+    fn reads_a_light_or_dark_background_from_colorfgbg() {
+        let theme = |value| match Theme::from_colorfgbg(value) {
+            Some(Theme::Dark) => "dark",
+            Some(Theme::Light) => "light",
+            None => "unknown",
+        };
+        assert_eq!(theme("15;0"), "dark");
+        assert_eq!(theme("0;8"), "dark");
+        assert_eq!(theme("0;15"), "light");
+        assert_eq!(theme("0;7"), "light");
+        assert_eq!(theme("12;7;0"), "dark");
+        assert_eq!(theme("0;16"), "unknown");
+        assert_eq!(theme("default;default"), "unknown");
+    }
 }
