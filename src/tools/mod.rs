@@ -1,3 +1,5 @@
+use std::io::{self, ErrorKind};
+
 use serde_json::{Value, json};
 
 use crate::config;
@@ -71,11 +73,7 @@ async fn regular_file(path: &str) -> Result<std::fs::Metadata, String> {
 /// hard links or another owner, it writes the file in place instead. With
 /// `expected`, it refuses a file whose text is no longer `expected`, such as
 /// one another edit changed after this one read it.
-async fn replace_file(
-    path: &str,
-    contents: String,
-    expected: Option<String>,
-) -> std::io::Result<()> {
+async fn replace_file(path: &str, contents: String, expected: Option<String>) -> io::Result<()> {
     let path = std::path::PathBuf::from(path);
     tokio::task::spawn_blocking(move || {
         let (target, metadata) = match std::fs::canonicalize(&path) {
@@ -86,16 +84,16 @@ async fn replace_file(
                     .open(&target)?
                     .metadata()?;
                 if !metadata.is_file() {
-                    return Err(std::io::Error::other("not a regular file"));
+                    return Err(io::Error::other("not a regular file"));
                 }
                 if let Some(expected) = &expected
                     && std::fs::read(&target)? != expected.as_bytes()
                 {
-                    return Err(std::io::Error::other("it changed while being edited"));
+                    return Err(io::Error::other("it changed while being edited"));
                 }
                 (target, Some(metadata))
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            Err(error) if error.kind() == ErrorKind::NotFound => {
                 (config::dangling_target(path), None)
             }
             Err(error) => return Err(error),
@@ -127,14 +125,14 @@ async fn replace_file(
             file.set_permissions(metadata.permissions())
         };
         match config::replace_file(&target, contents.as_bytes(), options, prepare) {
-            Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
+            Err(error) if error.kind() == ErrorKind::PermissionDenied => {
                 std::fs::write(&target, contents)
             }
             result => result,
         }
     })
     .await
-    .map_err(std::io::Error::other)?
+    .map_err(io::Error::other)?
 }
 
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
