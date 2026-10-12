@@ -246,10 +246,10 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 return false;
             }
             if prompt.starts_with('/') {
-                let (command, argument) = prompt
-                    .trim()
+                let trimmed = prompt.trim();
+                let (command, argument) = trimmed
                     .split_once(char::is_whitespace)
-                    .map_or((prompt.trim(), ""), |(command, argument)| {
+                    .map_or((trimmed, ""), |(command, argument)| {
                         (command, argument.trim())
                     });
                 match command {
