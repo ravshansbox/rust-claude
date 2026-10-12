@@ -14,6 +14,7 @@ use ratatui::{
         Block, Borders, Clear, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
     },
 };
+use std::borrow::Cow;
 
 const MAX_LIST_ROWS: usize = 10;
 const BOTTOM_BUTTON: &str = "↓ Bottom (End)";
@@ -388,10 +389,9 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
         }
         let mut spans = vec![reversed_if(Span::from(text), index == search.selected)];
         if let Some(folder) = folder {
-            let name = std::path::Path::new(folder).file_name().map_or_else(
-                || folder.to_string(),
-                |name| name.to_string_lossy().into_owned(),
-            );
+            let name = std::path::Path::new(folder)
+                .file_name()
+                .map_or(Cow::Borrowed(folder), |name| name.to_string_lossy());
             spans.push(Span::from(format!("  {name}")).dark_gray());
         }
         lines.push(Line::from(spans));
