@@ -41,6 +41,8 @@ use std::{
     backtrace::{Backtrace, BacktraceStatus},
     io::Write,
     panic::PanicHookInfo,
+    path::PathBuf,
+    process::Stdio,
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, SystemTime},
 };
@@ -55,9 +57,9 @@ fn open_in_browser(url: &str) {
     };
     let child = tokio::process::Command::new(program)
         .arg(url)
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
         .spawn();
     if let Ok(mut child) = child {
         tokio::spawn(async move {
@@ -505,10 +507,10 @@ async fn run_loop(
 fn history_writer(
     events: mpsc::UnboundedSender<UiEvent>,
 ) -> (
-    std::sync::mpsc::Sender<(std::path::PathBuf, history::Entry)>,
+    std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
     std::thread::JoinHandle<()>,
 ) {
-    let (sender, entries) = std::sync::mpsc::channel::<(std::path::PathBuf, history::Entry)>();
+    let (sender, entries) = std::sync::mpsc::channel::<(PathBuf, history::Entry)>();
     let writer = std::thread::spawn(move || {
         for (path, entry) in entries {
             if let Err(error) = history::append(&path, &entry) {
