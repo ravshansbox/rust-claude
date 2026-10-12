@@ -7,7 +7,10 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::{io::AsyncReadExt, process::Child};
+use tokio::{
+    io::AsyncReadExt,
+    process::{Child, Command},
+};
 
 pub(super) fn definition() -> Value {
     json!({
@@ -33,7 +36,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
 /// Starts the command of a `bash` call, and gives it with its timeout.
 pub(super) fn start(input: &Value) -> Result<(Child, Option<u64>), String> {
     let timeout = number(input, "timeout", 1)?;
-    let mut command = tokio::process::Command::new("bash");
+    let mut command = Command::new("bash");
     command.args(["-c", argument(input, "command")?]);
     command
         .stdin(Stdio::null())
@@ -95,7 +98,7 @@ const OUTPUT_GRACE: Duration = Duration::from_millis(100);
 /// Starts the command in a session of its own, without the terminal, so prompts
 /// that open /dev/tty fail at once instead of stopping it, and its process group
 /// can be killed as a whole.
-pub fn new_session(command: &mut tokio::process::Command) {
+pub fn new_session(command: &mut Command) {
     #[cfg(unix)]
     unsafe {
         command.pre_exec(|| {
