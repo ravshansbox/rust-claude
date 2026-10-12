@@ -103,9 +103,12 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         self.out_terminal && self.colour
     }
 
-    /// Ends a line left open on `out` or `err` with a newline on `err`.
+    /// Ends a line left open on `err`, or on `out` when both may show in the
+    /// same place, with a newline on `err`. Only one of them being a
+    /// terminal means they show apart.
     fn close_open_line(&mut self) {
-        if std::mem::take(&mut self.err_open) | std::mem::take(&mut self.out_open) {
+        let out_open = std::mem::take(&mut self.out_open) && self.out_terminal == self.colour;
+        if std::mem::take(&mut self.err_open) | out_open {
             let _ = writeln!(self.err);
         }
     }
@@ -348,6 +351,28 @@ mod tests {
             "let me\tthink\n\nbash\nls\n\nbash failed: boom\n\nnote\n"
         );
         assert_eq!(String::from_utf8(out).unwrap(), "answer\n");
+    }
+
+    #[test]
+    fn keeps_the_answer_line_out_of_a_separate_error_stream() {
+        let mut out = Vec::new();
+        let mut err = Vec::new();
+        let mut printer = Printer::new(&mut out, true, &mut err, false, false, None);
+        for (text, command) in [("I'll look.", "ls"), ("Now another.", "pwd")] {
+            printer.event(AgentEvent::Text(text.into()));
+            printer.event(AgentEvent::ToolStart {
+                name: "bash".into(),
+                summary: String::new(),
+                diff: Some(command.into()),
+            });
+        }
+        printer.event(AgentEvent::Text("Done.".into()));
+        printer.finish(Ok(())).unwrap();
+        assert_eq!(String::from_utf8(err).unwrap(), "bash\nls\n\nbash\npwd\n");
+        assert_eq!(
+            String::from_utf8(out).unwrap(),
+            "I'll look.\n\nNow another.\n\nDone.\n"
+        );
     }
 
     #[test]
