@@ -1563,7 +1563,7 @@ impl Mcp {
 mod tests {
     use super::*;
     use crate::auth::now_millis;
-    use crate::tools::test_support::TemporaryFile;
+    use crate::tools::test_support::{TemporaryDir, TemporaryFile};
 
     #[test]
     fn qualifies_tool_names() {
@@ -1650,10 +1650,9 @@ mod tests {
 
     #[test]
     fn project_entries_replace_global_entries() {
-        let directory = std::env::temp_dir().join(format!("mcp-test-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
-        let global = directory.join("global.json");
-        let project = directory.join("project.json");
+        let directory = TemporaryDir::new("mcp-test");
+        let global = directory.path().join("global.json");
+        let project = directory.path().join("project.json");
         std::fs::write(
             &global,
             r#"{ "mcpServers": { "docs": { "command": "a" }, "bad name": { "command": "b" } } }"#,
@@ -1668,7 +1667,6 @@ mod tests {
         let mut diagnostics = Vec::new();
         read_config(&global, Scope::Global, &mut servers, &mut diagnostics);
         read_config(&project, Scope::Project, &mut servers, &mut diagnostics);
-        std::fs::remove_dir_all(&directory).unwrap();
         assert_eq!(servers.len(), 1);
         assert_eq!(servers["docs"].0, Scope::Project);
         assert_eq!(servers["docs"].1.command.as_deref(), Some("c"));
