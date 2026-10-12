@@ -393,6 +393,7 @@ mod tests {
     use super::{Action, handle_input, may_change_screen};
     use crate::history;
     use crate::images::Image;
+    use crate::session::SessionSummary;
     use crate::skills::{Scope, Skill};
     use crate::tools::test_support::TemporaryDir;
     use crate::tui::{
@@ -766,6 +767,120 @@ mod tests {
         assert_eq!(app.input, "first");
         assert!(app.send_queued().is_none());
         assert_eq!(app.messages.last().unwrap().text, "cancelled");
+    }
+
+    #[test]
+    fn restores_queued_prompts_when_the_prompt_fails() {
+        let mut app = new_app();
+        queue_while_working(&mut app, "first");
+        handle_agent_event(UiEvent::Done(Err(anyhow::anyhow!("overloaded"))), &mut app);
+        assert!(!app.busy());
+        assert_eq!(app.input, "first");
+        assert!(app.send_queued().is_none());
+        assert_eq!(app.messages.last().unwrap().text, "error: overloaded");
+    }
+
+    #[test]
+    fn quits_with_esc_ctrl_c_ctrl_d_or_the_quit_command() {
+        for (code, modifiers) in [
+            (KeyCode::Esc, KeyModifiers::NONE),
+            (KeyCode::Char('c'), KeyModifiers::CONTROL),
+            (KeyCode::Char('d'), KeyModifiers::CONTROL),
+        ] {
+            let mut app = new_app();
+            assert!(press_with(&mut app, code, modifiers, |_| {}), "{code:?}");
+        }
+        let mut app = new_app();
+        handle_input(Event::Paste("/quit".into()), &mut app, |_| {});
+        assert!(press_with(
+            &mut app,
+            KeyCode::Enter,
+            KeyModifiers::NONE,
+            |_| {}
+        ));
+    }
+
+    #[test]
+    fn clears_a_draft_instead_of_quitting_on_ctrl_c_or_ctrl_d() {
+        let mut app = new_app();
+        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
+        assert!(!press_with(
+            &mut app,
+            KeyCode::Char('d'),
+            KeyModifiers::CONTROL,
+            |_| {}
+        ));
+        assert_eq!(app.input, "draft");
+        assert!(!press_with(
+            &mut app,
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+            |_| {}
+        ));
+        assert_eq!(app.input, "");
+    }
+
+    #[test]
+    fn resumes_the_session_picked_from_the_list() {
+        let mut app = new_app();
+        let mut listed = false;
+        handle_input(Event::Paste("/resume".into()), &mut app, |_| {});
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            listed |= matches!(action, Action::ListSessions);
+        });
+        assert!(listed);
+        let sessions = ["0", "1"]
+            .map(|id| SessionSummary {
+                id: id.into(),
+                modified: std::time::SystemTime::now(),
+                preview: format!("prompt {id}\nmore"),
+            })
+            .into();
+        handle_agent_event(UiEvent::Sessions(Ok(sessions)), &mut app);
+        let picker = app.picker.as_ref().unwrap();
+        assert!(
+            picker.items[1].1.ends_with("  prompt 1"),
+            "{:?}",
+            picker.items
+        );
+        press(&mut app, KeyCode::Down);
+        let mut resumed = None;
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+            if let Action::Resume(id) = action {
+                resumed = Some(id);
+            }
+        });
+        assert_eq!(resumed.as_deref(), Some("1"));
+        assert!(app.picker.is_none());
+        assert_eq!(app.activity, Some(Activity::Resuming));
+    }
+
+    #[test]
+    fn says_when_there_is_no_session_to_resume() {
+        let mut app = new_app();
+        app.start(Activity::LoadingSessions);
+        handle_agent_event(UiEvent::Sessions(Ok(Vec::new())), &mut app);
+        assert!(app.picker.is_none());
+        assert!(!app.busy());
+        assert_eq!(app.messages.last().unwrap().text, "no session to resume");
+    }
+
+    #[test]
+    fn sets_the_effort_level_picked_from_the_list() {
+        let mut app = new_app();
+        handle_input(Event::Paste("/effort".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        let picker = app.picker.as_ref().unwrap();
+        assert_eq!(picker.items[picker.selected].0, "medium");
+        press(&mut app, KeyCode::Down);
+        let mut acted = false;
+        press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
+            acted = true
+        });
+        assert!(!acted);
+        assert!(app.picker.is_none());
+        assert_eq!(app.effort, "high");
+        assert_eq!(app.messages.last().unwrap().text, "effort: high");
     }
 
     #[test]
