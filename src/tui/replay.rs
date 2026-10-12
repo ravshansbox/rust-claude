@@ -268,7 +268,7 @@ fn replay_prompt(app: &mut App, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::{handle_agent_event, replay_messages};
-    use crate::agent::AgentEvent;
+    use crate::agent::{self, AgentEvent, Stats, Usage};
     use crate::skills::{Scope, Skill};
     use crate::tools;
     use crate::tui::{
@@ -427,7 +427,7 @@ mod tests {
         let mut app = new_app();
         replay_messages(
             &mut app,
-            &[json!({ "role": "user", "content": crate::agent::shell_message("pwd", "/tmp\n") })],
+            &[json!({ "role": "user", "content": agent::shell_message("pwd", "/tmp\n") })],
         );
         assert!(matches!(app.messages.last().unwrap().role, Role::Tool));
         assert_eq!(app.messages.last().unwrap().text, "! pwd\n/tmp");
@@ -791,7 +791,7 @@ mod tests {
             .to_string();
         start_tasks(&mut app);
         handle_agent_event(
-            UiEvent::Agent(AgentEvent::Stats(crate::agent::Stats {
+            UiEvent::Agent(AgentEvent::Stats(Stats {
                 background: 2,
                 ..Default::default()
             })),
@@ -849,8 +849,8 @@ mod tests {
     fn shows_the_stats_of_each_task_and_keeps_them_when_it_finishes() {
         let mut app = new_app();
         start_tasks(&mut app);
-        let stats = crate::agent::Stats {
-            usage: crate::agent::Usage {
+        let stats = Stats {
+            usage: Usage {
                 output: 71_000,
                 ..Default::default()
             },
