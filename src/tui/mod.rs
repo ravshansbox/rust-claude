@@ -14,7 +14,11 @@ mod test_support;
 mod worker;
 
 use crate::{
-    StopSignals, agent::Agent, clipboard, history, images, mcp, settings::Settings, skills::Scope,
+    StopSignals,
+    agent::{Agent, AgentEvent},
+    clipboard, history, images, mcp,
+    settings::Settings,
+    skills::Scope,
 };
 use anyhow::Result;
 use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
@@ -69,7 +73,7 @@ async fn sign_in_to_mcp_server(
     requests: mpsc::UnboundedSender<Request>,
 ) {
     let notice = |text: String| {
-        let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(text)));
+        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(text)));
     };
     let sign_in = match mcp::begin_sign_in(&name).await {
         Ok(sign_in) => sign_in,
@@ -97,7 +101,7 @@ async fn sign_out_of_mcp_server(
         Ok(signed_out) => restart_mcp_server(name, signed_out, events, requests).await,
         Err(error) => {
             let notice = format!("MCP sign-out of {name} failed: {error}");
-            let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(notice)));
+            let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
         }
     }
 }
@@ -111,7 +115,7 @@ async fn restart_mcp_server(
     requests: mpsc::UnboundedSender<Request>,
 ) {
     let Some(server) = mcp::restart(&name) else {
-        let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(notice)));
+        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
         return;
     };
     let _ = events.send(UiEvent::McpRestarting {
@@ -509,7 +513,7 @@ fn history_writer(
         for (path, entry) in entries {
             if let Err(error) = history::append(&path, &entry) {
                 let notice = format!("failed to save prompt history: {error:#}");
-                let _ = events.send(UiEvent::Agent(crate::agent::AgentEvent::Notice(notice)));
+                let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
             }
         }
     });
