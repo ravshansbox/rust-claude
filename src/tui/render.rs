@@ -2,7 +2,7 @@ use super::{
     Role,
     input::{expand_tabs, input_rows},
 };
-use crate::highlight::Colour;
+use crate::highlight::{self, Colour};
 use ratatui::{
     buffer::CellWidth,
     style::{Color, Modifier, Style},
@@ -88,8 +88,8 @@ impl Theme {
         static LIGHT: OnceLock<CodeTheme> = OnceLock::new();
         let load = |source| CodeTheme::from_textmate(source).expect("bundled theme");
         match self {
-            Self::Light => LIGHT.get_or_init(|| load(crate::highlight::LIGHT_THEME)),
-            Self::Dark => DARK.get_or_init(|| load(crate::highlight::DARK_THEME)),
+            Self::Light => LIGHT.get_or_init(|| load(highlight::LIGHT_THEME)),
+            Self::Dark => DARK.get_or_init(|| load(highlight::DARK_THEME)),
         }
         .clone()
     }
@@ -115,7 +115,7 @@ impl StyleSheet for MarkdownStyleSheet {
 }
 
 pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
-    let text = &crate::highlight::strip_controls(text);
+    let text = &highlight::strip_controls(text);
     match role {
         Role::User => user_message_lines(text, width as usize),
         Role::Assistant => tui_markdown::from_str_with_options(
@@ -206,7 +206,7 @@ fn thinking_style() -> Style {
 
 /// Part of the thinking with ANSI codes for its style, for print mode.
 pub(crate) fn ansi_thinking(text: &str) -> String {
-    let text = crate::highlight::strip_controls(text);
+    let text = highlight::strip_controls(text);
     format!(
         "{}{}\x1b[0m",
         sgr(thinking_style()),
@@ -241,7 +241,7 @@ fn ansi_line(line: &Line, columns: Option<u16>) -> String {
         .spans
         .iter()
         .map(|span| {
-            let text = crate::highlight::strip_controls(&span.content).into_owned();
+            let text = highlight::strip_controls(&span.content).into_owned();
             (text, line.style.patch(span.style))
         })
         .collect();
@@ -284,7 +284,7 @@ fn tool_lines(text: &str, theme: Theme, background: Option<Colour>) -> Vec<Line<
     let mut lines = vec![header];
     let dark = matches!(theme, Theme::Dark);
     if let Some(body) = body {
-        match crate::highlight::highlight_tool(name, path, body, dark) {
+        match highlight::highlight_tool(name, path, body, dark) {
             Some(highlighted) => lines.extend(
                 highlighted
                     .into_iter()
@@ -322,7 +322,7 @@ fn tool_header(first: &str, theme: Theme) -> (Line<'static>, bool) {
     (line, rest.is_empty())
 }
 
-fn highlighted_line(line: crate::highlight::HighlightedLine, dark: bool) -> Line<'static> {
+fn highlighted_line(line: highlight::HighlightedLine, dark: bool) -> Line<'static> {
     let background = line.background(dark);
     let spans: Vec<Span<'static>> = line
         .segments
