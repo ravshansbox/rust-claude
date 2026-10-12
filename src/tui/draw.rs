@@ -383,10 +383,13 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
     let visible = (height as usize).saturating_sub(2).max(1);
     let first = (search.selected + 1).saturating_sub(visible);
     for (index, (prompt, folder)) in matches.into_iter().enumerate().skip(first).take(visible) {
-        let mut text = prompt.lines().next().unwrap_or_default().to_string();
-        if prompt.lines().nth(1).is_some() {
-            text.push_str(" …");
-        }
+        let mut prompt_lines = prompt.lines();
+        let first_line = prompt_lines.next().unwrap_or_default();
+        let text: Cow<str> = if prompt_lines.next().is_some() {
+            format!("{first_line} …").into()
+        } else {
+            first_line.into()
+        };
         let mut spans = vec![reversed_if(Span::from(text), index == search.selected)];
         if let Some(folder) = folder {
             let name = std::path::Path::new(folder)
