@@ -771,15 +771,12 @@ impl Http {
         let body = response.text().await.unwrap_or_default();
         let body = body.trim();
         let body: String = body.chars().take(MAX_ERROR_BODY).collect();
-        let message = if body.is_empty() {
-            format!("server answered {method} with status {}", status.as_u16())
-        } else {
-            format!(
-                "server answered {method} with status {}: {body}",
-                status.as_u16()
-            )
-        };
         let status = status.as_u16();
+        let message = if body.is_empty() {
+            format!("server answered {method} with status {status}")
+        } else {
+            format!("server answered {method} with status {status}: {body}")
+        };
         Err(PostError {
             message,
             transient: status == 408 || status == 429 || (status >= 500 && status != 501),
