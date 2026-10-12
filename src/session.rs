@@ -411,6 +411,7 @@ mod tests {
         Image, Session, agent, current_folder, inline_images, latest_in_folder, new_uuid,
         read_folder, read_preview, sessions_directory,
     };
+    use crate::tools::test_support::TemporaryFile;
     use serde_json::json;
     use std::{
         io::Write,
@@ -444,64 +445,40 @@ mod tests {
 
     #[test]
     fn previews_prompt_with_images() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-image-preview-{}",
-            std::process::id()
-        ));
-        std::fs::write(
-            &path,
+        let file = TemporaryFile::new(
+            "image-preview",
             "{\"role\":\"user\",\"content\":[{\"type\":\"image\"},{\"type\":\"text\",\"text\":\"look\"}]}\n",
-        )
-        .unwrap();
-        let preview = read_preview(&path);
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(preview.unwrap(), "look");
+        );
+        assert_eq!(read_preview(file.path()).unwrap(), "look");
     }
 
     #[test]
     fn previews_shell_command_without_markup() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-shell-preview-{}",
-            std::process::id()
-        ));
         let message = json!({
             "role": "user",
             "content": agent::shell_message("ls -la", "file\n"),
         });
-        std::fs::write(&path, format!("{message}\n")).unwrap();
-        let preview = read_preview(&path);
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(preview.unwrap(), "!ls -la");
+        let file = TemporaryFile::new("shell-preview", &format!("{message}\n"));
+        assert_eq!(read_preview(file.path()).unwrap(), "!ls -la");
     }
 
     #[test]
     fn previews_skill_command_without_markup() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-skill-preview-{}",
-            std::process::id()
-        ));
         let message = json!({
             "role": "user",
             "content": "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nDo the demo.\n</skill>\n\nfix it",
         });
-        std::fs::write(&path, format!("{message}\n")).unwrap();
-        let preview = read_preview(&path);
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(preview.unwrap(), "/skill:demo fix it");
+        let file = TemporaryFile::new("skill-preview", &format!("{message}\n"));
+        assert_eq!(read_preview(file.path()).unwrap(), "/skill:demo fix it");
     }
 
     #[test]
     fn reads_preview_without_reading_rest_of_file() {
-        let path =
-            std::env::temp_dir().join(format!("rust-coding-agent-preview-{}", std::process::id()));
-        std::fs::write(
-            &path,
+        let file = TemporaryFile::new(
+            "preview",
             "{\"role\":\"user\",\"content\":\"first\"}\nnot json\n",
-        )
-        .unwrap();
-        let preview = read_preview(&path);
-        std::fs::remove_file(&path).unwrap();
-        assert_eq!(preview.unwrap(), "first");
+        );
+        assert_eq!(read_preview(file.path()).unwrap(), "first");
     }
 
     #[test]
