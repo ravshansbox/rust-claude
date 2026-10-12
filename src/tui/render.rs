@@ -465,6 +465,7 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::tools;
 
     fn texts(lines: &[Line]) -> Vec<String> {
         lines.iter().map(ToString::to_string).collect()
@@ -546,8 +547,8 @@ mod tests {
         let input = serde_json::json!({ "command": "echo \"$HOME\" | wc -c" });
         let message = tool_message(
             "bash",
-            &crate::tools::summary("bash", &input),
-            crate::tools::diff("bash", &input),
+            &tools::summary("bash", &input),
+            tools::diff("bash", &input),
         );
         let lines = render_message(Role::Tool, &message, 40);
         assert_eq!(trimmed(&lines), [" bash  echo \"$HOME\" | wc -c"]);
