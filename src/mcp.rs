@@ -1703,16 +1703,13 @@ mod tests {
 
     #[test]
     fn rejects_a_zero_timeout() {
-        let path = std::env::temp_dir().join(format!("mcp-timeout-{}.json", std::process::id()));
-        std::fs::write(
-            &path,
+        let file = TemporaryFile::new(
+            "mcp-timeout",
             r#"{ "mcpServers": { "docs": { "command": "a", "timeout": 0 } } }"#,
-        )
-        .unwrap();
+        );
         let mut servers = BTreeMap::new();
         let mut diagnostics = Vec::new();
-        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
-        std::fs::remove_file(&path).unwrap();
+        read_config(file.path(), Scope::Project, &mut servers, &mut diagnostics);
         assert!(servers.is_empty());
         assert_eq!(diagnostics, ["MCP server docs: timeout must be at least 1"]);
     }
