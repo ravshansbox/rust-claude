@@ -10,6 +10,8 @@ use ratatui::{
     widgets::{Paragraph, Wrap},
 };
 use std::sync::OnceLock;
+use terminal_colorsaurus::{QueryOptions, ThemeMode, color_palette};
+use tui_markdown::{CodeTheme, Options, StyleSheet};
 use unicode_segmentation::UnicodeSegmentation;
 
 #[derive(Clone, Copy)]
@@ -20,11 +22,11 @@ pub(super) enum Theme {
 
 impl Theme {
     pub(super) fn detect() -> (Self, Option<Colour>) {
-        match terminal_colorsaurus::color_palette(terminal_colorsaurus::QueryOptions::default()) {
+        match color_palette(QueryOptions::default()) {
             Ok(palette) => (
                 match palette.theme_mode() {
-                    terminal_colorsaurus::ThemeMode::Light => Self::Light,
-                    terminal_colorsaurus::ThemeMode::Dark => Self::Dark,
+                    ThemeMode::Light => Self::Light,
+                    ThemeMode::Dark => Self::Dark,
                 },
                 Some(palette.background.scale_to_8bit()),
             ),
@@ -81,10 +83,10 @@ impl Theme {
         }
     }
 
-    fn code_theme(self) -> tui_markdown::CodeTheme {
-        static DARK: OnceLock<tui_markdown::CodeTheme> = OnceLock::new();
-        static LIGHT: OnceLock<tui_markdown::CodeTheme> = OnceLock::new();
-        let load = |source| tui_markdown::CodeTheme::from_textmate(source).expect("bundled theme");
+    fn code_theme(self) -> CodeTheme {
+        static DARK: OnceLock<CodeTheme> = OnceLock::new();
+        static LIGHT: OnceLock<CodeTheme> = OnceLock::new();
+        let load = |source| CodeTheme::from_textmate(source).expect("bundled theme");
         match self {
             Self::Light => LIGHT.get_or_init(|| load(crate::highlight::LIGHT_THEME)),
             Self::Dark => DARK.get_or_init(|| load(crate::highlight::DARK_THEME)),
@@ -103,7 +105,7 @@ pub(super) fn theme() -> Theme {
 #[derive(Clone)]
 struct MarkdownStyleSheet;
 
-impl tui_markdown::StyleSheet for MarkdownStyleSheet {
+impl StyleSheet for MarkdownStyleSheet {
     fn code(&self) -> Style {
         match theme() {
             Theme::Light => Style::new().fg(Color::Rgb(87, 105, 247)),
@@ -118,7 +120,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
         Role::User => user_message_lines(text, width as usize),
         Role::Assistant => tui_markdown::from_str_with_options(
             &hard_line_breaks(text),
-            &tui_markdown::Options::new(MarkdownStyleSheet)
+            &Options::new(MarkdownStyleSheet)
                 .code_theme(theme().code_theme())
                 .table_width(width),
         )
