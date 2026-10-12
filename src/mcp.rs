@@ -573,14 +573,33 @@ impl Http {
             .ok()
             .and_then(|initialize| initialize.clone())
             .ok_or("session expired before it started")?;
+        let previous = self
+            .protocol_version
+            .lock()
+            .ok()
+            .and_then(|version| version.clone());
         for value in [&self.session, &self.protocol_version] {
             if let Ok(mut value) = value.lock() {
                 *value = None;
             }
         }
+        let started = self.start_session(&initialize).await;
+        if started.is_err()
+            && let Ok(mut session) = self.session.lock()
+            && session.is_none()
+        {
+            *session = current;
+            if let Ok(mut version) = self.protocol_version.lock() {
+                *version = previous;
+            }
+        }
+        started
+    }
+
+    async fn start_session(&self, initialize: &Value) -> Result<(), String> {
         let failed = |error: String| format!("cannot start a new session: {error}");
         let response = self
-            .post(&initialize)
+            .post(initialize)
             .await
             .map_err(|error| failed(error.message))?;
         let mut answered = false;
@@ -2373,6 +2392,37 @@ done
         assert_eq!(sessions_used("initialize"), ["", ""]);
         assert_eq!(sessions_used("notifications/initialized"), ["s1", "s2"]);
         assert_eq!(sessions_used("tools/call"), ["s1", "s2"]);
+    }
+
+    #[tokio::test]
+    async fn tries_a_new_http_session_again_after_a_failed_renewal() {
+        let sessions = Arc::new(AtomicU64::new(0));
+        let issued = sessions.clone();
+        let (url, _requests) = http_server(move |request| {
+            let session = request.headers.get("mcp-session-id").map(String::as_str);
+            match request.body["method"].as_str() {
+                Some("initialize") => match issued.fetch_add(1, Ordering::SeqCst) + 1 {
+                    2 => HttpReply::status(503, ""),
+                    number => {
+                        http_mcp(request).with_header("mcp-session-id", &format!("s{number}"))
+                    }
+                },
+                _ if session.is_none() => HttpReply::status(400, ""),
+                Some("tools/call") if session == Some("s1") => HttpReply::status(404, ""),
+                _ => http_mcp(request),
+            }
+        })
+        .await;
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        assert!(matches!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Err(_))
+        ));
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
     }
 
     /// Answers like `http_mcp`, but only with the access token `fresh`, and
