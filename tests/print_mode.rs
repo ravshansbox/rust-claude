@@ -378,3 +378,43 @@ fn moves_the_old_config_folder_to_the_new_one() {
     assert!(moved);
     assert!(!old_left);
 }
+
+#[test]
+fn shows_help_without_reading_or_writing_the_config_folder() {
+    let setup = Setup::new("help");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
+        .arg("--help")
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert_eq!(output.status.code(), Some(0), "{stdout}");
+    assert!(stdout.contains("usage: rust-coding-agent"), "{stdout}");
+    assert!(stdout.contains("--print <prompt>"), "{stdout}");
+    assert!(!setup.home.join(".rust-coding-agent").exists());
+}
+
+#[test]
+fn reports_a_missing_image_before_asking_to_sign_in() {
+    let setup = Setup::new("missing-image");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+
+    let output = setup
+        .run(&["-p", "describe", "--image", "missing.png"])
+        .wait_with_output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("failed to load image missing.png"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("sign in"), "{stderr}");
+}
