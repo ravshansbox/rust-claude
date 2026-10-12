@@ -71,6 +71,13 @@ fn syntax_for_path(path: &str) -> &'static SyntaxReference {
         .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
 }
 
+fn syntax_by_extension(extension: &str) -> &'static SyntaxReference {
+    let syntax_set = syntax_set();
+    syntax_set
+        .find_syntax_by_extension(extension)
+        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
+}
+
 fn change_for_sign(sign: char) -> Option<Change> {
     match sign {
         '-' => Some(Change::Delete),
@@ -138,9 +145,7 @@ impl Language {
             Self::JavaScript => "js",
             Self::Ruby => "rb",
         };
-        syntax_set()
-            .find_syntax_by_extension(extension)
-            .unwrap_or_else(|| syntax_set().find_syntax_plain_text())
+        syntax_by_extension(extension)
     }
 
     fn takes_code(self, flag: &str) -> bool {
@@ -252,9 +257,7 @@ fn quoted_body(command: &str, start: usize, quote: char) -> std::ops::Range<usiz
 }
 
 fn highlight_command(body: &str, dark: bool) -> Vec<HighlightedLine> {
-    let bash = syntax_set()
-        .find_syntax_by_extension("sh")
-        .unwrap_or_else(|| syntax_set().find_syntax_plain_text());
+    let bash = syntax_by_extension("sh");
     let command = body.lines().collect::<Vec<_>>().join("\n");
     let embedded = embedded_code(&command);
     let mut bash_highlighter = HighlightLines::new(bash, theme(dark));
