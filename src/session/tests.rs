@@ -289,3 +289,34 @@ fn skips_unreadable_session_files() {
     assert!(ids.contains(&readable.id));
     assert!(!ids.contains(&unreadable));
 }
+
+#[test]
+fn lists_other_sessions_newest_first() {
+    let directory = sessions_directory().unwrap();
+    let mut sessions = Vec::new();
+    for (prompt, age) in [("older", 120), ("newer", 60), ("current", 0)] {
+        let mut session = Session::new().unwrap();
+        session
+            .save(&[json!({ "role": "user", "content": prompt })])
+            .unwrap();
+        let path = directory.join(format!("{}.jsonl", session.id));
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .unwrap()
+            .set_modified(SystemTime::now() - Duration::from_secs(age))
+            .unwrap();
+        sessions.push((session.id.clone(), path));
+    }
+    let listed = Session::list_except(&sessions[2].0);
+    for (_, path) in &sessions {
+        std::fs::remove_file(path).unwrap();
+    }
+    let previews: Vec<String> = listed
+        .unwrap()
+        .into_iter()
+        .filter(|summary| sessions.iter().any(|(id, _)| *id == summary.id))
+        .map(|summary| summary.preview)
+        .collect();
+    assert_eq!(previews, ["newer", "older"]);
+}
