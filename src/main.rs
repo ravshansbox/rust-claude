@@ -152,12 +152,22 @@ async fn run() -> Result<()> {
         auth::finish_renewal(RENEWAL_WAIT).await;
         return result;
     };
+    run_print(agent, stop, &prompt, &images).await
+}
+
+/// Runs the prompt given on the command line and prints the reply.
+async fn run_print(
+    mut agent: agent::Agent,
+    mut stop: StopSignals,
+    prompt: &str,
+    images: &[images::Image],
+) -> Result<()> {
     let stopped = stop.recv();
     tokio::pin!(stopped);
     tokio::select! {
         mcp = mcp::Mcp::load() => agent.mcp = mcp,
         status = &mut stopped => {
-            if let Err(error) = agent.cancel_unsent(&prompt, &images) {
+            if let Err(error) = agent.cancel_unsent(prompt, images) {
                 eprintln!("failed to save session: {error}");
             }
             return interrupted(agent, status).await;
@@ -177,7 +187,7 @@ async fn run() -> Result<()> {
     let mut printer =
         print::Printer::new(stdout, out_terminal, io::stderr(), colour, dark, background);
     let mut checkpoint = None;
-    let run = print::run(&mut agent, &mut printer, &prompt, &images, &mut checkpoint);
+    let run = print::run(&mut agent, &mut printer, prompt, images, &mut checkpoint);
     let result = tokio::select! {
         result = run => Ok(result),
         status = &mut stopped => Err(status),
