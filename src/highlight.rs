@@ -62,12 +62,10 @@ fn theme(dark: bool) -> &'static Theme {
 fn syntax_for_path(path: &str) -> &'static SyntaxReference {
     let syntax_set = syntax_set();
     let path = std::path::Path::new(path);
-    path.extension()
-        .and_then(|extension| syntax_set.find_syntax_by_extension(extension.to_str()?))
-        .or_else(|| {
-            path.file_name()
-                .and_then(|name| syntax_set.find_syntax_by_extension(name.to_str()?))
-        })
+    [path.extension(), path.file_name()]
+        .into_iter()
+        .flatten()
+        .find_map(|name| syntax_set.find_syntax_by_extension(name.to_str()?))
         .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
 }
 
