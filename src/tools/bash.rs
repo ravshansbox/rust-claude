@@ -143,10 +143,12 @@ impl Captured {
 
     /// The output in at most `limit` bytes: all of it when it fits, or else
     /// its start and end around a note of how much was left out.
-    fn text(&self, limit: usize) -> String {
-        let all: Vec<u8> = self.head.iter().chain(&self.tail).copied().collect();
+    fn text(self, limit: usize) -> String {
+        let mut all = self.head;
+        all.extend(self.tail);
         if self.total <= limit {
-            return String::from_utf8_lossy(&all).into_owned();
+            return String::from_utf8(all)
+                .unwrap_or_else(|error| String::from_utf8_lossy(error.as_bytes()).into_owned());
         }
         let half = limit / 2;
         let mut start = &all[..half];
