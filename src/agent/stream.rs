@@ -154,7 +154,7 @@ impl Agent {
                         content.push(block);
                     }
                     "content_block_delta" => {
-                        let delta = &event["delta"];
+                        let delta = &mut event["delta"];
                         let Some(block) = content.last_mut() else {
                             continue;
                         };
@@ -163,11 +163,10 @@ impl Agent {
                             "thinking_delta" => "thinking",
                             "signature_delta" => "signature",
                             "citations_delta" => {
+                                let citation = delta["citation"].take();
                                 match block.get_mut("citations") {
-                                    Some(Value::Array(citations)) => {
-                                        citations.push(delta["citation"].clone());
-                                    }
-                                    _ => block["citations"] = json!([delta["citation"]]),
+                                    Some(Value::Array(citations)) => citations.push(citation),
+                                    _ => block["citations"] = Value::Array(vec![citation]),
                                 }
                                 continue;
                             }
