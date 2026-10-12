@@ -289,9 +289,12 @@ fn split_frontmatter(content: &str) -> (Option<String>, String) {
     let Some(end) = normalised[3..].find("\n---").map(|index| index + 3) else {
         return (None, normalised.into_owned());
     };
-    let yaml = normalised.get(4..end).unwrap_or_default().to_string();
+    let yaml = normalised
+        .get(4..end)
+        .filter(|yaml| !yaml.is_empty())
+        .map(str::to_string);
     let body = normalised[end + 4..].trim().to_string();
-    (Some(yaml).filter(|yaml| !yaml.is_empty()), body)
+    (yaml, body)
 }
 
 fn parse_frontmatter(content: &str) -> Result<Value> {
