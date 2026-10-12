@@ -132,7 +132,7 @@ impl Agent {
                 let Some(data) = frame.lines().find_map(|line| line.strip_prefix("data: ")) else {
                     continue;
                 };
-                let event: Value = serde_json::from_str(data)?;
+                let mut event: Value = serde_json::from_str(data)?;
                 match event["type"].as_str().unwrap_or_default() {
                     "message_start" => {
                         usage.update_from_response(&event["message"]["usage"]);
@@ -141,7 +141,7 @@ impl Agent {
                     }
                     "content_block_start" => {
                         first_token.get_or_insert_with(Instant::now);
-                        let block = event["content_block"].clone();
+                        let block = event["content_block"].take();
                         partial_json.clear();
                         if block["type"] == "web_search_tool_result" {
                             let outcome = tools::web_search::outcome(&block["content"]);
