@@ -171,7 +171,7 @@ pub fn replace_file(
         ));
         match options.open(&temporary) {
             Ok(file) => break (temporary, file),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error),
         }
     };
