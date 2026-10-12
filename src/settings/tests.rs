@@ -43,7 +43,7 @@ fn refuses_to_replace_settings_that_are_not_valid_json() {
 #[test]
 fn turns_update_checks_off_when_settings_cannot_be_read() {
     let (_directory, path) =
-        written_settings_file("broken-load", "{ \"check_for_updates\": false, }");
+        written_settings_file("broken-load", "{ \"check_for_updates\": true, }");
     let settings = load_file(&path);
     assert_eq!(settings.check_for_updates, Some(false));
 }
