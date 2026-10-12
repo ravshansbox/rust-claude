@@ -1547,7 +1547,7 @@ impl Mcp {
                 json!({ "name": tool.name, "arguments": arguments }),
             )
             .await
-            .map(|result| {
+            .and_then(|result| {
                 let text = tools::truncate(result_text(&result));
                 if result["isError"] == true {
                     Err(text)
@@ -1555,7 +1555,7 @@ impl Mcp {
                     Ok(text)
                 }
             });
-        Some(result.and_then(|result| result))
+        Some(result)
     }
 }
 
