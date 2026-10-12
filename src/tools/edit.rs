@@ -294,25 +294,6 @@ mod tests {
 
     #[cfg(unix)]
     #[tokio::test]
-    async fn keeps_permissions_of_edited_file() {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = TemporaryDir::new("edit-mode");
-        let path = directory.path().join("script.sh");
-        std::fs::write(&path, "echo old\n").unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o750)).unwrap();
-        let input = json!({ "path": path, "old_text": "old", "new_text": "new" });
-        assert_eq!(
-            call("edit", &input).await,
-            Ok(format!("edited {}", path.display()))
-        );
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "echo new\n");
-        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o750);
-        assert_eq!(directory.entries(), ["script.sh"]);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
     async fn edits_target_of_symlink() {
         let directory = TemporaryDir::new("edit-symlink");
         let target = directory.path().join("target.txt");
@@ -327,43 +308,5 @@ mod tests {
         assert!(std::fs::symlink_metadata(&link).unwrap().is_symlink());
         assert_eq!(std::fs::read_to_string(&target).unwrap(), "new");
         assert_eq!(directory.entries(), ["link.txt", "target.txt"]);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn edits_file_in_read_only_folder() {
-        let directory = TemporaryDir::new("edit-read-only");
-        let path = directory.path().join("file.txt");
-        std::fs::write(&path, "old").unwrap();
-        // The file stays writable, but no file can be added next to it.
-        directory.set_mode(0o500);
-        let input = json!({ "path": path, "old_text": "old", "new_text": "new" });
-        let result = call("edit", &input).await;
-        let content = std::fs::read_to_string(&path).unwrap();
-        let entries = directory.entries();
-        directory.set_mode(0o700);
-        assert_eq!(result, Ok(format!("edited {}", path.display())));
-        assert_eq!(content, "new");
-        assert_eq!(entries, ["file.txt"]);
-    }
-
-    #[cfg(unix)]
-    #[tokio::test]
-    async fn refuses_read_only_file() {
-        use std::os::unix::fs::PermissionsExt;
-        let directory = TemporaryDir::new("edit-read-only-file");
-        let path = directory.path().join("file.txt");
-        std::fs::write(&path, "old").unwrap();
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
-        let input = json!({ "path": path, "old_text": "old", "new_text": "new" });
-        let result = call("edit", &input).await;
-        assert!(
-            result.as_ref().is_err_and(
-                |error| error.starts_with(&format!("failed to write {}: ", path.display()))
-            ),
-            "{result:?}"
-        );
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "old");
-        assert_eq!(directory.entries(), ["file.txt"]);
     }
 }

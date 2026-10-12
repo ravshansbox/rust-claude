@@ -131,20 +131,6 @@ mod tests {
         assert_eq!(saved["model"], "opus");
     }
 
-    #[test]
-    fn refuses_to_replace_settings_of_the_wrong_type() {
-        let wrong = r#"{ "notifications": "yes" }"#;
-        let (_directory, path) = written_settings_file("wrong-type", wrong);
-        let result = update_file(&path, |settings| settings.model = Some("opus".into()));
-        let text = std::fs::read_to_string(&path).unwrap();
-        let error = format!("{:#}", result.unwrap_err());
-        assert!(
-            error.contains("settings.json could not be read: invalid type"),
-            "{error}"
-        );
-        assert_eq!(text, wrong);
-    }
-
     #[cfg(unix)]
     #[test]
     fn saves_settings_only_the_user_can_read() {

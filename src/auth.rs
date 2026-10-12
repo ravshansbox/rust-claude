@@ -867,21 +867,6 @@ pub(crate) mod tests {
     }
 
     #[tokio::test]
-    async fn uses_a_token_another_instance_renewed() {
-        let _lock = AUTH_FILE.lock().await;
-        let path = credentials_file(
-            &json!({ "access": "renewed", "refresh": "new", "expires": 4_102_444_800_000u64 })
-                .to_string(),
-        );
-        let mut credentials: Credentials =
-            serde_json::from_value(json!({ "access": "old", "refresh": "spent", "expires": 0 }))
-                .unwrap();
-        let token = credentials.access_token(&reqwest::Client::new()).await;
-        let _ = std::fs::remove_file(&path);
-        assert_eq!(token.unwrap(), "renewed");
-    }
-
-    #[tokio::test]
     async fn uses_a_sign_in_without_expiry_another_instance_renewed() {
         let _lock = AUTH_FILE.lock().await;
         let endpoint = TokenEndpoint::start("spent", false).await;

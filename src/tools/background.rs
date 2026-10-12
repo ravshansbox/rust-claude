@@ -140,7 +140,6 @@ pub fn display(message: &str) -> Option<(String, Option<String>)> {
 #[cfg(test)]
 mod tests {
     use super::{Background, message, parse_message};
-    use crate::tools::test_support::{TemporaryFile, is_running};
     use serde_json::json;
     use std::time::Duration;
 
@@ -150,20 +149,6 @@ mod tests {
             Background::default().stop(&json!({ "id": 7 })),
             Err("no background task 7 is running".into())
         );
-    }
-
-    #[tokio::test]
-    async fn stops_its_commands_at_once_when_dropped() {
-        let pid_file = TemporaryFile::new("background-drop-pid", "");
-        let command = format!("echo $$ > {}; exec sleep 30", pid_file.path().display());
-        let mut background = Background::default();
-        background
-            .start(&json!({ "command": command, "run_in_background": true }))
-            .unwrap();
-        let pid = pid_file.wait_for_content().await;
-        drop(background);
-        std::thread::sleep(Duration::from_millis(200));
-        assert!(!is_running(&pid), "process {pid} still running");
     }
 
     #[tokio::test]

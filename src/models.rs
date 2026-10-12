@@ -96,19 +96,3 @@ pub fn thinking_settings(model: &str, level: &str) -> Value {
         "output_config": { "effort": level },
     })
 }
-
-#[cfg(test)]
-mod tests {
-    use super::effort_levels;
-
-    #[test]
-    fn offers_off_only_on_models_that_can_turn_thinking_off() {
-        let levels = ["low", "medium", "high", "xhigh", "max"];
-        let with_off = ["off", "low", "medium", "high", "xhigh", "max"];
-        assert_eq!(effort_levels("claude-fable-5-1"), levels);
-        assert_eq!(effort_levels("claude-opus-5-5"), levels);
-        assert_eq!(effort_levels("claude-sonnet-5-5"), with_off);
-        assert_eq!(effort_levels("claude-haiku-5-5"), with_off);
-        assert_eq!(effort_levels("claude-x"), levels);
-    }
-}

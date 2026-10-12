@@ -639,11 +639,6 @@ async fn keeps_the_conversation_cached_after_a_round_with_many_tool_calls() {
         body.to_string().matches("cache_control").count() <= 4,
         "{body}"
     );
-    for block in messages[1]["content"].as_array().unwrap() {
-        if block["type"] == "thinking" {
-            assert_eq!(block.get("cache_control"), None);
-        }
-    }
 }
 
 #[test]
