@@ -90,7 +90,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         None
     };
     let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
-    let pinned_lines: Vec<Line> = if app.scroll_from_bottom > 0 {
+    let pinned = app.scroll_from_bottom > 0;
+    let pinned_lines: Vec<Line> = if pinned {
         let lines: Vec<Line> = status_lines(app).into_iter().skip(1).collect();
         if lines.is_empty() {
             vec![Line::default()]
@@ -117,14 +118,22 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         .enumerate()
         .map(|(index, message)| app.gap_before(index) + message.height())
         .sum::<usize>()
-        + status_lines(app)
-            .iter()
-            .map(|line| wrapped_height(line, chat.width))
-            .sum::<usize>();
+        + if pinned {
+            0
+        } else {
+            status_lines(app)
+                .iter()
+                .map(|line| wrapped_height(line, chat.width))
+                .sum::<usize>()
+        };
     let viewport_height = conversation_area.height;
     let max_scroll = wrapped_line_count.saturating_sub(viewport_height as usize);
-    app.scroll_from_bottom =
-        held_scroll_from_bottom(app.scroll_from_bottom, app.max_scroll, max_scroll);
+    app.scroll_from_bottom = if pinned && !app.status_pinned {
+        app.scroll_from_bottom.min(max_scroll)
+    } else {
+        held_scroll_from_bottom(app.scroll_from_bottom, app.max_scroll, max_scroll)
+    };
+    app.status_pinned = pinned;
     app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1) as usize;
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
@@ -259,7 +268,11 @@ fn status_lines(app: &App) -> Vec<Line<'static>> {
 
 /// The conversation `width` columns wide, from row `top` for `height_shown` rows.
 pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16) -> Paragraph<'_> {
-    let status_lines = status_lines(app);
+    let status_lines = if app.status_pinned {
+        Vec::new()
+    } else {
+        status_lines(app)
+    };
     let status_heights: Vec<usize> = status_lines
         .iter()
         .map(|line| wrapped_height(line, width))
@@ -563,6 +576,29 @@ mod tests {
         let shown = screen(&mut app);
         assert_eq!(shown.matches(" working").count(), 1, "{shown}");
         assert!(shown.contains("event 99"), "{shown}");
+    }
+
+    #[test]
+    fn shows_the_spinner_once_when_scrolled_up_a_little() {
+        let mut app = app_with_reply();
+        for number in 0..100 {
+            app.push(Role::Event, format!("event {number}"));
+        }
+        app.start(Activity::Working);
+        handle_input(Event::Paste("later".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
+        screen(&mut app);
+        for key in [KeyCode::Up, KeyCode::Down, KeyCode::Down, KeyCode::Down] {
+            press(&mut app, key);
+            let shown = screen(&mut app);
+            assert_eq!(shown.matches(" working").count(), 1, "{shown}");
+            assert_eq!(shown.matches("queued: later").count(), 1, "{shown}");
+        }
+        press(&mut app, KeyCode::Up);
+        let shown = screen(&mut app);
+        assert!(shown.contains("↓ Bottom (End)"), "{shown}");
+        assert!(!shown.contains("event 99"), "{shown}");
     }
 
     #[test]
