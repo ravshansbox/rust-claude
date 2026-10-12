@@ -469,7 +469,7 @@ mod tests {
                         Ok(read) => data.extend_from_slice(&chunk[..read]),
                     }
                 }
-                let request = String::from_utf8_lossy(&data).to_string();
+                let request = String::from_utf8_lossy(&data).into_owned();
                 let path = request.split_whitespace().nth(1).unwrap_or("").to_string();
                 recorded.lock().unwrap().push(request);
                 let body = match path.as_str() {

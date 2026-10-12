@@ -1955,7 +1955,7 @@ done
             }
             data.extend_from_slice(&chunk[..read]);
         };
-        let head = String::from_utf8_lossy(&data[..header_end]).to_string();
+        let head = String::from_utf8_lossy(&data[..header_end]);
         let mut lines = head.lines();
         let mut request_line = lines.next()?.split(' ');
         let method = request_line.next()?.to_string();
