@@ -269,10 +269,11 @@ fn replay_prompt(app: &mut App, text: &str) {
 mod tests {
     use super::{handle_agent_event, replay_messages};
     use crate::agent::{self, AgentEvent, Stats, Usage};
+    use crate::images;
     use crate::skills::{Scope, Skill};
     use crate::tools;
     use crate::tui::{
-        Action, App, Role, UiEvent, handle_input,
+        Action, Activity, App, Role, UiEvent, handle_input,
         test_support::{new_app, screen, screen_of_width},
     };
     use crate::update::Progress;
@@ -302,7 +303,7 @@ mod tests {
         handle_input(Event::FocusGained, &mut focused, |_| {});
         let mut cancelled = new_app();
         handle_input(Event::FocusLost, &mut cancelled, |_| {});
-        cancelled.start(crate::tui::Activity::Cancelling);
+        cancelled.start(Activity::Cancelling);
         let mut off = new_app();
         off.notifications = false;
         handle_input(Event::FocusLost, &mut off, |_| {});
@@ -401,7 +402,7 @@ mod tests {
 
     #[test]
     fn shows_a_finished_background_command_while_working_on_it() {
-        let message = crate::tools::background::message(1, "echo hi", "hi\n");
+        let message = tools::background::message(1, "echo hi", "hi\n");
         let mut app = new_app();
         handle_agent_event(UiEvent::Background(message.clone()), &mut app);
         assert!(app.busy());
@@ -686,7 +687,7 @@ mod tests {
     #[test]
     fn shows_why_pasting_an_image_failed() {
         let mut app = new_app();
-        let error = crate::images::prepare(b"not an image".to_vec()).unwrap_err();
+        let error = images::prepare(b"not an image".to_vec()).unwrap_err();
         handle_agent_event(UiEvent::ImagePasted(Err(error)), &mut app);
         let text = &app.messages.last().unwrap().text;
         assert!(
