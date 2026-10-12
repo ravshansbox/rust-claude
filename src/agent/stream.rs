@@ -87,8 +87,8 @@ impl Agent {
             }
         };
         self.quota.update_from_headers(response.headers());
-        if !response.status().is_success() {
-            let status = response.status();
+        let status = response.status();
+        if !status.is_success() {
             let delay = retry_after(response.headers());
             // A body that breaks off still leaves the status to go by.
             let text = response

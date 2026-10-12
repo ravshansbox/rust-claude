@@ -158,8 +158,8 @@ pub(super) async fn fetch_quota(
         .header("anthropic-beta", "oauth-2025-04-20")
         .send()
         .await?;
-    if !response.status().is_success() {
-        let status = response.status();
+    let status = response.status();
+    if !status.is_success() {
         bail!("{status}: {}", response.text().await?);
     }
     let body: Value = response.json().await?;
