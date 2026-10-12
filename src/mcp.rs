@@ -379,6 +379,7 @@ const MAX_ERROR_BODY: usize = 500;
 const NEEDS_SIGN_IN: &str = "needs sign-in";
 const HEADERS_HELPER_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
+const SESSION_HEADER: &str = "mcp-session-id";
 
 struct PostError {
     message: String,
@@ -504,7 +505,7 @@ impl Drop for HttpSession {
             .client
             .delete(&self.0.url)
             .headers(self.0.current_headers())
-            .header("mcp-session-id", session)
+            .header(SESSION_HEADER, session)
             .timeout(Duration::from_secs(1));
         if let Some(saved) = self.0.oauth.as_ref().and_then(OAuthSession::current) {
             request = request.bearer_auth(saved.access_token);
@@ -724,7 +725,7 @@ impl Http {
         }
         let session = self.session.lock().ok().and_then(|session| session.clone());
         if let Some(session) = &session {
-            request = request.header("mcp-session-id", session);
+            request = request.header(SESSION_HEADER, session);
         }
         if let Some(version) = self
             .protocol_version
@@ -757,7 +758,7 @@ impl Http {
         let method = message["method"].as_str().unwrap_or("a reply");
         if let Some(session) = response
             .headers()
-            .get("mcp-session-id")
+            .get(SESSION_HEADER)
             .and_then(|session| session.to_str().ok())
             && let Ok(mut current) = self.session.lock()
         {
