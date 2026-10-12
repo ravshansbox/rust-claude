@@ -37,8 +37,8 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
 pub(super) fn start(input: &Value) -> Result<(Child, Option<u64>), String> {
     let timeout = number(input, "timeout", 1)?;
     let mut command = Command::new("bash");
-    command.args(["-c", argument(input, "command")?]);
     command
+        .args(["-c", argument(input, "command")?])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
