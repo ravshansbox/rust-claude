@@ -315,9 +315,10 @@ fn read_folder(path: &Path) -> Result<Option<String>> {
         return Ok(None);
     };
     let line: Value = serde_json::from_str(&line)?;
-    Ok(is_header(&line)
-        .then(|| line["cwd"].as_str().map(str::to_string))
-        .flatten())
+    Ok(line["cwd"]
+        .as_str()
+        .filter(|_| is_header(&line))
+        .map(str::to_string))
 }
 
 fn read_preview(path: &Path) -> Result<String> {
