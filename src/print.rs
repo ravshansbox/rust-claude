@@ -287,7 +287,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
 
 #[cfg(test)]
 mod tests {
-    use super::Printer;
+    use super::{AgentEvent, Printer};
     use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
     use serde_json::json;
 
@@ -319,7 +319,6 @@ mod tests {
 
     #[test]
     fn separates_thinking_tool_calls_and_notices_with_blank_lines() {
-        use crate::agent::AgentEvent;
         let mut out = Vec::new();
         let mut err = Vec::new();
         let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
@@ -347,7 +346,6 @@ mod tests {
 
     #[test]
     fn leaves_one_blank_line_after_thinking_that_ends_with_newlines() {
-        use crate::agent::AgentEvent;
         let mut err = Vec::new();
         let mut printer = Printer::new(std::io::sink(), false, &mut err, false, false, None);
         printer.event(AgentEvent::Thinking("one\n\n".into()));
@@ -364,7 +362,6 @@ mod tests {
 
     #[test]
     fn shows_thinking_in_grey_italics() {
-        use crate::agent::AgentEvent;
         let mut err = Vec::new();
         let mut printer = Printer::new(std::io::sink(), true, &mut err, true, true, None);
         printer.event(AgentEvent::Thinking("hmm\x1b[2J".into()));
@@ -376,7 +373,6 @@ mod tests {
 
     #[test]
     fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
-        use crate::agent::AgentEvent;
         struct Screen<'a>(&'a std::cell::RefCell<Vec<u8>>);
         impl std::io::Write for Screen<'_> {
             fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
