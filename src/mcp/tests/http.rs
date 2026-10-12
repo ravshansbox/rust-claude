@@ -78,6 +78,50 @@ async fn reads_http_replies_sent_as_events() {
 }
 
 #[tokio::test]
+async fn reads_events_split_over_lines_with_crlf_endings() {
+    let (url, _) = http_server(|request| match request.body["method"].as_str() {
+        Some("tools/call") => HttpReply {
+            status: 200,
+            headers: vec![("content-type".into(), "text/event-stream".into())],
+            body: format!(
+                ": comment\r\nevent: other\r\ndata: {{}}\r\n\r\ndata: {{\"jsonrpc\": \"2.0\", \"id\": {},\r\ndata: \"result\": {{\"content\": [{{\"type\": \"text\", \"text\": \"split\"}}]}}}}\r\n\r\n",
+                request.body["id"]
+            ),
+        },
+        _ => http_mcp(request),
+    })
+    .await;
+    let mut mcp = Mcp::default();
+    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    assert_eq!(
+        mcp.call("mcp__web__echo", &json!({})).await,
+        Some(Ok("split".into()))
+    );
+}
+
+#[tokio::test]
+async fn fails_calls_when_an_http_reply_is_too_long() {
+    for content_type in ["application/json", "text/event-stream"] {
+        let (url, _) = http_server(move |request| match request.body["method"].as_str() {
+            Some("tools/call") => HttpReply {
+                status: 200,
+                headers: vec![("content-type".into(), content_type.into())],
+                body: format!("data: {}", "a".repeat(MAX_LINE + 1)),
+            },
+            _ => http_mcp(request),
+        })
+        .await;
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Err("server sent a reply longer than 32 MiB".into())),
+            "{content_type}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn reports_http_errors() {
     let (url, _) = http_server(|request| match request.body["method"].as_str() {
         Some("tools/call") => HttpReply::status(202, ""),
