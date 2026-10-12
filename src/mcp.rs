@@ -3013,12 +3013,11 @@ done
 
     #[tokio::test]
     async fn tells_the_server_when_a_call_times_out() {
-        let log = std::env::temp_dir().join(format!("mcp-cancel-{}", std::process::id()));
-        let _ = std::fs::remove_file(&log);
+        let log = TemporaryFile::new("mcp-cancel", "");
         let mut config = server_with(
             &format!(
                 r#"    *'"notifications/cancelled"'*) printf '%s\n' "$line" >> '{}' ;;"#,
-                log.display()
+                log.path().display()
             ),
             ":",
         );
@@ -3031,9 +3030,7 @@ done
                 .unwrap()
                 .is_err()
         );
-        let read = || std::fs::read_to_string(&log).unwrap_or_default();
-        let logged = eventually(read, |logged| !logged.is_empty()).await;
-        let _ = std::fs::remove_file(&log);
+        let logged = eventually(|| log.content(), |logged| !logged.is_empty()).await;
         let message: Value = serde_json::from_str(logged.trim()).unwrap();
         assert_eq!(message["method"], "notifications/cancelled");
         assert_eq!(message["params"]["requestId"], 3);
