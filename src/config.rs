@@ -197,17 +197,14 @@ pub(crate) fn permissions(path: &Path) -> Option<u32> {
 #[cfg(test)]
 mod tests {
     use super::{WRITES, permissions, replace_file, write_private_file};
+    use crate::tools::test_support::TemporaryDir;
     use std::sync::atomic::Ordering;
 
     #[cfg(unix)]
     #[test]
     fn saves_through_symlinked_file() {
-        let base = std::env::temp_dir().join(format!(
-            "rust-coding-agent-linked-save-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir(&base).unwrap();
+        let directory = TemporaryDir::new("linked-save");
+        let base = directory.path();
         let target = base.join("dotfiles-settings.json");
         let link = base.join("settings.json");
         std::fs::write(&target, "{}").unwrap();
@@ -218,7 +215,6 @@ mod tests {
             std::fs::read_to_string(&target).unwrap(),
             permissions(&target),
         );
-        std::fs::remove_dir_all(&base).unwrap();
         result.unwrap();
         assert_eq!(found, (true, "{\"model\":\"opus\"}".into(), Some(0o600)));
     }
@@ -227,12 +223,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn saves_through_dangling_symlink() {
-        let base = std::env::temp_dir().join(format!(
-            "rust-coding-agent-dangling-save-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir_all(base.join("dotfiles")).unwrap();
+        let directory = TemporaryDir::new("dangling-save");
+        let base = directory.path();
+        std::fs::create_dir(base.join("dotfiles")).unwrap();
         let link = base.join("settings.json");
         std::os::unix::fs::symlink("dotfiles/settings.json", &link).unwrap();
         let result = write_private_file(&link, b"{}");
@@ -240,7 +233,6 @@ mod tests {
             std::fs::symlink_metadata(&link).unwrap().is_symlink(),
             std::fs::read_to_string(base.join("dotfiles/settings.json")).ok(),
         );
-        std::fs::remove_dir_all(&base).unwrap();
         result.unwrap();
         assert_eq!(found, (true, Some("{}".into())));
     }
@@ -249,10 +241,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn does_not_follow_symlinks_at_temporary_names() {
-        let base =
-            std::env::temp_dir().join(format!("rust-coding-agent-planted-{}", std::process::id()));
-        let _ = std::fs::remove_dir_all(&base);
-        std::fs::create_dir(&base).unwrap();
+        let directory = TemporaryDir::new("planted");
+        let base = directory.path();
         let victim = base.join("victim");
         std::fs::write(&victim, "secret").unwrap();
         let path = base.join("file.log");
@@ -269,7 +259,6 @@ mod tests {
                 .map(|metadata| metadata.is_symlink())
                 .ok(),
         );
-        std::fs::remove_dir_all(&base).unwrap();
         result.unwrap();
         assert_eq!(found, ("secret".into(), Some("new".into()), Some(false)));
     }
