@@ -1,4 +1,4 @@
-use super::{choose_effort, choose_model};
+use super::{choose, choose_effort};
 
 #[test]
 fn chooses_an_effort_level_the_model_supports() {
@@ -20,12 +20,12 @@ fn chooses_an_effort_level_the_model_supports() {
 #[test]
 fn uses_the_default_model_when_the_saved_one_is_not_in_the_list() {
     assert_eq!(
-        choose_model(Some("claude-haiku-5-5".into())),
+        choose(Some("claude-haiku-5-5".into())),
         ("claude-haiku-5-5".into(), None)
     );
-    assert_eq!(choose_model(None), ("claude-opus-5-5".into(), None));
+    assert_eq!(choose(None), ("claude-opus-5-5".into(), None));
     assert_eq!(
-        choose_model(Some("claude-opus-4-5".into())),
+        choose(Some("claude-opus-4-5".into())),
         (
             "claude-opus-5-5".into(),
             Some(

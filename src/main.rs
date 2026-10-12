@@ -25,36 +25,6 @@ use anyhow::{Context, Result, bail};
 use cli::{Command, OPTIONS, USAGE, parse_arguments};
 use tokio::signal::unix::{Signal, SignalKind, signal};
 
-fn choose_model(saved: Option<String>) -> (String, Option<String>) {
-    match saved {
-        Some(model) if !models::is_known(&model) => (
-            models::DEFAULT.into(),
-            Some(format!(
-                "{}, using {}",
-                models::unknown(&model),
-                models::DEFAULT
-            )),
-        ),
-        saved => (saved.unwrap_or_else(|| models::DEFAULT.into()), None),
-    }
-}
-
-fn choose_effort(model: &str, name: &str) -> (&'static str, Option<String>) {
-    let levels = models::effort_levels(model);
-    match levels.iter().find(|level| **level == name) {
-        Some(level) => (level, None),
-        None if name == "off" => (agent::DEFAULT_EFFORT, None),
-        None => (
-            agent::DEFAULT_EFFORT,
-            Some(format!(
-                "unknown effort level: {name} (options: {}), using {}",
-                levels.join(", "),
-                agent::DEFAULT_EFFORT
-            )),
-        ),
-    }
-}
-
 /// How long quitting waits for background jobs such as listing files for
 /// `@`, reading the Git branch or reading the clipboard. Their results are
 /// only shown in the interface, so a slow one should not hold up quitting,
@@ -128,7 +98,7 @@ async fn run() -> Result<()> {
     };
     let settings = settings::Settings::load();
     let model = options.model.unwrap_or_else(|| {
-        let (model, warning) = choose_model(settings.model);
+        let (model, warning) = models::choose(settings.model);
         if let Some(warning) = warning {
             eprintln!("{warning}");
         }
@@ -140,7 +110,7 @@ async fn run() -> Result<()> {
         agent.resume(&id).await?;
     }
     if let Some(name) = effort {
-        let (level, warning) = choose_effort(&agent.model, &name);
+        let (level, warning) = models::choose_effort(&agent.model, &name);
         agent.effort = level;
         if let Some(warning) = warning {
             eprintln!("{warning}");
@@ -250,6 +220,3 @@ async fn stopped(status: i32) -> Result<()> {
     eprintln!("\ncancelled");
     std::process::exit(status);
 }
-
-#[cfg(test)]
-mod tests;

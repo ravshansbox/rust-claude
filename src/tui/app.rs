@@ -10,7 +10,7 @@ use super::{
     workspace_label,
 };
 use crate::{
-    agent::{DEFAULT_EFFORT, Queue, Queued, Stats, take_queued},
+    agent::{Queue, Queued, Stats, take_queued},
     history,
     images::Image,
     models,
@@ -525,8 +525,7 @@ impl App {
 
     /// Returns whether `name` is an effort level.
     pub(super) fn set_effort(&mut self, name: &str) -> bool {
-        let levels = models::effort_levels(&self.model);
-        if let Some(level) = levels.iter().find(|level| **level == name) {
+        if let Some(level) = models::find_effort(&self.model, name) {
             self.effort = level;
             self.push(Role::Event, format!("effort: {level}"));
             true
@@ -535,7 +534,7 @@ impl App {
                 Role::Event,
                 format!(
                     "unknown effort level: {name} (options: {})",
-                    levels.join(", ")
+                    models::effort_levels(&self.model).join(", ")
                 ),
             );
             false
@@ -544,9 +543,7 @@ impl App {
 
     pub(super) fn set_model(&mut self, model: &str) {
         self.model = model.into();
-        if !models::effort_levels(model).contains(&self.effort) {
-            self.effort = DEFAULT_EFFORT;
-        }
+        self.effort = models::supported_effort(model, self.effort);
         self.push(Role::Event, format!("model: {}", display_model(model)));
     }
 

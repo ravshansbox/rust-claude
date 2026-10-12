@@ -1,5 +1,5 @@
 use crate::{
-    agent::{Agent, AgentEvent, DEFAULT_EFFORT},
+    agent::{Agent, AgentEvent},
     images::Image,
     mcp::{Added, Started},
     models,
@@ -150,9 +150,7 @@ pub(super) async fn agent_task(
                 continue;
             }
             Request::SetModel(model) => {
-                if !models::effort_levels(&model).contains(&agent.effort) {
-                    agent.effort = DEFAULT_EFFORT;
-                }
+                agent.effort = models::supported_effort(&model, agent.effort);
                 agent.model = model;
                 send_stats(&agent, &events);
                 continue;

@@ -39,8 +39,6 @@ use usage::{fetch_quota, tokens_per_second, total_usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
 
-pub const DEFAULT_EFFORT: &str = "medium";
-
 /// The result saved for a tool call that was cancelled before it finished.
 pub const CANCELLED: &str = "cancelled by the user";
 
@@ -174,7 +172,7 @@ impl Agent {
             api_base: API_BASE.into(),
             credentials,
             model,
-            effort: DEFAULT_EFFORT,
+            effort: models::DEFAULT_EFFORT,
             messages: Vec::new(),
             pending_usage: Usage::default(),
             tool_results: Vec::new(),

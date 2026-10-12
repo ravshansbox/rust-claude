@@ -87,6 +87,46 @@ pub fn effort_levels(model: &str) -> &'static [&'static str] {
     }
 }
 
+pub const DEFAULT_EFFORT: &str = "medium";
+
+pub fn find_effort(model: &str, name: &str) -> Option<&'static str> {
+    effort_levels(model)
+        .iter()
+        .copied()
+        .find(|level| *level == name)
+}
+
+/// `effort`, or the default when `model` does not support it.
+pub fn supported_effort(model: &str, effort: &str) -> &'static str {
+    find_effort(model, effort).unwrap_or(DEFAULT_EFFORT)
+}
+
+/// The saved model, or the default with a warning when it is not listed.
+pub fn choose(saved: Option<String>) -> (String, Option<String>) {
+    match saved {
+        Some(model) if !is_known(&model) => (
+            DEFAULT.into(),
+            Some(format!("{}, using {DEFAULT}", unknown(&model))),
+        ),
+        saved => (saved.unwrap_or_else(|| DEFAULT.into()), None),
+    }
+}
+
+/// The named effort level, or the default with a warning when it is unknown.
+pub fn choose_effort(model: &str, name: &str) -> (&'static str, Option<String>) {
+    match find_effort(model, name) {
+        Some(level) => (level, None),
+        None if name == "off" => (DEFAULT_EFFORT, None),
+        None => (
+            DEFAULT_EFFORT,
+            Some(format!(
+                "unknown effort level: {name} (options: {}), using {DEFAULT_EFFORT}",
+                effort_levels(model).join(", ")
+            )),
+        ),
+    }
+}
+
 pub fn thinking_settings(model: &str, level: &str) -> Value {
     if let Some(kind) = thinking_off(model).filter(|_| level == "off") {
         return json!({ "thinking": { "type": kind } });
@@ -96,3 +136,6 @@ pub fn thinking_settings(model: &str, level: &str) -> Value {
         "output_config": { "effort": level },
     })
 }
+
+#[cfg(test)]
+mod tests;
