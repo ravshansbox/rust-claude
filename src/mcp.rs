@@ -1726,16 +1726,16 @@ mod tests {
 
     #[test]
     fn labels_servers_global_when_run_from_the_home_folder() {
-        let home = std::env::temp_dir().join(format!("mcp-home-{}", std::process::id()));
-        std::fs::create_dir_all(home.join(".rust-coding-agent")).unwrap();
+        let directory = TemporaryDir::new("mcp-home");
+        let home = directory.path();
+        std::fs::create_dir(home.join(".rust-coding-agent")).unwrap();
         std::fs::write(
             home.join(".rust-coding-agent/mcp.json"),
             r#"{ "mcpServers": { "docs": { "command": "a" } } }"#,
         )
         .unwrap();
         let (servers, overridden, diagnostics) =
-            read_configs(Some(&home.join(".rust-coding-agent")), &home);
-        std::fs::remove_dir_all(&home).unwrap();
+            read_configs(Some(&home.join(".rust-coding-agent")), home);
         assert_eq!(servers["docs"].0, Scope::Global);
         assert!(overridden.is_empty());
         assert!(diagnostics.is_empty());
