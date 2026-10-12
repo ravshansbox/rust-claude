@@ -262,3 +262,6 @@ impl Agent {
         })
     }
 }
+
+#[cfg(test)]
+mod tests;
