@@ -80,9 +80,10 @@ fn thinking_off(model: &str) -> Option<&'static str> {
 }
 
 pub fn effort_levels(model: &str) -> &'static [&'static str] {
-    match thinking_off(model) {
-        Some(_) => &EFFORT_LEVELS,
-        None => &EFFORT_LEVELS[1..],
+    if thinking_off(model).is_some() {
+        &EFFORT_LEVELS
+    } else {
+        &EFFORT_LEVELS[1..]
     }
 }
 
