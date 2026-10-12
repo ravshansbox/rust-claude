@@ -369,7 +369,10 @@ async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mu
     {
         if let Ok(mut tail) = tail.lock() {
             tail.extend_from_slice(&chunk[..count]);
-            let excess = tail.len().saturating_sub(STDERR_TAIL);
+            let mut excess = tail.len().saturating_sub(STDERR_TAIL);
+            while tail.get(excess).is_some_and(|byte| byte & 0xC0 == 0x80) {
+                excess += 1;
+            }
             tail.drain(..excess);
         }
     }
@@ -3012,6 +3015,21 @@ done
             Some(Err(
                 "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
             ))
+        );
+    }
+
+    #[tokio::test]
+    async fn keeps_whole_characters_in_the_end_of_server_errors() {
+        let mut config = server_answering_calls_with(&format!("echo '{}' >&2", "é".repeat(2_000)));
+        config.timeout = Some(1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("test".into(), Scope::Project, config).await);
+        assert_eq!(
+            mcp.call("mcp__test__echo", &json!({})).await,
+            Some(Err(format!(
+                "tools/call timed out after 1 seconds\nstderr:\n{}",
+                "é".repeat(1_999)
+            )))
         );
     }
 
