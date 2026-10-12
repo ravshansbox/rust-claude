@@ -88,10 +88,11 @@ pub(super) fn format_context(stats: &Stats) -> String {
 
 fn format_tokens(count: u64) -> String {
     let count = count as f64;
+    let thousands = (count / 1_000.0).round();
     if count < 1_000.0 {
         count.to_string()
-    } else if (count / 1_000.0).round() < 1_000.0 {
-        format!("{}k", (count / 1_000.0).round())
+    } else if thousands < 1_000.0 {
+        format!("{thousands}k")
     } else {
         format!("{}m", (count / 1_000_000.0).round())
     }
