@@ -1076,15 +1076,16 @@ pub(super) fn image_marker(number: usize) -> String {
 mod tests {
     use super::{Activity, App, ChatMessage, Role, Scope};
     use crate::agent::AgentEvent;
+    use crate::mcp;
     use crate::tui::{
         UiEvent, handle_agent_event, handle_input,
-        test_support::{new_app, screen},
+        test_support::{new_app, press, screen},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use ratatui::text::Line;
 
     fn mcp_server_loaded(name: &str, summary: &str) -> UiEvent {
-        UiEvent::McpServer(crate::mcp::Added {
+        UiEvent::McpServer(mcp::Added {
             name: name.into(),
             status: format!("loaded MCP server: {summary}"),
             summary: summary.into(),
@@ -1094,7 +1095,7 @@ mod tests {
     }
 
     fn mcp_server_failed(name: &str, summary: &str, status: &str) -> UiEvent {
-        UiEvent::McpServer(crate::mcp::Added {
+        UiEvent::McpServer(mcp::Added {
             name: name.into(),
             status: status.into(),
             summary: summary.into(),
@@ -1421,7 +1422,7 @@ mod tests {
         handle_input(Event::Paste("hello".into()), &mut app, |_| {});
         let (sent, received) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            crate::tui::test_support::press(&mut app, KeyCode::Enter);
+            press(&mut app, KeyCode::Enter);
             let _ = sent.send(app.prompt_history.clone());
         });
         let history = received.recv_timeout(std::time::Duration::from_secs(2));
