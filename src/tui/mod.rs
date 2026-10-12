@@ -43,7 +43,7 @@ use render::{BACKGROUND, THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
 use std::{
     backtrace::{Backtrace, BacktraceStatus},
-    io::Write,
+    io::{self, Write},
     panic::PanicHookInfo,
     path::PathBuf,
     process::Stdio,
@@ -156,7 +156,7 @@ struct InputModes<W: Write> {
 }
 
 impl<W: Write> InputModes<W> {
-    fn enable(mut output: W) -> std::io::Result<Self> {
+    fn enable(mut output: W) -> io::Result<Self> {
         execute!(
             output,
             EnableMouseCapture,
@@ -271,8 +271,8 @@ pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
     THEME.get_or_init(|| theme);
     BACKGROUND.get_or_init(|| background);
     let mut terminal = ratatui::init();
-    let held = HeldPanics::install(std::io::stderr());
-    let modes = match InputModes::enable(std::io::stdout()) {
+    let held = HeldPanics::install(io::stderr());
+    let modes = match InputModes::enable(io::stdout()) {
         Ok(modes) => modes,
         Err(error) => {
             ratatui::restore();
@@ -605,7 +605,7 @@ fn display_model(model: &str) -> &str {
     model.strip_prefix("claude-").unwrap_or(model)
 }
 
-fn notify(output: &mut impl Write, message: &str, tmux: bool) -> std::io::Result<()> {
+fn notify(output: &mut impl Write, message: &str, tmux: bool) -> io::Result<()> {
     let message: String = message.chars().filter(|c| !c.is_control()).collect();
     if tmux {
         write!(output, "\x1bPtmux;\x1b\x1b]9;{message}\x07\x1b\\")?;
