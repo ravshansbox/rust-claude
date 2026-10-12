@@ -203,7 +203,7 @@ mod tests {
             Agent,
             test_support::{self, MockApi, Reply},
         },
-        auth::Credentials,
+        auth::{Credentials, tests::AUTH_FILE},
         config, mcp,
     };
     use serde_json::json;
@@ -286,7 +286,7 @@ mod tests {
 
     #[tokio::test]
     async fn quits_while_renewing_the_sign_in() {
-        let _lock = crate::auth::tests::AUTH_FILE.lock().await;
+        let _lock = AUTH_FILE.lock().await;
         let (agent, _api) = agent_renewing_sign_in().await;
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
@@ -301,7 +301,7 @@ mod tests {
 
     #[tokio::test]
     async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
-        let _lock = crate::auth::tests::AUTH_FILE.lock().await;
+        let _lock = AUTH_FILE.lock().await;
         let (agent, _api) = agent_renewing_sign_in().await;
         let session_id = agent.session.id.clone();
         let (request_tx, request_rx) = mpsc::unbounded_channel();
