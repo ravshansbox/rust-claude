@@ -1,5 +1,5 @@
 use super::{Agent, AgentEvent};
-use crate::auth::Credentials;
+use crate::{auth::Credentials, config};
 use serde_json::{Value, json};
 use std::{collections::VecDeque, sync::Arc};
 use tokio::{
@@ -221,7 +221,7 @@ pub(crate) fn notices(notices: &mut Vec<String>) -> impl FnMut(AgentEvent) + '_ 
 
 /// Removes the session files a test agent wrote under the test config folder.
 pub(crate) fn remove_session(agent: &Agent) {
-    if let Some(config_dir) = crate::config::dir() {
+    if let Some(config_dir) = config::dir() {
         let sessions = config_dir.join("sessions");
         let _ = std::fs::remove_file(sessions.join(format!("{}.jsonl", agent.session.id)));
         let _ = std::fs::remove_dir_all(sessions.join(&agent.session.id));
@@ -229,7 +229,7 @@ pub(crate) fn remove_session(agent: &Agent) {
 }
 
 pub(crate) fn session_file(agent: &Agent) -> std::path::PathBuf {
-    crate::config::dir()
+    config::dir()
         .unwrap()
         .join("sessions")
         .join(format!("{}.jsonl", agent.session.id))
