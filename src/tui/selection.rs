@@ -159,7 +159,7 @@ pub(super) fn highlight_selection(app: &App, buffer: &mut Buffer) {
     };
     let area = app.conversation_area;
     for (y, row) in (area.top()..area.bottom()).zip(app.conversation_top..) {
-        if row < start.row || row > end.row {
+        if !(start.row..=end.row).contains(&row) {
             continue;
         }
         let first = if row == start.row { start.column } else { 0 };
