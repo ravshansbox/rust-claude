@@ -353,17 +353,6 @@ mod tests {
     }
 
     #[test]
-    fn reads_a_prompt_that_looks_like_an_option() {
-        assert_eq!(
-            parse(&["-p", "--help"]),
-            Some(Command::Print {
-                prompt: "--help".into(),
-                images: Vec::new(),
-            })
-        );
-    }
-
-    #[test]
     fn parses_print_and_interactive() {
         assert_eq!(parse(&[]), Some(Command::Interactive));
         assert_eq!(
@@ -478,7 +467,7 @@ mod tests {
 
     #[test]
     fn takes_a_prompt_that_looks_like_an_option() {
-        for prompt in ["-c", "--model", "--image", "-h", "--config-dir"] {
+        for prompt in ["-c", "--model", "--image", "-h", "--help", "--config-dir"] {
             assert_eq!(
                 parse_with_options(&["-p", prompt]),
                 Some((
