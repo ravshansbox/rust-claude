@@ -85,11 +85,8 @@ mod tests {
         assert!(running);
         assert_eq!(counts, [0, 0, 1, 1]);
         let requests = api.requests().await;
-        assert!(
-            tool_result(&requests[1]).contains("started background task 1"),
-            "{}",
-            tool_result(&requests[1])
-        );
+        let result = tool_result(&requests[1]);
+        assert!(result.contains("started background task 1"), "{result}");
         let message = message.unwrap().unwrap();
         assert!(message.contains("finished"), "{message}");
         assert!(message.contains(&command), "{message}");
@@ -120,11 +117,8 @@ mod tests {
         started.unwrap();
         stopped.unwrap();
         let requests = api.requests().await;
-        assert!(
-            tool_result(&requests[3]).contains("stopped background task 1"),
-            "{}",
-            tool_result(&requests[3])
-        );
+        let result = tool_result(&requests[3]);
+        assert!(result.contains("stopped background task 1"), "{result}");
         assert!(!agent.has_background());
         assert!(!is_running(&pid), "process {pid} still running");
     }
