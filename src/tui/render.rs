@@ -143,20 +143,20 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 
 fn hard_line_breaks(text: &str) -> String {
     let mut in_fence = false;
-    text.lines()
-        .map(|line| {
-            let trimmed = line.trim_start();
-            if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-                in_fence = !in_fence;
-                line.to_string()
-            } else if in_fence {
-                line.to_string()
-            } else {
-                format!("{line}  ")
-            }
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    let mut out = String::with_capacity(text.len());
+    for (index, line) in text.lines().enumerate() {
+        if index > 0 {
+            out.push('\n');
+        }
+        out.push_str(line);
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
+            in_fence = !in_fence;
+        } else if !in_fence {
+            out.push_str("  ");
+        }
+    }
+    out
 }
 
 pub(crate) fn tool_message(name: &str, summary: &str, diff: Option<String>) -> String {
