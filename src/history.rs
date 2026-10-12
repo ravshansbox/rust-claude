@@ -136,6 +136,7 @@ pub fn newest_unique(entries: &[Entry]) -> Vec<Entry> {
 #[cfg(test)]
 mod tests {
     use super::{Entry, MAX_ENTRIES, append, load, newest_unique, trim};
+    use std::io::Write;
 
     fn history_file(name: &str) -> std::path::PathBuf {
         std::env::temp_dir()
@@ -156,7 +157,7 @@ mod tests {
 
     fn append_raw(path: &std::path::Path, bytes: &[u8]) {
         let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
-        std::io::Write::write_all(&mut file, bytes).unwrap();
+        file.write_all(bytes).unwrap();
     }
 
     fn prompts(entries: &[Entry]) -> Vec<&str> {

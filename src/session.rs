@@ -405,7 +405,10 @@ mod tests {
         read_preview, sessions_directory,
     };
     use serde_json::json;
-    use std::time::{Duration, SystemTime};
+    use std::{
+        io::Write,
+        time::{Duration, SystemTime},
+    };
 
     #[test]
     fn inlines_saved_images_as_base64() {
@@ -572,7 +575,7 @@ mod tests {
         std::fs::OpenOptions::new()
             .append(true)
             .open(path)
-            .and_then(|mut file| std::io::Write::write_all(&mut file, bytes))
+            .and_then(|mut file| file.write_all(bytes))
             .unwrap();
     }
 
