@@ -7,6 +7,10 @@ use anyhow::{Result, bail};
 use serde_json::{Value, json};
 use std::time::Instant;
 
+fn retryable_transport(error: reqwest::Error) -> anyhow::Error {
+    retryable(format!("{:#}", anyhow::Error::from(error)), None)
+}
+
 /// A finished reply and the tokens it used.
 pub(super) struct Response {
     pub content: Vec<Value>,
@@ -72,7 +76,7 @@ impl Agent {
                 .await
                 .map_err(|error| {
                     if error.is_connect() || error.is_timeout() || error.is_request() {
-                        retryable(format!("{:#}", anyhow::Error::from(error)), None)
+                        retryable_transport(error)
                     } else {
                         error.into()
                     }
@@ -117,7 +121,7 @@ impl Agent {
             let chunk = match chunk {
                 Ok(chunk) => chunk,
                 Err(error) if content.is_empty() => {
-                    return Err(retryable(format!("{:#}", anyhow::Error::from(error)), None));
+                    return Err(retryable_transport(error));
                 }
                 Err(error) => return Err(error.into()),
             };
