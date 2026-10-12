@@ -81,12 +81,15 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     match name {
         "write" => write_preview(input["content"].as_str()?),
         "bash" => code_preview(input["command"].as_str()?),
-        "edit" => edit_preview(input["old_text"].as_str()?, input["new_text"].as_str()?),
+        "edit" => Some(edit_preview(
+            input["old_text"].as_str()?,
+            input["new_text"].as_str()?,
+        )),
         _ => None,
     }
 }
 
-fn edit_preview(old_text: &str, new_text: &str) -> Option<String> {
+fn edit_preview(old_text: &str, new_text: &str) -> String {
     let old_text = terminated(old_text);
     let new_text = terminated(new_text);
     let unit = indent_unit(old_text.lines().chain(new_text.lines()));
@@ -103,7 +106,7 @@ fn edit_preview(old_text: &str, new_text: &str) -> Option<String> {
         });
         push_compact_indent(&mut preview, change.value().trim_end_matches('\n'), unit);
     }
-    Some(preview)
+    preview
 }
 
 // "x" and "x\n" count as different lines, so end both texts the same way
