@@ -1,7 +1,8 @@
 use crate::{
-    agent::{Agent, AgentEvent},
+    agent::{Agent, AgentEvent, DEFAULT_EFFORT},
     images::Image,
     mcp::{Added, Started},
+    models,
     session::SessionSummary,
     skills::Scope,
     update::Progress,
@@ -148,6 +149,9 @@ pub(super) async fn agent_task(
                 continue;
             }
             Request::SetModel(model) => {
+                if !models::effort_levels(&model).contains(&agent.effort) {
+                    agent.effort = DEFAULT_EFFORT;
+                }
                 agent.model = model;
                 send_stats(&agent, &events);
                 continue;
@@ -337,6 +341,46 @@ mod tests {
         tokio::time::timeout(Duration::from_secs(5), wait)
             .await
             .unwrap_or(false)
+    }
+
+    #[tokio::test]
+    async fn uses_an_effort_the_new_model_supports_for_background_turns() {
+        let api = MockApi::start(vec![
+            test_support::tool_reply(
+                "1",
+                "bash",
+                json!({ "command": "sleep 0.5", "run_in_background": true }),
+            ),
+            test_support::text_reply("started"),
+            test_support::text_reply("finished"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        agent.model = "claude-haiku-5-5".into();
+        let session_id = agent.session.id.clone();
+        let (request_tx, request_rx) = mpsc::unbounded_channel();
+        let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+        let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+        let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+        let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+        request_tx
+            .send(Request::Prompt("go".into(), Vec::new(), "off"))
+            .unwrap();
+        request_tx
+            .send(Request::SetModel("claude-opus-5-5".into()))
+            .unwrap();
+        wait_for_event(&mut event_rx, |event| {
+            matches!(event, UiEvent::Background(_))
+        })
+        .await;
+        wait_for_event(&mut event_rx, |event| matches!(event, UiEvent::Done(_))).await;
+        quit(request_tx, cancel_tx);
+        worker.abort();
+        test_support::remove_session_files(&session_id);
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[2]["model"], "claude-opus-5-5");
+        assert_eq!(requests[2]["output_config"]["effort"], "medium");
     }
 
     #[tokio::test]
