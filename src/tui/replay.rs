@@ -21,7 +21,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             if name == tools::agent::NAME {
                 app.tasks.clear();
             }
-            app.push_tool(&name, summary, diff);
+            app.push_tool(&name, summary, diff.as_deref());
         }
         UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
             if name == "bash" {
@@ -180,7 +180,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                     app.push_tool(
                         name,
                         tools::summary(name, &block["input"]),
-                        tools::diff(name, &block["input"]),
+                        tools::diff(name, &block["input"]).as_deref(),
                     );
                     match block["id"].as_str().and_then(|id| results.get(id)) {
                         Some((error, true)) => {

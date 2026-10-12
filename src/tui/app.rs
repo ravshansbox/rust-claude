@@ -575,9 +575,9 @@ impl App {
         }
     }
 
-    pub(super) fn push_tool(&mut self, name: &str, summary: String, diff: Option<String>) {
+    pub(super) fn push_tool(&mut self, name: &str, summary: String, diff: Option<&str>) {
         if name != "read" || diff.is_some() {
-            self.push(Role::Tool, tool_message(name, &summary, diff.as_deref()));
+            self.push(Role::Tool, tool_message(name, &summary, diff));
             return;
         }
         let merge = !self.reads.is_empty();
