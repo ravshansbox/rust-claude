@@ -273,3 +273,25 @@ fn validates_skill_files() {
     assert!(skill.is_none());
     assert_eq!(diagnostics.len(), 1);
 }
+
+#[test]
+fn reads_frontmatter_written_with_windows_line_endings() {
+    let directory = TemporaryDir::new("skills-crlf");
+    let path = directory.path().join("deploy/SKILL.md");
+    write(
+        &path,
+        "\u{feff}---\r\nname: deploy\r\ndescription: Ships it.\r\n---\r\nBuild.\r\nPush.\rTag.\r\n",
+    );
+    let (skill, diagnostics) = load_skill_file(&path, Scope::Project);
+    assert!(diagnostics.is_empty(), "{diagnostics:?}");
+    let skill = skill.unwrap();
+    assert_eq!(
+        (skill.name.as_str(), skill.description.as_str()),
+        ("deploy", "Ships it.")
+    );
+    let expanded = expand_command("/skill:deploy", &[skill]).unwrap();
+    assert!(
+        expanded.ends_with("\n\nBuild.\nPush.\nTag.\n</skill>"),
+        "{expanded:?}"
+    );
+}
