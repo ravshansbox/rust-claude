@@ -1,6 +1,6 @@
 use std::{
     fs::OpenOptions,
-    io::Write,
+    io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{
         OnceLock,
@@ -85,7 +85,7 @@ fn remove_unlocked(base: &Path, own: &str) {
 }
 
 /// Creates a folder, and any missing parents, that only the user can open.
-pub fn create_private_dir(path: &Path) -> std::io::Result<()> {
+pub fn create_private_dir(path: &Path) -> io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
     builder.recursive(true);
     #[cfg(unix)]
@@ -104,12 +104,10 @@ pub fn private_file() -> OpenOptions {
 /// Writes a file only the user can read and write, through a temporary file
 /// renamed over it, so readers never see a half-written file and a failed
 /// write keeps the old one. A symlink there stays, and its file is replaced.
-pub fn write_private_file(path: &Path, contents: &[u8]) -> std::io::Result<()> {
+pub fn write_private_file(path: &Path, contents: &[u8]) -> io::Result<()> {
     let target = match std::fs::canonicalize(path) {
         Ok(target) => target,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            dangling_target(path.to_path_buf())
-        }
+        Err(error) if error.kind() == ErrorKind::NotFound => dangling_target(path.to_path_buf()),
         Err(error) => return Err(error),
     };
     let path = target.as_path();
@@ -154,8 +152,8 @@ pub fn replace_file(
     path: &Path,
     contents: &[u8],
     mut options: OpenOptions,
-    prepare: impl FnOnce(&std::fs::File) -> std::io::Result<()>,
-) -> std::io::Result<()> {
+    prepare: impl FnOnce(&std::fs::File) -> io::Result<()>,
+) -> io::Result<()> {
     options.write(true).create_new(true);
     // Only the start of the name, so the temporary name stays within the
     // longest name a folder allows.
@@ -171,7 +169,7 @@ pub fn replace_file(
         ));
         match options.open(&temporary) {
             Ok(file) => break (temporary, file),
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => {}
             Err(error) => return Err(error),
         }
     };
