@@ -101,3 +101,6 @@ impl App {
         self.commands_dismissed = self.history_index.is_some();
     }
 }
+
+#[cfg(test)]
+mod tests;
