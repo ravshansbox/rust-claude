@@ -146,6 +146,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn refuses_files_that_are_not_utf8_text() {
+        let file = TemporaryFile::new("binary", "");
+        for content in [
+            b"text\n\xff\xfe binary\n".to_vec(),
+            [b"\xff".repeat(MAX_OUTPUT * 2), b"\n".to_vec()].concat(),
+        ] {
+            std::fs::write(file.path(), content).unwrap();
+            let error = call("read", &json!({ "path": file.path() }))
+                .await
+                .unwrap_err();
+            assert!(
+                error.contains("stream did not contain valid UTF-8"),
+                "{error}"
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn rejects_offset_past_end_of_file() {
         let file = TemporaryFile::new("offset", "one\ntwo\n");
         let past_end = call("read", &json!({ "path": file.path(), "offset": 3 })).await;
