@@ -22,7 +22,7 @@ use crate::{
     highlight::Colour,
     history, images, mcp,
     settings::Settings,
-    skills::Scope,
+    skills::{Scope, Skills},
     tools,
     update::Updater,
 };
@@ -322,32 +322,14 @@ async fn run_loop(
             .map(|server| (server.name.as_str(), server.scope)),
     );
     app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
-    for scope in [Scope::Global, Scope::Project] {
-        let names: Vec<&str> = agent
-            .skills
-            .skills
-            .iter()
-            .filter(|skill| skill.scope == scope)
-            .map(|skill| skill.name.as_str())
-            .collect();
-        if !names.is_empty() {
-            app.push(
-                Role::Event,
-                format!("loaded {scope} skills: {}", names.join(", ")),
-            );
-        }
-    }
-    for diagnostic in &agent.skills.diagnostics {
-        app.push(Role::Event, diagnostic.to_string());
-    }
-    if let Some(line) = instructions_line(
+    show_skills_and_instructions(
+        &mut app,
+        &agent.skills,
         agent
             .instructions
             .iter()
             .map(|instructions| instructions.label.as_str()),
-    ) {
-        app.push(Role::Event, line);
-    }
+    );
     for server in startup.servers {
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
@@ -591,9 +573,32 @@ fn git_branch(dir: &Path) -> Option<String> {
         .or_else(|| git(&["rev-parse", "--abbrev-ref", "HEAD"]))
 }
 
-fn instructions_line<'a>(labels: impl IntoIterator<Item = &'a str>) -> Option<String> {
-    let labels: Vec<&str> = labels.into_iter().collect();
-    (!labels.is_empty()).then(|| format!("loaded {}", labels.join(", ")))
+fn show_skills_and_instructions<'a>(
+    app: &mut App,
+    skills: &Skills,
+    instructions: impl IntoIterator<Item = &'a str>,
+) {
+    for scope in [Scope::Global, Scope::Project] {
+        let names: Vec<&str> = skills
+            .skills
+            .iter()
+            .filter(|skill| skill.scope == scope)
+            .map(|skill| skill.name.as_str())
+            .collect();
+        if !names.is_empty() {
+            app.push(
+                Role::Event,
+                format!("loaded {scope} skills: {}", names.join(", ")),
+            );
+        }
+    }
+    for diagnostic in &skills.diagnostics {
+        app.push(Role::Event, diagnostic.to_string());
+    }
+    let labels: Vec<&str> = instructions.into_iter().collect();
+    if !labels.is_empty() {
+        app.push(Role::Event, format!("loaded {}", labels.join(", ")));
+    }
 }
 
 fn tools_line() -> String {
@@ -625,23 +630,56 @@ fn notify(output: &mut impl Write, message: &str, tmux: bool) -> io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::{
-        HeldPanics, InputModes, UiEvent, git_branch, history_writer, instructions_line, notify,
-        tools_line,
+        HeldPanics, InputModes, PathBuf, UiEvent, git_branch, history_writer, notify,
+        show_skills_and_instructions, test_support::new_app, tools_line,
     };
-    use crate::{agent::AgentEvent, history, tools::test_support::TemporaryDir};
+    use crate::{
+        agent::AgentEvent,
+        history,
+        skills::{Diagnostic, Scope, Skill, Skills},
+        tools::test_support::TemporaryDir,
+    };
     use std::sync::{Mutex, PoisonError};
 
     #[test]
-    fn lists_loaded_instructions_on_one_line() {
+    fn lists_loaded_skills_by_scope_then_their_problems_then_instructions() {
+        let skill = |name: &str, scope| Skill {
+            name: name.into(),
+            description: String::new(),
+            path: PathBuf::new(),
+            base_dir: PathBuf::new(),
+            disable_model_invocation: false,
+            scope,
+        };
+        let skills = Skills {
+            skills: vec![
+                skill("review", Scope::Project),
+                skill("commit", Scope::Global),
+                skill("deploy", Scope::Project),
+            ],
+            diagnostics: vec![Diagnostic::Warning {
+                path: "broken/SKILL.md".into(),
+                message: "missing description".into(),
+            }],
+        };
+        let mut app = new_app();
+        show_skills_and_instructions(&mut app, &skills, ["~/AGENTS.md", "./AGENTS.md"]);
+        let shown: Vec<&str> = app.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
         assert_eq!(
-            instructions_line(["~/AGENTS.md", "./AGENTS.md"]).as_deref(),
-            Some("loaded ~/AGENTS.md, ./AGENTS.md")
+            shown,
+            [
+                "loaded global skills: commit",
+                "loaded project skills: review, deploy",
+                "skill warning: broken/SKILL.md: missing description",
+                "loaded ~/AGENTS.md, ./AGENTS.md",
+            ]
         );
-        assert_eq!(
-            instructions_line(["./AGENTS.md"]).as_deref(),
-            Some("loaded ./AGENTS.md")
-        );
-        assert_eq!(instructions_line([]), None);
+        let mut app = new_app();
+        show_skills_and_instructions(&mut app, &Skills::default(), []);
+        assert_eq!(app.messages.len(), 1);
     }
 
     #[test]
