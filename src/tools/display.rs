@@ -90,21 +90,19 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     let new_text = terminated(input["new_text"].as_str()?);
     let unit = indent_unit(old_text.lines().chain(new_text.lines()));
     let diff = similar::TextDiff::from_lines(&*old_text, &*new_text);
-    let lines: Vec<String> = diff
-        .iter_all_changes()
-        .map(|change| {
-            let sign = match change.tag() {
-                similar::ChangeTag::Delete => '-',
-                similar::ChangeTag::Insert => '+',
-                similar::ChangeTag::Equal => ' ',
-            };
-            format!(
-                "{sign}{}",
-                compact_indent(change.value().trim_end_matches('\n'), unit)
-            )
-        })
-        .collect();
-    Some(lines.join("\n"))
+    let mut preview = String::with_capacity(old_text.len() + new_text.len());
+    for (index, change) in diff.iter_all_changes().enumerate() {
+        if index > 0 {
+            preview.push('\n');
+        }
+        preview.push(match change.tag() {
+            similar::ChangeTag::Delete => '-',
+            similar::ChangeTag::Insert => '+',
+            similar::ChangeTag::Equal => ' ',
+        });
+        preview.push_str(&compact_indent(change.value().trim_end_matches('\n'), unit));
+    }
+    Some(preview)
 }
 
 // "x" and "x\n" count as different lines, so end both texts the same way
