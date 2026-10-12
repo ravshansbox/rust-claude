@@ -909,7 +909,8 @@ impl App {
     pub(super) fn finish_mcp_server(&mut self, added: mcp::Added) {
         match self.mcp_server(&added.name) {
             Some((index, server)) => {
-                let needs_sign_in = added.summary == format!("{} (needs sign-in)", added.name);
+                let needs_sign_in =
+                    added.summary.strip_prefix(added.name.as_str()) == Some(" (needs sign-in)");
                 server.summary = Some(added.summary);
                 self.show_mcp_group(index);
                 if added.failed && !needs_sign_in {
