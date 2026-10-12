@@ -15,17 +15,10 @@ pub(super) fn format_stats(stats: &Stats) -> String {
 }
 
 pub(super) fn format_quota(stats: &Stats) -> String {
+    let quota = &stats.quota;
     let windows: Vec<_> = [
-        (
-            "5h",
-            stats.quota.five_hour_remaining,
-            stats.quota.five_hour_reset,
-        ),
-        (
-            "7d",
-            stats.quota.seven_day_remaining,
-            stats.quota.seven_day_reset,
-        ),
+        ("5h", quota.five_hour_remaining, quota.five_hour_reset),
+        ("7d", quota.seven_day_remaining, quota.seven_day_reset),
     ]
     .into_iter()
     .filter_map(|(label, remaining, reset)| remaining.map(|remaining| (label, remaining, reset)))
