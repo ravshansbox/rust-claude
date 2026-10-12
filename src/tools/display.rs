@@ -1,4 +1,5 @@
 use serde_json::Value;
+use std::borrow::Cow;
 
 pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
@@ -85,19 +86,10 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
     if name != "edit" {
         return None;
     }
-    // "x" and "x\n" count as different lines, so end both texts the same way
-    // to keep an unchanged last line from showing as removed and re-added.
-    let terminated = |text: &str| {
-        if text.is_empty() || text.ends_with('\n') {
-            text.to_string()
-        } else {
-            format!("{text}\n")
-        }
-    };
     let old_text = terminated(input["old_text"].as_str()?);
     let new_text = terminated(input["new_text"].as_str()?);
     let unit = indent_unit(old_text.lines().chain(new_text.lines()));
-    let diff = similar::TextDiff::from_lines(&old_text, &new_text);
+    let diff = similar::TextDiff::from_lines(&*old_text, &*new_text);
     let lines: Vec<String> = diff
         .iter_all_changes()
         .map(|change| {
@@ -113,6 +105,16 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
         })
         .collect();
     Some(lines.join("\n"))
+}
+
+// "x" and "x\n" count as different lines, so end both texts the same way
+// to keep an unchanged last line from showing as removed and re-added.
+fn terminated(text: &str) -> Cow<'_, str> {
+    if text.is_empty() || text.ends_with('\n') {
+        Cow::Borrowed(text)
+    } else {
+        Cow::Owned(format!("{text}\n"))
+    }
 }
 
 fn code_preview(code: &str) -> Option<String> {
