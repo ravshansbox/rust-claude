@@ -164,9 +164,7 @@ fn embedded_code(command: &str) -> Vec<Embedded> {
     let mut found = Vec::new();
     let mut position = 0;
     while let Some(rest) = command.get(position..).filter(|rest| !rest.is_empty()) {
-        let word_length = rest
-            .find(|character: char| character.is_whitespace() || ";|&()<>".contains(character))
-            .unwrap_or(rest.len());
+        let word_length = rest.find(ends_word).unwrap_or(rest.len());
         if word_length == 0 {
             position += rest.chars().next().map_or(1, char::len_utf8);
             continue;
@@ -185,6 +183,10 @@ fn embedded_code(command: &str) -> Vec<Embedded> {
         }
     }
     found
+}
+
+fn ends_word(character: char) -> bool {
+    character.is_whitespace() || ";|&()<>".contains(character)
 }
 
 fn code_after(command: &str, start: usize, language: Language) -> Option<std::ops::Range<usize>> {
@@ -223,7 +225,7 @@ fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<std::op
     let specification = heredoc.strip_prefix('-').unwrap_or(heredoc).trim_start();
     let delimiter: String = specification
         .chars()
-        .take_while(|character| !character.is_whitespace() && !";|&()<>".contains(*character))
+        .take_while(|character| !ends_word(*character))
         .filter(|character| !matches!(character, '\'' | '"' | '\\'))
         .collect();
     if delimiter.is_empty() || line_end >= command.len() {
