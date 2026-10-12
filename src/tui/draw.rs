@@ -409,7 +409,7 @@ mod tests {
     use crate::skills::{Scope, Skill};
     use crate::tui::{
         App, Role, UiEvent, handle_agent_event, handle_input,
-        test_support::{app_with_reply, press, screen, screen_of_width},
+        test_support::{app_with_reply, new_app, press, screen, screen_of_width},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
     use ratatui::{Terminal, backend::TestBackend};
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn shows_notices_in_a_row_without_blank_rows_between_them() {
-        let mut app = crate::tui::test_support::new_app();
+        let mut app = new_app();
         app.push(Role::Event, "first notice");
         app.push(Role::Event, "second notice");
         app.push(Role::Assistant, "reply");
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn shows_a_reply_at_the_left_edge() {
-        let mut app = crate::tui::test_support::new_app();
+        let mut app = new_app();
         app.push(Role::Assistant, "alpha beta gamma delta\n\nsecond part");
         let shown = screen_of_width(&mut app, 14);
         let rows = rows_from(&shown, "alpha");
@@ -482,7 +482,7 @@ mod tests {
 
     #[test]
     fn shows_a_streamed_reply_at_the_left_edge() {
-        let mut app = crate::tui::test_support::new_app();
+        let mut app = new_app();
         handle_agent_event(
             UiEvent::Agent(AgentEvent::Text("Before\n\n```\ncode\n```\n\nAfter".into())),
             &mut app,
@@ -500,7 +500,7 @@ mod tests {
             layout::Rect,
             widgets::Widget,
         };
-        let mut app = crate::tui::test_support::new_app();
+        let mut app = new_app();
         let words: String = (0..30).map(|number| format!("word{number:02} ")).collect();
         app.push(Role::Event, "first event");
         app.push(Role::Assistant, format!("{words}\n\n{words}\n\nend"));
