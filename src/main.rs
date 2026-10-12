@@ -15,7 +15,10 @@ mod tools;
 mod tui;
 mod update;
 
-use std::{io::IsTerminal, time::Duration};
+use std::{
+    io::{self, IsTerminal},
+    time::Duration,
+};
 
 use anyhow::{Context, Result, bail};
 use tokio::signal::unix::{Signal, SignalKind, signal};
@@ -237,22 +240,16 @@ async fn run() -> Result<()> {
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{}", highlight::strip_controls(diagnostic));
     }
-    let stdout = std::io::stdout();
+    let stdout = io::stdout();
     let out_terminal = stdout.is_terminal();
-    let colour = std::io::stderr().is_terminal();
+    let colour = io::stderr().is_terminal();
     let (dark, background) = if colour {
         tui::terminal_theme()
     } else {
         (false, None)
     };
-    let mut printer = print::Printer::new(
-        stdout,
-        out_terminal,
-        std::io::stderr(),
-        colour,
-        dark,
-        background,
-    );
+    let mut printer =
+        print::Printer::new(stdout, out_terminal, io::stderr(), colour, dark, background);
     let mut checkpoint = None;
     let run = print::run(&mut agent, &mut printer, &prompt, &images, &mut checkpoint);
     let result = tokio::select! {
