@@ -533,6 +533,39 @@ fn searches_prompt_history_in_tabs() {
 }
 
 #[test]
+fn filters_prompt_history_as_the_user_types() {
+    let mut app = new_app();
+    for prompt in ["fix tests", "add docs", "fix docs"] {
+        app.remember(prompt);
+    }
+    press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
+    let prompts = |app: &App| -> Vec<String> {
+        let search = app.history_search.as_ref().unwrap();
+        search
+            .matches()
+            .iter()
+            .map(|(prompt, _)| prompt.to_string())
+            .collect()
+    };
+    for character in "Docs".chars() {
+        press(&mut app, KeyCode::Char(character));
+    }
+    assert_eq!(prompts(&app), ["fix docs", "add docs"]);
+    press(&mut app, KeyCode::Char('x'));
+    assert!(prompts(&app).is_empty());
+    press(&mut app, KeyCode::Enter);
+    assert!(app.history_search.is_none());
+    assert_eq!(app.input, "");
+    press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
+    press(&mut app, KeyCode::Char('f'));
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Up);
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.input, "fix docs");
+}
+
+#[test]
 fn ctrl_p_switches_between_the_latest_models() {
     let mut app = new_app();
     let mut switched = Vec::new();
