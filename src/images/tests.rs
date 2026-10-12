@@ -6,7 +6,7 @@ use image::{
 use std::io::Cursor;
 
 fn encoded(width: u32, height: u32, format: ImageFormat) -> Vec<u8> {
-    let image = DynamicImage::ImageRgba8(RgbaImage::new(width, height));
+    let image = DynamicImage::ImageRgb8(RgbImage::new(width, height));
     let mut data = Vec::new();
     image.write_to(&mut Cursor::new(&mut data), format).unwrap();
     data
@@ -14,10 +14,17 @@ fn encoded(width: u32, height: u32, format: ImageFormat) -> Vec<u8> {
 
 #[test]
 fn keeps_small_supported_images() {
-    let data = encoded(10, 20, ImageFormat::Gif);
-    let image = prepare(data.clone()).unwrap();
-    assert_eq!(image.media_type, "image/gif");
-    assert_eq!(image.data, data);
+    for (format, media_type) in [
+        (ImageFormat::Png, "image/png"),
+        (ImageFormat::Jpeg, "image/jpeg"),
+        (ImageFormat::Gif, "image/gif"),
+        (ImageFormat::WebP, "image/webp"),
+    ] {
+        let data = encoded(10, 20, format);
+        let image = prepare(data.clone()).unwrap();
+        assert_eq!(image.media_type, media_type);
+        assert_eq!(image.data, data);
+    }
 }
 
 #[test]
