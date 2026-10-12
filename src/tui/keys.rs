@@ -121,7 +121,8 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
                 search.selected = 0;
             }
             (KeyCode::Backspace, _) => {
-                search.query.pop();
+                let end = previous_grapheme(&search.query, search.query.len());
+                search.query.truncate(end);
                 search.selected = 0;
             }
             (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
@@ -428,6 +429,17 @@ mod tests {
         assert_eq!(app.input, "a👍🏽");
         press(&mut app, KeyCode::Backspace);
         assert_eq!(app.input, "a");
+    }
+
+    #[test]
+    fn deletes_whole_emoji_from_the_history_search_query() {
+        let mut app = new_app();
+        press_with(&mut app, KeyCode::Char('r'), KeyModifiers::CONTROL, |_| {});
+        handle_input(Event::Paste("a👍🏽❤️".into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Backspace);
+        assert_eq!(app.history_search.as_ref().unwrap().query, "a👍🏽");
+        press(&mut app, KeyCode::Backspace);
+        assert_eq!(app.history_search.as_ref().unwrap().query, "a");
     }
 
     #[test]
