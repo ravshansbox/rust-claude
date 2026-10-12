@@ -118,12 +118,18 @@ fn terminated(text: &str) -> Cow<'_, str> {
 }
 
 fn code_preview(code: &str) -> Option<String> {
+    if code.is_empty() {
+        return None;
+    }
     let unit = indent_unit(code.lines());
-    let lines: Vec<String> = code
-        .lines()
-        .map(|line| compact_indent(line, unit))
-        .collect();
-    (!lines.is_empty()).then(|| lines.join("\n"))
+    let mut preview = String::with_capacity(code.len());
+    for (index, line) in code.lines().enumerate() {
+        if index > 0 {
+            preview.push('\n');
+        }
+        preview.push_str(&compact_indent(line, unit));
+    }
+    Some(preview)
 }
 
 fn leading_spaces(line: &str) -> usize {
