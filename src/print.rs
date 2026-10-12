@@ -19,7 +19,11 @@ pub async fn run<Out: Write, Err: Write>(
     while let Some(message) = agent.next_background().await {
         printer.flush_reads();
         if let Some((summary, output)) = tools::background::display(&message) {
-            printer.tool(&tui::tool_message("background", &summary, output));
+            printer.tool(&tui::tool_message(
+                "background",
+                &summary,
+                output.as_deref(),
+            ));
         }
         turn(agent, printer, &message, &[], checkpoint).await?;
     }
@@ -183,7 +187,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                     return;
                 }
                 self.flush_reads();
-                self.tool(&tui::tool_message(&name, &summary, diff));
+                self.tool(&tui::tool_message(&name, &summary, diff.as_deref()));
             }
             AgentEvent::ToolDone {
                 name,

@@ -578,7 +578,7 @@ impl App {
 
     pub(super) fn push_tool(&mut self, name: &str, summary: String, diff: Option<String>) {
         if name != "read" || diff.is_some() {
-            self.push(Role::Tool, tool_message(name, &summary, diff));
+            self.push(Role::Tool, tool_message(name, &summary, diff.as_deref()));
             return;
         }
         let merge = !self.reads.is_empty();
@@ -594,7 +594,7 @@ impl App {
 
     pub(super) fn push_shell(&mut self, command: &str, output: &str) {
         let output = output.trim_end();
-        let diff = (!output.is_empty()).then(|| output.to_string());
+        let diff = (!output.is_empty()).then_some(output);
         self.push(Role::Tool, tool_message("!", command, diff));
     }
 
@@ -602,7 +602,10 @@ impl App {
         let Some((summary, output)) = tools::background::display(message) else {
             return false;
         };
-        self.push(Role::Tool, tool_message("background", &summary, output));
+        self.push(
+            Role::Tool,
+            tool_message("background", &summary, output.as_deref()),
+        );
         true
     }
 

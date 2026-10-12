@@ -159,7 +159,7 @@ fn hard_line_breaks(text: &str) -> String {
     out
 }
 
-pub(crate) fn tool_message(name: &str, summary: &str, diff: Option<String>) -> String {
+pub(crate) fn tool_message(name: &str, summary: &str, diff: Option<&str>) -> String {
     match diff {
         Some(diff) => format!("{name} {summary}\n{diff}"),
         None => format!("{name} {summary}"),
@@ -549,7 +549,7 @@ mod tests {
         let message = tool_message(
             "bash",
             &tools::summary("bash", &input),
-            tools::diff("bash", &input),
+            tools::diff("bash", &input).as_deref(),
         );
         let lines = render_message(Role::Tool, &message, 40);
         assert_eq!(trimmed(&lines), [" bash  echo \"$HOME\" | wc -c"]);
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn keeps_later_lines_of_a_multi_line_command_below_the_tool_name() {
-        let message = tool_message("bash", "", Some("cd src\nls".into()));
+        let message = tool_message("bash", "", Some("cd src\nls"));
         assert_eq!(
             trimmed(&render_message(Role::Tool, &message, 40)),
             [" bash  cd src", "ls"]
