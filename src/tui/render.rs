@@ -207,16 +207,15 @@ fn thinking_style() -> Style {
 /// Part of the thinking with ANSI codes for its style, for print mode.
 pub(crate) fn ansi_thinking(text: &str) -> String {
     let text = highlight::strip_controls(text);
-    format!(
-        "{}{}\x1b[0m",
-        sgr(thinking_style()),
-        expand_tabs(text.into_owned())
-    )
+    let mut ansi = String::new();
+    push_sgr(&mut ansi, thinking_style());
+    ansi.push_str(&expand_tabs(text.into_owned()));
+    ansi.push_str("\x1b[0m");
+    ansi
 }
 
-fn sgr(style: Style) -> String {
+fn push_sgr(codes: &mut String, style: Style) {
     use std::fmt::Write;
-    let mut codes = String::new();
     if let Some(Color::Rgb(red, green, blue)) = style.bg {
         let _ = write!(codes, "\x1b[48;2;{red};{green};{blue}m");
     }
@@ -233,7 +232,6 @@ fn sgr(style: Style) -> String {
     if style.add_modifier.contains(Modifier::ITALIC) {
         codes.push_str("\x1b[3m");
     }
-    codes
 }
 
 fn ansi_line(line: &Line, columns: Option<u16>) -> String {
@@ -259,11 +257,14 @@ fn ansi_line(line: &Line, columns: Option<u16>) -> String {
     let mut width = 0;
     for (text, style) in &spans {
         ansi.push_str("\x1b[0m");
-        ansi.push_str(&sgr(*style));
+        push_sgr(&mut ansi, *style);
         ansi.push_str(text);
         width += usize::from(text.as_str().cell_width());
     }
-    ansi.push_str(&sgr(Style::new().bg(line.style.bg.unwrap_or(Color::Reset))));
+    push_sgr(
+        &mut ansi,
+        Style::new().bg(line.style.bg.unwrap_or(Color::Reset)),
+    );
     let fills_row =
         columns.is_some_and(|columns| width > 0 && width % usize::from(columns.max(1)) == 0);
     if !fills_row {
