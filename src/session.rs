@@ -119,8 +119,12 @@ impl Session {
         Ok(())
     }
 
+    fn images_directory(&self) -> Result<PathBuf> {
+        Ok(sessions_directory()?.join(&self.id))
+    }
+
     pub fn save_image(&self, image: &Image) -> Result<Value> {
-        let directory = sessions_directory()?.join(&self.id);
+        let directory = self.images_directory()?;
         config::create_private_dir(&directory)?;
         let hash = hex(&Sha256::digest(&image.data)[..8]);
         let file = format!("{hash}.{}", image.extension());
@@ -136,8 +140,7 @@ impl Session {
     }
 
     pub fn inline_images(&self, messages: &mut [Value]) -> Result<()> {
-        let directory = sessions_directory()?.join(&self.id);
-        inline_images(&directory, messages)
+        inline_images(&self.images_directory()?, messages)
     }
 
     pub fn list_except(id: &str) -> Result<Vec<SessionSummary>> {
