@@ -1309,11 +1309,11 @@ fn configs() -> (Configs, Vec<String>, Vec<String>) {
 }
 
 fn configured(name: &str) -> Result<ServerConfig, String> {
-    let (mut configs, _, _) = configs();
-    let (_, config) = configs
+    configs()
+        .0
         .remove(name)
-        .ok_or_else(|| format!("no MCP server named {name}"))?;
-    Ok(config)
+        .map(|(_, config)| config)
+        .ok_or_else(|| format!("no MCP server named {name}"))
 }
 
 /// Cloning shares the running servers, so subagents can call their tools.
