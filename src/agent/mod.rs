@@ -188,7 +188,7 @@ impl Agent {
             queue: Queue::default(),
             subagent_usage: Arc::default(),
             subagent: false,
-            background: Default::default(),
+            background: tools::background::Background::default(),
         })
     }
 

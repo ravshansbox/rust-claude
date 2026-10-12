@@ -15,7 +15,10 @@ use super::{Agent, AgentEvent, Queue, Usage, text_of};
 use crate::{
     session::Session,
     skills::Skills,
-    tools::agent::{self, Mode},
+    tools::{
+        agent::{self, Mode},
+        background::Background,
+    },
 };
 
 const NOT_RUN: &str = "This task did not run, because an earlier task failed.";
@@ -49,7 +52,7 @@ impl Agent {
             queue: Queue::default(),
             subagent_usage: Arc::default(),
             subagent: true,
-            background: Default::default(),
+            background: Background::default(),
         })
     }
 
