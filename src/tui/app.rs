@@ -749,8 +749,12 @@ impl App {
         } else {
             Cow::Borrowed(name.as_str())
         };
+        let mut end = suggestions.end;
+        if suggestions.files && self.input[end..].starts_with(' ') {
+            end += 1;
+        }
         self.input
-            .replace_range(suggestions.start..suggestions.end, &replacement);
+            .replace_range(suggestions.start..end, &replacement);
         self.cursor = suggestions.start + replacement.len();
     }
 

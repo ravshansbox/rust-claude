@@ -1089,6 +1089,19 @@ mod tests {
     }
 
     #[test]
+    fn keeps_one_space_after_a_file_name_completed_before_other_text() {
+        let mut app = new_app();
+        app.set_files(0, vec!["src/main.rs".into()]);
+        handle_input(Event::Paste("read @src please".into()), &mut app, |_| {});
+        for _ in 0.." please".len() {
+            press(&mut app, KeyCode::Left);
+        }
+        press(&mut app, KeyCode::Enter);
+        assert_eq!(app.input, "read @src/main.rs please");
+        assert_eq!(app.cursor, "read @src/main.rs ".len());
+    }
+
+    #[test]
     fn picks_the_file_named_exactly_before_longer_paths() {
         let mut app = new_app();
         app.set_files(
