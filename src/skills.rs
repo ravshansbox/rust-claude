@@ -406,6 +406,11 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
 
 pub(crate) fn escape_xml(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
+    push_escaped_xml(&mut escaped, text);
+    escaped
+}
+
+fn push_escaped_xml(escaped: &mut String, text: &str) {
     for character in text.chars() {
         match character {
             '&' => escaped.push_str("&amp;"),
@@ -416,7 +421,6 @@ pub(crate) fn escape_xml(text: &str) -> String {
             _ => escaped.push(character),
         }
     }
-    escaped
 }
 
 fn unescape_xml(text: &str) -> Cow<'_, str> {
@@ -450,11 +454,11 @@ pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
     );
     for skill in visible {
         prompt.push_str("  <skill>\n    <name>");
-        prompt.push_str(&escape_xml(&skill.name));
+        push_escaped_xml(&mut prompt, &skill.name);
         prompt.push_str("</name>\n    <description>");
-        prompt.push_str(&escape_xml(&skill.description));
+        push_escaped_xml(&mut prompt, &skill.description);
         prompt.push_str("</description>\n    <location>");
-        prompt.push_str(&escape_xml(&skill.path.to_string_lossy()));
+        push_escaped_xml(&mut prompt, &skill.path.to_string_lossy());
         prompt.push_str("</location>\n  </skill>\n");
     }
     prompt.push_str("</available_skills>");
