@@ -83,6 +83,16 @@ fn loads_skills_from_all_locations_and_keeps_first_on_collision() {
             loser: home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
         }]
     );
+    assert_eq!(
+        loaded.diagnostics[0].to_string(),
+        format!(
+            "skill \"alpha\" collision: kept {}, skipped {}",
+            cwd.join(".rust-coding-agent/skills/alpha/SKILL.md")
+                .display(),
+            home.join(".rust-coding-agent/skills/alpha/SKILL.md")
+                .display()
+        )
+    );
 }
 
 #[test]
@@ -265,7 +275,20 @@ fn validates_skill_files() {
     let skill = skill.unwrap();
     assert_eq!(skill.name, "Bad--Name");
     assert!(skill.disable_model_invocation);
-    assert_eq!(diagnostics.len(), 2);
+    let messages: Vec<String> = diagnostics
+        .into_iter()
+        .map(|diagnostic| match diagnostic {
+            Diagnostic::Warning { message, .. } => message,
+            Diagnostic::Collision { .. } => unreachable!(),
+        })
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
+            "name must not contain consecutive hyphens",
+        ]
+    );
 
     let broken = root.join("broken/SKILL.md");
     write(&broken, "---\ndescription: [unclosed\n---\n");
@@ -293,5 +316,31 @@ fn reads_frontmatter_written_with_windows_line_endings() {
     assert!(
         expanded.ends_with("\n\nBuild.\nPush.\nTag.\n</skill>"),
         "{expanded:?}"
+    );
+}
+
+#[test]
+fn warns_about_each_rule_a_skill_breaks() {
+    let directory = TemporaryDir::new("skills-rules");
+    let path = directory.path().join("x/SKILL.md");
+    let long_name = format!("-{}", "a".repeat(64));
+    write(
+        &path,
+        &format!(
+            "---\nname: {long_name}\ndescription: {}\n---\n",
+            "d".repeat(1025)
+        ),
+    );
+    let (skill, diagnostics) = load_skill_file(&path, Scope::Project);
+    assert_eq!(skill.unwrap().name, long_name);
+    let messages: Vec<String> = diagnostics.iter().map(ToString::to_string).collect();
+    let prefix = format!("skill warning: {}: ", path.display());
+    assert_eq!(
+        messages,
+        [
+            format!("{prefix}description exceeds 1024 characters (1025)"),
+            format!("{prefix}name exceeds 64 characters (65)"),
+            format!("{prefix}name must not start or end with a hyphen"),
+        ]
     );
 }
