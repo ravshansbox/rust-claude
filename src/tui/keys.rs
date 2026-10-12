@@ -45,6 +45,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
     match event {
         Event::FocusGained => app.focused = true,
         Event::FocusLost => app.focused = false,
+        Event::Resize(..) => app.selection = None,
         _ => {}
     }
     if let Event::Mouse(mouse) = event {
@@ -63,10 +64,6 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             MouseEventKind::Up(MouseButton::Left) => app.release_mouse(mouse.column, mouse.row),
             _ => {}
         }
-        return false;
-    }
-    if let Event::Resize(..) = event {
-        app.selection = None;
         return false;
     }
     if let Event::Paste(text) = event {
