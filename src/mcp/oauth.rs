@@ -1,6 +1,9 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};
 
-use crate::auth::{now_millis, random_token};
+use crate::{
+    auth::{now_millis, random_token},
+    config,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tokio::{
@@ -42,7 +45,7 @@ impl Saved {
 }
 
 fn path() -> Option<PathBuf> {
-    Some(crate::config::dir()?.join("mcp-auth.json"))
+    Some(config::dir()?.join("mcp-auth.json"))
 }
 
 fn read_all() -> BTreeMap<String, Saved> {
@@ -56,10 +59,10 @@ fn write_all(saved: &BTreeMap<String, Saved>) -> Result<(), String> {
     let path = path().ok_or("HOME is not set")?;
     let write = || -> std::io::Result<()> {
         if let Some(parent) = path.parent() {
-            crate::config::create_private_dir(parent)?;
+            config::create_private_dir(parent)?;
         }
         let text = serde_json::to_string_pretty(saved)?;
-        crate::config::write_private_file(&path, text.as_bytes())
+        config::write_private_file(&path, text.as_bytes())
     };
     write().map_err(|error| format!("cannot save {}: {error}", path.display()))
 }
