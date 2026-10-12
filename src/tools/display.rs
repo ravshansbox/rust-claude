@@ -101,7 +101,7 @@ pub fn diff(name: &str, input: &Value) -> Option<String> {
             similar::ChangeTag::Insert => '+',
             similar::ChangeTag::Equal => ' ',
         });
-        preview.push_str(&compact_indent(change.value().trim_end_matches('\n'), unit));
+        push_compact_indent(&mut preview, change.value().trim_end_matches('\n'), unit);
     }
     Some(preview)
 }
@@ -126,7 +126,7 @@ fn code_preview(code: &str) -> Option<String> {
         if index > 0 {
             preview.push('\n');
         }
-        preview.push_str(&compact_indent(line, unit));
+        push_compact_indent(&mut preview, line, unit);
     }
     Some(preview)
 }
@@ -147,14 +147,15 @@ fn indent_unit<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
         .unwrap_or(1)
 }
 
-fn compact_indent(line: &str, unit: usize) -> String {
+fn push_compact_indent(preview: &mut String, line: &str, unit: usize) {
     let content = line.trim_start();
     if content.is_empty() {
-        return String::new();
+        return;
     }
     let tabs = line.len() - line.trim_start_matches('\t').len();
     let levels = tabs + leading_spaces(line).div_ceil(unit);
-    format!("{}{content}", " ".repeat(levels))
+    preview.extend(std::iter::repeat_n(' ', levels));
+    preview.push_str(content);
 }
 
 fn write_preview(content: &str) -> Option<String> {
@@ -169,7 +170,7 @@ fn write_preview(content: &str) -> Option<String> {
             preview.push('\n');
         }
         preview.push(' ');
-        preview.push_str(&compact_indent(line, unit));
+        push_compact_indent(&mut preview, line, unit);
     }
     let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
     if remaining > 0 {
