@@ -853,6 +853,23 @@ fn picks_file_after_at_sign() {
 }
 
 #[test]
+fn sends_the_typed_file_name_after_esc_hides_the_suggestions() {
+    let mut app = new_app();
+    app.set_files(0, vec!["src/main.rs".into()]);
+    handle_input(Event::Paste("read @src".into()), &mut app, |_| {});
+    let quit = press_with(&mut app, KeyCode::Esc, KeyModifiers::NONE, |_| {});
+    assert!(!quit);
+    assert!(app.visible_suggestions().is_none());
+    let mut submitted = Vec::new();
+    press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+        if let Action::Submit(prompt, _, _) = action {
+            submitted.push(prompt);
+        }
+    });
+    assert_eq!(submitted, ["read @src"]);
+}
+
+#[test]
 fn ctrl_c_closes_pickers_and_history_search_keeping_the_draft() {
     let mut app = new_app();
     app.add_prompt("fix tests".into());
