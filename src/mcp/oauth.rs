@@ -458,7 +458,7 @@ async fn register(
 pub(super) async fn begin(
     client: &reqwest::Client,
     server_url: &str,
-    oauth: &super::OAuthConfig,
+    oauth: Option<&super::OAuthConfig>,
 ) -> Result<Pending, String> {
     let discovered = discover(client, server_url).await?;
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -469,12 +469,12 @@ pub(super) async fn begin(
         .map_err(|error| error.to_string())?
         .port();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
-    let secret_from_config = oauth.client_id.is_some() && oauth.client_secret.is_some();
-    let (client_id, client_secret) = match &oauth.client_id {
+    let client_id = oauth.and_then(|oauth| oauth.client_id.as_ref());
+    let client_secret = oauth.and_then(|oauth| oauth.client_secret.as_deref());
+    let secret_from_config = client_id.is_some() && client_secret.is_some();
+    let (client_id, client_secret) = match client_id {
         Some(client_id) => {
-            let client_secret = oauth
-                .client_secret
-                .as_deref()
+            let client_secret = client_secret
                 .map(super::expand_variables)
                 .transpose()
                 .map_err(|variable| {

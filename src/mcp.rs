@@ -1284,7 +1284,7 @@ async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn,
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|error| format!("cannot set up HTTP: {error}"))?;
-    let pending = oauth::begin(&client, url, &config.oauth.clone().unwrap_or_default()).await?;
+    let pending = oauth::begin(&client, url, config.oauth.as_ref()).await?;
     Ok(SignIn {
         authorize_url: pending.authorize_url.clone(),
         pending,
