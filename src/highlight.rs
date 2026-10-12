@@ -258,7 +258,14 @@ fn quoted_body(command: &str, start: usize, quote: char) -> std::ops::Range<usiz
 
 pub fn normalise_lines(text: &str) -> Cow<'_, str> {
     if text.contains('\r') || text.ends_with('\n') {
-        Cow::Owned(text.lines().collect::<Vec<_>>().join("\n"))
+        let mut normalised = String::with_capacity(text.len());
+        for (index, line) in text.lines().enumerate() {
+            if index > 0 {
+                normalised.push('\n');
+            }
+            normalised.push_str(line);
+        }
+        Cow::Owned(normalised)
     } else {
         Cow::Borrowed(text)
     }
