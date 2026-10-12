@@ -598,18 +598,17 @@ impl Pending {
                 reply_page(&mut stream, "404 Not Found", "").await;
                 continue;
             }
-            let parameters: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
+            let mut parameters: BTreeMap<String, String> = url.query_pairs().into_owned().collect();
             let result = if parameters.get("state") != Some(&self.state) {
                 Err("the sign-in page sent back a different state".to_string())
-            } else if let Some(error) = parameters.get("error") {
+            } else if let Some(error) = parameters.remove("error") {
                 Err(match parameters.get("error_description") {
                     Some(description) => format!("{error}: {description}"),
-                    None => error.clone(),
+                    None => error,
                 })
             } else {
                 parameters
-                    .get("code")
-                    .cloned()
+                    .remove("code")
                     .ok_or_else(|| "the sign-in page sent back no code".to_string())
             };
             let (status, message) = match &result {
