@@ -275,6 +275,7 @@ mod tests {
         Action, App, Role, UiEvent, handle_input,
         test_support::{new_app, screen, screen_of_width},
     };
+    use crate::update::Progress;
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use serde_json::json;
 
@@ -326,12 +327,12 @@ mod tests {
         app.push(Role::Event, "loaded AGENTS.md");
         let seconds = std::time::Duration::from_secs;
         for progress in [
-            crate::update::Progress::Available("v0.2.0".into()),
-            crate::update::Progress::Downloading("v0.2.0".into()),
-            crate::update::Progress::Downloaded("v0.2.0".into(), seconds(3)),
-            crate::update::Progress::Building("v0.2.0".into()),
-            crate::update::Progress::Built("v0.2.0".into(), seconds(125)),
-            crate::update::Progress::Ready("v0.2.0".into()),
+            Progress::Available("v0.2.0".into()),
+            Progress::Downloading("v0.2.0".into()),
+            Progress::Downloaded("v0.2.0".into(), seconds(3)),
+            Progress::Building("v0.2.0".into()),
+            Progress::Built("v0.2.0".into(), seconds(125)),
+            Progress::Ready("v0.2.0".into()),
         ] {
             handle_agent_event(UiEvent::Update(progress), &mut app);
         }
@@ -355,11 +356,11 @@ mod tests {
         let mut app = new_app();
         let seconds = std::time::Duration::from_secs;
         for progress in [
-            crate::update::Progress::Available("v0.2.0".into()),
-            crate::update::Progress::Downloading("v0.2.0".into()),
-            crate::update::Progress::Downloaded("v0.2.0".into(), seconds(3)),
-            crate::update::Progress::Building("v0.2.0".into()),
-            crate::update::Progress::BuildFailed("v0.2.0".into(), "error: x".into(), seconds(70)),
+            Progress::Available("v0.2.0".into()),
+            Progress::Downloading("v0.2.0".into()),
+            Progress::Downloaded("v0.2.0".into(), seconds(3)),
+            Progress::Building("v0.2.0".into()),
+            Progress::BuildFailed("v0.2.0".into(), "error: x".into(), seconds(70)),
         ] {
             handle_agent_event(UiEvent::Update(progress), &mut app);
         }
@@ -379,12 +380,12 @@ mod tests {
     fn shows_update_progress_with_the_version_after_clearing() {
         let mut app = new_app();
         handle_agent_event(
-            UiEvent::Update(crate::update::Progress::Available("v0.2.0".into())),
+            UiEvent::Update(Progress::Available("v0.2.0".into())),
             &mut app,
         );
         app.clear_session();
         handle_agent_event(
-            UiEvent::Update(crate::update::Progress::Downloading("v0.2.0".into())),
+            UiEvent::Update(Progress::Downloading("v0.2.0".into())),
             &mut app,
         );
         let shown = screen(&mut app);
