@@ -273,8 +273,7 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
     }
     // Wrapping lines is slow, so skip the whole lines above the view in the
     // first visible message.
-    let mut first_rows = None;
-    if let Some(rendered) = app
+    let first_rows = if let Some(rendered) = app
         .messages
         .get(first_message)
         .and_then(|message| message.rendered.as_ref())
@@ -283,8 +282,10 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
         let gap = app.gap_before(first_message);
         let (rows_skipped, rows) = rendered.rows_from(top - skipped - gap);
         skipped += gap + rows_skipped;
-        first_rows = Some(rows);
-    }
+        Some(rows)
+    } else {
+        None
+    };
     let rest = first_message + usize::from(first_rows.is_some());
     let rows = first_rows
         .into_iter()
