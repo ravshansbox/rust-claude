@@ -1130,8 +1130,8 @@ fn tool_definition(qualified_name: &str, tool: &Value) -> Value {
     }
     let description = tool["description"]
         .as_str()
-        .or(tool["title"].as_str())
-        .or(tool["name"].as_str())
+        .or_else(|| tool["title"].as_str())
+        .or_else(|| tool["name"].as_str())
         .unwrap_or_default();
     json!({
         "name": qualified_name,

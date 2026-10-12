@@ -138,7 +138,7 @@ pub(super) async fn request_tokens(
     else {
         let reason = reply["error_description"]
             .as_str()
-            .or(reply["error"].as_str())
+            .or_else(|| reply["error"].as_str())
             .map_or(body, str::to_string);
         return Err(format!(
             "token endpoint answered with status {}: {reason}",
