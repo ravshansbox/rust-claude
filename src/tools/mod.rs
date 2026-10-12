@@ -1,5 +1,7 @@
 use serde_json::{Value, json};
 
+use crate::config;
+
 pub mod agent;
 pub mod background;
 mod bash;
@@ -94,7 +96,7 @@ async fn replace_file(
                 (target, Some(metadata))
             }
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                (crate::config::dangling_target(path), None)
+                (config::dangling_target(path), None)
             }
             Err(error) => return Err(error),
         };
@@ -124,7 +126,7 @@ async fn replace_file(
             }
             file.set_permissions(metadata.permissions())
         };
-        match crate::config::replace_file(&target, contents.as_bytes(), options, prepare) {
+        match config::replace_file(&target, contents.as_bytes(), options, prepare) {
             Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
                 std::fs::write(&target, contents)
             }
