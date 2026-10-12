@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::Write,
+    io::ErrorKind,
     path::{Path, PathBuf},
     process::Stdio,
     sync::{
@@ -111,7 +112,7 @@ type Configs = BTreeMap<String, (Scope, ServerConfig)>;
 fn read_config(path: &Path, scope: Scope, servers: &mut Configs, diagnostics: &mut Vec<String>) {
     let text = match std::fs::read_to_string(path) {
         Ok(text) => text,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+        Err(error) if error.kind() == ErrorKind::NotFound => return,
         Err(error) => {
             diagnostics.push(format!("MCP: cannot read {}: {error}", path.display()));
             return;
