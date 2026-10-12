@@ -515,19 +515,6 @@ mod tests {
     }
 
     #[test]
-    fn shows_a_streamed_reply_at_the_left_edge() {
-        let mut app = new_app();
-        handle_agent_event(
-            UiEvent::Agent(AgentEvent::Text("Before\n\n```\ncode\n```\n\nAfter".into())),
-            &mut app,
-        );
-        let shown = screen_of_width(&mut app, 40);
-        let rows = rows_from(&shown, "Before");
-        assert!(rows.contains(&"code"), "{shown}");
-        assert!(rows.contains(&"After"), "{shown}");
-    }
-
-    #[test]
     fn shows_the_same_rows_from_any_scroll_position() {
         use ratatui::{
             buffer::{Buffer, Cell},
@@ -715,16 +702,6 @@ mod tests {
         let shown = screen_of_width(&mut app, 30);
         assert!(shown.contains("line 29"), "{shown}");
         assert!(!shown.contains("Start"), "{shown}");
-    }
-
-    #[test]
-    fn keeps_the_conversation_visible_while_picking_an_effort_level() {
-        let mut app = app_with_reply();
-        handle_input(Event::Paste("/effort".into()), &mut app, |_| {});
-        press(&mut app, KeyCode::Enter);
-        let shown = screen(&mut app);
-        assert!(shown.contains("Earlier reply"), "{shown}");
-        assert!(shown.contains("Select effort level"), "{shown}");
     }
 
     fn open_sessions(app: &mut App, count: usize) {

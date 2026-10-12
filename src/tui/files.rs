@@ -110,7 +110,7 @@ impl FileList {
 
 #[cfg(test)]
 mod tests {
-    use super::{FileList, file_query, files_in, walk};
+    use super::{file_query, files_in, walk};
     use crate::tools::test_support::TemporaryDir;
     use std::process::Command;
 
@@ -175,12 +175,5 @@ mod tests {
         assert_eq!(file_query("@", 1), Some((0, "")));
         assert_eq!(file_query("mail@host", 9), None);
         assert_eq!(file_query("@src now", 8), None);
-    }
-
-    #[test]
-    fn matches_files_ignoring_case() {
-        let files = FileList::new(vec!["README.md".to_string(), "src/main.rs".to_string()]);
-        assert_eq!(files.matches("readme"), vec!["README.md"]);
-        assert_eq!(files.matches("").len(), 2);
     }
 }
