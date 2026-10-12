@@ -141,7 +141,7 @@ fn read_config(path: &Path, scope: Scope, servers: &mut Configs, diagnostics: &m
             ));
             continue;
         }
-        match serde_json::from_value::<ServerConfig>(entry.clone()) {
+        match ServerConfig::deserialize(entry) {
             Ok(server) if server.timeout == Some(0) => {
                 servers.remove(name);
                 diagnostics.push(format!("MCP server {name}: timeout must be at least 1"));
