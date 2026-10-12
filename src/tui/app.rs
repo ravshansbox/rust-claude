@@ -435,21 +435,20 @@ pub(super) struct HistorySearch {
 impl HistorySearch {
     pub(super) fn matches(&self) -> Vec<(&str, Option<&str>)> {
         let query = self.query.to_lowercase();
-        let entries: Vec<(&str, Option<&str>)> = if self.all {
+        let matches = |(prompt, _): &(&str, Option<&str>)| prompt.to_lowercase().contains(&query);
+        if self.all {
             self.everywhere
                 .iter()
                 .map(|entry| (entry.prompt.as_str(), Some(entry.folder.as_str())))
+                .filter(matches)
                 .collect()
         } else {
             self.current
                 .iter()
                 .map(|prompt| (prompt.as_str(), None))
+                .filter(matches)
                 .collect()
-        };
-        entries
-            .into_iter()
-            .filter(|(prompt, _)| prompt.to_lowercase().contains(&query))
-            .collect()
+        }
     }
 }
 
