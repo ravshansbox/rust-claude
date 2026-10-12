@@ -1,10 +1,11 @@
 use super::{
-    PathBuf, UiEvent, git_branch, history_writer, show_skills_and_instructions,
-    test_support::new_app, tools_line,
+    PathBuf, UiEvent, git_branch, history_writer, save_changed_settings,
+    show_skills_and_instructions, test_support::new_app, tools_line,
 };
 use crate::{
     agent::AgentEvent,
-    history,
+    config, history,
+    settings::Settings,
     skills::{Diagnostic, Scope, Skill, Skills},
     tools::test_support::TemporaryDir,
 };
@@ -104,4 +105,31 @@ fn saves_prompt_history_in_order_and_reports_failures() {
         notice.starts_with("failed to save prompt history: "),
         "{notice}"
     );
+}
+
+#[test]
+fn saves_only_the_model_and_effort_the_user_changed() {
+    let path = config::dir().unwrap().join("settings.json");
+    std::fs::write(&path, r#"{ "effort": "low", "notifications": true }"#).unwrap();
+    let mut app = new_app();
+    let (mut saved_model, mut saved_effort) = (app.model.clone(), app.effort);
+    app.set_model("claude-haiku-5-5");
+    save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
+    let after_model = Settings::load();
+    app.set_effort("high");
+    save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
+    let after_effort = Settings::load();
+    std::fs::write(&path, "{ broken").unwrap();
+    app.set_effort("max");
+    save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
+    let broken = std::fs::read_to_string(&path).unwrap();
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(after_model.model.as_deref(), Some("claude-haiku-5-5"));
+    assert_eq!(after_model.effort.as_deref(), Some("low"));
+    assert_eq!(after_model.notifications, Some(true));
+    assert_eq!(after_effort.model.as_deref(), Some("claude-haiku-5-5"));
+    assert_eq!(after_effort.effort.as_deref(), Some("high"));
+    assert_eq!(broken, "{ broken");
+    let last = &app.messages.last().unwrap().text;
+    assert!(last.starts_with("failed to save settings: "), "{last}");
 }
