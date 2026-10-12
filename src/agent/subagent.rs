@@ -192,11 +192,16 @@ impl Agent {
 }
 
 fn final_reply(messages: &[Value]) -> String {
-    messages
+    let start = messages
         .iter()
-        .rfind(|message| message["role"] == "assistant" && message.get("stop_reason").is_none())
-        .and_then(|message| message["content"].as_array())
-        .map_or_else(String::new, |content| text_of(content))
+        .rposition(|message| message["role"] == "user")
+        .map_or(0, |index| index + 1);
+    messages[start..]
+        .iter()
+        .filter(|message| message["role"] == "assistant" && message.get("stop_reason").is_none())
+        .filter_map(|message| message["content"].as_array())
+        .map(|content| text_of(content))
+        .collect()
 }
 
 #[cfg(test)]
@@ -334,6 +339,29 @@ mod tests {
                 { "type": "text", "text": "a.rs and b.rs" },
                 { "type": "text", "text": "b.rs" },
             ])
+        );
+    }
+
+    #[tokio::test]
+    async fn returns_the_whole_reply_of_a_subagent_whose_reply_was_paused() {
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "agent",
+                json!({ "mode": "sequential", "tasks": [task("search", "find it")] }),
+            ),
+            test_support::stopped_reply("The answer is ", "pause_turn"),
+            text_reply("42."),
+            text_reply("done"),
+        ])
+        .await;
+        let (_, result) = test_support::run_prompt(&api, "ask", |_| {}).await;
+        result.unwrap();
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 4);
+        assert_eq!(
+            tool_result(&requests[3])["content"],
+            json!([{ "type": "text", "text": "The answer is 42." }])
         );
     }
 
