@@ -387,7 +387,7 @@ mod tests {
             loop {
                 tokio::select! {
                     _ = &mut prompt => return false,
-                    _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                    () = tokio::time::sleep(Duration::from_millis(20)) => {
                         if api.requests().await.len() == 3 {
                             return true;
                         }
@@ -616,7 +616,7 @@ mod tests {
             loop {
                 tokio::select! {
                     _ = &mut prompt => return false,
-                    _ = tokio::time::sleep(Duration::from_millis(20)) => {
+                    () = tokio::time::sleep(Duration::from_millis(20)) => {
                         if one_done.get() && api.requests().await.len() == 3 {
                             return true;
                         }
