@@ -251,11 +251,14 @@ fn session_files(directory: &Path) -> Result<Vec<SessionFile>> {
         let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
             continue;
         };
-        let id = id.to_string();
         let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified()) else {
             continue;
         };
-        files.push(SessionFile { id, path, modified });
+        files.push(SessionFile {
+            id: id.to_string(),
+            path,
+            modified,
+        });
     }
     Ok(files)
 }
