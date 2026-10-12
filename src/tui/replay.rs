@@ -470,6 +470,69 @@ mod tests {
     }
 
     #[test]
+    fn shows_a_failed_tool_call_live_as_it_is_replayed() {
+        let mut app = new_app();
+        for (path, error) in [("a.rs", None), ("b.rs", Some("missing")), ("c.rs", None)] {
+            let input = json!({ "path": path });
+            handle_agent_event(
+                UiEvent::Agent(AgentEvent::ToolStart {
+                    name: "read".into(),
+                    summary: tools::summary("read", &input),
+                    diff: None,
+                }),
+                &mut app,
+            );
+            handle_agent_event(
+                UiEvent::Agent(AgentEvent::ToolDone {
+                    name: "read".into(),
+                    error: error.map(Into::into),
+                    note: None,
+                }),
+                &mut app,
+            );
+        }
+        let texts: Vec<&str> = app.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(
+            texts,
+            ["read a.rs, b.rs", "read failed: missing", "read c.rs"]
+        );
+    }
+
+    #[test]
+    fn shows_streamed_thinking_live_as_it_is_replayed() {
+        let mut live = new_app();
+        for event in [
+            AgentEvent::Thinking("Let me ".into()),
+            AgentEvent::Thinking("check.".into()),
+            AgentEvent::Text("Done.".into()),
+        ] {
+            handle_agent_event(UiEvent::Agent(event), &mut live);
+        }
+        let mut replayed = new_app();
+        replay_messages(
+            &mut replayed,
+            &[json!({ "role": "assistant", "content": [
+                { "type": "thinking", "thinking": "Let me check.", "signature": "s" },
+                { "type": "text", "text": "Done." },
+            ] })],
+        );
+        let messages = |app: &App| {
+            app.messages
+                .iter()
+                .map(|message| (matches!(message.role, Role::Thinking), message.text.clone()))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            messages(&live)[1..],
+            [(true, "Let me check.".into()), (false, "Done.".into())]
+        );
+        assert_eq!(messages(&live), messages(&replayed));
+    }
+
+    #[test]
     fn replays_a_cancelled_tool_call_as_it_appeared_live() {
         let mut app = new_app();
         let read = |id: &str, path: &str| json!({ "type": "tool_use", "id": id, "name": "read", "input": { "path": path } });
