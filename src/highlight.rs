@@ -256,13 +256,17 @@ fn quoted_body(command: &str, start: usize, quote: char) -> std::ops::Range<usiz
     start..command.len()
 }
 
+pub fn normalise_lines(text: &str) -> Cow<'_, str> {
+    if text.contains('\r') || text.ends_with('\n') {
+        Cow::Owned(text.lines().collect::<Vec<_>>().join("\n"))
+    } else {
+        Cow::Borrowed(text)
+    }
+}
+
 fn highlight_command(body: &str, dark: bool) -> Vec<HighlightedLine> {
     let bash = syntax_by_extension("sh");
-    let command = if body.contains('\r') || body.ends_with('\n') {
-        Cow::Owned(body.lines().collect::<Vec<_>>().join("\n"))
-    } else {
-        Cow::Borrowed(body)
-    };
+    let command = normalise_lines(body);
     let embedded = embedded_code(&command);
     let mut bash_highlighter = HighlightLines::new(bash, theme(dark));
     let mut embedded_highlighters: Vec<HighlightLines> = embedded
