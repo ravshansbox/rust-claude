@@ -45,7 +45,7 @@ use std::{
     backtrace::{Backtrace, BacktraceStatus},
     io::{self, Write},
     panic::PanicHookInfo,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Stdio,
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, SystemTime},
@@ -567,17 +567,25 @@ fn workspace_label() -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .unwrap_or_default();
-    let branch = std::process::Command::new("git")
-        .args(["rev-parse", "--abbrev-ref", "HEAD"])
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
-        .filter(|branch| !branch.is_empty());
-    match branch {
+    match git_branch(Path::new(".")) {
         Some(branch) => format!("{folder} · {branch}"),
         None => folder,
     }
+}
+
+fn git_branch(dir: &Path) -> Option<String> {
+    let git = |args: &[&str]| {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .map(|output| String::from_utf8_lossy(&output.stdout).trim().to_string())
+            .filter(|branch| !branch.is_empty())
+    };
+    git(&["symbolic-ref", "--short", "-q", "HEAD"])
+        .or_else(|| git(&["rev-parse", "--abbrev-ref", "HEAD"]))
 }
 
 fn instructions_line<'a>(labels: impl IntoIterator<Item = &'a str>) -> Option<String> {
@@ -614,7 +622,8 @@ fn notify(output: &mut impl Write, message: &str, tmux: bool) -> io::Result<()> 
 #[cfg(test)]
 mod tests {
     use super::{
-        HeldPanics, InputModes, UiEvent, history_writer, instructions_line, notify, tools_line,
+        HeldPanics, InputModes, UiEvent, git_branch, history_writer, instructions_line, notify,
+        tools_line,
     };
     use crate::{agent::AgentEvent, history, tools::test_support::TemporaryDir};
     use std::sync::{Mutex, PoisonError};
@@ -630,6 +639,18 @@ mod tests {
             Some("loaded ./AGENTS.md")
         );
         assert_eq!(instructions_line([]), None);
+    }
+
+    #[test]
+    fn shows_the_branch_of_a_repository_with_no_commits() {
+        let directory = TemporaryDir::new("unborn-branch");
+        let status = std::process::Command::new("git")
+            .args(["init", "-q", "-b", "main"])
+            .current_dir(directory.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        assert_eq!(git_branch(directory.path()).as_deref(), Some("main"));
     }
 
     #[test]
