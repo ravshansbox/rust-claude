@@ -268,8 +268,7 @@ async fn run() -> Result<()> {
             return interrupted(agent, status).await;
         }
     };
-    printer.finish(result)?;
-    Ok(())
+    printer.finish(result)
 }
 
 /// Ctrl+C, a closed terminal (hangup) and `kill` (terminate) all stop
