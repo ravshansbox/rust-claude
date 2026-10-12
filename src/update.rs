@@ -248,7 +248,7 @@ impl Updater {
                 Ok(signature.trusted_comment().to_string())
             })
             .map_err(|_| anyhow::anyhow!("the signature of {ASSET} is not valid"))?;
-        if signed_as != format!("rust-coding-agent {version}") {
+        if signed_as.strip_prefix("rust-coding-agent ") != Some(version) {
             anyhow::bail!("{ASSET} is signed as {signed_as}, not {version}");
         }
         let target = folder.to_path_buf();
