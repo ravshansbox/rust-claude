@@ -372,10 +372,11 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
 #[cfg(test)]
 mod tests {
     use super::{Action, handle_input, may_change_screen};
+    use crate::history;
     use crate::images::Image;
     use crate::skills::{Scope, Skill};
     use crate::tui::{
-        Activity, App, UiEvent, handle_agent_event,
+        Activity, App, UiEvent, handle_agent_event, history_writer,
         test_support::{new_app, press, press_with, screen},
     };
     use crossterm::event::{
@@ -853,7 +854,7 @@ mod tests {
             std::process::id()
         ));
         for prompt in ["first", "second", "first"] {
-            crate::history::append(&path, &crate::history::Entry::here(prompt)).unwrap();
+            history::append(&path, &history::Entry::here(prompt)).unwrap();
         }
         std::fs::OpenOptions::new()
             .append(true)
@@ -879,7 +880,7 @@ mod tests {
             search.matches(),
             [("third", None), ("first", None), ("second", None)]
         );
-        let (sender, writer) = crate::tui::history_writer(tokio::sync::mpsc::unbounded_channel().0);
+        let (sender, writer) = history_writer(tokio::sync::mpsc::unbounded_channel().0);
         app.unsaved_history
             .drain(..)
             .for_each(|entry| sender.send(entry).unwrap());
