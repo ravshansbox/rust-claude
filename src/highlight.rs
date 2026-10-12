@@ -107,12 +107,11 @@ pub fn highlight_tool(
     body: &str,
     dark: bool,
 ) -> Option<Vec<HighlightedLine>> {
-    let syntax = match name {
-        "edit" | "write" => syntax_for_path(summary),
-        "bash" => return Some(highlight_command(body, dark)),
-        _ => return None,
-    };
-    Some(highlight_body(syntax, body, dark))
+    match name {
+        "edit" | "write" => Some(highlight_body(syntax_for_path(summary), body, dark)),
+        "bash" => Some(highlight_command(body, dark)),
+        _ => None,
+    }
 }
 
 #[derive(Clone, Copy)]
