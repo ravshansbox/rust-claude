@@ -438,28 +438,24 @@ pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
     if visible.is_empty() {
         return None;
     }
-    let mut lines = vec![
-        "The following skills provide specialized instructions for specific tasks.".to_string(),
-        "Use the read tool to load a skill's file when the task matches its description.".into(),
-        "When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.".into(),
-        String::new(),
-        "<available_skills>".into(),
-    ];
+    let mut prompt = String::from(
+        "The following skills provide specialized instructions for specific tasks.\n\
+         Use the read tool to load a skill's file when the task matches its description.\n\
+         When a skill file references a relative path, resolve it against the skill directory (parent of SKILL.md / dirname of the path) and use that absolute path in tool commands.\n\
+         \n\
+         <available_skills>\n",
+    );
     for skill in visible {
-        lines.push("  <skill>".into());
-        lines.push(format!("    <name>{}</name>", escape_xml(&skill.name)));
-        lines.push(format!(
-            "    <description>{}</description>",
-            escape_xml(&skill.description)
-        ));
-        lines.push(format!(
-            "    <location>{}</location>",
-            escape_xml(&skill.path.to_string_lossy())
-        ));
-        lines.push("  </skill>".into());
+        prompt.push_str("  <skill>\n    <name>");
+        prompt.push_str(&escape_xml(&skill.name));
+        prompt.push_str("</name>\n    <description>");
+        prompt.push_str(&escape_xml(&skill.description));
+        prompt.push_str("</description>\n    <location>");
+        prompt.push_str(&escape_xml(&skill.path.to_string_lossy()));
+        prompt.push_str("</location>\n  </skill>\n");
     }
-    lines.push("</available_skills>".into());
-    Some(lines.join("\n"))
+    prompt.push_str("</available_skills>");
+    Some(prompt)
 }
 
 /// Splits `/skill:name request` into the skill name and the trimmed request.
