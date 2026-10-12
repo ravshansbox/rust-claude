@@ -201,7 +201,7 @@ mod tests {
     use crate::{
         agent::{
             Agent,
-            test_support::{MockApi, Reply},
+            test_support::{self, MockApi, Reply},
         },
         auth::Credentials,
         config, mcp,
@@ -383,16 +383,16 @@ mod tests {
     #[tokio::test]
     async fn starts_a_turn_when_a_background_command_finishes() {
         let api = MockApi::start(vec![
-            crate::agent::test_support::tool_reply(
+            test_support::tool_reply(
                 "call-1",
                 "bash",
                 json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
             ),
-            crate::agent::test_support::text_reply("waiting"),
-            crate::agent::test_support::text_reply("seen it"),
+            test_support::text_reply("waiting"),
+            test_support::text_reply("seen it"),
         ])
         .await;
-        let agent = crate::agent::test_support::agent(&api, reqwest::Client::new());
+        let agent = test_support::agent(&api, reqwest::Client::new());
         let session_id = agent.session.id.clone();
         let (request_tx, request_rx) = mpsc::unbounded_channel();
         let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
