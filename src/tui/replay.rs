@@ -279,6 +279,7 @@ mod tests {
     use crate::update::Progress;
     use crossterm::event::{Event, KeyCode, KeyEvent};
     use serde_json::json;
+    use std::io;
 
     #[test]
     fn notifies_when_a_run_ends_while_the_terminal_is_unfocused() {
@@ -675,7 +676,7 @@ mod tests {
     #[test]
     fn shows_why_resuming_a_session_failed() {
         let mut app = new_app();
-        let error = anyhow::Error::new(std::io::Error::from(std::io::ErrorKind::PermissionDenied))
+        let error = anyhow::Error::new(io::Error::from(io::ErrorKind::PermissionDenied))
             .context("reading /sessions/x.jsonl");
         handle_agent_event(UiEvent::Resumed(Err(error)), &mut app);
         assert_eq!(
