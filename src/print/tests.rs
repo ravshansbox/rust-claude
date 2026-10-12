@@ -357,3 +357,33 @@ async fn prints_only_the_tasks_and_why_one_failed() {
         "{err}"
     );
 }
+
+#[test]
+fn groups_reads_in_a_row_and_shows_tool_notes() {
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
+    for path in ["src/main.rs", "src/lib.rs"] {
+        printer.event(AgentEvent::ToolStart {
+            name: "read".into(),
+            summary: path.into(),
+            diff: None,
+        });
+    }
+    printer.event(AgentEvent::ToolDone {
+        name: "edit".into(),
+        error: None,
+        note: Some("2 replacements".into()),
+    });
+    printer.event(AgentEvent::ToolStart {
+        name: "read".into(),
+        summary: "README.md".into(),
+        diff: None,
+    });
+    printer.flush_reads();
+    printer.finish(Ok(())).unwrap();
+    assert_eq!(
+        String::from_utf8(err).unwrap(),
+        "read src/main.rs, src/lib.rs\n\nedit: 2 replacements\n\nread README.md\n"
+    );
+}
