@@ -189,12 +189,6 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn summarizes_reads_with_huge_limits() {
-        let input = json!({ "path": "a.txt", "offset": 5, "limit": u64::MAX });
-        assert_eq!(summary("read", &input), format!("a.txt:5-{}", u64::MAX));
-    }
-
-    #[test]
     fn previews_first_lines_of_write() {
         let content: String = (1..=12).map(|number| format!("line {number}\n")).collect();
         let preview = diff("write", &json!({ "path": "a.txt", "content": content })).unwrap();
@@ -215,6 +209,10 @@ mod tests {
             ),
             (json!({ "path": "a.rs", "offset": 325 }), "a.rs:325-"),
             (json!({ "path": "a.rs", "limit": 30 }), "a.rs:1-30"),
+            (
+                json!({ "path": "a.rs", "offset": 5, "limit": u64::MAX }),
+                &format!("a.rs:5-{}", u64::MAX),
+            ),
         ];
         for (input, expected) in cases {
             assert_eq!(summary("read", &input), expected);
