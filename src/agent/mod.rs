@@ -778,6 +778,72 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn reports_a_reply_that_ends_before_it_finishes() {
+        let cut_off = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "half an answer" } }),
+        ]);
+        let api = MockApi::start(vec![cut_off, text_reply("hello")]).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let failed = agent.prompt("hi", &[], |_| {}).await;
+        let next = agent.prompt("again", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        let message = failed.unwrap_err().to_string();
+        assert!(
+            message.contains("response ended before the reply finished"),
+            "{message}"
+        );
+        next.unwrap();
+        let requests = api.requests().await;
+        assert_eq!(requests.len(), 2);
+        let resent = requests[1]["messages"].to_string();
+        assert!(!resent.contains("half an answer"), "{resent}");
+    }
+
+    #[tokio::test]
+    async fn does_not_run_a_tool_call_cut_off_by_the_output_limit() {
+        let cut_off = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo cut" } }),
+            json!({ "type": "content_block_stop", "index": 0 }),
+            json!({ "type": "message_delta", "delta": { "stop_reason": "max_tokens" }, "usage": { "output_tokens": 1 } }),
+            json!({ "type": "message_stop" }),
+        ]);
+        let api = MockApi::start(vec![cut_off]).await;
+        let mut tools_started = 0;
+        let (_, result) = test_support::run_prompt(&api, "hi", |event| {
+            if let AgentEvent::ToolStart { .. } = event {
+                tools_started += 1;
+            }
+        })
+        .await;
+        let message = result.unwrap_err().to_string();
+        assert!(
+            message.contains("reply stopped (max_tokens) before its tool call finished"),
+            "{message}"
+        );
+        assert_eq!(tools_started, 0);
+        assert_eq!(api.requests().await.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
+        let overloaded = Reply::Events(vec![
+            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
+            json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
+        ]);
+        let api = MockApi::start(vec![overloaded, text_reply("hello")]).await;
+        let (_, result) = test_support::run_prompt(&api, "hi", |_| {}).await;
+        let message = result.unwrap_err().to_string();
+        assert!(message.contains("Overloaded"), "{message}");
+        assert_eq!(api.requests().await.len(), 1);
+    }
+
+    #[tokio::test]
     async fn keeps_tokens_of_a_failed_attempt_out_of_the_context_size() {
         let overloaded = Reply::Events(vec![
             json!({ "type": "message_start", "message": { "usage": { "input_tokens": 500, "cache_read_input_tokens": 500, "output_tokens": 1 } } }),
