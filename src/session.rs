@@ -411,7 +411,7 @@ mod tests {
         Image, Session, agent, current_folder, inline_images, latest_in_folder, new_uuid,
         read_folder, read_preview, sessions_directory,
     };
-    use crate::tools::test_support::TemporaryFile;
+    use crate::tools::test_support::{TemporaryDir, TemporaryFile};
     use serde_json::json;
     use std::{
         io::Write,
@@ -420,10 +420,8 @@ mod tests {
 
     #[test]
     fn inlines_saved_images_as_base64() {
-        let directory =
-            std::env::temp_dir().join(format!("rust-coding-agent-images-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
-        std::fs::write(directory.join("a.png"), b"abc").unwrap();
+        let directory = TemporaryDir::new("images");
+        std::fs::write(directory.path().join("a.png"), b"abc").unwrap();
         let mut messages = vec![json!({
             "role": "user",
             "content": [
@@ -431,9 +429,7 @@ mod tests {
                 { "type": "text", "text": "look" },
             ],
         })];
-        let result = inline_images(&directory, &mut messages);
-        std::fs::remove_dir_all(&directory).unwrap();
-        result.unwrap();
+        inline_images(directory.path(), &mut messages).unwrap();
         assert_eq!(
             messages[0]["content"][0],
             json!({
@@ -483,16 +479,14 @@ mod tests {
 
     #[test]
     fn continues_latest_session_in_current_folder() {
-        let directory =
-            std::env::temp_dir().join(format!("rust-coding-agent-latest-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
+        let directory = TemporaryDir::new("latest");
         let now = SystemTime::now();
         for (id, folder, age) in [
             ("old", "/project", 60),
             ("new", "/project", 30),
             ("other", "/other", 0),
         ] {
-            let path = directory.join(format!("{id}.jsonl"));
+            let path = directory.path().join(format!("{id}.jsonl"));
             std::fs::write(
                 &path,
                 format!("{}\n", json!({ "type": "session", "cwd": folder })),
@@ -504,8 +498,7 @@ mod tests {
                 .and_then(|file| file.set_modified(now - Duration::from_secs(age)))
                 .unwrap();
         }
-        let latest = latest_in_folder(&directory, "/project");
-        std::fs::remove_dir_all(&directory).unwrap();
+        let latest = latest_in_folder(directory.path(), "/project");
         assert_eq!(latest.unwrap().as_deref(), Some("new"));
     }
 
