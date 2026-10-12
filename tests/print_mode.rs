@@ -94,6 +94,12 @@ impl Setup {
     }
 }
 
+impl Drop for Setup {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.root);
+    }
+}
+
 fn interrupt(child: Child) -> std::process::Output {
     signal(child, "-INT")
 }
@@ -147,7 +153,6 @@ fn ctrl_c_in_print_mode_stops_started_processes() {
         .flatten()
         .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path()).ok())
         .collect();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     assert!(started);
     assert_eq!(output.status.code(), Some(130));
@@ -173,7 +178,6 @@ fn hangup_and_terminate_in_print_mode_stop_started_processes() {
         let started = setup.server_started();
         let output = signal(child, &format!("-{name}"));
         let server_stopped = stop_server(&setup.server_pid());
-        let _ = std::fs::remove_dir_all(&setup.root);
 
         assert!(started, "{name}");
         assert_eq!(output.status.code(), Some(code), "{name}");
@@ -195,7 +199,6 @@ fn reads_sign_in_and_mcp_servers_from_config_dir() {
     let output = interrupt(child);
     stop_server(&setup.server_pid());
     let home_untouched = !setup.home.join(".rust-coding-agent").exists();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     assert!(
         started,
@@ -215,7 +218,6 @@ fn continuing_without_a_session_fails_before_asking_to_sign_in() {
         .run(&["-c", "-p", "hello"])
         .wait_with_output()
         .unwrap();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "{stderr}");
@@ -236,7 +238,6 @@ fn rejects_a_model_that_is_not_in_the_list_before_asking_to_sign_in() {
         .run(&["--model", "claude-opus-4-5", "-p", "hello"])
         .wait_with_output()
         .unwrap();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "{stderr}");
@@ -289,7 +290,6 @@ fn ctrl_c_while_the_sign_in_renews_at_start_waits_for_the_renewal() {
     drop(request);
     let output = wait_for_exit(child, "-INT");
     let saved = std::fs::read_to_string(&auth).unwrap_or_default();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(renewing, "no renewal request: {stderr}");
@@ -332,7 +332,6 @@ fn ctrl_c_at_the_sign_in_prompt_exits_as_cancelled() {
     });
     let output = interrupt(child);
     reader.join().unwrap();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     let mut stderr = stderr.into_inner();
     stderr.extend(chunks.try_iter());
@@ -356,7 +355,6 @@ fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
         .stdin(Stdio::null())
         .output()
         .unwrap();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(1), "{stderr}");
@@ -375,7 +373,6 @@ fn moves_the_old_config_folder_to_the_new_one() {
     stop_server(&setup.server_pid());
     let moved = setup.home.join(".rust-coding-agent/auth.json").exists();
     let old_left = setup.home.join(".rust-claude").exists();
-    let _ = std::fs::remove_dir_all(&setup.root);
 
     assert!(started, "{}", String::from_utf8_lossy(&output.stderr));
     assert!(moved);
