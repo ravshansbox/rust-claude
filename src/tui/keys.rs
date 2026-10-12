@@ -382,6 +382,7 @@ mod tests {
         Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent,
         MouseEventKind,
     };
+    use std::io::Write;
 
     #[test]
     fn redraws_only_for_events_that_may_change_the_screen() {
@@ -858,10 +859,7 @@ mod tests {
             .append(true)
             .open(&path)
             .and_then(|mut file| {
-                std::io::Write::write_all(
-                    &mut file,
-                    b"{\"prompt\":\"elsewhere\",\"cwd\":\"/somewhere/else\"}\n",
-                )
+                file.write_all(b"{\"prompt\":\"elsewhere\",\"cwd\":\"/somewhere/else\"}\n")
             })
             .unwrap();
         let mut app = new_app();
