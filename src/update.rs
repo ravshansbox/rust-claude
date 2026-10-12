@@ -380,6 +380,7 @@ mod tests {
     use super::{
         Progress, Settings, Updater, create_update_folder, find_on_path, link_alias_beside,
     };
+    use crate::tools::test_support::TemporaryDir;
     use std::{
         io::{Cursor, ErrorKind, Write},
         path::{Path, PathBuf},
@@ -389,32 +390,6 @@ mod tests {
         io::{AsyncReadExt, AsyncWriteExt},
         net::TcpListener,
     };
-
-    struct TemporaryDir(PathBuf);
-
-    impl std::ops::Deref for TemporaryDir {
-        type Target = Path;
-
-        fn deref(&self) -> &Path {
-            &self.0
-        }
-    }
-
-    impl Drop for TemporaryDir {
-        fn drop(&mut self) {
-            let _ = std::fs::remove_dir_all(&self.0);
-        }
-    }
-
-    fn temp_dir(name: &str) -> TemporaryDir {
-        let dir = std::env::temp_dir().join(format!(
-            "rust-coding-agent-update-{name}-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        TemporaryDir(dir)
-    }
 
     fn source_zip() -> Vec<u8> {
         let mut buffer = Cursor::new(Vec::new());
@@ -537,9 +512,9 @@ mod tests {
 
     #[tokio::test]
     async fn downloads_and_builds_a_newer_release_and_offers_a_restart() {
-        let dir = temp_dir("newer");
+        let dir = TemporaryDir::new("update-newer");
         let (base, _) = github("v0.2.0").await;
-        let cargo = fake_cargo(&dir, 0);
+        let cargo = fake_cargo(dir.path(), 0);
         let shown = run(updater(&base, Some(cargo))).await;
         assert_eq!(shown.len(), 6, "{shown:?}");
         assert_eq!(shown[..2], ["update v0.2.0 available", "downloading"]);
@@ -547,35 +522,35 @@ mod tests {
         assert_eq!(shown[3], "building");
         assert!(shown[4].starts_with("built in "), "{shown:?}");
         assert_eq!(shown[5], "installed, restart rust-coding-agent to use it");
-        let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
+        let log = std::fs::read_to_string(dir.path().join("cargo.log")).unwrap();
         assert!(log.starts_with("install --locked --force --path "), "{log}");
         assert!(log.contains("unpacked"), "{log}");
     }
 
     #[tokio::test]
     async fn links_rca_to_the_installed_binary() {
-        let dir = temp_dir("link");
+        let dir = TemporaryDir::new("update-link");
         let (base, _) = github("v0.2.0").await;
-        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
-        updater.bin_dir = Some(dir.join("bin"));
+        let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+        updater.bin_dir = Some(dir.path().join("bin"));
         run(updater).await;
         assert_eq!(
-            std::fs::read_link(dir.join("bin/rca")).unwrap(),
+            std::fs::read_link(dir.path().join("bin/rca")).unwrap(),
             Path::new("rust-coding-agent")
         );
     }
 
     #[tokio::test]
     async fn keeps_an_existing_rca() {
-        let dir = temp_dir("existing-rca");
+        let dir = TemporaryDir::new("update-existing-rca");
         let (base, _) = github("v0.2.0").await;
-        std::fs::create_dir_all(dir.join("bin")).unwrap();
-        std::fs::write(dir.join("bin/rca"), "other").unwrap();
-        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
-        updater.bin_dir = Some(dir.join("bin"));
+        std::fs::create_dir_all(dir.path().join("bin")).unwrap();
+        std::fs::write(dir.path().join("bin/rca"), "other").unwrap();
+        let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+        updater.bin_dir = Some(dir.path().join("bin"));
         run(updater).await;
         assert_eq!(
-            std::fs::read_to_string(dir.join("bin/rca")).unwrap(),
+            std::fs::read_to_string(dir.path().join("bin/rca")).unwrap(),
             "other"
         );
     }
@@ -583,58 +558,61 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn links_rca_beside_the_program_at_start() {
-        let dir = temp_dir("start-link");
-        let program = dir.join("rust-coding-agent");
+        let dir = TemporaryDir::new("update-start-link");
+        let program = dir.path().join("rust-coding-agent");
         std::fs::write(&program, "").unwrap();
         link_alias_beside(&program, false);
         assert_eq!(
-            std::fs::read_link(dir.join("rca")).unwrap(),
+            std::fs::read_link(dir.path().join("rca")).unwrap(),
             Path::new("rust-coding-agent")
         );
     }
 
     #[test]
     fn does_not_link_rca_in_a_debug_build() {
-        let dir = temp_dir("start-link-debug");
-        let program = dir.join("rust-coding-agent");
+        let dir = TemporaryDir::new("update-start-link-debug");
+        let program = dir.path().join("rust-coding-agent");
         std::fs::write(&program, "").unwrap();
         link_alias_beside(&program, true);
-        assert!(dir.join("rca").symlink_metadata().is_err());
+        assert!(dir.path().join("rca").symlink_metadata().is_err());
     }
 
     #[test]
     fn keeps_an_existing_rca_beside_the_program() {
-        let dir = temp_dir("start-link-existing");
-        let program = dir.join("rust-coding-agent");
+        let dir = TemporaryDir::new("update-start-link-existing");
+        let program = dir.path().join("rust-coding-agent");
         std::fs::write(&program, "").unwrap();
-        std::fs::write(dir.join("rca"), "other").unwrap();
+        std::fs::write(dir.path().join("rca"), "other").unwrap();
         link_alias_beside(&program, false);
-        assert_eq!(std::fs::read_to_string(dir.join("rca")).unwrap(), "other");
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("rca")).unwrap(),
+            "other"
+        );
     }
 
     #[tokio::test]
     async fn builds_in_the_build_folder() {
-        let dir = temp_dir("build-folder");
+        let dir = TemporaryDir::new("update-build-folder");
         let (base, _) = github("v0.2.0").await;
-        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
-        updater.build_dir = Some(dir.join("build"));
+        let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+        updater.build_dir = Some(dir.path().join("build"));
         run(updater).await;
-        let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
+        let log = std::fs::read_to_string(dir.path().join("cargo.log")).unwrap();
         let expected = format!(
             "install --locked --force --target-dir {} --path ",
-            dir.join("build").display()
+            dir.path().join("build").display()
         );
         assert!(log.starts_with(&expected), "{log}");
     }
 
     #[tokio::test]
     async fn unpacks_the_release_in_the_update_folder() {
-        let dir = temp_dir("update-folder");
+        let dir = TemporaryDir::new("update-update-folder");
         let (base, _) = github("v0.2.0").await;
-        let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
-        updater.update_dir = dir.join("updates");
+        let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+        updater.update_dir = dir.path().join("updates");
         run(updater).await;
-        let log = std::fs::read_to_string(dir.join("cargo.log")).unwrap();
+        let log = std::fs::read_to_string(dir.path().join("cargo.log")).unwrap();
         let path = log
             .lines()
             .next()
@@ -642,18 +620,21 @@ mod tests {
             .split(" --path ")
             .nth(1)
             .unwrap();
-        assert!(Path::new(path).starts_with(dir.join("updates")), "{log}");
+        assert!(
+            Path::new(path).starts_with(dir.path().join("updates")),
+            "{log}"
+        );
         assert!(log.contains("unpacked"), "{log}");
     }
 
     #[tokio::test]
     async fn keeps_the_build_folder_while_the_compiler_stays_the_same() {
-        let dir = temp_dir("same-compiler");
+        let dir = TemporaryDir::new("update-same-compiler");
         let (base, _) = github("v0.2.0").await;
-        let build = dir.join("build");
+        let build = dir.path().join("build");
         for _ in 0..2 {
-            let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
-            updater.rustc = Some(fake_rustc(&dir, "rustc 1.99.0"));
+            let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+            updater.rustc = Some(fake_rustc(dir.path(), "rustc 1.99.0"));
             updater.build_dir = Some(build.clone());
             run(updater).await;
             std::fs::write(build.join("earlier-build"), "").unwrap();
@@ -663,12 +644,12 @@ mod tests {
 
     #[tokio::test]
     async fn empties_the_build_folder_when_the_compiler_changes() {
-        let dir = temp_dir("new-compiler");
+        let dir = TemporaryDir::new("update-new-compiler");
         let (base, _) = github("v0.2.0").await;
-        let build = dir.join("build");
+        let build = dir.path().join("build");
         for version in ["rustc 1.98.0", "rustc 1.99.0"] {
-            let mut updater = updater(&base, Some(fake_cargo(&dir, 0)));
-            updater.rustc = Some(fake_rustc(&dir, version));
+            let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+            updater.rustc = Some(fake_rustc(dir.path(), version));
             updater.build_dir = Some(build.clone());
             run(updater).await;
             std::fs::write(build.join(version), "").unwrap();
@@ -679,9 +660,9 @@ mod tests {
 
     #[tokio::test]
     async fn refuses_a_release_whose_signature_does_not_match() {
-        let dir = temp_dir("bad-signature");
+        let dir = TemporaryDir::new("update-bad-signature");
         let (base, _) = github_serving("v0.2.0", source_zip(), Some(SIGNATURE.to_vec())).await;
-        let cargo = fake_cargo(&dir, 0);
+        let cargo = fake_cargo(dir.path(), 0);
         let shown = run(updater(&base, Some(cargo))).await;
         let last = shown.last().unwrap();
         assert!(
@@ -689,14 +670,14 @@ mod tests {
                 && last.ends_with("s: the signature of rust-coding-agent.zip is not valid"),
             "{shown:?}"
         );
-        assert!(!dir.join("cargo.log").exists());
+        assert!(!dir.path().join("cargo.log").exists());
     }
 
     #[tokio::test]
     async fn refuses_a_release_signed_for_another_version() {
-        let dir = temp_dir("other-version");
+        let dir = TemporaryDir::new("update-other-version");
         let (base, _) = github("v0.3.0").await;
-        let cargo = fake_cargo(&dir, 0);
+        let cargo = fake_cargo(dir.path(), 0);
         let shown = run(updater(&base, Some(cargo))).await;
         assert!(
             shown.last().unwrap().ends_with(
@@ -704,14 +685,14 @@ mod tests {
             ),
             "{shown:?}"
         );
-        assert!(!dir.join("cargo.log").exists());
+        assert!(!dir.path().join("cargo.log").exists());
     }
 
     #[tokio::test]
     async fn refuses_a_release_signed_with_another_key() {
-        let dir = temp_dir("other-key");
+        let dir = TemporaryDir::new("update-other-key");
         let (base, _) = github("v0.2.0").await;
-        let cargo = fake_cargo(&dir, 0);
+        let cargo = fake_cargo(dir.path(), 0);
         let mut updater = updater(&base, Some(cargo));
         updater.public_key = super::PUBLIC_KEY;
         let shown = run(updater).await;
@@ -722,14 +703,14 @@ mod tests {
                 .ends_with("s: the signature of rust-coding-agent.zip is not valid"),
             "{shown:?}"
         );
-        assert!(!dir.join("cargo.log").exists());
+        assert!(!dir.path().join("cargo.log").exists());
     }
 
     #[tokio::test]
     async fn refuses_a_release_without_a_signature() {
-        let dir = temp_dir("unsigned");
+        let dir = TemporaryDir::new("update-unsigned");
         let (base, _) = github_serving("v0.2.0", SIGNED_ZIP.to_vec(), None).await;
-        let cargo = fake_cargo(&dir, 0);
+        let cargo = fake_cargo(dir.path(), 0);
         let shown = run(updater(&base, Some(cargo))).await;
         assert_eq!(
             shown,
@@ -738,14 +719,14 @@ mod tests {
                 "failed: the release has no rust-coding-agent.zip.minisig"
             ]
         );
-        assert!(!dir.join("cargo.log").exists());
+        assert!(!dir.path().join("cargo.log").exists());
     }
 
     #[tokio::test]
     async fn shows_why_building_failed() {
-        let dir = temp_dir("failed");
+        let dir = TemporaryDir::new("update-failed");
         let (base, _) = github("v0.2.0").await;
-        let cargo = fake_cargo(&dir, 101);
+        let cargo = fake_cargo(dir.path(), 101);
         let shown = run(updater(&base, Some(cargo))).await;
         let last = shown.last().unwrap();
         assert!(
@@ -855,8 +836,8 @@ mod tests {
     fn creates_a_new_update_folder_only_the_user_can_open() {
         use crate::config::permissions;
 
-        let dir = temp_dir("update-folder");
-        let folder = dir.join("update");
+        let dir = TemporaryDir::new("update-update-folder");
+        let folder = dir.path().join("update");
         create_update_folder(&folder).unwrap();
         let mode = permissions(&folder);
         let again = create_update_folder(&folder);
@@ -866,9 +847,10 @@ mod tests {
 
     #[test]
     fn finds_programs_on_path() {
-        let dir = temp_dir("path");
-        let cargo = fake_cargo(&dir, 0);
-        let path = std::env::join_paths([dir.join("missing"), dir.to_path_buf()]).unwrap();
+        let dir = TemporaryDir::new("update-path");
+        let cargo = fake_cargo(dir.path(), 0);
+        let path =
+            std::env::join_paths([dir.path().join("missing"), dir.path().to_path_buf()]).unwrap();
         assert_eq!(find_on_path("cargo", Some(path.clone())), Some(cargo));
         assert_eq!(find_on_path("rustc", Some(path)), None);
         assert_eq!(find_on_path("cargo", None), None);
