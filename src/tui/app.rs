@@ -133,8 +133,8 @@ fn group_text(spinner_frame: usize, group: &McpGroup) -> String {
         .servers
         .iter()
         .map(|server| match &server.summary {
-            Some(summary) => summary.clone(),
-            None => format!("{frame} {}", server.name),
+            Some(summary) => Cow::Borrowed(summary.as_str()),
+            None => Cow::Owned(format!("{frame} {}", server.name)),
         })
         .collect::<Vec<_>>()
         .join(", ");
