@@ -122,9 +122,13 @@ impl Agent {
                 Err(error) => return Err(error.into()),
             };
             buffer.extend_from_slice(&chunk);
-            while let Some(end) = buffer.windows(2).position(|window| window == b"\n\n") {
-                let frame_bytes: Vec<u8> = buffer.drain(..end + 2).collect();
-                let frame = String::from_utf8_lossy(&frame_bytes);
+            let mut start = 0;
+            while let Some(end) = buffer[start..]
+                .windows(2)
+                .position(|window| window == b"\n\n")
+            {
+                let frame = String::from_utf8_lossy(&buffer[start..start + end + 2]);
+                start += end + 2;
                 let Some(data) = frame.lines().find_map(|line| line.strip_prefix("data: ")) else {
                     continue;
                 };
@@ -231,6 +235,7 @@ impl Agent {
                     _ => {}
                 }
             }
+            buffer.drain(..start);
         }
         if stop_reason.is_empty() {
             bail!("response ended before the reply finished");
