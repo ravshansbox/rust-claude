@@ -381,7 +381,7 @@ mod tests {
         Progress, Settings, Updater, create_update_folder, find_on_path, link_alias_beside,
     };
     use std::{
-        io::Write,
+        io::{Cursor, ErrorKind, Write},
         path::{Path, PathBuf},
         sync::{Arc, Mutex},
     };
@@ -417,7 +417,7 @@ mod tests {
     }
 
     fn source_zip() -> Vec<u8> {
-        let mut buffer = std::io::Cursor::new(Vec::new());
+        let mut buffer = Cursor::new(Vec::new());
         let mut zip = zip::ZipWriter::new(&mut buffer);
         let options = zip::write::SimpleFileOptions::default();
         zip.start_file("rust-coding-agent/Cargo.toml", options)
@@ -862,7 +862,7 @@ mod tests {
         let mode = permissions(&folder);
         let again = create_update_folder(&folder);
         assert_eq!(mode, Some(0o700));
-        assert_eq!(again.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
+        assert_eq!(again.unwrap_err().kind(), ErrorKind::AlreadyExists);
     }
 
     #[test]
