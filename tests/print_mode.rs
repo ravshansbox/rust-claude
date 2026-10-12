@@ -31,6 +31,13 @@ fn write(path: &Path, content: &str) {
     std::fs::write(path, content).unwrap();
 }
 
+fn write_sign_in(config_dir: &Path) {
+    write(
+        &config_dir.join("auth.json"),
+        r#"{ "access": "access", "refresh": "refresh", "expires": 4102444800000 }"#,
+    );
+}
+
 struct Setup {
     root: PathBuf,
     home: PathBuf,
@@ -49,13 +56,6 @@ impl Setup {
             pid_file: root.join("server.pid"),
             root,
         }
-    }
-
-    fn write_sign_in(&self, config_dir: &Path) {
-        write(
-            &config_dir.join("auth.json"),
-            r#"{ "access": "access", "refresh": "refresh", "expires": 4102444800000 }"#,
-        );
     }
 
     fn write_hanging_server(&self, config_dir: &Path) {
@@ -135,7 +135,7 @@ fn stop_server(pid: &str) -> bool {
 #[test]
 fn ctrl_c_in_print_mode_stops_started_processes() {
     let setup = Setup::new("interrupt");
-    setup.write_sign_in(&setup.home.join(".rust-coding-agent"));
+    write_sign_in(&setup.home.join(".rust-coding-agent"));
     setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
     let child = setup.run(&["-p", "hello"]);
@@ -166,7 +166,7 @@ fn ctrl_c_in_print_mode_stops_started_processes() {
 fn hangup_and_terminate_in_print_mode_stop_started_processes() {
     for (name, code) in [("HUP", 129), ("TERM", 143)] {
         let setup = Setup::new(&format!("signal-{name}"));
-        setup.write_sign_in(&setup.home.join(".rust-coding-agent"));
+        write_sign_in(&setup.home.join(".rust-coding-agent"));
         setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
         let child = setup.run(&["-p", "hello"]);
@@ -185,7 +185,7 @@ fn hangup_and_terminate_in_print_mode_stop_started_processes() {
 fn reads_sign_in_and_mcp_servers_from_config_dir() {
     let setup = Setup::new("config-dir");
     let config_dir = setup.root.join("config");
-    setup.write_sign_in(&config_dir);
+    write_sign_in(&config_dir);
     setup.write_hanging_server(&config_dir);
     std::fs::create_dir_all(&setup.project).unwrap();
     std::fs::create_dir_all(&setup.home).unwrap();
@@ -366,7 +366,7 @@ fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
 #[test]
 fn moves_the_old_config_folder_to_the_new_one() {
     let setup = Setup::new("old-config");
-    setup.write_sign_in(&setup.home.join(".rust-claude"));
+    write_sign_in(&setup.home.join(".rust-claude"));
     setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
     let child = setup.run(&["-p", "hello"]);
