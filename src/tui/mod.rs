@@ -373,6 +373,7 @@ async fn run_loop(
     let mut dirty = true;
     let mut saved_model = app.model.clone();
     let mut saved_effort = app.effort;
+    let mut sent_effort = app.effort;
 
     let mut worker_stopped = false;
     let result = loop {
@@ -442,6 +443,10 @@ async fn run_loop(
                         let _ = cancel_tx.send(());
                     }
                 });
+                if app.effort != sent_effort {
+                    sent_effort = app.effort;
+                    let _ = request_tx.send(Request::SetEffort(sent_effort));
+                }
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
                 if quit {
                     break Ok(());
