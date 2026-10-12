@@ -7,12 +7,19 @@ fn read_lines(content: &str, offset: usize, limit: usize) -> Result<String, usiz
     read(content.as_bytes(), offset, limit).unwrap()
 }
 
-#[test]
-fn reads_requested_lines() {
-    let content = "one\ntwo\nthree\nfour\n";
-    assert_eq!(read_lines(content, 1, usize::MAX), Ok(content.into()));
-    assert_eq!(read_lines(content, 2, 2), Ok("two\nthree\n".into()));
-    assert_eq!(read_lines(content, 10, usize::MAX), Err(4));
+#[tokio::test]
+async fn reads_requested_lines() {
+    let file = TemporaryFile::new("lines", "one\ntwo\nthree\nfour");
+    let read = async |offset: u64, limit: Option<u64>| {
+        let mut input = json!({ "path": file.path(), "offset": offset });
+        if let Some(limit) = limit {
+            input["limit"] = json!(limit);
+        }
+        call("read", &input).await
+    };
+    assert_eq!(read(0, None).await, Ok("one\ntwo\nthree\nfour".into()));
+    assert_eq!(read(2, Some(2)).await, Ok("two\nthree\n".into()));
+    assert_eq!(read(4, Some(5)).await, Ok("four".into()));
 }
 
 #[test]
