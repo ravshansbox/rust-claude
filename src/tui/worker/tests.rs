@@ -413,3 +413,46 @@ async fn starts_lists_and_resumes_sessions() {
     assert!(sent[2].contains("first") && sent[2].contains("third"));
     assert!(!sent[2].contains(&second_prompt), "{}", sent[2]);
 }
+
+#[tokio::test]
+async fn compacts_the_conversation_and_continues_from_the_summary() {
+    let api = MockApi::start(vec![
+        test_support::text_reply("one"),
+        test_support::text_reply("the summary"),
+        test_support::text_reply("two"),
+    ])
+    .await;
+    let agent = test_support::agent(&api, reqwest::Client::new());
+    let session_id = agent.session.id.clone();
+    let mut worker = Worker::spawn(agent);
+    worker
+        .requests
+        .send(Request::Prompt("first".into(), Vec::new(), "medium"))
+        .unwrap();
+    let first = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    worker.requests.send(Request::Compact("high")).unwrap();
+    let compacted = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    worker
+        .requests
+        .send(Request::Prompt("second".into(), Vec::new(), "medium"))
+        .unwrap();
+    let second = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    let _ = worker.quit().await;
+    test_support::remove_session_files(&session_id);
+    assert!(first && compacted && second);
+    let requests = api.requests().await;
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[1]["output_config"]["effort"], "high");
+    let sent = requests[2]["messages"].to_string();
+    assert!(
+        sent.contains("the summary") && sent.contains("second"),
+        "{sent}"
+    );
+    assert!(!sent.contains("first"), "{sent}");
+}
