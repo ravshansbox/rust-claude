@@ -145,17 +145,14 @@ fn index_at(input: &str, target_row: usize, column: usize, width: usize) -> usiz
 
 pub(super) fn row_above(input: &str, cursor: usize, width: usize) -> Option<usize> {
     let (row, column) = input_cursor(input, cursor, width);
-    let target_row = row.checked_sub(1)?;
-    Some(index_at(input, target_row, column, width))
+    row.checked_sub(1)
+        .map(|target_row| index_at(input, target_row, column, width))
 }
 
 pub(super) fn row_below(input: &str, cursor: usize, width: usize) -> Option<usize> {
     let (row, column) = input_cursor(input, cursor, width);
     let (.., last_row, _) = layout(input, width).last()?;
-    if row >= last_row {
-        return None;
-    }
-    Some(index_at(input, row + 1, column, width))
+    (row < last_row).then(|| index_at(input, row + 1, column, width))
 }
 
 #[cfg(test)]
