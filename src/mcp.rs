@@ -2273,10 +2273,7 @@ done
 
     #[tokio::test]
     async fn runs_the_headers_helper_again_after_401_and_for_a_new_session() {
-        let directory = std::env::temp_dir().join(format!("mcp-helper-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
-        let counter = directory.join("count");
-        let _ = std::fs::remove_file(&counter);
+        let counter = TemporaryFile::new("mcp-helper-count", "0");
         let sessions = Arc::new(AtomicU64::new(0));
         let issued = sessions.clone();
         let (url, requests) = http_server(move |request| {
@@ -2296,7 +2293,7 @@ done
         let mut config = http_config(&url);
         config.headers_helper = Some(format!(
             r#"n=$(($(cat '{0}' 2>/dev/null || echo 0) + 1)); echo $n > '{0}'; printf '{{"Authorization": "Bearer t%s"}}' $n"#,
-            counter.display()
+            counter.path().display()
         ));
         let mut mcp = Mcp::default();
         mcp.add(start("web".into(), Scope::Global, config).await);
