@@ -1181,27 +1181,23 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
         )
         .await?;
     connection.notify("notifications/initialized")?;
-    if initialize["capabilities"]["tools"].is_null() {
-        return Ok(Server {
-            name,
-            scope,
-            connection,
-            tools: Vec::new(),
-        });
-    }
-    let tools = list_tools(&connection)
-        .await?
-        .into_iter()
-        .filter_map(|tool| {
-            let tool_name = tool["name"].as_str()?.to_string();
-            let qualified_name = qualified_name(&name, &tool_name);
-            Some(Tool {
-                name: tool_name,
-                definition: tool_definition(&qualified_name, tool),
-                qualified_name,
+    let tools = if initialize["capabilities"]["tools"].is_null() {
+        Vec::new()
+    } else {
+        list_tools(&connection)
+            .await?
+            .into_iter()
+            .filter_map(|tool| {
+                let tool_name = tool["name"].as_str()?.to_string();
+                let qualified_name = qualified_name(&name, &tool_name);
+                Some(Tool {
+                    name: tool_name,
+                    definition: tool_definition(&qualified_name, tool),
+                    qualified_name,
+                })
             })
-        })
-        .collect();
+            .collect()
+    };
     Ok(Server {
         name,
         scope,
