@@ -11,7 +11,7 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::images::Image;
+use crate::{config, images::Image};
 
 pub struct SessionSummary {
     pub id: String,
@@ -32,9 +32,7 @@ pub struct Session {
 }
 
 fn sessions_directory() -> Result<PathBuf> {
-    Ok(crate::config::dir()
-        .context("HOME is not set")?
-        .join("sessions"))
+    Ok(config::dir().context("HOME is not set")?.join("sessions"))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -96,7 +94,7 @@ impl Session {
             Some(file) => file,
             None => {
                 let directory = sessions_directory()?;
-                crate::config::create_private_dir(&directory)?;
+                config::create_private_dir(&directory)?;
                 let path = directory.join(format!("{}.jsonl", self.id));
                 self.file.insert(open_locked(&path, true)?)
             }
@@ -123,7 +121,7 @@ impl Session {
 
     pub fn save_image(&self, image: &Image) -> Result<Value> {
         let directory = sessions_directory()?.join(&self.id);
-        crate::config::create_private_dir(&directory)?;
+        config::create_private_dir(&directory)?;
         let hash = hex(&Sha256::digest(&image.data)[..8]);
         let file = format!("{hash}.{}", image.extension());
         let path = directory.join(&file);
@@ -132,7 +130,7 @@ impl Session {
         let saved = std::fs::metadata(&path)
             .is_ok_and(|metadata| metadata.len() == image.data.len() as u64);
         if !saved {
-            crate::config::write_private_file(&path, &image.data)?;
+            config::write_private_file(&path, &image.data)?;
         }
         Ok(json!({ "type": "image", "file": file, "media_type": image.media_type }))
     }
@@ -194,7 +192,7 @@ impl Session {
 
 /// Opens a session file for appending, locked until it is closed.
 fn open_locked(path: &Path, create: bool) -> Result<File> {
-    let file = crate::config::private_file()
+    let file = config::private_file()
         .create(create)
         .read(true)
         .append(true)
