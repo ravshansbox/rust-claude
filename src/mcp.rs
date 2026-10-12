@@ -796,7 +796,7 @@ impl Http {
         let Some(id) = message["id"].as_u64() else {
             return;
         };
-        let method = message["method"].as_str().unwrap_or_default().to_string();
+        let method = message["method"].as_str().unwrap_or_default();
         if method == "initialize"
             && let Ok(mut initialize) = self.initialize.lock()
         {
@@ -813,7 +813,7 @@ impl Http {
         };
         let replies = async {
             let response = self.post_request(&message).await?;
-            self.read_body(response, &method, handle).await
+            self.read_body(response, method, handle).await
         };
         let error = match tokio::time::timeout(self.timeout, replies).await {
             Ok(Ok(())) => format!("server ended the reply to {method} without answering it"),
