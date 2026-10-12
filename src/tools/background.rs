@@ -57,12 +57,14 @@ impl Background {
                 Ok(output) | Err(output) => (id, output),
             }
         });
-        let running = Running {
-            command,
-            task,
-            process_group,
-        };
-        self.running.insert(id, running);
+        self.running.insert(
+            id,
+            Running {
+                command,
+                task,
+                process_group,
+            },
+        );
         Ok(format!(
             "started background task {id}. Its output arrives in a later message when it finishes."
         ))
