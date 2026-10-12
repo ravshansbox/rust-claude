@@ -149,7 +149,8 @@ impl App {
                         text.push_str(symbol);
                     }
                 }
-                text.trim_end().to_string()
+                text.truncate(text.trim_end().len());
+                text
             })
             .collect::<Vec<_>>()
             .join("\n")
