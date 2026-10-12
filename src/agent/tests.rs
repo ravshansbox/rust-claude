@@ -706,6 +706,8 @@ fn web_search_reply(result: Value) -> Reply {
         json!({ "type": "content_block_start", "index": 2, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "citations_delta", "citation": { "type": "web_search_result_location", "url": "https://releases.rs/", "title": "Rust Versions", "encrypted_index": "abc", "cited_text": "Stable: 1.99.0" } } }),
         json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "text_delta", "text": "Rust 1.99.0 is the latest." } }),
+        json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "citations_delta", "citation": { "type": "web_search_result_location", "url": "https://blog.rust-lang.org/", "title": "Rust Blog", "encrypted_index": "def", "cited_text": "Rust 1.99.0" } } }),
+        json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "citations_delta", "citation": { "type": "web_search_result_location", "url": "https://releases.rs/", "title": "Rust Versions", "encrypted_index": "ghi", "cited_text": "1.99.0" } } }),
         json!({ "type": "content_block_stop", "index": 2 }),
         json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
         json!({ "type": "message_stop" }),
@@ -767,13 +769,19 @@ async fn shows_a_web_search_its_results_and_the_sources_cited() {
     );
     assert_eq!(
         text,
-        "Rust 1.99.0 is the latest.\n\nSources:\n- Rust Versions: https://releases.rs/\n"
+        "Rust 1.99.0 is the latest.\n\nSources:\n- Rust Versions: https://releases.rs/\n- Rust Blog: https://blog.rust-lang.org/\n"
     );
     let requests = api.requests().await;
     let resent = &requests[1]["messages"][1]["content"];
     assert_eq!(resent[0]["input"], json!({ "query": "rust release" }));
     assert_eq!(resent[1]["content"], search_results());
-    assert_eq!(resent[2]["citations"][0]["encrypted_index"], "abc");
+    let indexes: Vec<&Value> = resent[2]["citations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|citation| &citation["encrypted_index"])
+        .collect();
+    assert_eq!(indexes, ["abc", "def", "ghi"]);
 }
 
 #[tokio::test]
