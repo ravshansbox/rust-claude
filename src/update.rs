@@ -761,8 +761,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn stays_quiet_when_the_latest_release_is_not_newer() {
-        for tag in ["v0.1.0", "v0.0.9"] {
+    async fn stays_quiet_unless_the_latest_release_is_a_newer_version() {
+        for tag in ["v0.1.0", "v0.0.9", "v0.3.0-rc.1", "v0.3", "v0.3.0.1"] {
             let (base, _) = github(tag).await;
             let shown = run(updater(&base, None)).await;
             assert!(shown.is_empty(), "{tag}: {shown:?}");
