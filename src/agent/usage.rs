@@ -103,7 +103,8 @@ fn parse_timestamp(text: &str) -> Option<u64> {
     let hour = number(11..13)?;
     let minute = number(14..16)?;
     let second = number(17..19)?;
-    let zone = &text[text.get(19..)?.find(['Z', '+', '-'])? + 19..];
+    let rest = text.get(19..)?;
+    let zone = &rest[rest.find(['Z', '+', '-'])?..];
     let offset = match zone.as_bytes().first()? {
         b'Z' => 0,
         sign => {
