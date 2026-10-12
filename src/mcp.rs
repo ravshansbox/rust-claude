@@ -1743,9 +1743,9 @@ mod tests {
 
     #[test]
     fn lists_enabled_global_servers_that_project_entries_override() {
-        let directory = std::env::temp_dir().join(format!("mcp-override-{}", std::process::id()));
-        let global = directory.join("global");
-        let project = directory.join("project");
+        let directory = TemporaryDir::new("mcp-override");
+        let global = directory.path().join("global");
+        let project = directory.path().join("project");
         std::fs::create_dir_all(&global).unwrap();
         std::fs::create_dir_all(project.join(".rust-coding-agent")).unwrap();
         std::fs::write(
@@ -1763,7 +1763,6 @@ mod tests {
         )
         .unwrap();
         let (servers, overridden, _) = read_configs(Some(&global), &project);
-        std::fs::remove_dir_all(&directory).unwrap();
         assert_eq!(servers["docs"].0, Scope::Project);
         assert_eq!(overridden, ["docs"]);
     }
