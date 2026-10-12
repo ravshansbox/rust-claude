@@ -16,9 +16,12 @@ mod worker;
 use crate::{
     StopSignals,
     agent::{Agent, AgentEvent},
-    clipboard, history, images, mcp,
+    clipboard,
+    highlight::Colour,
+    history, images, mcp,
     settings::Settings,
     skills::Scope,
+    update::Updater,
 };
 use anyhow::Result;
 use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
@@ -46,7 +49,10 @@ use std::{
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, SystemTime},
 };
-use tokio::{sync::mpsc, time::MissedTickBehavior};
+use tokio::{
+    sync::mpsc,
+    time::{MissedTickBehavior, interval},
+};
 
 /// Opens `url` in the default browser, if there is one.
 fn open_in_browser(url: &str) {
@@ -133,7 +139,7 @@ pub(crate) use render::{ansi_thinking, ansi_tool_lines, tool_message};
 pub(crate) use tasks::finished_task;
 
 /// Whether the terminal has a dark theme, and its background if it says.
-pub fn terminal_theme() -> (bool, Option<crate::highlight::Colour>) {
+pub fn terminal_theme() -> (bool, Option<Colour>) {
     let (theme, background) = Theme::detect();
     (matches!(theme, Theme::Dark), background)
 }
@@ -347,7 +353,7 @@ async fn run_loop(
     drop(mcp_tx);
     let settings = Settings::load();
     app.notifications = settings.notifications != Some(false);
-    if let Some(updater) = crate::update::Updater::for_this_build(&settings) {
+    if let Some(updater) = Updater::for_this_build(&settings) {
         let events = background_events.clone();
         tokio::spawn(async move {
             updater
@@ -359,9 +365,9 @@ async fn run_loop(
     }
     let mut worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
-    let mut redraw = tokio::time::interval(REDRAW_INTERVAL);
+    let mut redraw = interval(REDRAW_INTERVAL);
     redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let mut spinner = tokio::time::interval(SPINNER_INTERVAL);
+    let mut spinner = interval(SPINNER_INTERVAL);
     spinner.set_missed_tick_behavior(MissedTickBehavior::Skip);
     let mut dirty = true;
     let mut saved_model = app.model.clone();
