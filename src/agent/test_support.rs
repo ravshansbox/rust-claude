@@ -47,6 +47,15 @@ pub(crate) fn tool_reply(id: &str, name: &str, input: Value) -> Reply {
     ])
 }
 
+/// `reply`, reporting that the request filled the whole context window.
+pub(crate) fn full_context(reply: Reply) -> Reply {
+    let Reply::Events(mut events) = reply else {
+        panic!("only event replies report usage");
+    };
+    events[0]["message"]["usage"]["input_tokens"] = json!(100_000_000);
+    Reply::Events(events)
+}
+
 /// A local stand-in for the Messages API. It answers each request with the
 /// next scripted reply and records the request headers and bodies it received.
 pub(crate) struct MockApi {

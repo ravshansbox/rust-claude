@@ -128,7 +128,7 @@ mod tests {
 
     use super::super::{
         Queued,
-        test_support::{self, MockApi, Reply, stopped_reply, text_reply, tool_reply},
+        test_support::{self, MockApi, full_context, stopped_reply, text_reply, tool_reply},
     };
 
     #[tokio::test]
@@ -195,16 +195,8 @@ mod tests {
 
     #[tokio::test]
     async fn answers_the_prompt_when_automatic_compaction_fails() {
-        let full_context_reply = Reply::Events(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
-            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
-            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hello" } }),
-            json!({ "type": "content_block_stop", "index": 0 }),
-            json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
-            json!({ "type": "message_stop" }),
-        ]);
         let api = MockApi::start(vec![
-            full_context_reply,
+            full_context(text_reply("hello")),
             stopped_reply("partial summary", "refusal"),
             text_reply("ok"),
         ])
@@ -232,14 +224,8 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_queued_prompts_word_for_word_when_compacting_after_a_tool_round() {
-        let full_context_tool_call = Reply::Events(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
-            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "true" } } }),
-            json!({ "type": "content_block_stop", "index": 0 }),
-            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
-        ]);
         let api = MockApi::start(vec![
-            full_context_tool_call,
+            full_context(tool_reply("call-1", "bash", json!({ "command": "true" }))),
             text_reply("summary of the work"),
             text_reply("done"),
         ])
@@ -267,15 +253,9 @@ mod tests {
 
     #[tokio::test]
     async fn does_not_summarise_again_when_the_request_after_compaction_is_too_long() {
-        let full_context_tool_call = Reply::Events(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
-            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "true" } } }),
-            json!({ "type": "content_block_stop", "index": 0 }),
-            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
-        ]);
         let api = MockApi::start_with_message_limit(
             vec![
-                full_context_tool_call,
+                full_context(tool_reply("call-1", "bash", json!({ "command": "true" }))),
                 text_reply("summary of the work"),
                 text_reply("second summary"),
             ],
@@ -303,16 +283,14 @@ mod tests {
 
     #[tokio::test]
     async fn compacts_a_conversation_that_outgrew_the_context_window() {
-        let full_context_tool_call = Reply::Events(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
-            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "head -c 15000 /dev/zero | tr '\\0' x" } } }),
-            json!({ "type": "content_block_stop", "index": 0 }),
-            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
-        ]);
         // The tool output alone is larger than the API accepts.
         let api = MockApi::start_with_message_limit(
             vec![
-                full_context_tool_call,
+                full_context(tool_reply(
+                    "call-1",
+                    "bash",
+                    json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
+                )),
                 text_reply("summary of the work"),
                 text_reply("done"),
             ],
