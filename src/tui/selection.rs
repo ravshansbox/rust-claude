@@ -6,6 +6,7 @@ use ratatui::{
     text::Span,
     widgets::Widget,
 };
+use std::borrow::Cow;
 
 /// Columns taken by the marker or indent before prompt rows.
 const PREFIX_WIDTH: u16 = 2;
@@ -85,7 +86,11 @@ impl App {
         } else {
             " "
         };
-        let text = text.lines().collect::<Vec<_>>().join("\n");
+        let text = if text.contains('\r') || text.ends_with('\n') {
+            Cow::Owned(text.lines().collect::<Vec<_>>().join("\n"))
+        } else {
+            Cow::Borrowed(text)
+        };
         self.insert(&format!("{space}'{text}' - "));
     }
 
