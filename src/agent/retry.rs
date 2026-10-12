@@ -42,9 +42,7 @@ pub(crate) fn retry_delay(error: &anyhow::Error, attempt: u32) -> Option<Duratio
 }
 
 pub(super) fn is_retryable_status(status: reqwest::StatusCode) -> bool {
-    status == reqwest::StatusCode::TOO_MANY_REQUESTS
-        || status.as_u16() == 529
-        || status.is_server_error()
+    status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
 }
 
 pub(super) fn retry_after(headers: &reqwest::header::HeaderMap) -> Option<Duration> {
