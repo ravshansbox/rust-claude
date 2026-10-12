@@ -645,6 +645,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
+        let api = MockApi::start(vec![
+            Reply::Trickled(vec![
+                json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+                json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "héllo 👋 " } }),
+                json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "wörld" } }),
+                json!({ "type": "content_block_stop", "index": 0 }),
+                json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "call", "name": "read", "input": {} } }),
+                json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "{\"path\": \"ünï" } }),
+                json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "cødé.txt\"}" } }),
+                json!({ "type": "content_block_stop", "index": 1 }),
+                json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+                json!({ "type": "message_stop" }),
+            ]),
+            text_reply("done"),
+        ])
+        .await;
+        let mut text = String::new();
+        let (_, result) = test_support::run_prompt(&api, "hi", |event| {
+            if let AgentEvent::Text(delta) = event {
+                text.push_str(&delta);
+            }
+        })
+        .await;
+        result.unwrap();
+        assert_eq!(text, "héllo 👋 wörlddone");
+        let requests = api.requests().await;
+        let reply = &requests[1]["messages"][1]["content"];
+        assert_eq!(reply[0]["text"], "héllo 👋 wörld");
+        assert_eq!(reply[1]["input"], json!({ "path": "ünïcødé.txt" }));
+    }
+
+    #[tokio::test]
     async fn retries_an_overloaded_reply_whose_error_breaks_off() {
         let api = MockApi::start(vec![Reply::CutOffOverloaded, text_reply("hello")]).await;
         let mut text = String::new();

@@ -11,6 +11,8 @@ use tokio::{
 pub(crate) enum Reply {
     Stall,
     Events(Vec<Value>),
+    /// These events, sent a few bytes at a time.
+    Trickled(Vec<Value>),
     /// A 400 `invalid_request_error` with this message.
     BadRequest(String),
     /// A 529 overloaded error, to retry at once, whose body breaks off.
@@ -140,16 +142,21 @@ async fn read_request(stream: &mut TcpStream) -> Option<(String, Value)> {
 async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
     match reply {
         Some(Reply::Events(events)) => {
-            let body: String = events
-                .iter()
-                .map(|event| {
-                    format!(
-                        "event: {}\ndata: {event}\n\n",
-                        event["type"].as_str().unwrap()
-                    )
-                })
-                .collect();
+            let body = event_stream(&events);
             write_response(stream, "200 OK", "text/event-stream", &body).await;
+        }
+        Some(Reply::Trickled(events)) => {
+            let body = event_stream(&events);
+            let head = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                body.len()
+            );
+            let _ = stream.write_all(head.as_bytes()).await;
+            for piece in body.as_bytes().chunks(5) {
+                let _ = stream.write_all(piece).await;
+                let _ = stream.flush().await;
+                tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+            }
         }
         Some(Reply::Stall) => {
             let _ = stream
@@ -169,6 +176,18 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
         }
         None => bad_request(stream, "no scripted reply").await,
     }
+}
+
+fn event_stream(events: &[Value]) -> String {
+    events
+        .iter()
+        .map(|event| {
+            format!(
+                "event: {}\ndata: {event}\n\n",
+                event["type"].as_str().unwrap()
+            )
+        })
+        .collect()
 }
 
 async fn bad_request(stream: TcpStream, message: &str) {
