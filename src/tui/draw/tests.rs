@@ -225,6 +225,32 @@ fn shows_a_scroll_to_bottom_button_above_the_prompt_when_scrolled_up() {
 }
 
 #[test]
+fn scrolls_back_a_page_and_returns_with_the_mouse_wheel() {
+    use crossterm::event::{MouseEvent, MouseEventKind};
+    let mut app = app_with_reply();
+    for number in 0..100 {
+        app.push(Role::Event, format!("event {number}"));
+    }
+    screen(&mut app);
+    press(&mut app, KeyCode::PageUp);
+    let shown = screen(&mut app);
+    assert!(!shown.contains("event 99"), "{shown}");
+    assert!(shown.contains("↓ Bottom (End)"), "{shown}");
+    for _ in 0..100 {
+        let event = Event::Mouse(MouseEvent {
+            kind: MouseEventKind::ScrollDown,
+            column: 0,
+            row: 0,
+            modifiers: KeyModifiers::NONE,
+        });
+        handle_input(event, &mut app, |_| {});
+    }
+    let shown = screen(&mut app);
+    assert!(shown.contains("event 99"), "{shown}");
+    assert!(!shown.contains("↓ Bottom (End)"), "{shown}");
+}
+
+#[test]
 fn shows_the_end_of_a_conversation_longer_than_65535_lines() {
     let mut app = app_with_reply();
     for number in 0..70_000 {
