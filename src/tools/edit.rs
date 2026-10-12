@@ -45,7 +45,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         new_text = to_crlf(&new_text);
         if old_text.contains('\n') && !old_text.contains('\r') {
             let converted = to_crlf(&old_text);
-            if count_matches(&content, &converted) > 0 {
+            if content.contains(&converted) {
                 old_text = converted;
             }
         }
