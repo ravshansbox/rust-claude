@@ -296,3 +296,41 @@ async fn starts_a_turn_when_a_background_command_finishes() {
     assert_eq!(last["role"], "user");
     assert!(last["content"].to_string().contains("finished"), "{last}");
 }
+
+#[tokio::test]
+async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
+    let api = MockApi::start(vec![Reply::Stall, test_support::text_reply("hi")]).await;
+    let agent = test_support::agent(&api, reqwest::Client::new());
+    let session_id = agent.session.id.clone();
+    let (request_tx, request_rx) = mpsc::unbounded_channel();
+    let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
+    let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+    let (event_tx, mut event_rx) = mpsc::unbounded_channel();
+    let worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
+    request_tx
+        .send(Request::Prompt("first".into(), Vec::new(), "off"))
+        .unwrap();
+    while api.requests().await.is_empty() {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    cancel_tx.send(()).unwrap();
+    let cancelled = wait_for_event(&mut event_rx, |event| {
+        matches!(event, UiEvent::Cancelled(Ok(())))
+    })
+    .await;
+    request_tx
+        .send(Request::Prompt("second".into(), Vec::new(), "off"))
+        .unwrap();
+    let done = wait_for_event(&mut event_rx, |event| {
+        matches!(event, UiEvent::Done(Ok(())))
+    })
+    .await;
+    quit(request_tx, cancel_tx);
+    let _ = worker.await;
+    test_support::remove_session_files(&session_id);
+    assert!(cancelled && done);
+    let requests = api.requests().await;
+    assert_eq!(requests.len(), 2);
+    let sent = requests[1]["messages"].to_string();
+    assert!(sent.contains("first") && sent.contains("second"), "{sent}");
+}
