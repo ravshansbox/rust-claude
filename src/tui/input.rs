@@ -35,7 +35,7 @@ fn starts_new_row(grapheme: &str, grapheme_width: usize, row_width: usize, width
     if matches!(grapheme, "\n" | "") {
         row_width >= width
     } else {
-        row_width > 0 && row_width + grapheme_width > width
+        row_width > 0 && row_width + grapheme_width.max(1) > width
     }
 }
 
@@ -228,6 +228,13 @@ mod tests {
         assert_eq!(input_cursor("abcd\nx", 5, 4), (2, 0));
         assert_eq!(row_below("abcd\nx", 4, 4), Some(5));
         assert_eq!(row_above("abcd\nx", 5, 4), Some(4));
+    }
+
+    #[test]
+    fn moves_zero_width_grapheme_after_full_row_to_next_row() {
+        assert_eq!(input_rows("abcd\u{1b}x", 4), vec!["abcd", "x"]);
+        assert_eq!(input_cursor("abcd\u{1b}x", 4, 4), (1, 0));
+        assert_eq!(input_cursor("abcd\u{1b}", 4, 4), (1, 0));
     }
 
     #[test]
