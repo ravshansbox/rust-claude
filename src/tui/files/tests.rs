@@ -89,6 +89,22 @@ fn picks_file_after_at_sign() {
 }
 
 #[test]
+fn picks_file_with_tab() {
+    let mut app = new_app();
+    app.set_files(0, vec!["src/agent.rs".into(), "src/main.rs".into()]);
+    handle_input(Event::Paste("read @src".into()), &mut app, |_| {});
+    press(&mut app, KeyCode::Down);
+    let mut submitted = false;
+    press_with(&mut app, KeyCode::Tab, KeyModifiers::NONE, |_| {
+        submitted = true;
+    });
+    assert!(!submitted);
+    assert_eq!(app.input, "read @src/main.rs ");
+    assert_eq!(app.cursor, app.input.len());
+    assert!(app.visible_suggestions().is_none());
+}
+
+#[test]
 fn sends_the_typed_file_name_after_esc_hides_the_suggestions() {
     let mut app = new_app();
     app.set_files(0, vec!["src/main.rs".into()]);
