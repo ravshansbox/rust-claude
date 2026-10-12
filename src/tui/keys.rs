@@ -745,7 +745,7 @@ mod tests {
         )
         .unwrap();
         let mut app = new_app();
-        app.load_history(Some(path.clone()));
+        app.load_history(Some(path));
         for prompt in ["fix tests", "add docs", "fix tests"] {
             app.remember(prompt);
         }
@@ -880,7 +880,7 @@ mod tests {
         drop(sender);
         writer.join().unwrap();
         let mut restarted = new_app();
-        restarted.load_history(Some(path.clone()));
+        restarted.load_history(Some(path));
         drop(folder);
         assert_eq!(press(&mut restarted, KeyCode::Up), "third");
         assert_eq!(press(&mut restarted, KeyCode::Up), "first");
