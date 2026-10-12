@@ -6,6 +6,8 @@ use std::{
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::config;
+
 #[derive(Default, Serialize, Deserialize)]
 pub struct Settings {
     pub model: Option<String>,
@@ -17,7 +19,7 @@ pub struct Settings {
 }
 
 fn settings_path() -> Result<PathBuf> {
-    Ok(crate::config::dir()
+    Ok(config::dir()
         .context("HOME is not set")?
         .join("settings.json"))
 }
@@ -62,8 +64,8 @@ fn read_file(path: &Path) -> Result<Settings> {
 fn update_file(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<()> {
     let mut settings = read_file(path)?;
     change(&mut settings);
-    crate::config::create_private_dir(path.parent().context("invalid settings path")?)?;
-    crate::config::write_private_file(path, serde_json::to_string_pretty(&settings)?.as_bytes())?;
+    config::create_private_dir(path.parent().context("invalid settings path")?)?;
+    config::write_private_file(path, serde_json::to_string_pretty(&settings)?.as_bytes())?;
     Ok(())
 }
 
