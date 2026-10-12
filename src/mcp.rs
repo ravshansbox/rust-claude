@@ -2551,6 +2551,29 @@ done
     }
 
     #[tokio::test]
+    async fn uses_short_lived_oauth_tokens_until_they_expire() {
+        let (url, requests) = http_server(|request| {
+            if request.path == "/token" {
+                return HttpReply::json(json!({
+                    "access_token": "fresh",
+                    "token_type": "Bearer",
+                    "expires_in": 30,
+                }));
+            }
+            signed_in_mcp(request)
+        })
+        .await;
+        save_tokens(&url, "stale", now_millis() - 1);
+        let mut mcp = Mcp::default();
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+        assert_eq!(
+            mcp.call("mcp__web__echo", &json!({})).await,
+            Some(Ok("pong".into()))
+        );
+        assert_eq!(requests_for_path(&requests, "/token").len(), 1);
+    }
+
+    #[tokio::test]
     async fn asks_to_sign_in_when_an_http_server_needs_it() {
         let (url, _) = http_server(signed_in_mcp).await;
         let mut mcp = Mcp::default();

@@ -12,7 +12,8 @@ use tokio::{
     net::{TcpListener, TcpStream},
 };
 
-/// Tokens are renewed this long before they expire.
+/// Tokens are renewed this long before they expire, or halfway through
+/// their lifetime when that is shorter than twice this.
 const EXPIRY_MARGIN: u128 = 60_000;
 
 /// Serialises changes to mcp-auth.json within this process.
@@ -30,7 +31,7 @@ pub(super) struct Saved {
     pub access_token: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub refresh_token: Option<String>,
-    /// When the access token expires, in milliseconds since 1970.
+    /// When the access token is renewed, in milliseconds since 1970.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<u128>,
     /// Whether `client_secret` comes from mcp.json, so it is not saved.
@@ -41,7 +42,7 @@ pub(super) struct Saved {
 impl Saved {
     pub fn expired(&self) -> bool {
         self.expires_at
-            .is_some_and(|expires_at| now_millis() + EXPIRY_MARGIN >= expires_at)
+            .is_some_and(|expires_at| now_millis() >= expires_at)
     }
 }
 
@@ -151,9 +152,10 @@ pub(super) async fn request_tokens(
             .as_str()
             .map(str::to_string)
             .or_else(|| saved.refresh_token.clone()),
-        expires_at: reply["expires_in"]
-            .as_u64()
-            .map(|seconds| now_millis() + u128::from(seconds) * 1000),
+        expires_at: reply["expires_in"].as_u64().map(|seconds| {
+            let lifetime = u128::from(seconds) * 1000;
+            now_millis() + lifetime - lifetime.min(2 * EXPIRY_MARGIN) / 2
+        }),
         ..saved.clone()
     })
 }
