@@ -41,10 +41,9 @@ fn starts_new_row(grapheme: &str, grapheme_width: usize, row_width: usize, width
 
 fn layout(input: &str, width: usize) -> impl Iterator<Item = (usize, &str, usize, usize)> {
     let (mut row, mut row_width) = (0, 0);
-    let end = (input.len(), "");
     input
         .grapheme_indices(true)
-        .chain([end])
+        .chain([(input.len(), "")])
         .map(move |(index, grapheme)| {
             let grapheme_width = shown_width(grapheme);
             if starts_new_row(grapheme, grapheme_width, row_width, width) {
