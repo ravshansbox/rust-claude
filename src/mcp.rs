@@ -1677,17 +1677,13 @@ mod tests {
 
     #[test]
     fn reads_oauth_settings_from_global_and_project_configs() {
-        let directory = std::env::temp_dir().join(format!("mcp-oauth-{}", std::process::id()));
-        std::fs::create_dir_all(&directory).unwrap();
-        let path = directory.join("mcp.json");
-        std::fs::write(
-            &path,
+        let file = TemporaryFile::new(
+            "mcp-oauth",
             r#"{ "mcpServers": { "figma": { "url": "https://mcp.figma.com/mcp", "oauth": { "clientId": "own" } } } }"#,
-        )
-        .unwrap();
+        );
         let mut servers = BTreeMap::new();
         let mut diagnostics = Vec::new();
-        read_config(&path, Scope::Project, &mut servers, &mut diagnostics);
+        read_config(file.path(), Scope::Project, &mut servers, &mut diagnostics);
         assert!(diagnostics.is_empty());
         assert_eq!(servers["figma"].0, Scope::Project);
         assert_eq!(
@@ -1698,7 +1694,6 @@ mod tests {
                 .and_then(|oauth| oauth.client_id.as_deref()),
             Some("own")
         );
-        std::fs::remove_dir_all(&directory).unwrap();
     }
 
     #[test]
