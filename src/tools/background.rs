@@ -72,6 +72,15 @@ impl Background {
 
     pub fn stop(&mut self, input: &Value) -> Result<String, String> {
         let id = input["id"].as_u64().ok_or("missing argument: id")?;
+        if self
+            .running
+            .get(&id)
+            .is_some_and(|running| running.task.is_finished())
+        {
+            return Ok(format!(
+                "background task {id} has already finished. Its output arrives in a later message."
+            ));
+        }
         self.running
             .remove(&id)
             .ok_or_else(|| format!("no background task {id} is running"))?;
@@ -155,6 +164,28 @@ mod tests {
         drop(background);
         std::thread::sleep(Duration::from_millis(200));
         assert!(!is_running(&pid), "process {pid} still running");
+    }
+
+    #[tokio::test]
+    async fn keeps_the_output_of_a_task_that_finished_before_it_was_stopped() {
+        let mut background = Background::default();
+        background
+            .start(&json!({ "command": "echo done", "run_in_background": true }))
+            .unwrap();
+        while !background.running[&1].task.is_finished() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+        assert_eq!(
+            background.stop(&json!({ "id": 1 })),
+            Ok(
+                "background task 1 has already finished. Its output arrives in a later message."
+                    .into()
+            )
+        );
+        assert_eq!(
+            background.next().await,
+            Some(message(1, "echo done", "done\n"))
+        );
     }
 
     #[test]
