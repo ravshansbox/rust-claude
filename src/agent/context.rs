@@ -103,7 +103,8 @@ pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
 }
 
 fn mark_last_block(message: &mut Value) {
-    if let Some(text) = message["content"].as_str().map(str::to_owned) {
+    if let Value::String(text) = &mut message["content"] {
+        let text = std::mem::take(text);
         message["content"] = json!([{ "type": "text", "text": text }]);
     }
     // The API does not allow cache_control on thinking blocks.
