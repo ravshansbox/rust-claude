@@ -177,7 +177,7 @@ mod tests {
         let mut groups = vec![0; 256];
         // SAFETY: the buffer holds as many groups as the length passed.
         let count = unsafe { libc::getgroups(groups.len() as i32, groups.as_mut_ptr()) };
-        groups.truncate(count.max(0) as usize);
+        groups.truncate(usize::try_from(count).unwrap_or(0));
         let Some(&group) = groups.iter().find(|&&group| group != current) else {
             return;
         };
