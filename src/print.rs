@@ -293,6 +293,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
 mod tests {
     use super::{AgentEvent, Printer};
     use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
+    use crate::tools::test_support::TemporaryDir;
     use serde_json::json;
     use std::io;
 
@@ -401,10 +402,8 @@ mod tests {
 
     #[tokio::test]
     async fn keeps_escape_sequences_from_the_model_and_tools_out_of_the_terminal() {
-        let path = std::env::temp_dir().join(format!(
-            "rust-coding-agent-print-escape-{}",
-            std::process::id()
-        ));
+        let directory = TemporaryDir::new("print-escape");
+        let path = directory.path().join("escape");
         let api = MockApi::start(vec![
             tool_reply(
                 "call-1",
@@ -427,9 +426,7 @@ mod tests {
         let mut printer = Printer::new(&mut out, true, &mut err, true, true, None);
         let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
         printer.flush_reads();
-        let finished = printer.finish(result);
-        let _ = std::fs::remove_file(&path);
-        finished.unwrap();
+        printer.finish(result).unwrap();
         let out = String::from_utf8(out).unwrap();
         let err = String::from_utf8(err).unwrap();
 
