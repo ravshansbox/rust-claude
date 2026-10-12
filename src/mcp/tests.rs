@@ -1334,6 +1334,41 @@ async fn oauth_server_changing(
 }
 
 #[tokio::test]
+async fn asks_for_a_client_id_when_the_sign_in_server_does_not_allow_registering() {
+    let url = oauth_server_changing("/.well-known/oauth-authorization-server/auth", |metadata| {
+        metadata
+            .as_object_mut()
+            .unwrap()
+            .remove("registration_endpoint");
+    })
+    .await;
+    assert_eq!(
+        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        Some(
+            "the sign-in server does not let rust-coding-agent register; set oauth.clientId in mcp.json"
+                .into()
+        )
+    );
+}
+
+#[tokio::test]
+async fn reports_a_registration_the_sign_in_server_turned_down() {
+    let url = oauth_server_changing("/.well-known/oauth-authorization-server/auth", |metadata| {
+        let closed = metadata["registration_endpoint"]
+            .as_str()
+            .unwrap()
+            .to_string()
+            + "-closed";
+        metadata["registration_endpoint"] = json!(closed);
+    })
+    .await;
+    assert_eq!(
+        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        Some("cannot register Claude Code with the sign-in server: status 401: ".into())
+    );
+}
+
+#[tokio::test]
 async fn refuses_resource_metadata_for_another_server() {
     let url = oauth_server_changing("/.well-known/oauth-protected-resource/mcp", |metadata| {
         metadata["resource"] = json!("https://other.example/mcp");
