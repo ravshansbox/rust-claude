@@ -4,6 +4,7 @@ mod draw;
 mod files;
 mod input;
 mod keys;
+mod message;
 mod render;
 mod replay;
 mod selection;
@@ -25,7 +26,7 @@ use crate::{
     update::Updater,
 };
 use anyhow::Result;
-use app::{Activity, App, HistorySearch, Picker, PickerKind, Role};
+use app::{Activity, App, HistorySearch, Picker, PickerKind};
 use crossterm::{
     event::{
         DisableBracketedPaste, DisableFocusChange, DisableMouseCapture, EnableBracketedPaste,
@@ -38,6 +39,7 @@ use draw::draw;
 use files::list_files;
 use futures::StreamExt;
 use keys::{Action, handle_input, may_change_screen};
+use message::Role;
 use ratatui::DefaultTerminal;
 use render::{BACKGROUND, THEME, Theme};
 use replay::{handle_agent_event, replay_messages};
