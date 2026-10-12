@@ -55,8 +55,8 @@ fn shorten(text: &mut Value, limit: usize) {
     let Some(content) = text.as_str() else {
         return;
     };
-    if content.chars().count() > limit {
-        let kept: String = content.chars().take(limit).collect();
+    if let Some((end, _)) = content.char_indices().nth(limit) {
+        let kept = &content[..end];
         *text = json!(format!(
             "{kept}\n[the rest of this output was left out to fit the context window]"
         ));
