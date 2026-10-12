@@ -278,12 +278,16 @@ fn collect_from(
 
 fn split_frontmatter(content: &str) -> (Option<String>, String) {
     let content = content.strip_prefix('\u{feff}').unwrap_or(content);
-    let normalised = content.replace("\r\n", "\n").replace('\r', "\n");
+    let normalised = if content.contains('\r') {
+        Cow::Owned(content.replace("\r\n", "\n").replace('\r', "\n"))
+    } else {
+        Cow::Borrowed(content)
+    };
     if !normalised.starts_with("---") {
-        return (None, normalised);
+        return (None, normalised.into_owned());
     }
     let Some(end) = normalised[3..].find("\n---").map(|index| index + 3) else {
-        return (None, normalised);
+        return (None, normalised.into_owned());
     };
     let yaml = normalised.get(4..end).unwrap_or_default().to_string();
     let body = normalised[end + 4..].trim().to_string();
