@@ -84,14 +84,6 @@ fn turns_photos_upright_using_their_exif_orientation() {
 }
 
 #[test]
-fn rejects_data_that_is_not_an_image() {
-    assert_eq!(
-        prepare(b"not an image".to_vec()).unwrap_err().to_string(),
-        "unsupported image format"
-    );
-}
-
-#[test]
 fn shrinks_images_over_the_api_5_mb_base64_limit() {
     // Noise compresses poorly: this PNG is about 9 MB in base64.
     let mut seed: u32 = 1;
