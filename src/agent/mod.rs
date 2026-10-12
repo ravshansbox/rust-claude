@@ -214,6 +214,7 @@ impl Agent {
         let (session, messages) = tokio::task::spawn_blocking(move || Session::load(&id)).await??;
         self.session = session;
         self.messages.clone_from(&messages);
+        self.background = tools::background::Background::default();
         Ok(messages)
     }
 
@@ -240,6 +241,7 @@ impl Agent {
     pub fn new_session(&mut self) -> Result<()> {
         self.session = Session::new()?;
         self.messages.clear();
+        self.background = tools::background::Background::default();
         Ok(())
     }
 

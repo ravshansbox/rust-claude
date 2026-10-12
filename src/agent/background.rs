@@ -122,4 +122,29 @@ mod tests {
         assert!(!agent.has_background());
         assert!(!is_running(&pid), "process {pid} still running");
     }
+
+    #[tokio::test]
+    async fn stops_background_commands_when_a_new_session_starts() {
+        let pid_file = TemporaryFile::new("background-new-session-pid", "");
+        let command = format!("echo $$ > {}; exec sleep 30", pid_file.path().display());
+        let api = MockApi::start(vec![
+            tool_reply(
+                "call-1",
+                "bash",
+                json!({ "command": command, "run_in_background": true }),
+            ),
+            text_reply("started"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let started = agent.prompt("start it", &[], |_| {}).await;
+        let pid = pid_file.wait_for_content().await;
+        test_support::remove_session(&agent);
+        let new_session = agent.new_session();
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        started.unwrap();
+        new_session.unwrap();
+        assert!(!agent.has_background());
+        assert!(!is_running(&pid), "process {pid} still running");
+    }
 }
