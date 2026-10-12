@@ -1,7 +1,7 @@
 use std::{
     fmt::Write as _,
     fs::{File, TryLockError},
-    io::{Read, Write},
+    io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
@@ -304,8 +304,8 @@ fn drop_mismatched_thinking_line() -> Value {
 }
 
 fn read_folder(path: &Path) -> Result<Option<String>> {
-    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
-    let Some(line) = std::io::BufRead::lines(reader).next().transpose()? else {
+    let reader = BufReader::new(File::open(path)?);
+    let Some(line) = reader.lines().next().transpose()? else {
         return Ok(None);
     };
     let line: Value = serde_json::from_str(&line)?;
@@ -315,8 +315,8 @@ fn read_folder(path: &Path) -> Result<Option<String>> {
 }
 
 fn read_preview(path: &Path) -> Result<String> {
-    let reader = std::io::BufReader::new(std::fs::File::open(path)?);
-    for line in std::io::BufRead::lines(reader) {
+    let reader = BufReader::new(File::open(path)?);
+    for line in reader.lines() {
         let line = line?;
         if line.trim().is_empty() {
             continue;
