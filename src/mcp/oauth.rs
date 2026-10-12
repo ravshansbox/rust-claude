@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};
+use std::{collections::BTreeMap, io, path::PathBuf, sync::Mutex, time::Duration};
 
 use crate::{
     auth::{now_millis, pkce_challenge, random_token},
@@ -58,7 +58,7 @@ fn read_all() -> BTreeMap<String, Saved> {
 
 fn write_all(saved: &BTreeMap<String, Saved>) -> Result<(), String> {
     let path = path().ok_or("HOME is not set")?;
-    let write = || -> std::io::Result<()> {
+    let write = || -> io::Result<()> {
         if let Some(parent) = path.parent() {
             config::create_private_dir(parent)?;
         }
