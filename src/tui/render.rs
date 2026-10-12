@@ -142,21 +142,44 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 }
 
 fn hard_line_breaks(text: &str) -> String {
-    let mut in_fence = false;
+    let mut fence = None;
     let mut out = String::with_capacity(text.len());
     for (index, line) in text.lines().enumerate() {
         if index > 0 {
             out.push('\n');
         }
         out.push_str(line);
-        let trimmed = line.trim_start();
-        if trimmed.starts_with("```") || trimmed.starts_with("~~~") {
-            in_fence = !in_fence;
-        } else if !in_fence {
+        let was_open = fence.is_some();
+        fence = next_fence(fence, line);
+        if !was_open && fence.is_none() {
             out.push_str("  ");
         }
     }
     out
+}
+
+/// The fence character and length of the code block open after `line`,
+/// given the one open before it.
+pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
+    let trimmed = line.trim_start();
+    let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
+        return open;
+    };
+    let length = trimmed.chars().take_while(|c| *c == fence).count();
+    if length < 3 {
+        return open;
+    }
+    match open {
+        None => Some((fence, length)),
+        Some((open_fence, open_length))
+            if fence == open_fence
+                && length >= open_length
+                && trimmed[length..].trim().is_empty() =>
+        {
+            None
+        }
+        _ => open,
+    }
 }
 
 pub(crate) fn tool_message(name: &str, summary: &str, diff: Option<&str>) -> String {
@@ -680,5 +703,19 @@ mod tests {
         let lines = render_message(Role::Assistant, text, 30);
         assert!(lines.iter().any(|line| line.to_string().contains('│')));
         assert!(lines.iter().all(|line| line.width() <= 30));
+    }
+
+    #[test]
+    fn keeps_line_breaks_after_a_code_block_holding_another_fence() {
+        let text = "```\n~~~\n```\nfirst\nsecond";
+        let lines: Vec<String> = render_message(Role::Assistant, text, 40)
+            .iter()
+            .map(|line| line.to_string())
+            .collect();
+        assert!(lines.iter().any(|line| line.trim() == "first"), "{lines:?}");
+        assert!(
+            lines.iter().any(|line| line.trim() == "second"),
+            "{lines:?}"
+        );
     }
 }

@@ -4,7 +4,7 @@ use super::{
     draw::SPINNER_FRAMES,
     files::{FileList, file_query},
     keys::Action,
-    render::{borrowed_line, render_message, tool_message, wrapped_height},
+    render::{borrowed_line, next_fence, render_message, tool_message, wrapped_height},
     selection::Selection,
     workspace_label,
 };
@@ -244,8 +244,8 @@ fn has_table(text: &str) -> bool {
 /// shows once the reply finishes.
 fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
     let mut finished = 0;
-    // Whether `hard_line_breaks` sees a fence open, by its simpler rule.
-    let mut in_fence = false;
+    // The code block `hard_line_breaks` sees open, by its simpler rule.
+    let mut block = None;
     // The fence character and length of the open code block that starts the line.
     let mut open: Option<(char, usize)> = None;
     // HTML can hold blank lines, so after it only code blocks end a part.
@@ -256,6 +256,8 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         let start = end;
         end += line.len();
         let trimmed = line.trim_start();
+        let in_fence = block.is_some();
+        block = next_fence(block, line);
         if in_fence || open.is_some() {
             after_blank = false;
         } else {
@@ -277,7 +279,6 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         if length < 3 {
             continue;
         }
-        in_fence = !in_fence;
         let indent = line.len() - trimmed.len();
         match open {
             None if indent == 0 => open = Some((fence, length)),
@@ -288,7 +289,7 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
                     && trimmed[length..].trim().is_empty() =>
             {
                 open = None;
-                if !in_fence && line.ends_with('\n') {
+                if block.is_none() && line.ends_with('\n') {
                     finished = end;
                 }
             }
@@ -1307,7 +1308,7 @@ mod tests {
             1. Step one\n   ```sh\n   cargo test\n   ```\n2. Step two\n\n\
             # Heading\n```\nno blank line before or after\n```\nafter\n\
             | a | b |\n| --- | --- |\n| 1 | 2 |\n\n~~~\ntilde\n~~~\n\n\
-            > quote\n\n```python\nprint('x')\n```\n";
+            > quote\n\n```python\nprint('x')\n```\n\n```\n~~~\n```\nfirst\nsecond\n";
         let mut streamed = new_app();
         let characters: Vec<char> = reply.chars().collect();
         for chunk in characters.chunks(3) {
