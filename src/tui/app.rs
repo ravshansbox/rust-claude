@@ -1081,6 +1081,7 @@ mod tests {
     use super::{Activity, App, ChatMessage, Role, Scope};
     use crate::agent::AgentEvent;
     use crate::mcp;
+    use crate::tools::test_support::TemporaryDir;
     use crate::tui::{
         UiEvent, handle_agent_event, handle_input,
         test_support::{new_app, press, screen},
@@ -1413,12 +1414,8 @@ mod tests {
 
     #[test]
     fn sends_a_prompt_while_another_copy_holds_the_history_lock() {
-        let folder = std::env::temp_dir().join(format!(
-            "rust-coding-agent-history-lock-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&folder).unwrap();
-        let path = folder.join("history.jsonl");
+        let folder = TemporaryDir::new("history-lock");
+        let path = folder.path().join("history.jsonl");
         let lock = std::fs::File::create(path.with_extension("jsonl.lock")).unwrap();
         lock.lock().unwrap();
         let mut app = new_app();
@@ -1431,7 +1428,6 @@ mod tests {
         });
         let history = received.recv_timeout(std::time::Duration::from_secs(2));
         drop(lock);
-        let _ = std::fs::remove_dir_all(&folder);
         assert_eq!(history, Ok(vec!["hello".to_string()]));
     }
 }

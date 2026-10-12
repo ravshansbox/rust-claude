@@ -620,7 +620,7 @@ mod tests {
     use super::{
         HeldPanics, InputModes, UiEvent, history_writer, instructions_line, notify, tools_line,
     };
-    use crate::{agent::AgentEvent, history};
+    use crate::{agent::AgentEvent, history, tools::test_support::TemporaryDir};
     use std::sync::{Mutex, PoisonError};
 
     #[test]
@@ -646,11 +646,8 @@ mod tests {
 
     #[test]
     fn saves_prompt_history_in_order_and_reports_failures() {
-        let folder = std::env::temp_dir().join(format!(
-            "rust-coding-agent-history-writer-{}",
-            std::process::id()
-        ));
-        std::fs::create_dir_all(&folder).unwrap();
+        let directory = TemporaryDir::new("history-writer");
+        let folder = directory.path();
         let path = folder.join("history.jsonl");
         std::fs::write(folder.join("missing"), "a file, not a folder").unwrap();
         let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
@@ -676,7 +673,6 @@ mod tests {
             Ok(UiEvent::Agent(AgentEvent::Notice(notice))) => notice,
             _ => String::new(),
         };
-        let _ = std::fs::remove_dir_all(&folder);
         assert_eq!(saved, ["one", "two"]);
         assert!(
             notice.starts_with("failed to save prompt history: "),
