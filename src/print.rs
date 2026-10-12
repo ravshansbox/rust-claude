@@ -2,7 +2,7 @@ use crate::{
     agent::{Agent, AgentEvent, Stats},
     highlight,
     images::Image,
-    tools,
+    tools, tui,
 };
 use std::{collections::HashMap, io::Write};
 
@@ -19,7 +19,7 @@ pub async fn run<Out: Write, Err: Write>(
     while let Some(message) = agent.next_background().await {
         printer.flush_reads();
         if let Some((summary, output)) = tools::background::display(&message) {
-            printer.tool(&crate::tui::tool_message("background", &summary, output));
+            printer.tool(&tui::tool_message("background", &summary, output));
         }
         turn(agent, printer, &message, &[], checkpoint).await?;
     }
@@ -164,7 +164,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 let held = text.len() - shown.len();
                 let text = "\n".repeat(std::mem::replace(&mut self.held_newlines, held)) + shown;
                 if self.colour {
-                    let _ = write!(self.err, "{}", crate::tui::ansi_thinking(&text));
+                    let _ = write!(self.err, "{}", tui::ansi_thinking(&text));
                 } else {
                     let _ = write!(self.err, "{}", highlight::strip_controls(&text));
                 }
@@ -183,7 +183,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                     return;
                 }
                 self.flush_reads();
-                self.tool(&crate::tui::tool_message(&name, &summary, diff));
+                self.tool(&tui::tool_message(&name, &summary, diff));
             }
             AgentEvent::ToolDone {
                 name,
@@ -221,7 +221,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 self.flush_reads();
                 let (description, stats) = self.tasks.remove(&task).unwrap_or_default();
                 let failure = reply.err();
-                let text = crate::tui::finished_task(
+                let text = tui::finished_task(
                     task,
                     &description,
                     tool_calls,
@@ -237,7 +237,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
     pub fn flush_reads(&mut self) {
         if !self.reads.is_empty() {
             let summary = std::mem::take(&mut self.reads).summary();
-            self.tool(&crate::tui::tool_message("read", &summary, None));
+            self.tool(&tui::tool_message("read", &summary, None));
         }
     }
 
@@ -270,7 +270,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             return;
         }
         let columns = crossterm::terminal::size().ok().map(|(columns, _)| columns);
-        for line in crate::tui::ansi_tool_lines(text, self.dark, self.background, columns) {
+        for line in tui::ansi_tool_lines(text, self.dark, self.background, columns) {
             let _ = writeln!(self.err, "{line}");
         }
     }
