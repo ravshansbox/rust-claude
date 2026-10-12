@@ -10,8 +10,10 @@ pub fn definition() -> Value {
 /// The number of results a search found, or the error code it failed with.
 pub fn outcome(content: &Value) -> Result<String, String> {
     match content.as_array() {
-        Some(results) if results.len() == 1 => Ok("1 result".into()),
-        Some(results) => Ok(format!("{} results", results.len())),
+        Some(results) => Ok(match results.len() {
+            1 => "1 result".into(),
+            count => format!("{count} results"),
+        }),
         None => Err(content["error_code"]
             .as_str()
             .unwrap_or("unknown error")
