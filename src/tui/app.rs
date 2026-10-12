@@ -338,8 +338,8 @@ impl Activity {
 }
 
 impl std::fmt::Display for Activity {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str(match self {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str(match self {
             Self::Working => "working",
             Self::Compacting => "compacting",
             Self::Running => "running",
