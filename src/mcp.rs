@@ -1418,7 +1418,10 @@ pub fn startup() -> Startup {
 
 fn sign_in_summary(name: &str, failed: &str) -> Option<String> {
     failed
-        .starts_with(&format!("MCP server {name} {NEEDS_SIGN_IN}"))
+        .strip_prefix("MCP server ")
+        .and_then(|rest| rest.strip_prefix(name))
+        .and_then(|rest| rest.strip_prefix(' '))
+        .is_some_and(|rest| rest.starts_with(NEEDS_SIGN_IN))
         .then(|| format!("{name} ({NEEDS_SIGN_IN})"))
 }
 
