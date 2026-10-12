@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::config;
+use crate::{agent::retry::retryable, config};
 
 const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const AUTHORIZE_URL: &str = "https://claude.ai/oauth/authorize";
@@ -208,7 +208,7 @@ impl Credentials {
             Err(error) if error.is::<Unusable>() => Err(error.context(format!(
                 "{problem}: restart rust-coding-agent to sign in again"
             ))),
-            Err(error) => Err(crate::agent::retry::retryable(
+            Err(error) => Err(retryable(
                 format!("could not renew the sign-in: {error:#}"),
                 None,
             )),
