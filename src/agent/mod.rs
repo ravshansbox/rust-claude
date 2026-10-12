@@ -46,6 +46,9 @@ const COMPACT_AT_PERCENT: u64 = 80;
 /// conversation is too long to summarise.
 const COMPACT_TOOL_RESULT_LIMITS: [usize; 2] = [2_000, 200];
 
+/// The result saved for a tool call that was cancelled before it finished.
+pub const CANCELLED: &str = "cancelled by the user";
+
 fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
     messages[checkpoint..]
         .iter()
@@ -340,7 +343,7 @@ impl Agent {
             results.push(json!({
                 "type": "tool_result",
                 "tool_use_id": block["id"],
-                "content": "cancelled by the user",
+                "content": CANCELLED,
                 "is_error": true,
             }));
         }

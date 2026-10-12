@@ -1,6 +1,6 @@
 use super::{Activity, App, Picker, PickerKind, Role, time_ago, worker::UiEvent};
 use crate::{
-    agent::{AgentEvent, parse_shell_message},
+    agent::{AgentEvent, CANCELLED, parse_shell_message},
     skills, tools,
 };
 use serde_json::Value;
@@ -159,6 +159,11 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
             app.push(Role::Event, "compacted conversation");
             continue;
         }
+        if message["stop_reason"] == "aborted" {
+            app.push(Role::Event, "cancelled");
+            continue;
+        }
+        let mut cancelled = false;
         let role = message["role"].as_str().unwrap_or_default();
         if let Some(text) = message["content"].as_str() {
             replay_prompt(app, text);
@@ -177,12 +182,17 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                 }
                 ("assistant", "tool_use") => {
                     let name = block["name"].as_str().unwrap_or_default();
+                    let result = block["id"].as_str().and_then(|id| results.get(id));
+                    if cancelled {
+                        continue;
+                    }
                     app.push_tool(
                         name,
                         tools::summary(name, &block["input"]),
                         tools::diff(name, &block["input"]).as_deref(),
                     );
-                    match block["id"].as_str().and_then(|id| results.get(id)) {
+                    match result {
+                        Some((error, true)) if *error == CANCELLED => cancelled = true,
                         Some((error, true)) => {
                             let error = error.as_str().unwrap_or_default();
                             app.push(Role::Event, format!("{name} failed: {error}"));
@@ -457,6 +467,27 @@ mod tests {
             texts,
             ["read a.rs, b.rs", "read failed: missing", "read c.rs"]
         );
+    }
+
+    #[test]
+    fn replays_a_cancelled_tool_call_as_it_appeared_live() {
+        let mut app = new_app();
+        let read = |id: &str, path: &str| json!({ "type": "tool_use", "id": id, "name": "read", "input": { "path": path } });
+        let result = |id: &str, content: &str, is_error: bool| json!({ "type": "tool_result", "tool_use_id": id, "content": content, "is_error": is_error });
+        replay_messages(
+            &mut app,
+            &[
+                json!({ "role": "user", "content": "hello" }),
+                json!({ "role": "assistant", "content": [read("1", "a.rs"), read("2", "b.rs"), read("3", "c.rs")] }),
+                json!({ "role": "user", "content": [result("1", "a", false), result("2", "cancelled by the user", true), result("3", "cancelled by the user", true)] }),
+                json!({ "role": "assistant", "stop_reason": "aborted", "content": [] }),
+            ],
+        );
+        let texts: Vec<&str> = app.messages[1..]
+            .iter()
+            .map(|message| message.text.as_str())
+            .collect();
+        assert_eq!(texts, ["hello", "read a.rs, b.rs", "cancelled"]);
     }
 
     #[test]
