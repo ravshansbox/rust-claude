@@ -21,7 +21,8 @@ use tokio::{
 mod oauth;
 
 use crate::{
-    skills::Scope,
+    config,
+    skills::{self, Scope},
     tools::{self, ProcessGroup},
 };
 
@@ -174,7 +175,7 @@ fn read_configs(config_dir: Option<&Path>, cwd: &Path) -> (Configs, Vec<String>,
         .map(|(name, _)| name.clone())
         .collect();
     let project_dir = cwd.join(".rust-coding-agent");
-    if !config_dir.is_some_and(|config_dir| crate::skills::same_dir(config_dir, &project_dir)) {
+    if !config_dir.is_some_and(|config_dir| skills::same_dir(config_dir, &project_dir)) {
         read_config(
             &project_dir.join("mcp.json"),
             Scope::Project,
@@ -1302,7 +1303,7 @@ pub async fn begin_sign_in(name: &str) -> Result<SignIn, String> {
 
 fn configs() -> (Configs, Vec<String>, Vec<String>) {
     let cwd = std::env::current_dir().unwrap_or_default();
-    read_configs(crate::config::dir().as_deref(), &cwd)
+    read_configs(config::dir().as_deref(), &cwd)
 }
 
 fn configured(name: &str) -> Result<ServerConfig, String> {
@@ -2467,8 +2468,7 @@ done
         );
         let token_form = requests_for_path(&requests, "/token")[0].form();
         assert_eq!(token_form["client_secret"], "own-secret");
-        let file =
-            std::fs::read_to_string(crate::config::dir().unwrap().join("mcp-auth.json")).unwrap();
+        let file = std::fs::read_to_string(config::dir().unwrap().join("mcp-auth.json")).unwrap();
         assert!(!file.contains("own-secret"), "{file}");
     }
 
@@ -2794,8 +2794,7 @@ done
             requests_for_path(&requests, "/token")[0].form()["client_secret"],
             "own-secret"
         );
-        let file =
-            std::fs::read_to_string(crate::config::dir().unwrap().join("mcp-auth.json")).unwrap();
+        let file = std::fs::read_to_string(config::dir().unwrap().join("mcp-auth.json")).unwrap();
         assert!(!file.contains("own-secret"), "{file}");
     }
 
