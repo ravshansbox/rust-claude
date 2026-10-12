@@ -851,10 +851,12 @@ mod tests {
 
     #[test]
     fn creates_a_new_update_folder_only_the_user_can_open() {
+        use crate::config::permissions;
+
         let dir = temp_dir("update-folder");
         let folder = dir.join("update");
         create_update_folder(&folder).unwrap();
-        let mode = crate::config::permissions(&folder);
+        let mode = permissions(&folder);
         let again = create_update_folder(&folder);
         assert_eq!(mode, Some(0o700));
         assert_eq!(again.unwrap_err().kind(), std::io::ErrorKind::AlreadyExists);
