@@ -34,11 +34,10 @@ pub(crate) fn retry_delay(error: &anyhow::Error, attempt: u32) -> Option<Duratio
     if attempt >= MAX_RETRIES {
         return None;
     }
-    match error.retry_after {
-        Some(delay) if delay > MAX_RETRY_AFTER => None,
-        Some(delay) => Some(delay),
-        None => Some(Duration::from_secs(1 << attempt)),
-    }
+    let delay = error
+        .retry_after
+        .unwrap_or_else(|| Duration::from_secs(1 << attempt));
+    (delay <= MAX_RETRY_AFTER).then_some(delay)
 }
 
 pub(super) fn is_retryable_status(status: reqwest::StatusCode) -> bool {
