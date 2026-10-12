@@ -682,7 +682,7 @@ impl App {
             None => self.prompt_history.len() - 1,
         };
         self.history_index = Some(index);
-        self.input = self.prompt_history[index].clone();
+        self.input.clone_from(&self.prompt_history[index]);
         self.cursor = self.input.len();
         self.commands_dismissed = true;
     }
@@ -693,7 +693,7 @@ impl App {
         };
         if index + 1 < self.prompt_history.len() {
             self.history_index = Some(index + 1);
-            self.input = self.prompt_history[index + 1].clone();
+            self.input.clone_from(&self.prompt_history[index + 1]);
         } else {
             self.history_index = None;
             self.input.clear();
