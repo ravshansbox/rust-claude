@@ -160,11 +160,12 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn saves_settings_only_the_user_can_read() {
+        use crate::config::permissions;
         use std::os::unix::fs::PermissionsExt;
         let path = written_settings_file("private", "{}");
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
         update_file(&path, |settings| settings.model = Some("opus".into())).unwrap();
-        let found = crate::config::permissions(&path);
+        let found = permissions(&path);
         std::fs::remove_dir_all(path.parent().unwrap()).unwrap();
         assert_eq!(found, Some(0o600));
     }
