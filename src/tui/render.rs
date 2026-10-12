@@ -277,19 +277,27 @@ fn ansi_line(line: &Line, columns: Option<u16>) -> String {
         spans.pop();
     }
     let mut ansi = String::new();
-    let mut width = 0;
     for (text, style) in &spans {
         ansi.push_str("\x1b[0m");
         push_sgr(&mut ansi, *style);
         ansi.push_str(text);
-        width += usize::from(text.as_str().cell_width());
     }
     push_sgr(
         &mut ansi,
         Style::new().bg(line.style.bg.unwrap_or(Color::Reset)),
     );
-    let fills_row =
-        columns.is_some_and(|columns| width > 0 && width % usize::from(columns.max(1)) == 0);
+    let fills_row = columns.is_some_and(|columns| {
+        let columns = usize::from(columns.max(1));
+        let mut column = 0;
+        for grapheme in spans.iter().flat_map(|(text, _)| text.graphemes(true)) {
+            let width = usize::from(grapheme.cell_width());
+            if column + width > columns {
+                column = 0;
+            }
+            column += width;
+        }
+        column == columns
+    });
     if !fills_row {
         ansi.push_str("\x1b[K");
     }
@@ -654,6 +662,13 @@ mod tests {
         let lines = ansi_tool_lines("! ls\nabcd", false, None, Some(4));
         assert!(!lines[1].contains("\x1b[K"), "{lines:?}");
         assert!(lines[0].contains("\x1b[K"), "{lines:?}");
+    }
+
+    #[test]
+    fn counts_wide_characters_moved_to_the_next_row_in_print_mode() {
+        let lines = ansi_tool_lines("! ls\nabc你xy\nabc你xyz", false, None, Some(4));
+        assert!(!lines[1].contains("\x1b[K"), "{lines:?}");
+        assert!(lines[2].contains("\x1b[K"), "{lines:?}");
     }
 
     #[test]
