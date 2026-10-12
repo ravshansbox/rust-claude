@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context, Result};
 use serde::Deserialize;
 
-use crate::config;
+use crate::{config, settings::Settings};
 
 pub const RELEASES_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/latest";
@@ -97,11 +97,11 @@ pub struct Updater {
 impl Updater {
     /// The updater for this build, unless it is a debug build, as from
     /// `cargo run`, or `check_for_updates` is false in settings.json.
-    pub fn for_this_build(settings: &crate::settings::Settings) -> Option<Self> {
+    pub fn for_this_build(settings: &Settings) -> Option<Self> {
         Self::new(settings, cfg!(debug_assertions))
     }
 
-    fn new(settings: &crate::settings::Settings, debug_build: bool) -> Option<Self> {
+    fn new(settings: &Settings, debug_build: bool) -> Option<Self> {
         if debug_build || settings.check_for_updates == Some(false) {
             return None;
         }
@@ -376,7 +376,9 @@ pub fn find_on_path(program: &str, path: Option<std::ffi::OsString>) -> Option<P
 
 #[cfg(test)]
 mod tests {
-    use super::{Progress, Updater, create_update_folder, find_on_path, link_alias_beside};
+    use super::{
+        Progress, Settings, Updater, create_update_folder, find_on_path, link_alias_beside,
+    };
     use std::{
         io::Write,
         path::{Path, PathBuf},
@@ -828,7 +830,7 @@ mod tests {
 
     #[test]
     fn can_be_turned_off_in_settings() {
-        let settings = |check_for_updates| crate::settings::Settings {
+        let settings = |check_for_updates| Settings {
             check_for_updates,
             ..Default::default()
         };
@@ -839,7 +841,7 @@ mod tests {
 
     #[test]
     fn skips_debug_builds_such_as_cargo_run() {
-        let settings = crate::settings::Settings {
+        let settings = Settings {
             check_for_updates: Some(true),
             ..Default::default()
         };
