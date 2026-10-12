@@ -3106,8 +3106,7 @@ done
 
     #[tokio::test]
     async fn answers_server_requests_and_follows_tool_list_pages() {
-        let log = std::env::temp_dir().join(format!("mcp-replies-{}", std::process::id()));
-        let _ = std::fs::remove_file(&log);
+        let log = TemporaryFile::new("mcp-replies", "");
         let cases = r#"    *'"result"'*|*'"error"'*) printf '%s\n' "$line" >> 'LOG' ;;
     *'"cursor"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"second"}]}}\n' "$id" ;;
     *'"tools/list"'*)
@@ -3115,7 +3114,7 @@ done
       printf '{"jsonrpc":"2.0","id":"p1","method":"ping"}\n'
       printf '{"jsonrpc":"2.0","id":%s,"method":"sampling/createMessage","params":{}}\n' "$id"
       printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[{"name":"echo"}],"nextCursor":"next"}}\n' "$id" ;;"#
-            .replace("LOG", &log.display().to_string());
+            .replace("LOG", &log.path().display().to_string());
         let mut mcp = Mcp::default();
         assert_eq!(
             mcp.add(start("test".into(), Scope::Project, server_with(&cases, ":")).await)
@@ -3127,12 +3126,11 @@ done
             .map(|definition| definition["name"].clone())
             .collect();
         assert_eq!(names, ["mcp__test__echo", "mcp__test__second"]);
-        let replies: Vec<Value> = std::fs::read_to_string(&log)
-            .unwrap()
+        let replies: Vec<Value> = log
+            .content()
             .lines()
             .map(|line| serde_json::from_str(line).unwrap())
             .collect();
-        let _ = std::fs::remove_file(&log);
         assert_eq!(
             replies,
             [
