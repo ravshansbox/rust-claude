@@ -78,17 +78,17 @@ impl ReadGroup {
 const WRITE_PREVIEW_LINES: usize = 10;
 
 pub fn diff(name: &str, input: &Value) -> Option<String> {
-    if name == "write" {
-        return write_preview(input["content"].as_str()?);
+    match name {
+        "write" => write_preview(input["content"].as_str()?),
+        "bash" => code_preview(input["command"].as_str()?),
+        "edit" => edit_preview(input["old_text"].as_str()?, input["new_text"].as_str()?),
+        _ => None,
     }
-    if name == "bash" {
-        return code_preview(input["command"].as_str()?);
-    }
-    if name != "edit" {
-        return None;
-    }
-    let old_text = terminated(input["old_text"].as_str()?);
-    let new_text = terminated(input["new_text"].as_str()?);
+}
+
+fn edit_preview(old_text: &str, new_text: &str) -> Option<String> {
+    let old_text = terminated(old_text);
+    let new_text = terminated(new_text);
     let unit = indent_unit(old_text.lines().chain(new_text.lines()));
     let diff = similar::TextDiff::from_lines(&*old_text, &*new_text);
     let mut preview = String::with_capacity(old_text.len() + new_text.len());
