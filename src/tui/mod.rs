@@ -21,6 +21,7 @@ use crate::{
     history, images, mcp,
     settings::Settings,
     skills::Scope,
+    tools,
     update::Updater,
 };
 use anyhow::Result;
@@ -589,7 +590,7 @@ fn instructions_line<'a>(labels: impl IntoIterator<Item = &'a str>) -> Option<St
 }
 
 fn tools_line() -> String {
-    let definitions = crate::tools::definitions();
+    let definitions = tools::definitions();
     let mut names: Vec<&str> = definitions
         .as_array()
         .into_iter()
