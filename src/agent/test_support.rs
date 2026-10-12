@@ -221,10 +221,14 @@ pub(crate) fn notices(notices: &mut Vec<String>) -> impl FnMut(AgentEvent) + '_ 
 
 /// Removes the session files a test agent wrote under the test config folder.
 pub(crate) fn remove_session(agent: &Agent) {
+    remove_session_files(&agent.session.id);
+}
+
+pub(crate) fn remove_session_files(session_id: &str) {
     if let Some(config_dir) = config::dir() {
         let sessions = config_dir.join("sessions");
-        let _ = std::fs::remove_file(sessions.join(format!("{}.jsonl", agent.session.id)));
-        let _ = std::fs::remove_dir_all(sessions.join(&agent.session.id));
+        let _ = std::fs::remove_file(sessions.join(format!("{session_id}.jsonl")));
+        let _ = std::fs::remove_dir_all(sessions.join(session_id));
     }
 }
 
