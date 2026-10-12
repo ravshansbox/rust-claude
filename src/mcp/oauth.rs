@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};
 
 use crate::{
-    auth::{now_millis, random_token},
+    auth::{now_millis, pkce_challenge, random_token},
     config,
 };
 use serde::{Deserialize, Serialize};
@@ -487,7 +487,7 @@ pub(super) async fn begin(
     };
     let state = random_token().map_err(|error| error.to_string())?;
     let verifier = random_token().map_err(|error| error.to_string())?;
-    let challenge = crate::auth::pkce_challenge(&verifier);
+    let challenge = pkce_challenge(&verifier);
     let authorize_url = reqwest::Url::parse_with_params(
         &discovered.authorization_endpoint,
         [
