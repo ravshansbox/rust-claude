@@ -4,6 +4,7 @@ mod draw;
 mod files;
 mod input;
 mod keys;
+mod mcp_status;
 mod message;
 mod render;
 mod replay;
