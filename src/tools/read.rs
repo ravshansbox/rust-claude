@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use std::{
     fmt::Write,
     fs::File,
-    io::{BufRead, BufReader, Read},
+    io::{self, BufRead, BufReader, ErrorKind, Read},
     path::PathBuf,
 };
 
@@ -33,7 +33,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         read_lines(BufReader::new(File::open(file)?), offset, limit)
     })
     .await
-    .map_err(std::io::Error::other)
+    .map_err(io::Error::other)
     .flatten()
     .map_err(|error| format!("failed to read {path}: {error}"))?;
     read.map_err(|line_count| {
@@ -48,7 +48,7 @@ fn read_lines(
     mut reader: impl BufRead,
     offset: usize,
     limit: usize,
-) -> std::io::Result<Result<String, usize>> {
+) -> io::Result<Result<String, usize>> {
     let mut skipped = 0;
     while skipped < offset - 1 && reader.skip_until(b'\n')? > 0 {
         skipped += 1;
@@ -86,7 +86,7 @@ fn read_lines(
 }
 
 /// The text in `bytes`, which may end partway through a character.
-fn utf8_prefix(bytes: &[u8]) -> std::io::Result<&str> {
+fn utf8_prefix(bytes: &[u8]) -> io::Result<&str> {
     match std::str::from_utf8(bytes) {
         Ok(text) => Ok(text),
         Err(error) if error.error_len().is_none() => utf8_prefix(&bytes[..error.valid_up_to()]),
@@ -94,11 +94,8 @@ fn utf8_prefix(bytes: &[u8]) -> std::io::Result<&str> {
     }
 }
 
-fn not_utf8() -> std::io::Error {
-    std::io::Error::new(
-        std::io::ErrorKind::InvalidData,
-        "stream did not contain valid UTF-8",
-    )
+fn not_utf8() -> io::Error {
+    io::Error::new(ErrorKind::InvalidData, "stream did not contain valid UTF-8")
 }
 
 #[cfg(test)]
