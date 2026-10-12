@@ -127,6 +127,13 @@ fn fills_tool_call_rows_with_a_background_near_the_terminal_one() {
 }
 
 #[test]
+fn wraps_tool_output_at_spaces_and_splits_words_longer_than_a_row() {
+    let text = "! ls\nsee /very/long/path/name now later";
+    let rows = trimmed(&render_message(Role::Tool, text, 10));
+    assert_eq!(rows[1..], ["see /very/", "long/path/", "name now", "later"]);
+}
+
+#[test]
 fn keeps_colours_but_not_escapes_from_the_text_in_print_mode() {
     let text = "write notes.txt\n+a\x1b]52;c;aGk=\x07b\x1b[2J\u{9b}c\r";
     let line = &ansi_tool_lines(text, true, None, None)[1];
