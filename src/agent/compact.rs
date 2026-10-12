@@ -160,6 +160,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn keeps_the_conversation_when_the_summary_is_empty() {
+        let api = MockApi::start(vec![
+            text_reply("hello"),
+            text_reply("  "),
+            text_reply("ok"),
+        ])
+        .await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let first = agent.prompt("hi", &[], |_| {}).await;
+        let compacted = agent.compact(|_| {}).await;
+        let next = agent.prompt("next", &[], |_| {}).await;
+        test_support::remove_session(&agent);
+        first.unwrap();
+        next.unwrap();
+        assert_eq!(
+            compacted.unwrap_err().to_string(),
+            "compaction returned no summary"
+        );
+        let requests = api.requests().await;
+        let after = requests[2]["messages"].to_string();
+        assert!(after.contains("hello"), "{after}");
+    }
+
+    #[tokio::test]
+    async fn says_there_is_nothing_to_compact_in_a_new_session() {
+        let api = MockApi::start(Vec::new()).await;
+        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let compacted = agent.compact(|_| {}).await;
+        test_support::remove_session(&agent);
+        assert_eq!(compacted.unwrap_err().to_string(), "nothing to compact");
+        assert!(api.requests().await.is_empty());
+    }
+
+    #[tokio::test]
     async fn answers_the_prompt_when_automatic_compaction_fails() {
         let full_context_reply = Reply::Events(vec![
             json!({ "type": "message_start", "message": { "usage": { "input_tokens": 100_000_000, "output_tokens": 1 } } }),
