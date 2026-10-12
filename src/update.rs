@@ -1,4 +1,5 @@
 use std::{
+    io::{self, Cursor},
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
@@ -252,7 +253,7 @@ impl Updater {
         }
         let target = folder.to_path_buf();
         tokio::task::spawn_blocking(move || {
-            zip::ZipArchive::new(std::io::Cursor::new(bytes))?.extract(target)
+            zip::ZipArchive::new(Cursor::new(bytes))?.extract(target)
         })
         .await?
         .with_context(|| format!("unpacking {ASSET}"))?;
@@ -312,7 +313,7 @@ impl Updater {
     }
 }
 
-fn create_update_folder(folder: &Path) -> std::io::Result<()> {
+fn create_update_folder(folder: &Path) -> io::Result<()> {
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
