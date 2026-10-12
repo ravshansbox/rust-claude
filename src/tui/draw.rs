@@ -408,7 +408,7 @@ mod tests {
     use crate::session::SessionSummary;
     use crate::skills::{Scope, Skill};
     use crate::tui::{
-        App, Role, UiEvent, handle_agent_event, handle_input,
+        Activity, App, Role, UiEvent, handle_agent_event, handle_input,
         test_support::{app_with_reply, new_app, press, screen, screen_of_width},
     };
     use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
@@ -540,7 +540,7 @@ mod tests {
         for number in 0..100 {
             app.push(Role::Event, format!("event {number}"));
         }
-        app.start(crate::tui::Activity::Working);
+        app.start(Activity::Working);
         handle_input(Event::Paste("later".into()), &mut app, |_| {});
         press(&mut app, KeyCode::Enter);
         screen(&mut app);
@@ -569,7 +569,7 @@ mod tests {
                 app.push(Role::Event, format!("event {number}"));
             }
             if working {
-                app.start(crate::tui::Activity::Working);
+                app.start(Activity::Working);
             }
             let shown = screen(&mut app);
             assert!(!shown.contains("↓ Bottom (End)"), "{shown}");
