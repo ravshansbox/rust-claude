@@ -2464,6 +2464,23 @@ done
     }
 
     #[tokio::test]
+    async fn keeps_the_client_secret_from_the_config_when_taking_over_tokens() {
+        let (url, _) = http_server(signed_in_mcp).await;
+        save_tokens(&url, "mine", now_millis() - 1);
+        let config = OAuthConfig {
+            client_id: Some("client".into()),
+            client_secret: Some("own-secret".into()),
+        };
+        let mine = oauth::load_for(&url, Some(&config)).unwrap();
+        save_tokens(&url, "theirs", now_millis() + 3_600_000);
+        let taken_over = oauth::refresh(&reqwest::Client::new(), &url, &mine, None)
+            .await
+            .unwrap();
+        assert_eq!(taken_over.access_token, "theirs");
+        assert_eq!(taken_over.client_secret.as_deref(), Some("own-secret"));
+    }
+
+    #[tokio::test]
     async fn renews_expired_oauth_tokens_before_sending_them() {
         let (url, requests) = http_server(signed_in_mcp).await;
         save_tokens(&url, "stale", now_millis() - 1);

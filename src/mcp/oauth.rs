@@ -177,11 +177,15 @@ pub(super) async fn refresh(
     saved: &Saved,
     rejected: Option<&str>,
 ) -> Result<Saved, String> {
-    if let Some(current) = load(server_url)
+    if let Some(mut current) = load(server_url)
         && current.access_token != saved.access_token
         && Some(current.access_token.as_str()) != rejected
         && !current.expired()
     {
+        if saved.secret_from_config && current.client_id == saved.client_id {
+            current.client_secret = saved.client_secret.clone();
+            current.secret_from_config = true;
+        }
         return Ok(current);
     }
     let refresh_token = saved.refresh_token.as_deref().ok_or("no refresh token")?;
