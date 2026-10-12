@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
+use crate::config;
+
 const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 const AUTHORIZE_URL: &str = "https://claude.ai/oauth/authorize";
 const TOKEN_URL: &str = "https://platform.claude.com/v1/oauth/token";
@@ -28,17 +30,15 @@ pub struct Credentials {
 }
 
 fn credentials_path() -> Result<PathBuf> {
-    Ok(crate::config::dir()
-        .context("HOME is not set")?
-        .join("auth.json"))
+    Ok(config::dir().context("HOME is not set")?.join("auth.json"))
 }
 
 /// Locks auth.lock until the returned file is closed, so running copies
 /// renew the sign-in one at a time.
 async fn lock_credentials() -> Result<File> {
     let path = credentials_path()?.with_file_name("auth.lock");
-    crate::config::create_private_dir(path.parent().context("invalid credentials path")?)?;
-    let file = crate::config::private_file()
+    config::create_private_dir(path.parent().context("invalid credentials path")?)?;
+    let file = config::private_file()
         .create(true)
         .write(true)
         .open(&path)?;
@@ -238,8 +238,8 @@ impl Credentials {
     /// and a crash keeps the old sign-in.
     fn save(&self) -> Result<()> {
         let path = credentials_path()?;
-        crate::config::create_private_dir(path.parent().context("invalid credentials path")?)?;
-        crate::config::write_private_file(&path, serde_json::to_string_pretty(self)?.as_bytes())?;
+        config::create_private_dir(path.parent().context("invalid credentials path")?)?;
+        config::write_private_file(&path, serde_json::to_string_pretty(self)?.as_bytes())?;
         Ok(())
     }
 }
