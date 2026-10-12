@@ -859,3 +859,26 @@ async fn reads_the_quota_left_and_keeps_the_figures_replies_reported() {
     assert_eq!(quota.seven_day_remaining, Some(10.0));
     assert_eq!(quota.seven_day_reset, Some(604_800));
 }
+
+#[tokio::test]
+async fn reports_a_skill_whose_file_was_removed_without_sending_the_prompt() {
+    use crate::skills::{Scope, Skill};
+    let directory = crate::tools::test_support::TemporaryDir::new("agent-removed-skill");
+    let path = directory.path().join("SKILL.md");
+    let api = MockApi::start(vec![text_reply("hello")]).await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    agent.skills.skills = vec![Skill {
+        name: "demo".into(),
+        description: "Demo.".into(),
+        path: path.clone(),
+        base_dir: directory.path().into(),
+        disable_model_invocation: false,
+        scope: Scope::Project,
+    }];
+    let result = agent.prompt("/skill:demo fix it", &[], |_| {}).await;
+    test_support::remove_session(&agent);
+    let error = result.unwrap_err().to_string();
+    assert_eq!(error, format!("failed to read skill {}", path.display()));
+    assert!(agent.messages().is_empty());
+    assert!(api.requests().await.is_empty());
+}
