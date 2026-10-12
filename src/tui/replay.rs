@@ -256,7 +256,8 @@ fn replay_prompt(app: &mut App, text: &str) {
         let mut command = format!("/skill:{}", block.name);
         if let Some(user_message) = block.user_message {
             app.push(Role::User, user_message);
-            command = format!("{command} {user_message}");
+            command.push(' ');
+            command.push_str(user_message);
         }
         app.add_prompt(command);
     } else {
