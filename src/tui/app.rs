@@ -12,9 +12,10 @@ use crate::{
     agent::{DEFAULT_EFFORT, Queue, Queued, Stats, take_queued},
     history,
     images::Image,
-    models,
+    mcp, models, session,
     skills::{Scope, Skill},
     tools,
+    update::Progress,
 };
 use anyhow::Result;
 use ratatui::{layout::Rect, text::Line};
@@ -517,7 +518,7 @@ impl App {
         app
     }
 
-    pub(super) fn show_update(&mut self, progress: &crate::update::Progress) {
+    pub(super) fn show_update(&mut self, progress: &Progress) {
         if progress.finishes_step()
             && let Some(step) = self.version_line.rfind(" · ")
         {
@@ -616,8 +617,7 @@ impl App {
                 format!("failed to trim prompt history: {error:#}"),
             );
         }
-        self.prompt_history =
-            history::folder_prompts(&self.history, &crate::session::current_folder());
+        self.prompt_history = history::folder_prompts(&self.history, &session::current_folder());
         self.history_file = path;
     }
 
@@ -903,7 +903,7 @@ impl App {
             })
     }
 
-    pub(super) fn finish_mcp_server(&mut self, added: crate::mcp::Added) {
+    pub(super) fn finish_mcp_server(&mut self, added: mcp::Added) {
         match self.mcp_server(&added.name) {
             Some((index, server)) => {
                 let needs_sign_in = added.summary == format!("{} (needs sign-in)", added.name);
