@@ -531,16 +531,7 @@ pub fn parse_block(text: &str) -> Option<SkillBlock<'_>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn temp_dir(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "rust-coding-agent-skills-{name}-{}",
-            std::process::id()
-        ));
-        let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(&dir).unwrap();
-        dir
-    }
+    use crate::tools::test_support::TemporaryDir;
 
     fn write(path: &Path, content: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -561,7 +552,8 @@ mod tests {
 
     #[test]
     fn keeps_home_agents_skills_global_when_home_is_a_symlink() {
-        let root = temp_dir("symlinked-home");
+        let directory = TemporaryDir::new("skills-symlinked-home");
+        let root = directory.path();
         let real_home = root.join("real-home");
         write(
             &real_home.join(".agents/skills/gamma/SKILL.md"),
@@ -576,12 +568,12 @@ mod tests {
             &real_home,
         );
         assert_eq!(scopes(&loaded), [Scope::Global]);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn loads_skills_from_all_locations_and_keeps_first_on_collision() {
-        let root = temp_dir("locations");
+        let directory = TemporaryDir::new("skills-locations");
+        let root = directory.path();
         let home = root.join("home");
         let project = root.join("project");
         let cwd = project.join("sub");
@@ -623,12 +615,12 @@ mod tests {
                 loser: home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
             }]
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn loads_agents_skills_only_from_the_current_folder_outside_a_repository() {
-        let root = temp_dir("no-repository");
+        let directory = TemporaryDir::new("skills-no-repository");
+        let root = directory.path();
         let cwd = root.join("work");
         write(
             &cwd.join(".agents/skills/inside/SKILL.md"),
@@ -639,25 +631,25 @@ mod tests {
             "---\ndescription: Parent.\n---\n",
         );
         let loaded = load_from(None, None, &cwd);
-        let _ = std::fs::remove_dir_all(&root);
         assert_eq!(names(&loaded), ["inside"]);
     }
 
     #[test]
     fn labels_skills_global_when_run_from_the_home_folder() {
-        let home = temp_dir("home-cwd");
+        let directory = TemporaryDir::new("skills-home-cwd");
+        let home = directory.path();
         write(
             &home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
             "---\ndescription: Alpha.\n---\n",
         );
-        let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &home);
-        let _ = std::fs::remove_dir_all(&home);
+        let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(home), home);
         assert_eq!(scopes(&loaded), [Scope::Global]);
     }
 
     #[test]
     fn names_loose_markdown_skills_after_their_file() {
-        let root = temp_dir("loose-names");
+        let directory = TemporaryDir::new("skills-loose-names");
+        let root = directory.path();
         let home = root.join("home");
         let cwd = root.join("project");
         std::fs::create_dir_all(cwd.join(".git")).unwrap();
@@ -682,12 +674,12 @@ mod tests {
             Diagnostic::Warning { path, .. } if *path == skills.join("My Notes.md")
         )));
         assert!(!loaded.diagnostics.is_empty());
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn follows_discovery_rules() {
-        let root = temp_dir("discovery");
+        let directory = TemporaryDir::new("skills-discovery");
+        let root = directory.path();
         let dir = root.join("skills");
         write(&dir.join("loose.md"), "---\ndescription: Loose.\n---\n");
         write(&dir.join("notes.md"), "No frontmatter");
@@ -731,12 +723,12 @@ mod tests {
             files,
             [dir.join("nested/inner.md"), dir.join("outer/SKILL.md")]
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn applies_ignore_files_relative_to_their_own_directory() {
-        let root = temp_dir("nested-ignore");
+        let directory = TemporaryDir::new("skills-nested-ignore");
+        let root = directory.path();
         let dir = root.join("skills");
         for skill in [
             "old",
@@ -764,13 +756,13 @@ mod tests {
                 dir.join("team/x/live/SKILL.md"),
             ]
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[cfg(unix)]
     #[test]
     fn visits_each_folder_once_through_symlink_loops() {
-        let root = temp_dir("symlink-loop");
+        let directory = TemporaryDir::new("skills-symlink-loop");
+        let root = directory.path();
         let dir = root.join("skills");
         write(&dir.join("a/SKILL.md"), "---\ndescription: A.\n---\n");
         write(&dir.join("team/b/SKILL.md"), "---\ndescription: B.\n---\n");
@@ -778,12 +770,12 @@ mod tests {
 
         let files = collect_skill_files(&dir, Mode::Agents);
         assert_eq!(files, [dir.join("a/SKILL.md"), dir.join("team/b/SKILL.md")]);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn validates_skill_files() {
-        let root = temp_dir("validation");
+        let directory = TemporaryDir::new("skills-validation");
+        let root = directory.path();
         let missing = root.join("missing/SKILL.md");
         write(&missing, "---\nname: missing\n---\n");
         let (skill, diagnostics) = load_skill_file(&missing, Scope::Project);
@@ -812,7 +804,6 @@ mod tests {
         let (skill, diagnostics) = load_skill_file(&broken, Scope::Project);
         assert!(skill.is_none());
         assert_eq!(diagnostics.len(), 1);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     fn skill(name: &str, path: &Path, disable_model_invocation: bool) -> Skill {
@@ -851,7 +842,8 @@ mod tests {
 
     #[test]
     fn expands_and_parses_skill_commands() {
-        let root = temp_dir("expand");
+        let directory = TemporaryDir::new("skills-expand");
+        let root = directory.path();
         let dir = root.join("demo");
         write(
             &dir.join("SKILL.md"),
@@ -898,12 +890,12 @@ mod tests {
             "/skill:other x"
         );
         assert_eq!(parse_block("plain text"), None);
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn parses_skill_blocks_whose_body_shows_a_skill_block() {
-        let root = temp_dir("expand-nested");
+        let directory = TemporaryDir::new("skills-expand-nested");
+        let root = directory.path();
         let dir = root.join("demo");
         write(
             &dir.join("SKILL.md"),
@@ -926,12 +918,12 @@ mod tests {
                 user_message: None,
             })
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]
     fn parses_skill_blocks_with_quotes_in_name_and_path() {
-        let root = temp_dir("expand-quotes");
+        let directory = TemporaryDir::new("skills-expand-quotes");
+        let root = directory.path();
         let dir = root.join("say \"hi\" & <go>");
         write(
             &dir.join("SKILL.md"),
@@ -946,6 +938,5 @@ mod tests {
                 user_message: Some("now"),
             })
         );
-        let _ = std::fs::remove_dir_all(root);
     }
 }
