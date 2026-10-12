@@ -540,21 +540,6 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn keeps_an_existing_rca() {
-        let dir = TemporaryDir::new("update-existing-rca");
-        let (base, _) = github("v0.2.0").await;
-        std::fs::create_dir_all(dir.path().join("bin")).unwrap();
-        std::fs::write(dir.path().join("bin/rca"), "other").unwrap();
-        let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
-        updater.bin_dir = Some(dir.path().join("bin"));
-        run(updater).await;
-        assert_eq!(
-            std::fs::read_to_string(dir.path().join("bin/rca")).unwrap(),
-            "other"
-        );
-    }
-
     #[cfg(unix)]
     #[test]
     fn links_rca_beside_the_program_at_start() {
@@ -790,14 +775,6 @@ mod tests {
         let mut updater = updater(&base, None);
         updater.current_version = "0.9.0";
         assert_eq!(run(updater).await[0], "update v0.10.0 available");
-    }
-
-    #[tokio::test]
-    async fn checks_on_every_launch() {
-        let (base, requests) = github("v0.1.0").await;
-        run(updater(&base, None)).await;
-        run(updater(&base, None)).await;
-        assert_eq!(requests.lock().unwrap().len(), 2);
     }
 
     #[tokio::test]

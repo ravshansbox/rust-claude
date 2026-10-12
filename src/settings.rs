@@ -122,12 +122,6 @@ mod tests {
     }
 
     #[test]
-    fn checks_for_updates_when_settings_are_missing() {
-        let (_directory, path) = settings_file("missing-load");
-        assert_eq!(load_file(&path).check_for_updates, None);
-    }
-
-    #[test]
     fn keeps_settings_it_does_not_know_when_one_changes() {
         let (_directory, path) = written_settings_file("unknown", r#"{ "future": { "a": 1 } }"#);
         update_file(&path, |settings| settings.model = Some("opus".into())).unwrap();

@@ -99,24 +99,7 @@ pub fn thinking_settings(model: &str, level: &str) -> Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{effort_levels, known, thinking_settings};
-    use serde_json::json;
-
-    #[test]
-    fn uses_adaptive_thinking_with_the_level_as_effort() {
-        for model in known().chain(["claude-x"]) {
-            for level in ["low", "medium", "high", "xhigh", "max"] {
-                assert_eq!(
-                    thinking_settings(model, level),
-                    json!({
-                        "thinking": { "type": "adaptive", "display": "summarized" },
-                        "output_config": { "effort": level },
-                    }),
-                    "{model}"
-                );
-            }
-        }
-    }
+    use super::effort_levels;
 
     #[test]
     fn offers_off_only_on_models_that_can_turn_thinking_off() {

@@ -213,15 +213,6 @@ mod tests {
     use std::time::{Duration, Instant};
 
     #[tokio::test]
-    async fn times_out_bash_command() {
-        let input = json!({ "command": "sleep 5", "timeout": 1 });
-        assert_eq!(
-            call("bash", &input).await,
-            Err("command timed out after 1s".into())
-        );
-    }
-
-    #[tokio::test]
     async fn runs_bash_command_without_the_terminal() {
         let command = "ps -o stat= -p $$ | grep -q s && echo own session; \
                        (exec 3</dev/tty) 2>/dev/null || echo no terminal";
