@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, path::PathBuf, sync::Mutex, time::Duration};
 use crate::{
     auth::{now_millis, pkce_challenge, random_token},
     config,
+    skills::escape_xml,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -525,7 +526,7 @@ pub(super) async fn begin(
 }
 
 fn page(message: &str) -> String {
-    let message = crate::skills::escape_xml(message);
+    let message = escape_xml(message);
     format!("<!doctype html><title>rust-coding-agent</title><p>{message}</p>")
 }
 
