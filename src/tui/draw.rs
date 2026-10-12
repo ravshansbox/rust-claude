@@ -90,49 +90,57 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         None
     };
     let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
-    let pinned = app.scroll_from_bottom > 0;
-    let pinned_lines: Vec<Line> = if pinned {
-        let lines: Vec<Line> = status_lines(app).into_iter().skip(1).collect();
-        if lines.is_empty() {
-            vec![Line::default()]
+    let layout = |app: &App, pinned: bool| {
+        let pinned_lines: Vec<Line> = if pinned {
+            let lines: Vec<Line> = status_lines(app).into_iter().skip(1).collect();
+            if lines.is_empty() {
+                vec![Line::default()]
+            } else {
+                lines
+            }
         } else {
-            lines
-        }
-    } else {
-        Vec::new()
-    };
-    let pinned_height = pinned_lines
-        .iter()
-        .map(|line| wrapped_height(line, chat.width))
-        .sum::<usize>()
-        .min((chat.height - panel_height).saturating_sub(1) as usize)
-        as u16;
-    let conversation_area = Rect {
-        height: chat.height - panel_height - pinned_height,
-        ..chat
-    };
-
-    let wrapped_line_count: usize = app
-        .messages
-        .iter()
-        .enumerate()
-        .map(|(index, message)| app.gap_before(index) + message.height())
-        .sum::<usize>()
-        + if pinned {
-            0
-        } else {
-            status_lines(app)
-                .iter()
-                .map(|line| wrapped_height(line, chat.width))
-                .sum::<usize>()
+            Vec::new()
         };
-    let viewport_height = conversation_area.height;
-    let max_scroll = wrapped_line_count.saturating_sub(viewport_height as usize);
+        let pinned_height = pinned_lines
+            .iter()
+            .map(|line| wrapped_height(line, chat.width))
+            .sum::<usize>()
+            .min((chat.height - panel_height).saturating_sub(1) as usize)
+            as u16;
+        let conversation_area = Rect {
+            height: chat.height - panel_height - pinned_height,
+            ..chat
+        };
+        let wrapped_line_count: usize = app
+            .messages
+            .iter()
+            .enumerate()
+            .map(|(index, message)| app.gap_before(index) + message.height())
+            .sum::<usize>()
+            + if pinned {
+                0
+            } else {
+                status_lines(app)
+                    .iter()
+                    .map(|line| wrapped_height(line, chat.width))
+                    .sum::<usize>()
+            };
+        let max_scroll = wrapped_line_count.saturating_sub(conversation_area.height as usize);
+        (pinned_lines, pinned_height, conversation_area, max_scroll)
+    };
+    let mut pinned = app.scroll_from_bottom > 0;
+    let (mut pinned_lines, mut pinned_height, mut conversation_area, mut max_scroll) =
+        layout(app, pinned);
     app.scroll_from_bottom = if pinned && !app.status_pinned {
         app.scroll_from_bottom.min(max_scroll)
     } else {
         held_scroll_from_bottom(app.scroll_from_bottom, app.max_scroll, max_scroll)
     };
+    if pinned && app.scroll_from_bottom == 0 {
+        pinned = false;
+        (pinned_lines, pinned_height, conversation_area, max_scroll) = layout(app, false);
+    }
+    let viewport_height = conversation_area.height;
     app.status_pinned = pinned;
     app.max_scroll = max_scroll;
     app.page_size = viewport_height.max(1) as usize;
@@ -599,6 +607,23 @@ mod tests {
         let shown = screen(&mut app);
         assert!(shown.contains("↓ Bottom (End)"), "{shown}");
         assert!(!shown.contains("event 99"), "{shown}");
+    }
+
+    #[test]
+    fn stays_at_the_bottom_when_only_the_spinner_was_below_the_view() {
+        let mut app = app_with_reply();
+        app.start(Activity::Working);
+        handle_input(Event::Paste("draft".into()), &mut app, |_| {});
+        let mut number = 0;
+        while app.max_scroll < 1 {
+            app.push(Role::Event, format!("event {number}"));
+            number += 1;
+            screen(&mut app);
+        }
+        press(&mut app, KeyCode::Up);
+        let shown = screen(&mut app);
+        assert!(!shown.contains("↓ Bottom (End)"), "{shown}");
+        assert_eq!(app.scroll_from_bottom, 0);
     }
 
     #[test]
