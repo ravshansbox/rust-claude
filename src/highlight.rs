@@ -1,4 +1,4 @@
-use std::sync::OnceLock;
+use std::{io::Cursor, sync::OnceLock};
 
 use syntect::{
     easy::HighlightLines,
@@ -50,9 +50,8 @@ pub const LIGHT_THEME: &str = include_str!("../assets/themes/GitHub Light High C
 fn theme(dark: bool) -> &'static Theme {
     static DARK: OnceLock<Theme> = OnceLock::new();
     static LIGHT: OnceLock<Theme> = OnceLock::new();
-    let load = |source: &str| {
-        ThemeSet::load_from_reader(&mut std::io::Cursor::new(source)).expect("bundled theme")
-    };
+    let load =
+        |source: &str| ThemeSet::load_from_reader(&mut Cursor::new(source)).expect("bundled theme");
     if dark {
         DARK.get_or_init(|| load(DARK_THEME))
     } else {
