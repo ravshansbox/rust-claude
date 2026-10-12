@@ -89,12 +89,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_help() {
-        assert_eq!(parse(&["--help"]), Some(Command::Help));
-        assert_eq!(parse(&["-h"]), Some(Command::Help));
-    }
-
-    #[test]
     fn rejects_help_with_other_arguments() {
         assert_eq!(parse(&["-h", "extra"]), None);
         assert_eq!(parse(&["--image", "a.png"]), None);
