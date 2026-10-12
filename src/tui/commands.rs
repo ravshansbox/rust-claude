@@ -80,3 +80,6 @@ pub(super) fn command_matches(
     }
     matches
 }
+
+#[cfg(test)]
+mod tests;
