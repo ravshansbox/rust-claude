@@ -123,7 +123,7 @@ impl Drop for ProcessGroup {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Default)]
 struct Captured {
     head: Vec<u8>,
     tail: VecDeque<u8>,
@@ -182,17 +182,17 @@ async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin, output: Arc<
     }
 }
 
-fn snapshot(output: &Mutex<Captured>) -> Captured {
+fn take_captured(output: &Mutex<Captured>) -> Captured {
     output
         .lock()
-        .map(|output| output.clone())
+        .map(|mut output| std::mem::take(&mut *output))
         .unwrap_or_default()
 }
 
 /// Both streams within `MAX_OUTPUT` bytes. Each gets half, and a stream
 /// that needs less leaves the rest to the other.
 fn output_text(stdout_output: &Mutex<Captured>, stderr_output: &Mutex<Captured>) -> String {
-    let (stdout, stderr) = (snapshot(stdout_output), snapshot(stderr_output));
+    let (stdout, stderr) = (take_captured(stdout_output), take_captured(stderr_output));
     let half = MAX_OUTPUT / 2;
     let stdout_limit = MAX_OUTPUT - stderr.total.min(half);
     let stderr_limit = MAX_OUTPUT - stdout.total.min(stdout_limit);
