@@ -89,7 +89,7 @@ pub(super) fn handle_input(event: Event, app: &mut App, mut act: impl FnMut(Acti
             KeyCode::Down => picker.selected = (picker.selected + 1).min(picker.items.len() - 1),
             KeyCode::Enter => {
                 let kind = picker.kind;
-                let value = picker.items[picker.selected].0.clone();
+                let value = std::mem::take(&mut picker.items[picker.selected].0);
                 app.picker = None;
                 match kind {
                     PickerKind::Session => {
