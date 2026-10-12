@@ -249,6 +249,38 @@ async fn does_not_run_a_tool_call_cut_off_by_the_output_limit() {
 }
 
 #[tokio::test]
+async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
+    let broken = Reply::Events(vec![
+        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
+        json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo broken" } }),
+        json!({ "type": "content_block_stop", "index": 0 }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        json!({ "type": "message_stop" }),
+    ]);
+    let api = MockApi::start(vec![broken, text_reply("ok")]).await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut tools_started = 0;
+    let first = agent
+        .prompt("hi", &[], |event| {
+            if let AgentEvent::ToolStart { .. } = event {
+                tools_started += 1;
+            }
+        })
+        .await;
+    let next = agent.prompt("next", &[], |_| {}).await;
+    test_support::remove_session(&agent);
+    assert!(first.is_err());
+    next.unwrap();
+    assert_eq!(tools_started, 0);
+    let requests = api.requests().await;
+    assert_eq!(requests.len(), 2);
+    let after = requests[1]["messages"].to_string();
+    assert!(!after.contains("echo broken"), "{after}");
+    assert!(!after.contains("tool_use"), "{after}");
+}
+
+#[tokio::test]
 async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
     let overloaded = Reply::Events(vec![
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
