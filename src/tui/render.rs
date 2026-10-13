@@ -448,11 +448,13 @@ enum InlineSpan {
 /// the lines that follow.
 fn span_after(line: &str, mut open: Option<InlineSpan>, later: &[&str]) -> Option<InlineSpan> {
     let bytes = line.as_bytes();
+    let depth = without_quotes(line, usize::MAX).1;
     let paragraph = || {
-        later
-            .iter()
-            .copied()
-            .take_while(|next| !next.trim().is_empty() && !starts_block(next))
+        later.iter().copied().take_while(move |next| {
+            !next.trim().is_empty()
+                && !starts_block(next)
+                && without_quotes(next, usize::MAX).1 <= depth
+        })
     };
     let mut index = 0;
     while index < bytes.len() {

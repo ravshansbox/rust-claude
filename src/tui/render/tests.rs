@@ -561,3 +561,9 @@ fn keeps_line_breaks_in_a_list_item_after_an_unclosed_backtick() {
     let lines = texts(&render_message(Role::Assistant, "`a\n- item\n`b", 40));
     assert_eq!(lines, ["`a", "", "- item", "`b"]);
 }
+
+#[test]
+fn keeps_line_breaks_in_a_quote_after_an_unclosed_backtick() {
+    let lines = texts(&render_message(Role::Assistant, "`a\n> quote\n> `b", 40));
+    assert_eq!(lines, ["`a", "", "> quote", "> `b"]);
+}
