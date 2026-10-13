@@ -287,6 +287,21 @@ fn keeps_quoted_code_free_of_trailing_spaces() {
 }
 
 #[test]
+fn keeps_indented_code_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "Run:\n\n    let x = 1;\n    let y = 2;\n\n- item\n\n      z\n\n1. step\n\n    first\n    second",
+        40,
+    ));
+    let code: Vec<_> = lines
+        .iter()
+        .filter(|line| line.contains("let ") || line.trim_end() == "z")
+        .collect();
+    assert_eq!(code, ["let x = 1;", "let y = 2;", "z"], "{lines:?}");
+    assert_eq!(lines[lines.len() - 2..], ["first", "second"]);
+}
+
+#[test]
 fn keeps_code_quoted_in_a_list_item_free_of_trailing_spaces() {
     let lines = texts(&render_message(
         Role::Assistant,

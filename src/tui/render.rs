@@ -144,6 +144,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 fn hard_line_breaks(text: &str) -> String {
     let mut fence = None;
     let mut code = None;
+    let mut indented = Indented::default();
     let mut out = String::with_capacity(text.len());
     let all: Vec<&str> = text.lines().collect();
     let mut lines = all.iter().copied().enumerate().peekable();
@@ -153,7 +154,8 @@ fn hard_line_breaks(text: &str) -> String {
         }
         let in_code = fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
         fence = next_fence(fence, line);
-        let plain = !in_code && fence.is_none();
+        let fenced = in_code || fence.is_some();
+        let plain = !indented.next(line, fenced) && !fenced;
         if plain && line.trim_end() == "---" {
             out.push_str("----");
         } else if plain
@@ -181,6 +183,48 @@ fn hard_line_breaks(text: &str) -> String {
         }
     }
     out
+}
+
+/// Tracks indented code blocks and the content columns of open list items.
+#[derive(Default)]
+struct Indented {
+    lists: Vec<usize>,
+    code: bool,
+    blank: bool,
+}
+
+impl Indented {
+    /// Whether `line` is in an indented code block.
+    fn next(&mut self, line: &str, fenced: bool) -> bool {
+        if fenced {
+            (self.code, self.blank) = (false, false);
+            return false;
+        }
+        let rest = unquoted(line);
+        if rest.trim().is_empty() {
+            self.blank = true;
+            return self.code;
+        }
+        let indent = rest
+            .chars()
+            .take_while(|c| matches!(c, ' ' | '\t'))
+            .fold(0, |column, c| match c {
+                '\t' => column + 4 - column % 4,
+                _ => column + 1,
+            });
+        let text = rest.trim_start();
+        let item = without_list_marker(text);
+        if self.blank || item.len() < text.len() {
+            self.lists.retain(|&content| content <= indent);
+        }
+        let base = self.lists.last().copied().unwrap_or(0);
+        self.code = indent >= base + 4 && (self.blank || self.code);
+        self.blank = false;
+        if !self.code && item.len() < text.len() {
+            self.lists.push(indent + text.len() - item.len());
+        }
+        self.code
+    }
 }
 
 /// The backtick count of the code span open after `line`, given the one open
@@ -258,16 +302,19 @@ pub(super) fn next_fence(
 /// `line` after its quote markers and leading spaces, unless it is indented
 /// code.
 fn block_text(line: &str) -> Option<&str> {
-    let (rest, depth) = without_quotes(line, usize::MAX);
-    let rest = if depth > 0 {
-        rest.strip_prefix(' ').unwrap_or(rest)
-    } else {
-        rest
-    };
+    let rest = unquoted(line);
     if rest.starts_with('\t') || rest.starts_with("    ") {
         return None;
     }
     Some(rest.trim_start())
+}
+
+/// `line` after its quote markers and the space after them.
+fn unquoted(line: &str) -> &str {
+    match without_quotes(line, usize::MAX) {
+        (rest, 0) => rest,
+        (rest, _) => rest.strip_prefix(' ').unwrap_or(rest),
+    }
 }
 
 fn is_heading(line: &str) -> bool {
