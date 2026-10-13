@@ -545,3 +545,13 @@ fn keeps_indented_code_after_a_list_and_a_quote_free_of_trailing_spaces() {
     let lines = texts(&render_message(Role::Assistant, "- task\n> \n    code", 40));
     assert_eq!(lines, ["- task", "", "", "```", "code", "```"]);
 }
+
+#[test]
+fn keeps_html_blocks_open_across_a_lone_quote_marker() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "<div>\n>\nnote\n</div>",
+        40,
+    ));
+    assert_eq!(lines, ["<div>", ">", "note", "</div>"]);
+}

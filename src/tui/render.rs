@@ -163,7 +163,7 @@ fn hard_line_breaks(text: &str) -> String {
         let plain = match html {
             Some((ends, depth)) => {
                 indented.next(line, true);
-                html = html_after(line, ends).map(|ends| (ends, depth));
+                html = html_after(line, ends, depth).map(|ends| (ends, depth));
                 false
             }
             None => {
@@ -176,7 +176,7 @@ fn hard_line_breaks(text: &str) -> String {
                     Some(ends) => {
                         indented.next(line, true);
                         let depth = without_quotes(line, usize::MAX).1;
-                        html = html_after(line, ends).map(|ends| (ends, depth));
+                        html = html_after(line, ends, depth).map(|ends| (ends, depth));
                         false
                     }
                     None => plain,
@@ -426,10 +426,14 @@ fn tag_end(mut rest: &str) -> Option<&str> {
 }
 
 /// The end markers of the HTML block still open after `line`.
-fn html_after(line: &str, ends: &'static [&'static str]) -> Option<&'static [&'static str]> {
+fn html_after(
+    line: &str,
+    ends: &'static [&'static str],
+    depth: usize,
+) -> Option<&'static [&'static str]> {
     let lower = line.to_ascii_lowercase();
     match ends.is_empty() {
-        true => (!unquoted(line).trim().is_empty()).then_some(ends),
+        true => (!without_quotes(line, depth).0.trim().is_empty()).then_some(ends),
         false => (!ends.iter().any(|end| lower.contains(end))).then_some(ends),
     }
 }
