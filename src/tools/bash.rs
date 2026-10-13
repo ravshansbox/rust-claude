@@ -1,15 +1,21 @@
 use super::{MAX_OUTPUT, argument, number};
+use futures::{
+    FutureExt,
+    future::{Either, FusedFuture},
+};
 use serde_json::{Value, json};
 use std::{
     collections::VecDeque,
     fmt::Write,
+    pin::{Pin, pin},
     process::Stdio,
-    sync::{Arc, Mutex},
+    sync::Mutex,
     time::Duration,
 };
 use tokio::{
     io::AsyncReadExt,
     process::{Child, Command},
+    time::Instant,
 };
 
 pub(super) fn definition() -> Value {
@@ -56,13 +62,24 @@ pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<Strin
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         return Err("failed to capture command output".into());
     };
-    let stdout_output = Arc::new(Mutex::new(Captured::default()));
-    let stderr_output = Arc::new(Mutex::new(Captured::default()));
-    let readers = [
-        tokio::spawn(read_capped(stdout, stdout_output.clone())),
-        tokio::spawn(read_capped(stderr, stderr_output.clone())),
-    ];
-    let run = child.wait();
+    let stdout_output = Mutex::new(Captured::default());
+    let stderr_output = Mutex::new(Captured::default());
+    // Read in this task rather than in tasks of their own, so output already
+    // in the pipes when the command exits is read before the grace runs out,
+    // however busy the runtime is.
+    let mut reading = pin!(
+        futures::future::join(
+            read_capped(stdout, &stdout_output),
+            read_capped(stderr, &stderr_output),
+        )
+        .fuse()
+    );
+    let run = async {
+        match futures::future::select(pin!(child.wait()), reading.as_mut()).await {
+            Either::Left((status, _)) => status,
+            Either::Right((_, run)) => run.await,
+        }
+    };
     let status = match timeout {
         Some(seconds) => tokio::time::timeout(Duration::from_secs(seconds), run)
             .await
@@ -73,7 +90,7 @@ pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<Strin
         Ok(_) => process_group.0 = None,
         Err(_) => drop(process_group),
     }
-    let _ = tokio::time::timeout(OUTPUT_GRACE, futures::future::join_all(readers)).await;
+    finish_reading(reading, [&stdout_output, &stderr_output]).await;
     let status = match status {
         Ok(status) => status.map_err(|error| format!("failed to run command: {error}"))?,
         Err(seconds) => {
@@ -93,7 +110,39 @@ pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<Strin
     Ok(text)
 }
 
+/// How long output may pause after the command exits before the rest is left
+/// out, and how long to wait for it in all. A process the command started in
+/// the background can keep the pipes open long after it exits.
 const OUTPUT_GRACE: Duration = Duration::from_millis(100);
+const OUTPUT_GRACE_LIMIT: Duration = Duration::from_secs(1);
+
+/// Reads the output still to come after the command exits, until the pipes
+/// close or no more arrives within `OUTPUT_GRACE`.
+async fn finish_reading(mut reading: Pin<&mut impl FusedFuture>, outputs: [&Mutex<Captured>; 2]) {
+    let limit = Instant::now() + OUTPUT_GRACE_LIMIT;
+    let mut received = bytes_received(outputs);
+    while !reading.is_terminated() {
+        let pause = (Instant::now() + OUTPUT_GRACE).min(limit);
+        if tokio::time::timeout_at(pause, reading.as_mut())
+            .await
+            .is_ok()
+        {
+            return;
+        }
+        let now = bytes_received(outputs);
+        if now == received || Instant::now() >= limit {
+            return;
+        }
+        received = now;
+    }
+}
+
+fn bytes_received(outputs: [&Mutex<Captured>; 2]) -> usize {
+    outputs
+        .iter()
+        .map(|output| output.lock().map_or(0, |output| output.total))
+        .sum()
+}
 
 /// Starts the command in a session of its own, without the terminal, so prompts
 /// that open /dev/tty fail at once instead of stopping it, and its process group
@@ -173,7 +222,7 @@ impl Captured {
     }
 }
 
-async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin, output: Arc<Mutex<Captured>>) {
+async fn read_capped(mut reader: impl tokio::io::AsyncRead + Unpin, output: &Mutex<Captured>) {
     let mut chunk = [0; 8192];
     while let Ok(count) = reader.read(&mut chunk).await
         && count > 0

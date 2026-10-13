@@ -84,6 +84,13 @@ async fn returns_when_background_process_keeps_output_open() {
 }
 
 #[tokio::test]
+async fn keeps_output_that_keeps_arriving_after_the_command_exits() {
+    let command = "(for i in 1 2 3 4 5 6 7 8; do sleep 0.03; echo $i; done) &";
+    let text = call("bash", &json!({ "command": command })).await.unwrap();
+    assert_eq!(text, "1\n2\n3\n4\n5\n6\n7\n8\n");
+}
+
+#[tokio::test]
 async fn kills_background_processes_on_timeout() {
     let pid_file = TemporaryFile::new("pid", "");
     let command = format!("sleep 30 & echo $! > {}; wait", pid_file.path().display());
