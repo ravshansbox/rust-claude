@@ -488,6 +488,22 @@ fn keeps_status_line_branch_after_file_tools() {
 }
 
 #[test]
+fn replaces_the_conversation_with_the_resumed_session() {
+    let mut app = new_app();
+    app.push(Role::User, "old question");
+    app.push(Role::Assistant, "old answer");
+    handle_agent_event(
+        UiEvent::Resumed(Ok(vec![
+            json!({ "role": "user", "content": "hello" }),
+            json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi there" }] }),
+        ])),
+        &mut app,
+    );
+    let texts: Vec<_> = app.messages.iter().map(|m| m.text.as_str()).collect();
+    assert_eq!(texts, ["hello", "hi there", "resumed session"]);
+}
+
+#[test]
 fn shows_why_resuming_a_session_failed() {
     let mut app = new_app();
     let error = anyhow::Error::new(io::Error::from(io::ErrorKind::PermissionDenied))
