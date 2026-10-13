@@ -170,7 +170,7 @@ fn hard_line_breaks(text: &str) -> String {
         } else {
             out.push_str(line);
         }
-        if plain {
+        if plain && (line.len() - line.trim_end_matches('\\').len()) % 2 == 0 {
             out.push_str("  ");
         }
     }

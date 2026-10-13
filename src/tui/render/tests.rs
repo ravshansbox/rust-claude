@@ -365,3 +365,13 @@ fn shows_braces_at_the_end_of_an_underlined_heading() {
     ));
     assert_eq!(lines, ["# Point { x, y }", "", "> ## Empty {}"]);
 }
+
+#[test]
+fn hides_the_backslash_of_a_hard_line_break() {
+    let lines = trimmed(&render_message(
+        Role::Assistant,
+        "Line one\\\nLine two \\\\\nLine three",
+        40,
+    ));
+    assert_eq!(lines, ["Line one", "Line two \\", "Line three"]);
+}
