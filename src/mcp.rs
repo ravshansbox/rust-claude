@@ -4,6 +4,7 @@ use serde_json::{Value, json};
 
 mod config_file;
 mod connection;
+mod headers_helper;
 mod http;
 mod oauth;
 mod stdio;
