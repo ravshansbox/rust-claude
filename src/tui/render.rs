@@ -202,7 +202,7 @@ fn hard_line_breaks(text: &str) -> String {
             out.push_str(line);
         }
         code = match plain && !line.trim().is_empty() && !is_heading(line) {
-            true => code_span_after(line, code, &all[index + 1..]),
+            true => span_after(line, code, &all[index + 1..]),
             false => None,
         };
         paragraph = plain
@@ -426,34 +426,85 @@ fn html_after(line: &str, ends: &'static [&'static str]) -> Option<&'static [&'s
     }
 }
 
-/// The backtick count of the code span open after `line`, given the one open
-/// before it and the lines that follow.
-fn code_span_after(line: &str, mut open: Option<usize>, later: &[&str]) -> Option<usize> {
+#[derive(Clone, Copy, PartialEq)]
+enum InlineSpan {
+    Code(usize),
+    Math(bool),
+}
+
+/// The code or math span open after `line`, given the one open before it and
+/// the lines that follow.
+fn span_after(line: &str, mut open: Option<InlineSpan>, later: &[&str]) -> Option<InlineSpan> {
     let bytes = line.as_bytes();
+    let paragraph = || {
+        later
+            .iter()
+            .copied()
+            .take_while(|next| !next.trim().is_empty())
+    };
     let mut index = 0;
     while index < bytes.len() {
-        match bytes[index] {
-            b'\\' if open.is_none() => index += 2,
-            b'`' => {
+        match (bytes[index], open) {
+            (b'\\', None | Some(InlineSpan::Math(_))) => index += 2,
+            (b'`', None | Some(InlineSpan::Code(_))) => {
                 let length = bytes[index..].iter().take_while(|&&b| b == b'`').count();
                 index += length;
                 open = match open {
-                    Some(open_length) if open_length == length => None,
+                    Some(InlineSpan::Code(open_length)) if open_length == length => None,
                     None if has_backtick_run(&line[index..], length)
-                        || later
-                            .iter()
-                            .take_while(|next| !next.trim().is_empty())
-                            .any(|next| has_backtick_run(next, length)) =>
+                        || paragraph().any(|next| has_backtick_run(next, length)) =>
                     {
-                        Some(length)
+                        Some(InlineSpan::Code(length))
                     }
                     open => open,
                 };
+            }
+            (b'$', Some(InlineSpan::Math(display))) => {
+                index += 1 + usize::from(display);
+                open = None;
+            }
+            (b'$', None) => {
+                let display = bytes.get(index + 1) == Some(&b'$');
+                let after = index + 1 + usize::from(display);
+                let opens = bytes
+                    .get(index + 1)
+                    .is_some_and(|b| !b.is_ascii_whitespace())
+                    && std::iter::once(&line[after..])
+                        .chain(paragraph())
+                        .enumerate()
+                        .find_map(|(row, text)| math_close(text, display, row == 0))
+                        .unwrap_or(false);
+                match opens {
+                    true => (open, index) = (Some(InlineSpan::Math(display)), after),
+                    false => index += 1,
+                }
             }
             _ => index += 1,
         }
     }
     open
+}
+
+/// Whether the first `$` in `text` closes a math span, if it has one.
+fn math_close(text: &str, display: bool, first: bool) -> Option<bool> {
+    let bytes = text.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' => index += 2,
+            b'$' if display => return Some(bytes.get(index + 1) == Some(&b'$')),
+            b'$' => {
+                return Some(
+                    (index > 0 || first)
+                        && index
+                            .checked_sub(1)
+                            .is_none_or(|before| !bytes[before].is_ascii_whitespace()),
+                );
+            }
+            _ => index += 1,
+        }
+    }
+    None
 }
 
 fn has_backtick_run(text: &str, length: usize) -> bool {

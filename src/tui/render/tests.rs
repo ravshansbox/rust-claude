@@ -497,3 +497,25 @@ fn keeps_indented_code_at_the_start_of_a_reply_free_of_trailing_spaces() {
     ));
     assert_eq!(lines, vec!["```", "let x = 1;", "let y = 2;", "```"]);
 }
+
+#[test]
+fn keeps_math_split_across_lines_free_of_added_spaces() {
+    let display = texts(&render_message(
+        Role::Assistant,
+        "$$\nE = mc^2\n$$\nnext\nline",
+        40,
+    ));
+    assert_eq!(display, vec!["$$", "E = mc^2", "$$", "", "next", "line"]);
+    let inline = texts(&render_message(
+        Role::Assistant,
+        "Energy $E = \nmc^2$ here\nnext",
+        40,
+    ));
+    assert_eq!(inline, vec!["Energy $E = mc^2$ here", "next"]);
+    let prices = texts(&render_message(
+        Role::Assistant,
+        "Costs $5 and\n$6 total\nnext",
+        40,
+    ));
+    assert_eq!(prices, vec!["Costs $5 and", "$6 total", "next"]);
+}
