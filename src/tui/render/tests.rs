@@ -555,3 +555,9 @@ fn keeps_html_blocks_open_across_a_lone_quote_marker() {
     ));
     assert_eq!(lines, ["<div>", ">", "note", "</div>"]);
 }
+
+#[test]
+fn keeps_line_breaks_in_a_list_item_after_an_unclosed_backtick() {
+    let lines = texts(&render_message(Role::Assistant, "`a\n- item\n`b", 40));
+    assert_eq!(lines, ["`a", "", "- item", "`b"]);
+}

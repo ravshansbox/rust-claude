@@ -452,7 +452,7 @@ fn span_after(line: &str, mut open: Option<InlineSpan>, later: &[&str]) -> Optio
         later
             .iter()
             .copied()
-            .take_while(|next| !next.trim().is_empty())
+            .take_while(|next| !next.trim().is_empty() && !starts_block(next))
     };
     let mut index = 0;
     while index < bytes.len() {
@@ -517,6 +517,13 @@ fn math_close(text: &str, display: bool, first: bool) -> Option<bool> {
         }
     }
     None
+}
+
+fn starts_block(line: &str) -> bool {
+    is_heading(line)
+        || is_rule(line)
+        || next_fence(None, line).is_some()
+        || block_text(line).is_some_and(|text| without_list_marker(text).len() < text.len())
 }
 
 fn has_backtick_run(text: &str, length: usize) -> bool {
