@@ -470,6 +470,9 @@ impl Agent {
                     self.compact_history(end, &mut on_event)
                         .await
                         .map_err(|compact_error| anyhow!("{error:#}; {compact_error:#}"))?;
+                    // The summary now sits at `end`, so it belongs to the
+                    // compacted part like the messages it replaced.
+                    end += 1;
                     let messages = with_cache_breakpoint(&active_messages(&self.messages));
                     self.request(messages, None, &mut on_event).await
                 }

@@ -216,3 +216,35 @@ async fn compacts_when_tool_output_makes_the_next_request_too_long() {
     let last = requests.last().unwrap()["messages"].to_string();
     assert!(last.contains("summary of the work"), "{last}");
 }
+
+#[tokio::test]
+async fn compacts_only_once_when_a_paused_reply_makes_the_next_request_too_long() {
+    let api = MockApi::start_with_message_limit(
+        vec![
+            tool_reply(
+                "call-1",
+                "bash",
+                json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
+            ),
+            text_reply("summary of the work"),
+            stopped_reply(&"y".repeat(15_000), "pause_turn"),
+            text_reply("second summary"),
+        ],
+        10_000,
+    )
+    .await;
+    let mut notices = Vec::new();
+    let (_, result) = test_support::run_prompt(
+        &api,
+        "read the big file",
+        test_support::notices(&mut notices),
+    )
+    .await;
+    let message = result.unwrap_err().to_string();
+    assert!(message.contains("prompt is too long"), "{message}");
+    let compactions = notices
+        .iter()
+        .filter(|notice| *notice == "compacting conversation")
+        .count();
+    assert_eq!(compactions, 1, "{notices:?}");
+}
