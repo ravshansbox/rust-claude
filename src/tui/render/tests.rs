@@ -265,3 +265,11 @@ fn reads_a_light_or_dark_background_from_colorfgbg() {
     assert_eq!(theme("0;16"), "unknown");
     assert_eq!(theme("default;default"), "unknown");
 }
+
+#[test]
+fn keeps_line_breaks_after_a_code_block_opened_on_a_list_item_line() {
+    let text = "1. ```sh\n   pwd\n   ```\n\nfirst\nsecond";
+    let lines = trimmed(&render_message(Role::Assistant, text, 40));
+    assert!(lines.iter().any(|line| line == "pwd"), "{lines:?}");
+    assert_eq!(lines[lines.len() - 2..], ["first", "second"]);
+}

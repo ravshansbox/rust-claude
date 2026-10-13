@@ -161,7 +161,10 @@ fn hard_line_breaks(text: &str) -> String {
 /// The fence character and length of the code block open after `line`,
 /// given the one open before it.
 pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
-    let trimmed = line.trim_start();
+    let mut trimmed = line.trim_start();
+    if open.is_none() {
+        trimmed = without_list_marker(trimmed);
+    }
     let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
         return open;
     };
@@ -180,6 +183,20 @@ pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(cha
             None
         }
         _ => open,
+    }
+}
+
+/// `line` after a list item marker that starts it, such as `-` or `2.`.
+fn without_list_marker(line: &str) -> &str {
+    let digits = line.len() - line.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+    let marker = match line[digits..].chars().next() {
+        Some('.' | ')') if (1..=9).contains(&digits) => digits + 1,
+        Some('-' | '*' | '+') if digits == 0 => 1,
+        _ => return line,
+    };
+    match line[marker..].strip_prefix([' ', '\t']) {
+        Some(rest) => rest.trim_start(),
+        None => line,
     }
 }
 
