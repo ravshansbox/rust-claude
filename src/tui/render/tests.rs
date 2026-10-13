@@ -463,6 +463,16 @@ fn ends_a_quoted_html_block_when_the_quote_ends() {
 }
 
 #[test]
+fn keeps_html_blocks_after_an_empty_quote_line_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "> tip\n>\n<img src=\"a.png\">\ncaption",
+        40,
+    ));
+    assert_eq!(lines, ["> tip", "", "<img src=\"a.png\">", "caption"]);
+}
+
+#[test]
 fn keeps_html_blocks_with_quoted_angle_brackets_free_of_trailing_spaces() {
     let lines = texts(&render_message(
         Role::Assistant,

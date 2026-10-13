@@ -206,7 +206,7 @@ fn hard_line_breaks(text: &str) -> String {
             false => None,
         };
         paragraph = plain
-            && !line.trim().is_empty()
+            && !unquoted(line).trim().is_empty()
             && !is_heading(line)
             && !is_rule(line)
             && !(paragraph && is_underline(line));
