@@ -294,6 +294,21 @@ async fn fails_calls_when_the_server_sends_a_line_that_is_too_long() {
 }
 
 #[tokio::test]
+async fn reads_a_line_as_long_as_the_limit() {
+    let mut config = server_answering_calls_with(&format!(
+        r#"reply=$(printf '{{"jsonrpc":"2.0","id":%s,"result":{{"content":[{{"type":"text","text":"pong"}}]}}}}' "$id"); printf '%s' "$reply"; head -c $(({} - ${{#reply}})) /dev/zero | tr '\0' ' '; printf '\n'"#,
+        MAX_LINE
+    ));
+    config.timeout = Some(30);
+    let mut mcp = Mcp::default();
+    mcp.add(start("test".into(), Scope::Project, config).await);
+    assert_eq!(
+        mcp.call("mcp__test__echo", &json!({})).await,
+        Some(Ok("pong".into()))
+    );
+}
+
+#[tokio::test]
 async fn expands_a_leading_tilde_in_arguments_and_cwd() {
     let mut config = server_answering_calls_with(
         r#"printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"%s %s"}]}}\n' "$id" "$PWD" "$0""#,

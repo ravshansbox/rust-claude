@@ -65,7 +65,7 @@ async fn read_messages(
             Ok(0) | Err(_) => break,
             Ok(_) => {}
         }
-        if line.len() > MAX_LINE {
+        if line.len() > MAX_LINE && line.last() != Some(&b'\n') {
             let error = format!(
                 "server sent a line longer than {} MiB; closed the connection",
                 MAX_LINE >> 20
