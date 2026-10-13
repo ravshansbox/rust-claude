@@ -64,6 +64,32 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
 }
 
 #[tokio::test]
+async fn skips_pings_and_events_it_does_not_know() {
+    let api = MockApi::start(vec![Reply::Events(vec![
+        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        json!({ "type": "ping" }),
+        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hel" } }),
+        json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "future_delta", "text": "?" } }),
+        json!({ "type": "future_event" }),
+        json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "lo" } }),
+        json!({ "type": "content_block_stop", "index": 0 }),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+        json!({ "type": "message_stop" }),
+    ])])
+    .await;
+    let mut text = String::new();
+    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
+        if let AgentEvent::Text(delta) = event {
+            text.push_str(&delta);
+        }
+    })
+    .await;
+    result.unwrap();
+    assert_eq!(text, "hello");
+}
+
+#[tokio::test]
 async fn retries_an_overloaded_reply_whose_error_breaks_off() {
     let api = MockApi::start(vec![Reply::CutOffOverloaded, text_reply("hello")]).await;
     let mut text = String::new();
