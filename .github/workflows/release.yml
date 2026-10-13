@@ -45,7 +45,16 @@ jobs:
       - uses: taiki-e/install-action@v2
         with:
           tool: git-cliff
+      - id: latest
+        run: |
+          git fetch --quiet origin main
+          if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ]; then
+            echo "latest=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "$GITHUB_SHA is no longer the latest commit on main, skipping release"
+          fi
       - id: version
+        if: steps.latest.outputs.latest
         run: |
           next=$(git cliff --bumped-version)
           next=${next#v}
