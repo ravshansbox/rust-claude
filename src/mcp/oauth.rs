@@ -78,6 +78,12 @@ async fn send(
     Ok((status, reply, body.trim().chars().take(200).collect()))
 }
 
+/// Tokens a renewal got, and why they could not be saved, if they could not.
+pub(super) struct Renewed {
+    pub saved: Saved,
+    pub save_error: Option<String>,
+}
+
 /// Renews `saved` with its refresh token and saves the new tokens. Tokens
 /// another copy of rust-coding-agent saved meanwhile are used instead, unless they
 /// are the ones the server turned down.
@@ -86,7 +92,7 @@ pub(super) async fn refresh(
     server_url: &str,
     saved: &Saved,
     rejected: Option<&str>,
-) -> Result<Saved, String> {
+) -> Result<Renewed, String> {
     if let Some(mut current) = load(server_url)
         && current.access_token != saved.access_token
         && Some(current.access_token.as_str()) != rejected
@@ -96,7 +102,10 @@ pub(super) async fn refresh(
             current.client_secret = saved.client_secret.clone();
             current.secret_from_config = true;
         }
-        return Ok(current);
+        return Ok(Renewed {
+            saved: current,
+            save_error: None,
+        });
     }
     let refresh_token = saved.refresh_token.as_deref().ok_or("no refresh token")?;
     let renewed = request_tokens(
@@ -108,8 +117,13 @@ pub(super) async fn refresh(
         ],
     )
     .await?;
-    save(server_url, &renewed)?;
-    Ok(renewed)
+    // The endpoint has spent our refresh token, so keep the new tokens even
+    // when mcp-auth.json cannot take them.
+    let save_error = save(server_url, &renewed).err();
+    Ok(Renewed {
+        saved: renewed,
+        save_error,
+    })
 }
 
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(300);

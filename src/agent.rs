@@ -560,6 +560,9 @@ impl Agent {
             error: is_error.then(|| text.to_string()),
             note: tools::note(name, text).filter(|_| !is_error),
         });
+        for notice in self.mcp.take_renewal_notices() {
+            on_event(AgentEvent::Notice(notice));
+        }
         self.tool_results.push(json!({
             "type": "tool_result",
             "tool_use_id": block["id"],

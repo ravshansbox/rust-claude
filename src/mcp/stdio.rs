@@ -155,7 +155,7 @@ impl Connection {
             stderr: stderr_tail,
             timeout: Duration::from_secs(config.timeout.unwrap_or(DEFAULT_TIMEOUT)),
             _process_group: Some(ServerGroup(process_group)),
-            _session: None,
+            session: None,
         })
     }
 }

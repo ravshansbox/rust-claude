@@ -1,5 +1,9 @@
 use super::*;
 
+/// Tests share one mcp-auth.json: those that use it take turns with those
+/// that make it unusable.
+static AUTH_FILE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+
 /// Answers like `http_mcp`, but only with the access token `fresh`, and
 /// renews the refresh token `r1` at `/token`.
 fn signed_in_mcp(request: &HttpRequest) -> HttpReply {
@@ -45,6 +49,7 @@ fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
 
 #[tokio::test]
 async fn renews_oauth_tokens_that_an_http_server_turns_down() {
+    let _file = AUTH_FILE.read().await;
     let (url, requests) = http_server(signed_in_mcp).await;
     save_tokens(&url, "stale", now_millis() + 3_600_000);
     let mut mcp = Mcp::default();
@@ -68,7 +73,41 @@ async fn renews_oauth_tokens_that_an_http_server_turns_down() {
 }
 
 #[tokio::test]
+async fn keeps_renewed_oauth_tokens_that_could_not_be_saved() {
+    let _file = AUTH_FILE.write().await;
+    let (url, requests) = http_server(signed_in_mcp).await;
+    let expires_at = now_millis() + 2_000;
+    save_tokens(&url, "fresh", expires_at);
+    let mut mcp = Mcp::default();
+    assert_eq!(
+        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+            .status,
+        "loaded global MCP server: web (1 tools)"
+    );
+    let path = config::dir().unwrap().join("mcp-auth.json");
+    let aside = path.with_extension("aside");
+    std::fs::rename(&path, &aside).unwrap();
+    // A folder in the way of mcp-auth.json makes saving fail.
+    std::fs::create_dir(&path).unwrap();
+    let wait = expires_at.saturating_sub(now_millis()) + 10;
+    tokio::time::sleep(Duration::from_millis(wait.try_into().unwrap())).await;
+    let called = mcp.call("mcp__web__echo", &json!({})).await;
+    let notices = mcp.take_renewal_notices();
+    std::fs::remove_dir(&path).unwrap();
+    std::fs::rename(&aside, &path).unwrap();
+    assert_eq!(called, Some(Ok("pong".into())));
+    assert_eq!(requests_for_path(&requests, "/token").len(), 1);
+    assert_eq!(notices.len(), 1);
+    assert!(
+        notices[0].starts_with("renewed the sign-in to MCP server web, but cannot save"),
+        "{notices:?}"
+    );
+    assert!(mcp.take_renewal_notices().is_empty());
+}
+
+#[tokio::test]
 async fn sends_the_client_secret_from_the_config_when_renewing() {
+    let _file = AUTH_FILE.read().await;
     let (url, requests) = http_server(signed_in_mcp).await;
     save_tokens(&url, "stale", now_millis() - 1);
     let mut config = http_config(&url);
@@ -90,6 +129,7 @@ async fn sends_the_client_secret_from_the_config_when_renewing() {
 
 #[tokio::test]
 async fn keeps_the_client_secret_from_the_config_when_taking_over_tokens() {
+    let _file = AUTH_FILE.read().await;
     let (url, _) = http_server(signed_in_mcp).await;
     save_tokens(&url, "mine", now_millis() - 1);
     let config = OAuthConfig {
@@ -101,12 +141,16 @@ async fn keeps_the_client_secret_from_the_config_when_taking_over_tokens() {
     let taken_over = oauth::refresh(&reqwest::Client::new(), &url, &mine, None)
         .await
         .unwrap();
-    assert_eq!(taken_over.access_token, "theirs");
-    assert_eq!(taken_over.client_secret.as_deref(), Some("own-secret"));
+    assert_eq!(taken_over.saved.access_token, "theirs");
+    assert_eq!(
+        taken_over.saved.client_secret.as_deref(),
+        Some("own-secret")
+    );
 }
 
 #[tokio::test]
 async fn renews_expired_oauth_tokens_before_sending_them() {
+    let _file = AUTH_FILE.read().await;
     let (url, requests) = http_server(signed_in_mcp).await;
     save_tokens(&url, "stale", now_millis() - 1);
     let mut mcp = Mcp::default();
@@ -124,6 +168,7 @@ async fn renews_expired_oauth_tokens_before_sending_them() {
 
 #[tokio::test]
 async fn uses_short_lived_oauth_tokens_until_they_expire() {
+    let _file = AUTH_FILE.read().await;
     let (url, requests) = http_server(|request| {
         if request.path == "/token" {
             return HttpReply::json(json!({
@@ -242,6 +287,7 @@ async fn visit_callback(authorize_url: &str, code: &str, state: Option<&str>) ->
 #[tokio::test]
 async fn signs_in_to_an_http_server_with_oauth() {
     use base64::Engine;
+    let _file = AUTH_FILE.read().await;
     let (url, requests) = oauth_server().await;
     let base = url.trim_end_matches("/mcp");
     let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
@@ -288,6 +334,7 @@ async fn signs_in_to_an_http_server_with_oauth() {
 
 #[tokio::test]
 async fn signs_in_while_another_connection_to_the_callback_stays_idle() {
+    let _file = AUTH_FILE.read().await;
     let (url, _) = oauth_server().await;
     let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
     let authorize_url = sign_in.authorize_url.clone();
@@ -541,6 +588,7 @@ async fn signs_in_with_a_client_id_from_the_config() {
 
 #[tokio::test]
 async fn does_not_save_the_client_secret_from_the_config() {
+    let _file = AUTH_FILE.read().await;
     let (url, requests) = oauth_server().await;
     let mut config = http_config(&url);
     config.oauth = Some(OAuthConfig {
@@ -633,6 +681,7 @@ async fn reports_a_sign_in_the_user_declined() {
 
 #[tokio::test]
 async fn signs_out_of_an_http_server() {
+    let _file = AUTH_FILE.read().await;
     let (url, _) = http_server(signed_in_mcp).await;
     save_tokens(&url, "fresh", now_millis() + 3_600_000);
     assert_eq!(

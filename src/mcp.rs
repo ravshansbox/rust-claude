@@ -484,6 +484,14 @@ impl Mcp {
             });
         Some(result)
     }
+
+    /// What to tell the user about sign-ins renewed since the last call.
+    pub fn take_renewal_notices(&self) -> Vec<String> {
+        self.servers
+            .iter()
+            .filter_map(|server| server.connection.take_renewal_notice())
+            .collect()
+    }
 }
 
 #[cfg(test)]

@@ -76,7 +76,7 @@ pub(super) struct Connection {
     pub(super) stderr: Arc<Mutex<Vec<u8>>>,
     pub(super) timeout: Duration,
     pub(super) _process_group: Option<ServerGroup>,
-    pub(super) _session: Option<HttpSession>,
+    pub(super) session: Option<HttpSession>,
 }
 
 /// Answers a request from the server, or hands a response to the request
@@ -139,6 +139,12 @@ impl Connection {
 
     pub(super) fn notify(&self, method: &str) -> Result<(), String> {
         self.send(json!({ "jsonrpc": "2.0", "method": method }))
+    }
+
+    /// What to tell the user about the last sign-in renewal, until it is
+    /// shown.
+    pub(super) fn take_renewal_notice(&self) -> Option<String> {
+        self.session.as_ref()?.take_renewal_notice()
     }
 
     pub(super) async fn request(&self, method: &str, params: Value) -> Result<Value, String> {

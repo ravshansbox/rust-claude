@@ -50,6 +50,8 @@ struct OAuthSession {
     server_name: String,
     saved: Mutex<Option<oauth::Saved>>,
     refreshing: tokio::sync::Mutex<()>,
+    /// What to tell the user about the last renewal, until it is shown.
+    renewal_notice: Mutex<Option<String>>,
 }
 
 impl OAuthSession {
@@ -72,6 +74,13 @@ impl OAuthSession {
 
 /// Ends the server's session when the connection is dropped.
 pub(super) struct HttpSession(Arc<Http>);
+
+impl HttpSession {
+    pub(super) fn take_renewal_notice(&self) -> Option<String> {
+        let oauth = self.0.oauth.as_ref()?;
+        oauth.renewal_notice.lock().ok()?.take()
+    }
+}
 
 impl Drop for HttpSession {
     fn drop(&mut self) {
@@ -236,10 +245,18 @@ impl Http {
         let renewed = oauth::refresh(&self.client, &self.url, &current, rejected)
             .await
             .map_err(|error| oauth.needs_sign_in(Some(error)))?;
-        if let Ok(mut saved) = oauth.saved.lock() {
-            *saved = Some(renewed.clone());
+        if let Some(error) = renewed.save_error
+            && let Ok(mut notice) = oauth.renewal_notice.lock()
+        {
+            *notice = Some(format!(
+                "renewed the sign-in to MCP server {}, but {error}",
+                oauth.server_name
+            ));
         }
-        Ok(Some(renewed.access_token))
+        if let Ok(mut saved) = oauth.saved.lock() {
+            *saved = Some(renewed.saved.clone());
+        }
+        Ok(Some(renewed.saved.access_token))
     }
 
     fn current_headers(&self) -> reqwest::header::HeaderMap {
@@ -561,6 +578,7 @@ impl Connection {
                 server_name: name.to_string(),
                 saved: Mutex::new(oauth::load_for(url, config.oauth.as_ref())),
                 refreshing: tokio::sync::Mutex::new(()),
+                renewal_notice: Mutex::new(None),
             }),
         });
         let (writer, messages) = mpsc::unbounded_channel();
@@ -578,7 +596,7 @@ impl Connection {
             stderr: Arc::new(Mutex::new(Vec::new())),
             timeout,
             _process_group: None,
-            _session: Some(HttpSession(http)),
+            session: Some(HttpSession(http)),
         })
     }
 }
