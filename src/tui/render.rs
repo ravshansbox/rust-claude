@@ -626,7 +626,6 @@ fn without_quotes(line: &str, limit: usize) -> (&str, usize) {
     (rest, depth)
 }
 
-/// `line` after a list item marker that starts it, such as `-` or `2.`.
 fn is_empty_item(line: &str) -> bool {
     block_text(line).is_some_and(|text| {
         let text = text.trim_end();
@@ -639,6 +638,7 @@ fn is_empty_item(line: &str) -> bool {
     })
 }
 
+/// `line` after a list item marker that starts it, such as `-` or `2.`.
 fn without_list_marker(line: &str) -> &str {
     let digits = line.len() - line.trim_start_matches(|c: char| c.is_ascii_digit()).len();
     let marker = match line[digits..].chars().next() {
