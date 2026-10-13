@@ -171,7 +171,8 @@ pub(super) fn next_fence(
         },
         None => {
             let (rest, depth) = without_quotes(line, usize::MAX);
-            (without_list_marker(rest.trim_start()), depth)
+            let (rest, inner) = without_quotes(without_list_marker(rest.trim_start()), usize::MAX);
+            (rest.trim_start(), depth + inner)
         }
     };
     let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {

@@ -285,3 +285,15 @@ fn keeps_quoted_code_free_of_trailing_spaces() {
     assert!(code.ends_with("let x = 1;"), "{lines:?}");
     assert_eq!(lines[lines.len() - 2..], ["first", "second"]);
 }
+
+#[test]
+fn keeps_code_quoted_in_a_list_item_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "- > ```\n  > let x = 1;\n  > ```\n  > first\n  > second",
+        40,
+    ));
+    let code = lines.iter().find(|line| line.contains("let x")).unwrap();
+    assert!(code.ends_with("let x = 1;"), "{lines:?}");
+    assert_eq!(lines[lines.len() - 2..], ["> first", "> second"]);
+}
