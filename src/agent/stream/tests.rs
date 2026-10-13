@@ -144,6 +144,25 @@ async fn says_why_the_api_could_not_be_reached() {
 }
 
 #[tokio::test]
+async fn does_not_retry_a_request_the_api_rejected() {
+    let api = MockApi::start(vec![
+        Reply::BadRequest("max_tokens is too large".into()),
+        text_reply("hello"),
+    ])
+    .await;
+    let mut notices = Vec::new();
+    let (_, result) =
+        test_support::run_prompt(&api, "hi", test_support::notices(&mut notices)).await;
+    let message = result.unwrap_err().to_string();
+    assert!(message.contains("max_tokens is too large"), "{message}");
+    assert!(
+        !notices.iter().any(|notice| notice.contains("retrying in")),
+        "{notices:?}"
+    );
+    assert_eq!(api.requests().await.len(), 1);
+}
+
+#[tokio::test]
 async fn says_when_a_reply_stopped_because_the_context_window_filled_up() {
     let api = MockApi::start(vec![stopped_reply(
         "the start of",
