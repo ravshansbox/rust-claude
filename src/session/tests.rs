@@ -75,12 +75,13 @@ fn reads_preview_without_reading_rest_of_file() {
 fn continues_latest_session_in_current_folder() {
     let directory = TemporaryDir::new("latest");
     let now = SystemTime::now();
-    for (id, folder, age) in [
-        ("old", "/project", 60),
-        ("new", "/project", 30),
-        ("other", "/other", 0),
+    for (name, folder, age) in [
+        ("old.jsonl", "/project", 60),
+        ("new.jsonl", "/project", 30),
+        ("other.jsonl", "/other", 0),
+        ("notes.txt", "/project", 0),
     ] {
-        let path = directory.path().join(format!("{id}.jsonl"));
+        let path = directory.path().join(name);
         std::fs::write(
             &path,
             format!("{}\n", json!({ "type": "session", "cwd": folder })),
