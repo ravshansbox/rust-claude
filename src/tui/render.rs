@@ -170,6 +170,7 @@ pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(cha
         return open;
     }
     match open {
+        None if fence == '`' && trimmed[length..].contains('`') => None,
         None => Some((fence, length)),
         Some((open_fence, open_length))
             if fence == open_fence

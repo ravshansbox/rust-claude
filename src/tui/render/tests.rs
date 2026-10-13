@@ -244,6 +244,16 @@ fn keeps_line_breaks_after_a_code_block_holding_another_fence() {
 }
 
 #[test]
+fn keeps_line_breaks_after_inline_code_in_triple_backticks() {
+    let text = "```ls```\nfirst\nsecond";
+    let lines: Vec<String> = render_message(Role::Assistant, text, 40)
+        .iter()
+        .map(|line| line.to_string().trim().to_string())
+        .collect();
+    assert_eq!(lines, ["ls", "first", "second"]);
+}
+
+#[test]
 fn reads_a_light_or_dark_background_from_colorfgbg() {
     let theme = |value| match Theme::from_colorfgbg(value) {
         Some(Theme::Dark) => "dark",
