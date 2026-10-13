@@ -487,3 +487,13 @@ fn keeps_lines_with_invalid_tags_as_paragraph_text() {
     let lines = texts(&render_message(Role::Assistant, "<foo bar=>\nnext", 40));
     assert_eq!(lines, ["<foo bar=>", "next"]);
 }
+
+#[test]
+fn keeps_indented_code_at_the_start_of_a_reply_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "    let x = 1;\n    let y = 2;",
+        40,
+    ));
+    assert_eq!(lines, vec!["```", "let x = 1;", "let y = 2;", "```"]);
+}

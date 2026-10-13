@@ -144,7 +144,10 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 fn hard_line_breaks(text: &str) -> String {
     let mut fence = None;
     let mut code = None;
-    let mut indented = Indented::default();
+    let mut indented = Indented {
+        blank: true,
+        ..Indented::default()
+    };
     let mut html: Option<(&[&str], usize)> = None;
     let mut paragraph = false;
     let mut out = String::with_capacity(text.len());
