@@ -61,7 +61,7 @@ impl Agent {
         }
         on_event(AgentEvent::Notice("compacting conversation".into()));
         let active = active_messages(&self.messages[..end]);
-        let mut response = self.summarise(&active, on_event).await;
+        let mut response = self.summarise(active.clone(), on_event).await;
         // A round of tool calls can take the conversation past the context
         // window, and then the API rejects it whole. The summary can do with
         // less of each tool output.
@@ -73,7 +73,7 @@ impl Agent {
                 "conversation too long to summarise; retrying with tool output cut to {limit} characters"
             )));
             response = self
-                .summarise(&shorten_tool_results(&active, limit), on_event)
+                .summarise(shorten_tool_results(&active, limit), on_event)
                 .await;
         }
         let response = response?;
@@ -108,7 +108,7 @@ impl Agent {
 
     async fn summarise(
         &mut self,
-        messages: &[Value],
+        messages: Vec<Value>,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Response> {
         let mut messages = with_cache_breakpoint(messages);

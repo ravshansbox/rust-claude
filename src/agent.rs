@@ -29,7 +29,8 @@ use crate::{
     tools,
 };
 use context::{
-    active_messages, context_tokens, has_uncompacted, is_compaction, with_cache_breakpoint,
+    active_messages, active_start, context_tokens, has_uncompacted, is_compaction,
+    with_cache_breakpoint,
 };
 pub use queue::{Queue, Queued, take_queued};
 use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
@@ -235,7 +236,7 @@ impl Agent {
         Stats {
             usage,
             tokens_per_second: tokens_per_second(&self.messages),
-            context_tokens: context_tokens(&active_messages(&self.messages)),
+            context_tokens: context_tokens(&self.messages[active_start(&self.messages)..]),
             context_window: models::context_window(&self.model),
             quota: self.quota,
             background: self.background.len(),
@@ -462,7 +463,7 @@ impl Agent {
             .await;
 
         loop {
-            let messages = with_cache_breakpoint(&active_messages(&self.messages));
+            let messages = with_cache_breakpoint(active_messages(&self.messages));
             let response = match self.request(messages, None, &mut on_event).await {
                 Err(error)
                     if is_prompt_too_long(&error) && has_uncompacted(&self.messages[..end]) =>
@@ -473,7 +474,7 @@ impl Agent {
                     // The summary now sits at `end`, so it belongs to the
                     // compacted part like the messages it replaced.
                     end += 1;
-                    let messages = with_cache_breakpoint(&active_messages(&self.messages));
+                    let messages = with_cache_breakpoint(active_messages(&self.messages));
                     self.request(messages, None, &mut on_event).await
                 }
                 response => response,

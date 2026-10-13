@@ -30,7 +30,7 @@ fn drops_empty_assistant_replies_from_requests() {
         json!({ "role": "assistant", "content": [], "usage": { "output": 3 } }),
         json!({ "role": "user", "content": "again" }),
     ];
-    let request = with_cache_breakpoint(&messages);
+    let request = with_cache_breakpoint(messages);
     assert_eq!(request.len(), 2);
     assert_eq!(request[1]["content"][0]["text"], "again");
 }
@@ -44,7 +44,7 @@ fn marks_the_end_of_the_previous_request_after_a_cancelled_tool_round() {
         json!({ "role": "assistant", "stop_reason": "aborted", "content": [] }),
         json!({ "role": "user", "content": "next" }),
     ];
-    let request = with_cache_breakpoint(&messages);
+    let request = with_cache_breakpoint(messages);
     let marked: Vec<bool> = request
         .iter()
         .map(|message| message.to_string().contains("cache_control"))
@@ -63,7 +63,7 @@ fn keeps_the_cache_breakpoint_off_thinking_blocks() {
             "content": [{ "type": "text", "text": "hi" }, thinking, redacted],
         }),
     ];
-    let request = with_cache_breakpoint(&messages);
+    let request = with_cache_breakpoint(messages);
     assert_eq!(
         request[1]["content"][0]["cache_control"]["type"],
         "ephemeral"
@@ -75,7 +75,7 @@ fn keeps_the_cache_breakpoint_off_thinking_blocks() {
         json!({ "role": "user", "content": "hello" }),
         json!({ "role": "assistant", "content": [thinking] }),
     ];
-    let request = with_cache_breakpoint(&only_thinking);
+    let request = with_cache_breakpoint(only_thinking);
     assert!(!request[1].to_string().contains("cache_control"));
 }
 

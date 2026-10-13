@@ -7,25 +7,31 @@ pub(super) fn is_compaction(message: &Value) -> bool {
     message["stop_reason"] == "compacted"
 }
 
+/// Where the messages after the last compaction start.
+pub(super) fn active_start(messages: &[Value]) -> usize {
+    messages
+        .iter()
+        .rposition(is_compaction)
+        .map_or(0, |index| index + 1)
+}
+
 pub(super) fn active_messages(messages: &[Value]) -> Vec<Value> {
-    let Some(index) = messages.iter().rposition(is_compaction) else {
+    let start = active_start(messages);
+    let Some(compaction) = start.checked_sub(1) else {
         return messages.to_vec();
     };
-    let summary = messages[index]["summary"].as_str().unwrap_or_default();
-    let mut active = vec![json!({
+    let summary = messages[compaction]["summary"].as_str().unwrap_or_default();
+    let mut active = Vec::with_capacity(messages.len() - compaction);
+    active.push(json!({
         "role": "user",
         "content": format!("{SUMMARY_INTRODUCTION}\n\n{summary}"),
-    })];
-    active.extend_from_slice(&messages[index + 1..]);
+    }));
+    active.extend_from_slice(&messages[start..]);
     active
 }
 
 pub(super) fn has_uncompacted(messages: &[Value]) -> bool {
-    let start = messages
-        .iter()
-        .rposition(is_compaction)
-        .map_or(0, |index| index + 1);
-    messages[start..]
+    messages[active_start(messages)..]
         .iter()
         .any(|message| message.get("stop_reason").is_none())
 }
@@ -63,17 +69,13 @@ fn shorten(text: &mut Value, limit: usize) {
     }
 }
 
-pub(super) fn with_cache_breakpoint(messages: &[Value]) -> Vec<Value> {
-    let mut messages: Vec<Value> = messages
-        .iter()
-        .filter(|message| {
-            message.get("stop_reason").is_none()
-                && message["content"]
-                    .as_array()
-                    .is_none_or(|blocks| !blocks.is_empty())
-        })
-        .cloned()
-        .collect();
+pub(super) fn with_cache_breakpoint(mut messages: Vec<Value>) -> Vec<Value> {
+    messages.retain(|message| {
+        message.get("stop_reason").is_none()
+            && message["content"]
+                .as_array()
+                .is_none_or(|blocks| !blocks.is_empty())
+    });
     for message in &mut messages {
         if let Some(object) = message.as_object_mut() {
             object.remove("usage");
