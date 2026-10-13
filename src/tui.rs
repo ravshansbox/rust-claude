@@ -92,41 +92,14 @@ async fn run_loop(
     agent: Agent,
     mut stop: StopSignals,
 ) -> Result<()> {
-    let mut app = App::new(&agent.model, agent.effort, agent.stats());
-    app.skills = agent.skills.skills.clone();
     let startup = mcp::startup();
-    app.mcp_sign_in_servers = startup.sign_in_servers;
-    for diagnostic in startup.diagnostics {
-        app.push(Role::Event, diagnostic);
-    }
-    app.load_history(history::history_path());
-    if !agent.messages().is_empty() {
-        replay_messages(&mut app, agent.messages());
-        app.push(Role::Event, "continued session");
-    }
+    let mut app = opening_app(&agent, &startup, history::history_path());
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let background_events = event_tx.clone();
     let (history_sender, history_writer) = history_writer(event_tx.clone());
-    app.queue = agent.queue.clone();
     let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    app.push(Role::Event, tools_line());
-    app.start_mcp_servers(
-        startup
-            .servers
-            .iter()
-            .map(|server| (server.name.as_str(), server.scope)),
-    );
-    app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
-    show_skills_and_instructions(
-        &mut app,
-        &agent.skills,
-        agent
-            .instructions
-            .iter()
-            .map(|instructions| instructions.label.as_str()),
-    );
     for server in startup.servers {
         let mcp_tx = mcp_tx.clone();
         tokio::spawn(async move {
@@ -284,6 +257,38 @@ async fn run_loop(
         let _ = worker.await;
     }
     result
+}
+
+fn opening_app(agent: &Agent, startup: &mcp::Startup, history_path: Option<PathBuf>) -> App {
+    let mut app = App::new(&agent.model, agent.effort, agent.stats());
+    app.skills = agent.skills.skills.clone();
+    app.mcp_sign_in_servers = startup.sign_in_servers.clone();
+    for diagnostic in &startup.diagnostics {
+        app.push(Role::Event, diagnostic.clone());
+    }
+    app.load_history(history_path);
+    if !agent.messages().is_empty() {
+        replay_messages(&mut app, agent.messages());
+        app.push(Role::Event, "continued session");
+    }
+    app.queue = agent.queue.clone();
+    app.push(Role::Event, tools_line());
+    app.start_mcp_servers(
+        startup
+            .servers
+            .iter()
+            .map(|server| (server.name.as_str(), server.scope)),
+    );
+    app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
+    show_skills_and_instructions(
+        &mut app,
+        &agent.skills,
+        agent
+            .instructions
+            .iter()
+            .map(|instructions| instructions.label.as_str()),
+    );
+    app
 }
 
 /// Adds prompts to their history files one at a time, in order, on a thread
