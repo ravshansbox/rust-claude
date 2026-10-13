@@ -567,3 +567,9 @@ fn keeps_line_breaks_in_a_quote_after_an_unclosed_backtick() {
     let lines = texts(&render_message(Role::Assistant, "`a\n> quote\n> `b", 40));
     assert_eq!(lines, ["`a", "", "> quote", "> `b"]);
 }
+
+#[test]
+fn keeps_inline_code_across_an_ordered_marker_that_cannot_start_a_list() {
+    let lines = texts(&render_message(Role::Assistant, "`a\n2. b`", 40));
+    assert_eq!(lines, ["a 2. b"]);
+}

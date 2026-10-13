@@ -202,7 +202,7 @@ fn hard_line_breaks(text: &str) -> String {
             out.push_str(line);
         }
         code = match plain && !line.trim().is_empty() && !is_heading(line) {
-            true => span_after(line, code, &all[index + 1..]),
+            true => span_after(line, code, &all[index + 1..], !indented.lists.is_empty()),
             false => None,
         };
         paragraph = plain
@@ -446,13 +446,18 @@ enum InlineSpan {
 
 /// The code or math span open after `line`, given the one open before it and
 /// the lines that follow.
-fn span_after(line: &str, mut open: Option<InlineSpan>, later: &[&str]) -> Option<InlineSpan> {
+fn span_after(
+    line: &str,
+    mut open: Option<InlineSpan>,
+    later: &[&str],
+    in_list: bool,
+) -> Option<InlineSpan> {
     let bytes = line.as_bytes();
     let depth = without_quotes(line, usize::MAX).1;
     let paragraph = || {
         later.iter().copied().take_while(move |next| {
             !next.trim().is_empty()
-                && !starts_block(next)
+                && !starts_block(next, in_list)
                 && without_quotes(next, usize::MAX).1 <= depth
         })
     };
@@ -521,11 +526,16 @@ fn math_close(text: &str, display: bool, first: bool) -> Option<bool> {
     None
 }
 
-fn starts_block(line: &str) -> bool {
+fn starts_block(line: &str, in_list: bool) -> bool {
     is_heading(line)
         || is_rule(line)
         || next_fence(None, line).is_some()
-        || block_text(line).is_some_and(|text| without_list_marker(text).len() < text.len())
+        || block_text(line).is_some_and(|text| {
+            without_list_marker(text).len() < text.len()
+                && (in_list
+                    || !text.starts_with(|c: char| c.is_ascii_digit())
+                    || matches!(text.trim_start_matches('0').get(..2), Some("1." | "1)")))
+        })
 }
 
 fn has_backtick_run(text: &str, length: usize) -> bool {
