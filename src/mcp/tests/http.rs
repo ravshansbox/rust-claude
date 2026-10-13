@@ -167,6 +167,31 @@ async fn times_out_when_an_http_server_does_not_answer() {
 }
 
 #[tokio::test]
+async fn stops_waiting_for_an_http_notification_the_server_does_not_answer() {
+    let calls = AtomicU64::new(0);
+    let (url, _) = http_server(move |request| match request.body["method"].as_str() {
+        Some("tools/call") if calls.fetch_add(1, Ordering::SeqCst) == 0 => HttpReply::stall(),
+        Some("notifications/cancelled") => HttpReply::stall(),
+        _ => http_mcp(request),
+    })
+    .await;
+    let mut config = http_config(&url);
+    config.timeout = Some(1);
+    let mut mcp = Mcp::default();
+    mcp.add(start("web".into(), Scope::Global, config).await);
+    assert_eq!(
+        mcp.call("mcp__web__echo", &json!({})).await,
+        Some(Err("tools/call timed out after 1 seconds".into()))
+    );
+    // The cancellation of that call stalls until its own timeout.
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert_eq!(
+        mcp.call("mcp__web__echo", &json!({})).await,
+        Some(Ok("pong".into()))
+    );
+}
+
+#[tokio::test]
 async fn expands_environment_variables_in_http_headers() {
     let (url, requests) = http_server(http_mcp).await;
     let mut config = http_config(&url);

@@ -331,6 +331,10 @@ impl Http {
         message: &Value,
         token: Option<&str>,
     ) -> Result<(reqwest::Response, Option<String>), PostError> {
+        // Each post, with the reply read from it, takes at most the server's
+        // timeout, so a notification the server never answers does not hold
+        // up the messages queued after it. Requests are bounded as a whole
+        // by the same timeout, started before this.
         let mut request = self
             .client
             .post(&self.url)
@@ -339,7 +343,8 @@ impl Http {
                 reqwest::header::ACCEPT,
                 "application/json, text/event-stream",
             )
-            .json(message);
+            .json(message)
+            .timeout(self.timeout);
         if let Some(token) = token {
             request = request.bearer_auth(token);
         }
