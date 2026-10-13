@@ -145,7 +145,7 @@ fn hard_line_breaks(text: &str) -> String {
     let mut fence = None;
     let mut code = None;
     let mut indented = Indented::default();
-    let mut html: Option<&[&str]> = None;
+    let mut html: Option<(&[&str], usize)> = None;
     let mut paragraph = false;
     let mut out = String::with_capacity(text.len());
     let all: Vec<&str> = text.lines().collect();
@@ -154,10 +154,13 @@ fn hard_line_breaks(text: &str) -> String {
         if index > 0 {
             out.push('\n');
         }
+        if html.is_some_and(|(_, depth)| without_quotes(line, depth).1 < depth) {
+            html = None;
+        }
         let plain = match html {
-            Some(ends) => {
+            Some((ends, depth)) => {
                 indented.next(line, true);
-                html = html_after(line, ends);
+                html = html_after(line, ends).map(|ends| (ends, depth));
                 false
             }
             None => {
@@ -169,7 +172,8 @@ fn hard_line_breaks(text: &str) -> String {
                 match plain.then(|| html_block(line, paragraph)).flatten() {
                     Some(ends) => {
                         indented.next(line, true);
-                        html = html_after(line, ends);
+                        let depth = without_quotes(line, usize::MAX).1;
+                        html = html_after(line, ends).map(|ends| (ends, depth));
                         false
                     }
                     None => plain,

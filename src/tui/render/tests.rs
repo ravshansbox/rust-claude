@@ -451,3 +451,13 @@ fn keeps_html_blocks_free_of_trailing_spaces() {
         ]
     );
 }
+
+#[test]
+fn ends_a_quoted_html_block_when_the_quote_ends() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "> <div>\n> a\nplain\nline",
+        40,
+    ));
+    assert_eq!(lines, ["> <div>", "> a", "", "plain", "line"]);
+}
