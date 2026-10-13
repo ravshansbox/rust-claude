@@ -1,10 +1,13 @@
 use super::{
-    PathBuf, UiEvent, git_branch, history_writer, save_changed_settings,
+    PathBuf, UiEvent, git_branch, history_writer, opening_app, save_changed_settings,
     show_skills_and_instructions, test_support::new_app, tools_line,
 };
 use crate::{
-    agent::AgentEvent,
-    config, history,
+    agent::{
+        AgentEvent,
+        test_support::{self, MockApi, text_reply},
+    },
+    config, history, mcp,
     settings::Settings,
     skills::{Diagnostic, Scope, Skill, Skills},
     tools::test_support::TemporaryDir,
@@ -132,4 +135,38 @@ fn saves_only_the_model_and_effort_the_user_changed() {
     assert_eq!(broken, "{ broken");
     let last = &app.messages.last().unwrap().text;
     assert!(last.starts_with("failed to save settings: "), "{last}");
+}
+
+#[tokio::test]
+async fn opens_a_continued_session_with_its_conversation_then_what_loaded() {
+    let api = MockApi::start(vec![text_reply("Hi there")]).await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    agent.prompt("hello", &[], |_| {}).await.unwrap();
+    let id = agent.session.id.clone();
+    drop(agent);
+    let mut continued = test_support::agent(&api, reqwest::Client::new());
+    let resumed = continued.resume(&id).await;
+    test_support::remove_session(&continued);
+    resumed.unwrap();
+    let startup = mcp::Startup {
+        diagnostics: vec!["mcp warning: broken.json".into()],
+        servers: Vec::new(),
+        overridden: Vec::new(),
+        sign_in_servers: Vec::new(),
+    };
+    let app = opening_app(&continued, &startup, None);
+    let shown: Vec<&str> = app.messages[1..6]
+        .iter()
+        .map(|message| message.text.as_str())
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            "mcp warning: broken.json",
+            "hello",
+            "Hi there",
+            "continued session",
+            "loaded tools: agent, bash, bash_stop, edit, read, web_search, write",
+        ]
+    );
 }
