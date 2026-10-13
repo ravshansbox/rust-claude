@@ -302,6 +302,17 @@ fn keeps_indented_code_free_of_trailing_spaces() {
 }
 
 #[test]
+fn keeps_indented_code_after_a_heading_or_fence_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "## Setup\n    let x = 1;\n```\nfenced\n```\n    let y = 2;",
+        40,
+    ));
+    let code: Vec<_> = lines.iter().filter(|line| line.contains("let ")).collect();
+    assert_eq!(code, ["let x = 1;", "let y = 2;"], "{lines:?}");
+}
+
+#[test]
 fn keeps_code_quoted_in_a_list_item_free_of_trailing_spaces() {
     let lines = texts(&render_message(
         Role::Assistant,

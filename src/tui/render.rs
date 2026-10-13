@@ -197,7 +197,7 @@ impl Indented {
     /// Whether `line` is in an indented code block.
     fn next(&mut self, line: &str, fenced: bool) -> bool {
         if fenced {
-            (self.code, self.blank) = (false, false);
+            (self.code, self.blank) = (false, true);
             return false;
         }
         let rest = unquoted(line);
@@ -219,7 +219,7 @@ impl Indented {
         }
         let base = self.lists.last().copied().unwrap_or(0);
         self.code = indent >= base + 4 && (self.blank || self.code);
-        self.blank = false;
+        self.blank = !self.code && is_heading(line);
         if !self.code && item.len() < text.len() {
             self.lists.push(indent + text.len() - item.len());
         }
