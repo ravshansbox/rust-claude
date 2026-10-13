@@ -21,18 +21,11 @@ const BOTTOM_BUTTON: &str = "↓ Bottom (End)";
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
-    let input_width = frame.area().width.saturating_sub(2).max(1) as usize;
+    let input_width = frame.area().width.max(1) as usize;
     app.input_width = input_width;
     let input_rows = input_rows(&app.input, input_width);
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
-    let input_lines: Vec<Line> = input_rows
-        .into_iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let marker = if index == 0 { "❯ " } else { "  " };
-            Line::raw(format!("{marker}{row}"))
-        })
-        .collect();
+    let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
     let footer_paragraph = footer(app);
     let footer_height = footer_paragraph
         .line_count(frame.area().width)
@@ -186,7 +179,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         input,
     );
     frame.set_cursor_position((
-        input.x + 2 + cursor_column as u16,
+        input.x + cursor_column as u16,
         input.y + cursor_row as u16 - input_scroll + 1,
     ));
 

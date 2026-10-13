@@ -15,16 +15,13 @@ fn trimmed(lines: &[Line]) -> Vec<String> {
 #[test]
 fn wraps_user_message_by_display_width() {
     let rows = texts(&user_message_lines("日本語のテキスト\n\nabcd", 8));
-    assert_eq!(
-        rows,
-        vec!["❯ 日本語", "  のテキ", "  スト  ", "        ", "  abcd  ",]
-    );
+    assert_eq!(rows, vec!["日本語の", "テキスト", "        ", "abcd    "]);
 }
 
 #[test]
 fn shows_tab_indentation_in_user_message() {
     let rows = texts(&user_message_lines("\tx", 8));
-    assert_eq!(rows, vec!["❯     x "]);
+    assert_eq!(rows, vec!["    x   "]);
 }
 
 #[test]

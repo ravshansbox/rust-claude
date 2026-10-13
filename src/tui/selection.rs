@@ -1,4 +1,4 @@
-use super::{App, Role, draw::conversation};
+use super::{App, draw::conversation};
 use ratatui::{
     buffer::Buffer,
     layout::{Position, Rect},
@@ -6,9 +6,6 @@ use ratatui::{
     text::Span,
     widgets::Widget,
 };
-
-/// Columns taken by the marker or indent before prompt rows.
-const PREFIX_WIDTH: u16 = 2;
 
 /// A cell of the conversation, counting rows from its top.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -89,26 +86,6 @@ impl App {
         self.insert(&format!("{space}'{text}' - "));
     }
 
-    /// Whether each conversation row from `start` to `end` starts with the
-    /// marker or indent of a prompt.
-    fn prefixed_rows(&self, start: usize, end: usize) -> Vec<bool> {
-        let mut prefixed = vec![false; end - start + 1];
-        let mut top = 0;
-        for (index, message) in self.messages.iter().enumerate() {
-            let first = top + self.gap_before(index);
-            top = first + message.height();
-            if matches!(message.role, Role::User) {
-                for row in first.max(start)..top.min(end + 1) {
-                    prefixed[row - start] = true;
-                }
-            }
-            if top > end {
-                break;
-            }
-        }
-        prefixed
-    }
-
     /// The text from `start` to `end`, each row on its own line without
     /// trailing spaces.
     fn selected_text(&self, start: Point, end: Point) -> String {
@@ -117,15 +94,9 @@ impl App {
         let area = Rect::new(0, 0, width, height);
         let mut buffer = Buffer::empty(area);
         conversation(self, width, start.row, height).render(area, &mut buffer);
-        let prefixed = self.prefixed_rows(start.row, end.row);
         (0..height)
             .map(|y| {
                 let first = if y == 0 { start.column } else { 0 };
-                let first = if prefixed[y as usize] {
-                    first.max(PREFIX_WIDTH)
-                } else {
-                    first
-                };
                 let last = if y == height - 1 {
                     end.column
                 } else {

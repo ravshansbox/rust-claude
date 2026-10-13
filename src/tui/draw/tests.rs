@@ -10,21 +10,21 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend};
 
 #[test]
-fn shows_the_input_after_a_marker_with_wrapped_rows_indented() {
+fn shows_the_input_without_a_marker() {
     let mut app = app_with_reply();
     handle_input(Event::Paste("lorem ipsum dolor".into()), &mut app, |_| {});
-    let shown = screen_of_width(&mut app, 12);
+    let shown = screen_of_width(&mut app, 10);
     let rows: Vec<&str> = shown.lines().collect();
     let first = rows
         .iter()
-        .position(|row| row.starts_with("❯ lorem"))
+        .position(|row| row.starts_with("lorem"))
         .unwrap_or_else(|| panic!("{shown}"));
-    assert_eq!(rows[first], "❯ lorem ipsu", "{shown}");
-    assert_eq!(rows[first + 1], "  m dolor   ", "{shown}");
-    let mut terminal = Terminal::new(TestBackend::new(12, 24)).unwrap();
+    assert_eq!(rows[first], "lorem ipsu", "{shown}");
+    assert_eq!(rows[first + 1], "m dolor   ", "{shown}");
+    let mut terminal = Terminal::new(TestBackend::new(10, 24)).unwrap();
     terminal.draw(|frame| super::draw(frame, &mut app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();
-    assert_eq!((cursor.x, cursor.y), (9, first as u16 + 1));
+    assert_eq!((cursor.x, cursor.y), (7, first as u16 + 1));
     press(&mut app, KeyCode::Up);
     assert_eq!(app.cursor, "lorem i".len());
 }

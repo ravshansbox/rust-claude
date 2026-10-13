@@ -89,13 +89,13 @@ fn quotes_each_row_on_its_own_line_without_trailing_spaces() {
 }
 
 #[test]
-fn leaves_out_the_marker_and_indent_of_prompts() {
+fn quotes_prompts_from_the_left_edge() {
     let mut app = app_with_reply();
-    app.push(Role::User, "my prompt");
+    app.push(Role::User, "  my prompt");
     let (column, row) = position(&mut app, "Earlier reply");
-    let (end_column, end_row) = position(&mut app, "❯ my prompt");
+    let (end_column, end_row) = position(&mut app, "  my prompt");
     let input = drag(&mut app, (column, row), (end_column + 10, end_row));
-    assert_eq!(input, "'Earlier reply\n\nmy prompt' - ");
+    assert_eq!(input, "'Earlier reply\n\n  my prompt' - ");
 }
 
 #[test]

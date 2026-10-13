@@ -472,7 +472,7 @@ pub(super) fn wrapped_height(line: &Line, width: u16) -> usize {
 }
 
 fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
-    let content_width = width.saturating_sub(2).max(1);
+    let content_width = width.max(1);
     let mut rows = Vec::new();
     for line in text.lines() {
         let mut line_rows = input_rows(line, content_width);
@@ -485,12 +485,9 @@ fn user_message_lines(text: &str, width: usize) -> Vec<Line<'static>> {
         rows.push(String::new());
     }
     rows.into_iter()
-        .enumerate()
-        .map(|(index, row)| {
-            let marker = if index == 0 { "❯ " } else { "  " };
+        .map(|row| {
             let padding = content_width.saturating_sub(usize::from(row.cell_width()));
-            Line::from(format!("{marker}{row}{}", " ".repeat(padding)))
-                .style(theme().highlight_style())
+            Line::from(format!("{row}{}", " ".repeat(padding))).style(theme().highlight_style())
         })
         .collect()
 }
