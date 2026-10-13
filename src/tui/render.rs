@@ -368,12 +368,50 @@ fn html_block(line: &str, paragraph: bool) -> Option<&'static [&'static str]> {
         return Some(&[]);
     }
     let complete = name.starts_with(|c: char| c.is_ascii_alphabetic())
-        && (after.starts_with(['>', '/']) || after.starts_with(char::is_whitespace))
-        && after
-            .trim_end()
-            .strip_suffix('>')
-            .is_some_and(|inside| !inside.contains(['<', '>']));
+        && match rest.starts_with('/') {
+            true => after.trim_start().strip_prefix('>'),
+            false => tag_end(after),
+        }
+        .is_some_and(|tail| tail.trim().is_empty());
     (!paragraph && complete).then_some(&[])
+}
+
+/// The text after an open tag's attributes and closing `>`, if they are valid.
+fn tag_end(mut rest: &str) -> Option<&str> {
+    loop {
+        let trimmed = rest.trim_start();
+        if let Some(tail) = trimmed.strip_prefix("/>").or(trimmed.strip_prefix('>')) {
+            return Some(tail);
+        }
+        if trimmed.len() == rest.len()
+            || !trimmed.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == ':')
+        {
+            return None;
+        }
+        let name = trimmed
+            .find(|c: char| !(c.is_ascii_alphanumeric() || "_.:-".contains(c)))
+            .unwrap_or(trimmed.len());
+        rest = &trimmed[name..];
+        let Some(value) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        let value = value.trim_start();
+        rest = match value.chars().next()? {
+            quote @ ('"' | '\'') => {
+                let close = value[1..].find(quote)?;
+                &value[close + 2..]
+            }
+            _ => {
+                let end = value
+                    .find(|c: char| c.is_whitespace() || "\"'=<>`".contains(c))
+                    .unwrap_or(value.len());
+                if end == 0 {
+                    return None;
+                }
+                &value[end..]
+            }
+        };
+    }
 }
 
 /// The end markers of the HTML block still open after `line`.

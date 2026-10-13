@@ -461,3 +461,29 @@ fn ends_a_quoted_html_block_when_the_quote_ends() {
     ));
     assert_eq!(lines, ["> <div>", "> a", "", "plain", "line"]);
 }
+
+#[test]
+fn keeps_html_blocks_with_quoted_angle_brackets_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "<a href=\"x>y\">\nlink\n</a>\n\n<b title='1 > 0' hidden>\ntext",
+        40,
+    ));
+    assert_eq!(
+        lines,
+        [
+            "<a href=\"x>y\">",
+            "link",
+            "</a>",
+            "",
+            "<b title='1 > 0' hidden>",
+            "text"
+        ]
+    );
+}
+
+#[test]
+fn keeps_lines_with_invalid_tags_as_paragraph_text() {
+    let lines = texts(&render_message(Role::Assistant, "<foo bar=>\nnext", 40));
+    assert_eq!(lines, ["<foo bar=>", "next"]);
+}
