@@ -144,7 +144,8 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 fn hard_line_breaks(text: &str) -> String {
     let mut fence = None;
     let mut out = String::with_capacity(text.len());
-    for (index, line) in text.lines().enumerate() {
+    let mut lines = text.lines().enumerate().peekable();
+    while let Some((index, line)) = lines.next() {
         if index > 0 {
             out.push('\n');
         }
@@ -153,7 +154,12 @@ fn hard_line_breaks(text: &str) -> String {
         let plain = !in_code && fence.is_none();
         if plain && line.trim_end() == "---" {
             out.push_str("----");
-        } else if plain && is_heading(line) && !line.trim_end().ends_with("\\}") {
+        } else if plain
+            && (is_heading(line)
+                || block_text(line).is_some()
+                    && lines.peek().is_some_and(|(_, next)| is_underline(next)))
+            && !line.trim_end().ends_with("\\}")
+        {
             match line.trim_end().strip_suffix('}') {
                 Some(text) => {
                     out.push_str(text);
@@ -209,7 +215,9 @@ pub(super) fn next_fence(
     }
 }
 
-fn is_heading(line: &str) -> bool {
+/// `line` after its quote markers and leading spaces, unless it is indented
+/// code.
+fn block_text(line: &str) -> Option<&str> {
     let (rest, depth) = without_quotes(line, usize::MAX);
     let rest = if depth > 0 {
         rest.strip_prefix(' ').unwrap_or(rest)
@@ -217,15 +225,34 @@ fn is_heading(line: &str) -> bool {
         rest
     };
     if rest.starts_with('\t') || rest.starts_with("    ") {
-        return false;
+        return None;
     }
-    let rest = without_list_marker(rest.trim_start());
+    Some(rest.trim_start())
+}
+
+fn is_heading(line: &str) -> bool {
+    let Some(rest) = block_text(line) else {
+        return false;
+    };
+    let rest = without_list_marker(rest);
     let hashes = rest.len() - rest.trim_start_matches('#').len();
     (1..=6).contains(&hashes)
         && rest[hashes..]
             .chars()
             .next()
             .is_none_or(|c| c == ' ' || c == '\t')
+}
+
+fn is_underline(line: &str) -> bool {
+    block_text(line)
+        .map(str::trim_end)
+        .and_then(|rest| {
+            rest.chars()
+                .next()
+                .filter(|c| matches!(c, '=' | '-'))
+                .map(|c| (rest, c))
+        })
+        .is_some_and(|(rest, c)| rest.chars().all(|other| other == c))
 }
 
 /// `line` after up to `limit` blockquote markers, and how many it had.

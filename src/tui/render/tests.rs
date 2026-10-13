@@ -355,3 +355,13 @@ fn shows_braces_in_an_indented_code_block_as_they_are() {
         ["Intro", "", "```", "# use ${HOME}", "```", "", "End"]
     );
 }
+
+#[test]
+fn shows_braces_at_the_end_of_an_underlined_heading() {
+    let lines = trimmed(&render_message(
+        Role::Assistant,
+        "Point { x, y }\n===\n\n> Empty {}\n> ---",
+        40,
+    ));
+    assert_eq!(lines, ["# Point { x, y }", "", "> ## Empty {}"]);
+}
