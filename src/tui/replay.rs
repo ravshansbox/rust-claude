@@ -130,7 +130,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Files(generation, files) => app.set_files(generation, files),
         UiEvent::Workspace(label) => app.workspace = label,
         UiEvent::Background(message) => {
-            app.start(Activity::Working);
+            app.start_background();
             app.push_background(&message);
         }
         UiEvent::Resumed(result) => app.finish(result, |app, messages| {

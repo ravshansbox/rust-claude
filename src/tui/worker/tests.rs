@@ -327,6 +327,48 @@ async fn starts_a_turn_when_a_background_command_finishes() {
 }
 
 #[tokio::test]
+async fn runs_a_prompt_already_sent_before_a_finished_background_command() {
+    let api = MockApi::start(vec![
+        test_support::tool_reply(
+            "call-1",
+            "bash",
+            json!({ "command": "echo finished", "run_in_background": true }),
+        ),
+        test_support::tool_reply("call-2", "bash", json!({ "command": "sleep 0.3" })),
+        test_support::text_reply("waiting"),
+        test_support::text_reply("answered"),
+        test_support::text_reply("seen it"),
+    ])
+    .await;
+    let agent = test_support::agent(&api, reqwest::Client::new());
+    let session_id = agent.session.id.clone();
+    let mut worker = Worker::spawn(agent);
+    for prompt in ["watch it", "meanwhile"] {
+        worker
+            .requests
+            .send(Request::Prompt(prompt.into(), Vec::new(), "off"))
+            .unwrap();
+    }
+    let delivered = worker
+        .wait_for(|event| matches!(event, UiEvent::Background(_)))
+        .await;
+    let done = worker
+        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+        .await;
+    let _ = worker.quit().await;
+    test_support::remove_session_files(&session_id);
+    assert!(delivered && done);
+    let requests = api.requests().await;
+    assert_eq!(requests.len(), 5);
+    let last_sent = |request: &serde_json::Value| {
+        let messages = request["messages"].as_array().unwrap();
+        messages.last().unwrap()["content"].to_string()
+    };
+    assert!(last_sent(&requests[3]).contains("meanwhile"));
+    assert!(last_sent(&requests[4]).contains("finished"));
+}
+
+#[tokio::test]
 async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
     let api = MockApi::start(vec![Reply::Stall, test_support::text_reply("hi")]).await;
     let agent = test_support::agent(&api, reqwest::Client::new());

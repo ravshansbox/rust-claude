@@ -72,6 +72,9 @@ pub(super) struct App {
     pub(super) effort: &'static str,
     /// What the app is waiting for, shown next to the spinner. `None` when idle.
     pub(super) activity: Option<Activity>,
+    /// What the app was already waiting for when a background turn started
+    /// ahead of it, shown again once that turn ends.
+    waiting_behind_background: Option<Activity>,
     pub(super) spinner_frame: usize,
     pub(super) stats: Stats,
     pub(super) scroll_from_bottom: usize,
@@ -140,6 +143,7 @@ impl App {
             model: model.into(),
             effort,
             activity: None,
+            waiting_behind_background: None,
             spinner_frame: 0,
             stats,
             scroll_from_bottom: 0,
@@ -435,6 +439,13 @@ impl App {
         self.activity = Some(activity);
     }
 
+    /// Starts a turn for a finished background command. The worker may start
+    /// it just as a request is sent, which then waits behind it.
+    pub(super) fn start_background(&mut self) {
+        self.waiting_behind_background = self.activity;
+        self.start(Activity::Working);
+    }
+
     /// Returns whether `name` is an effort level.
     pub(super) fn set_effort(&mut self, name: &str) -> bool {
         if let Some(level) = models::find_effort(&self.model, name) {
@@ -477,7 +488,7 @@ impl App {
             Ok(value) => on_success(self, value),
             Err(error) => self.push(Role::Event, format!("error: {error:#}")),
         }
-        self.activity = None;
+        self.activity = self.waiting_behind_background.take();
     }
 }
 

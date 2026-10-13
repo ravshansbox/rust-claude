@@ -82,7 +82,9 @@ pub(super) async fn agent_task(
     };
     notify_renewed(&mut agent, &events);
     loop {
+        // Requests the interface already sent come ahead of a background turn.
         let request = tokio::select! {
+            biased;
             Some(result) = async { Some(quota.as_mut()?.await) }, if quota.is_some() => {
                 quota = None;
                 if let Ok(Ok(value)) = result {
@@ -99,10 +101,10 @@ pub(super) async fn agent_task(
             // Quitting closes `cancel`; a sign-in to an MCP server may still
             // hold a sender of `requests` open for minutes.
             None = cancel.recv() => None,
+            request = requests.recv() => request,
             Some(message) = agent.next_background(), if agent.has_background() => {
                 Some(Request::Background(message))
             }
-            request = requests.recv() => request,
         };
         let Some(request) = request else { break };
         if cancel.is_closed() {

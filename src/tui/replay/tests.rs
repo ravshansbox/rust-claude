@@ -156,6 +156,25 @@ fn shows_a_finished_background_command_while_working_on_it() {
 }
 
 #[test]
+fn stays_busy_with_a_prompt_sent_as_a_background_turn_starts() {
+    let mut app = new_app();
+    let mut sent = false;
+    handle_input(Event::Paste("hello".into()), &mut app, |_| {});
+    handle_input(
+        Event::Key(KeyEvent::from(KeyCode::Enter)),
+        &mut app,
+        |action| sent |= matches!(action, Action::Submit(..)),
+    );
+    let message = tools::background::message(1, "echo hi", "hi\n");
+    handle_agent_event(UiEvent::Background(message), &mut app);
+    handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+    assert!(sent);
+    assert_eq!(app.activity, Some(Activity::Working));
+    handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+    assert!(!app.busy());
+}
+
+#[test]
 fn replays_shell_commands() {
     let mut app = new_app();
     replay_messages(
