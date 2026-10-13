@@ -525,7 +525,7 @@ impl Http {
                                 }
                                 data.extend_from_slice(value);
                             }
-                            b"event" => is_message = value == b"message",
+                            b"event" => is_message = matches!(value, b"" | b"message"),
                             _ => {}
                         }
                         if data.len() > MAX_LINE {

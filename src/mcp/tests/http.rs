@@ -78,13 +78,13 @@ async fn reads_http_replies_sent_as_events() {
 }
 
 #[tokio::test]
-async fn reads_events_split_over_lines_with_crlf_endings() {
+async fn reads_events_split_over_lines_with_crlf_endings_and_an_empty_type() {
     let (url, _) = http_server(|request| match request.body["method"].as_str() {
         Some("tools/call") => HttpReply {
             status: 200,
             headers: vec![("content-type".into(), "text/event-stream".into())],
             body: format!(
-                ": comment\r\nevent: other\r\ndata: {{}}\r\n\r\ndata: {{\"jsonrpc\": \"2.0\", \"id\": {},\r\ndata: \"result\": {{\"content\": [{{\"type\": \"text\", \"text\": \"split\"}}]}}}}\r\n\r\n",
+                ": comment\r\nevent: other\r\ndata: {{}}\r\n\r\nevent:\r\ndata: {{\"jsonrpc\": \"2.0\", \"id\": {},\r\ndata: \"result\": {{\"content\": [{{\"type\": \"text\", \"text\": \"split\"}}]}}}}\r\n\r\n",
                 request.body["id"]
             ),
         },
