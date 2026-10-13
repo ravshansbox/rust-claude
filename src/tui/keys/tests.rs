@@ -288,19 +288,29 @@ fn resumes_the_session_picked_from_the_list() {
         listed |= matches!(action, Action::ListSessions);
     });
     assert!(listed);
-    let sessions = ["0", "1"]
-        .map(|id| SessionSummary {
+    let sessions = [("0", 125), ("1", 3 * 3_600 + 10), ("2", 2 * 86_400 + 10)]
+        .map(|(id, age)| SessionSummary {
             id: id.into(),
-            modified: std::time::SystemTime::now(),
+            modified: std::time::SystemTime::now() - std::time::Duration::from_secs(age),
             preview: format!("prompt {id}\nmore"),
         })
         .into();
     handle_agent_event(UiEvent::Sessions(Ok(sessions)), &mut app);
-    let picker = app.picker.as_ref().unwrap();
-    assert!(
-        picker.items[1].1.ends_with("  prompt 1"),
-        "{:?}",
-        picker.items
+    let labels: Vec<&str> = app
+        .picker
+        .as_ref()
+        .unwrap()
+        .items
+        .iter()
+        .map(|(_, label)| label.as_str())
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            "  2m ago  prompt 0",
+            "  3h ago  prompt 1",
+            "  2d ago  prompt 2"
+        ]
     );
     press(&mut app, KeyCode::Down);
     let mut resumed = None;
