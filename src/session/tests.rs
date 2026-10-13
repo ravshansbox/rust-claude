@@ -172,6 +172,24 @@ fn resumes_messages_saved_before_a_line_cut_short() {
 }
 
 #[test]
+fn resumes_messages_after_blank_lines() {
+    let (id, path) = save_new(&[json!({ "role": "user", "content": "hello" })]);
+    append_to_file(
+        &path,
+        b"\n  \n{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"hi\"}]}\n",
+    );
+    let loaded = Session::load(&id);
+    std::fs::remove_file(&path).unwrap();
+    assert_eq!(
+        loaded.unwrap().1,
+        [
+            json!({ "role": "user", "content": "hello" }),
+            json!({ "role": "assistant", "content": [{ "type": "text", "text": "hi" }] }),
+        ]
+    );
+}
+
+#[test]
 fn drops_tool_call_whose_results_were_cut_short() {
     let messages = vec![
         json!({ "role": "user", "content": "run it" }),
