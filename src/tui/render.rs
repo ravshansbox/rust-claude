@@ -213,13 +213,18 @@ impl Indented {
                 _ => column + 1,
             });
         let text = rest.trim_start();
-        let item = without_list_marker(text);
-        if self.blank || item.len() < text.len() {
+        let rule = is_rule(line);
+        let item = match rule {
+            true => text,
+            false => without_list_marker(text),
+        };
+        if self.blank || rule || item.len() < text.len() {
             self.lists.retain(|&content| content <= indent);
         }
         let base = self.lists.last().copied().unwrap_or(0);
+        let paragraph = !self.blank && !self.code;
         self.code = indent >= base + 4 && (self.blank || self.code);
-        self.blank = !self.code && is_heading(line);
+        self.blank = !self.code && (is_heading(line) || rule || paragraph && is_underline(line));
         if !self.code && item.len() < text.len() {
             self.lists.push(indent + text.len() - item.len());
         }
@@ -328,6 +333,15 @@ fn is_heading(line: &str) -> bool {
             .chars()
             .next()
             .is_none_or(|c| c == ' ' || c == '\t')
+}
+
+fn is_rule(line: &str) -> bool {
+    block_text(line).is_some_and(|rest| {
+        let marks: Vec<char> = rest.chars().filter(|c| !matches!(c, ' ' | '\t')).collect();
+        marks.len() >= 3
+            && matches!(marks[0], '*' | '-' | '_')
+            && marks.iter().all(|&c| c == marks[0])
+    })
 }
 
 fn is_underline(line: &str) -> bool {
