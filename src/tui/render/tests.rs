@@ -426,3 +426,28 @@ fn joins_inline_code_split_across_lines_with_one_space() {
     );
     assert_eq!(trimmed(&lines), ["Run cargo test now", "and `this", "that"]);
 }
+
+#[test]
+fn keeps_html_blocks_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "<details>\n<summary>More</summary>\nHidden\n</details>\n\n<!--\nnote\n-->\nAfter\nnext",
+        40,
+    ));
+    assert_eq!(
+        lines,
+        [
+            "<details>",
+            "<summary>More</summary>",
+            "Hidden",
+            "</details>",
+            "",
+            "<!--",
+            "note",
+            "-->",
+            "",
+            "After",
+            "next"
+        ]
+    );
+}

@@ -145,6 +145,8 @@ fn hard_line_breaks(text: &str) -> String {
     let mut fence = None;
     let mut code = None;
     let mut indented = Indented::default();
+    let mut html: Option<&[&str]> = None;
+    let mut paragraph = false;
     let mut out = String::with_capacity(text.len());
     let all: Vec<&str> = text.lines().collect();
     let mut lines = all.iter().copied().enumerate().peekable();
@@ -152,10 +154,28 @@ fn hard_line_breaks(text: &str) -> String {
         if index > 0 {
             out.push('\n');
         }
-        let in_code = fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
-        fence = next_fence(fence, line);
-        let fenced = in_code || fence.is_some();
-        let plain = !indented.next(line, fenced) && !fenced;
+        let plain = match html {
+            Some(ends) => {
+                indented.next(line, true);
+                html = html_after(line, ends);
+                false
+            }
+            None => {
+                let in_code =
+                    fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
+                fence = next_fence(fence, line);
+                let fenced = in_code || fence.is_some();
+                let plain = !indented.next(line, fenced) && !fenced;
+                match plain.then(|| html_block(line, paragraph)).flatten() {
+                    Some(ends) => {
+                        indented.next(line, true);
+                        html = html_after(line, ends);
+                        false
+                    }
+                    None => plain,
+                }
+            }
+        };
         if plain && line.trim_end() == "---" {
             out.push_str("----");
         } else if plain
@@ -178,6 +198,11 @@ fn hard_line_breaks(text: &str) -> String {
             true => code_span_after(line, code, &all[index + 1..]),
             false => None,
         };
+        paragraph = plain
+            && !line.trim().is_empty()
+            && !is_heading(line)
+            && !is_rule(line)
+            && !(paragraph && is_underline(line));
         if plain && code.is_none() && (line.len() - line.trim_end_matches('\\').len()) % 2 == 0 {
             out.push_str("  ");
         }
@@ -229,6 +254,130 @@ impl Indented {
             self.lists.push(indent + text.len() - item.len());
         }
         self.code
+    }
+}
+
+const RAW_ENDS: &[&str] = &["</pre>", "</script>", "</style>", "</textarea>"];
+
+const BLOCK_TAGS: &[&str] = &[
+    "address",
+    "article",
+    "aside",
+    "base",
+    "basefont",
+    "blockquote",
+    "body",
+    "caption",
+    "center",
+    "col",
+    "colgroup",
+    "dd",
+    "details",
+    "dialog",
+    "dir",
+    "div",
+    "dl",
+    "dt",
+    "fieldset",
+    "figcaption",
+    "figure",
+    "footer",
+    "form",
+    "frame",
+    "frameset",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "header",
+    "hr",
+    "html",
+    "iframe",
+    "legend",
+    "li",
+    "link",
+    "main",
+    "menu",
+    "menuitem",
+    "nav",
+    "noframes",
+    "ol",
+    "optgroup",
+    "option",
+    "p",
+    "param",
+    "search",
+    "section",
+    "summary",
+    "table",
+    "tbody",
+    "td",
+    "tfoot",
+    "th",
+    "thead",
+    "title",
+    "tr",
+    "track",
+    "ul",
+];
+
+/// The end markers of the HTML block that `line` starts, if any. No markers
+/// means the block ends at a blank line.
+fn html_block(line: &str, paragraph: bool) -> Option<&'static [&'static str]> {
+    let rest = without_list_marker(block_text(line)?).to_ascii_lowercase();
+    let rest = rest.strip_prefix('<')?;
+    let name_end = |name: &str| {
+        rest.strip_prefix(name)
+            .and_then(|after| after.chars().next())
+            .is_none_or(|c| c.is_whitespace() || c == '>')
+    };
+    if ["pre", "script", "style", "textarea"]
+        .iter()
+        .any(|name| rest.starts_with(name) && name_end(name))
+    {
+        return Some(RAW_ENDS);
+    }
+    let markers: [(&str, &'static [&'static str]); 3] =
+        [("!--", &["-->"]), ("?", &["?>"]), ("![cdata[", &["]]>"])];
+    if let Some((_, ends)) = markers.iter().find(|(start, _)| rest.starts_with(start)) {
+        return Some(ends);
+    }
+    if rest.starts_with('!') && rest[1..].starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return Some(&[">"]);
+    }
+    let tag = rest.strip_prefix('/').unwrap_or(rest);
+    let name: String = tag
+        .chars()
+        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
+        .collect();
+    let after = &tag[name.len()..];
+    if BLOCK_TAGS.contains(&name.as_str())
+        && (after.starts_with("/>")
+            || after
+                .chars()
+                .next()
+                .is_none_or(|c| c.is_whitespace() || c == '>'))
+    {
+        return Some(&[]);
+    }
+    let complete = name.starts_with(|c: char| c.is_ascii_alphabetic())
+        && (after.starts_with(['>', '/']) || after.starts_with(char::is_whitespace))
+        && after
+            .trim_end()
+            .strip_suffix('>')
+            .is_some_and(|inside| !inside.contains(['<', '>']));
+    (!paragraph && complete).then_some(&[])
+}
+
+/// The end markers of the HTML block still open after `line`.
+fn html_after(line: &str, ends: &'static [&'static str]) -> Option<&'static [&'static str]> {
+    let lower = line.to_ascii_lowercase();
+    match ends.is_empty() {
+        true => (!unquoted(line).trim().is_empty()).then_some(ends),
+        false => (!ends.iter().any(|end| lower.contains(end))).then_some(ends),
     }
 }
 

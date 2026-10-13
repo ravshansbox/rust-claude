@@ -74,6 +74,6 @@ fn renders_a_code_fence_inside_html_as_part_of_it() {
         .collect();
     assert_eq!(
         lines,
-        ["<div>  ", "```", "code", "```", "</div>  ", "", "After"]
+        ["<div>", "```", "code", "```", "</div>", "", "After"]
     );
 }
