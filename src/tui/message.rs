@@ -202,6 +202,8 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
     let mut open: Option<(char, usize)> = None;
     // HTML can hold blank lines, so after it only code blocks end a part.
     let mut html = false;
+    // Fences inside an HTML block, which runs to a blank line, are its text.
+    let mut in_html = false;
     let mut after_blank = false;
     let mut end = 0;
     for line in text.split_inclusive('\n') {
@@ -213,7 +215,9 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         if in_fence || open.is_some() {
             after_blank = false;
         } else {
-            html |= trimmed.starts_with('<') && line.len() - trimmed.len() <= 3;
+            let starts_html = trimmed.starts_with('<') && line.len() - trimmed.len() <= 3;
+            html |= starts_html;
+            in_html = (in_html || starts_html) && !trimmed.is_empty();
             if paragraphs
                 && after_blank
                 && !html
@@ -228,7 +232,7 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
             continue;
         };
         let length = trimmed.chars().take_while(|c| *c == fence).count();
-        if length < 3 {
+        if length < 3 || in_html {
             continue;
         }
         let indent = line.len() - trimmed.len();

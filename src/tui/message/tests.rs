@@ -54,3 +54,26 @@ fn rerenders_only_width_dependent_messages_on_resize() {
         assert_eq!(kept, !depends_on_width, "{text}");
     }
 }
+
+#[test]
+fn renders_a_code_fence_inside_html_as_part_of_it() {
+    let text = "<div>\n```\ncode\n```\n</div>\n\nAfter\n";
+    let mut message = ChatMessage {
+        role: Role::Assistant,
+        text: text.into(),
+        rendered: None,
+        streaming: false,
+    };
+    message.render(80);
+    let lines: Vec<String> = message
+        .rendered
+        .unwrap()
+        .lines
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    assert_eq!(
+        lines,
+        ["<div>  ", "```", "code", "```", "</div>  ", "", "After"]
+    );
+}
