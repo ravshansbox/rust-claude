@@ -96,6 +96,9 @@ pub(super) async fn agent_task(
                 send_stats(&agent, &events);
                 continue;
             }
+            // Quitting closes `cancel`; a sign-in to an MCP server may still
+            // hold a sender of `requests` open for minutes.
+            None = cancel.recv() => None,
             Some(message) = agent.next_background(), if agent.has_background() => {
                 Some(Request::Background(message))
             }

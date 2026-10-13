@@ -105,6 +105,17 @@ async fn stops_running_request_when_quitting() {
 }
 
 #[tokio::test]
+async fn quits_while_a_sign_in_still_holds_a_request_sender() {
+    let agent = agent();
+    let session_id = agent.session.id.clone();
+    let worker = Worker::spawn(agent);
+    let _signing_in = worker.requests.clone();
+    let stopped = tokio::time::timeout(Duration::from_secs(5), worker.quit()).await;
+    test_support::remove_session_files(&session_id);
+    assert!(stopped.is_ok());
+}
+
+#[tokio::test]
 async fn shows_the_quota_left_once_it_arrives() {
     let mut agent = agent();
     agent.api_base =
