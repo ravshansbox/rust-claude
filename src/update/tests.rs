@@ -371,6 +371,38 @@ async fn shows_why_building_failed() {
     );
 }
 
+#[tokio::test]
+async fn stops_cargo_and_deletes_the_update_folder_when_quit_while_building() {
+    let dir = TemporaryDir::new("update-quit");
+    let (base, _) = github("v0.2.0").await;
+    let started = dir.path().join("started");
+    let finished = dir.path().join("finished");
+    let mut updater = updater(&base, None);
+    updater.cargo = Some(write_script(
+        dir.path().join("cargo"),
+        format!(
+            "#!/bin/sh\ntouch '{}'\nsleep 1\ntouch '{}'\n",
+            started.display(),
+            finished.display()
+        ),
+    ));
+    updater.update_dir = dir.path().join("updates");
+    let update = tokio::spawn(run(updater));
+    while !started.exists() {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    update.abort();
+    assert!(update.await.unwrap_err().is_cancelled());
+    assert_eq!(
+        std::fs::read_dir(dir.path().join("updates"))
+            .unwrap()
+            .count(),
+        0
+    );
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    assert!(!finished.exists());
+}
+
 #[test]
 fn shows_how_long_each_step_took() {
     let seconds = std::time::Duration::from_secs;

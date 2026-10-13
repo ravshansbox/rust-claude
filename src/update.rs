@@ -156,6 +156,7 @@ impl Updater {
             ));
             return;
         }
+        let folder = UpdateFolder(folder);
         let outcome = async {
             let asset_url = |name: &str| {
                 release
@@ -170,7 +171,7 @@ impl Updater {
             let signature_url = asset_url(SIGNATURE_ASSET)?;
             report(Progress::Downloading(version.clone()));
             let started = Instant::now();
-            self.download(&url, &signature_url, &version, &folder)
+            self.download(&url, &signature_url, &version, &folder.0)
                 .await
                 .map_err(|error| {
                     Progress::DownloadFailed(
@@ -182,14 +183,14 @@ impl Updater {
             report(Progress::Downloaded(version.clone(), started.elapsed()));
             report(Progress::Building(version.clone()));
             let started = Instant::now();
-            self.build(cargo, &folder).await.map_err(|error| {
+            self.build(cargo, &folder.0).await.map_err(|error| {
                 Progress::BuildFailed(version.clone(), format!("{error:#}"), started.elapsed())
             })?;
             report(Progress::Built(version.clone(), started.elapsed()));
             Ok(())
         }
         .await;
-        let _ = std::fs::remove_dir_all(&folder);
+        drop(folder);
         match outcome {
             Ok(()) => {
                 if let Some(bin_dir) = &self.bin_dir {
@@ -265,6 +266,7 @@ impl Updater {
     async fn build(&self, cargo: &Path, folder: &Path) -> Result<()> {
         let mut command = tokio::process::Command::new(cargo);
         command
+            .kill_on_drop(true)
             .current_dir(folder)
             .args(["install", "--locked", "--force"]);
         if let Some(build_dir) = &self.build_dir {
@@ -323,6 +325,16 @@ fn create_update_folder(folder: &Path) -> io::Result<()> {
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
     builder.create(folder)
+}
+
+/// An update's own folder, deleted when the update ends, even when the app
+/// quits halfway and drops it.
+struct UpdateFolder(PathBuf);
+
+impl Drop for UpdateFolder {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_dir_all(&self.0);
+    }
 }
 
 fn link_alias(bin_dir: &Path) {
