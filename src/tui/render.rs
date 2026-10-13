@@ -210,7 +210,16 @@ pub(super) fn next_fence(
 }
 
 fn is_heading(line: &str) -> bool {
-    let rest = without_list_marker(without_quotes(line, usize::MAX).0.trim_start());
+    let (rest, depth) = without_quotes(line, usize::MAX);
+    let rest = if depth > 0 {
+        rest.strip_prefix(' ').unwrap_or(rest)
+    } else {
+        rest
+    };
+    if rest.starts_with('\t') || rest.starts_with("    ") {
+        return false;
+    }
+    let rest = without_list_marker(rest.trim_start());
     let hashes = rest.len() - rest.trim_start_matches('#').len();
     (1..=6).contains(&hashes)
         && rest[hashes..]

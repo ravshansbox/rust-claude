@@ -342,3 +342,16 @@ fn shows_braces_at_the_end_of_a_heading() {
         ]
     );
 }
+
+#[test]
+fn shows_braces_in_an_indented_code_block_as_they_are() {
+    let lines = trimmed(&render_message(
+        Role::Assistant,
+        "Intro\n\n    # use ${HOME}\n\nEnd",
+        40,
+    ));
+    assert_eq!(
+        lines,
+        ["Intro", "", "```", "# use ${HOME}", "```", "", "End"]
+    );
+}
