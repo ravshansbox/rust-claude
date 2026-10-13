@@ -209,7 +209,8 @@ fn hard_line_breaks(text: &str) -> String {
             && !unquoted(line).trim().is_empty()
             && !is_heading(line)
             && !is_rule(line)
-            && !(paragraph && is_underline(line));
+            && !(paragraph && is_underline(line))
+            && (paragraph || !is_empty_item(line));
         if plain && code.is_none() && (line.len() - line.trim_end_matches('\\').len()) % 2 == 0 {
             out.push_str("  ");
         }
@@ -615,6 +616,18 @@ fn without_quotes(line: &str, limit: usize) -> (&str, usize) {
 }
 
 /// `line` after a list item marker that starts it, such as `-` or `2.`.
+fn is_empty_item(line: &str) -> bool {
+    block_text(line).is_some_and(|text| {
+        let text = text.trim_end();
+        let digits = text.len() - text.trim_start_matches(|c: char| c.is_ascii_digit()).len();
+        match &text[digits..] {
+            "." | ")" => (1..=9).contains(&digits),
+            "-" | "*" | "+" => digits == 0,
+            _ => false,
+        }
+    })
+}
+
 fn without_list_marker(line: &str) -> &str {
     let digits = line.len() - line.trim_start_matches(|c: char| c.is_ascii_digit()).len();
     let marker = match line[digits..].chars().next() {

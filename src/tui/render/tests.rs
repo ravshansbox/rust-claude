@@ -529,3 +529,13 @@ fn keeps_math_split_across_lines_free_of_added_spaces() {
     ));
     assert_eq!(prices, vec!["Costs $5 and", "$6 total", "next"]);
 }
+
+#[test]
+fn keeps_html_blocks_after_an_empty_list_item_free_of_trailing_spaces() {
+    let lines = texts(&render_message(
+        Role::Assistant,
+        "-\n<img src=\"a.png\">\ncaption",
+        40,
+    ));
+    assert_eq!(lines, ["- ", "", "<img src=\"a.png\">", "caption"]);
+}
