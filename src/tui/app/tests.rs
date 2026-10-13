@@ -90,6 +90,28 @@ fn renders_a_streamed_reply_the_same_as_the_whole_reply() {
 }
 
 #[test]
+fn renders_streamed_blocks_split_by_blank_lines_the_same_as_the_whole_reply() {
+    let replies = [
+        "- one\n\n- two\n\n  still two\n\nafter the list\n",
+        "<!--\n\nhidden\n\n-->\n\nafter html\n",
+        "Intro\n\nTitle\n---\n\nOther\n===\n\nend\n",
+        "Code:\n\n    let a = 1;\n\n    let b = 2;\n\nafter code\n",
+        "> quoted\n\n> more quote\n\nlazy\ncontinued\n",
+    ];
+    for reply in replies {
+        let mut streamed = new_app();
+        for character in reply.chars() {
+            let text = character.to_string();
+            handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut streamed);
+            screen(&mut streamed);
+        }
+        let mut whole = new_app();
+        whole.push(Role::Assistant, reply);
+        assert_eq!(screen(&mut streamed), screen(&mut whole), "{reply}");
+    }
+}
+
+#[test]
 fn keeps_finished_paragraphs_of_a_streaming_reply() {
     let mut app = new_app();
     let stream = |app: &mut App, text: &str| {
@@ -106,7 +128,8 @@ fn keeps_finished_paragraphs_of_a_streaming_reply() {
 
 #[test]
 fn renders_a_finished_reply_the_same_as_the_whole_reply() {
-    let reply = "See [docs].\n\nMore text.\n\n[docs]: https://example.com\n";
+    let reply =
+        "See [docs] and[^1].\n\nMore text.\n\n[docs]: https://example.com\n\n[^1]: A note.\n";
     let mut streamed = new_app();
     let characters: Vec<char> = reply.chars().collect();
     for chunk in characters.chunks(3) {
