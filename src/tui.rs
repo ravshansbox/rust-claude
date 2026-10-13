@@ -158,45 +158,8 @@ async fn run_loop(
                     None => break Ok(()),
                 };
                 dirty |= may_change_screen(&event);
-                let send = |request| {
-                    let _ = request_tx.send(request);
-                };
-                let quit = handle_input(event, &mut app, |action| match action {
-                    Action::Submit(prompt, images, effort) => {
-                        send(Request::Prompt(prompt, images, effort));
-                    }
-                    Action::Shell(command) => send(Request::Shell(command)),
-                    Action::PasteImage => {
-                        let events = background_events.clone();
-                        tokio::spawn(async move {
-                            let result = clipboard::read_image()
-                                .await
-                                .and_then(|data| data.map(images::prepare).transpose());
-                            let _ = events.send(UiEvent::ImagePasted(result));
-                        });
-                    }
-                    Action::Compact(effort) => send(Request::Compact(effort)),
-                    Action::ListSessions => send(Request::ListSessions),
-                    Action::Resume(id) => send(Request::Resume(id)),
-                    Action::SetModel(model) => send(Request::SetModel(model)),
-                    Action::NewSession => send(Request::NewSession),
-                    Action::McpSignIn(name) => {
-                        tokio::spawn(sign_in_to_mcp_server(
-                            name,
-                            background_events.clone(),
-                            request_tx.clone(),
-                        ));
-                    }
-                    Action::McpSignOut(name) => {
-                        tokio::spawn(sign_out_of_mcp_server(
-                            name,
-                            background_events.clone(),
-                            request_tx.clone(),
-                        ));
-                    }
-                    Action::Cancel => {
-                        let _ = cancel_tx.send(());
-                    }
+                let quit = handle_input(event, &mut app, |action| {
+                    perform(action, &request_tx, &cancel_tx, &background_events);
                 });
                 if app.effort != sent_effort {
                     sent_effort = app.effort;
@@ -257,6 +220,52 @@ async fn run_loop(
         let _ = worker.await;
     }
     result
+}
+
+fn perform(
+    action: Action,
+    requests: &mpsc::UnboundedSender<Request>,
+    cancel: &mpsc::UnboundedSender<()>,
+    events: &mpsc::UnboundedSender<UiEvent>,
+) {
+    let send = |request| {
+        let _ = requests.send(request);
+    };
+    match action {
+        Action::Submit(prompt, images, effort) => send(Request::Prompt(prompt, images, effort)),
+        Action::Shell(command) => send(Request::Shell(command)),
+        Action::PasteImage => {
+            let events = events.clone();
+            tokio::spawn(async move {
+                let result = clipboard::read_image()
+                    .await
+                    .and_then(|data| data.map(images::prepare).transpose());
+                let _ = events.send(UiEvent::ImagePasted(result));
+            });
+        }
+        Action::Compact(effort) => send(Request::Compact(effort)),
+        Action::ListSessions => send(Request::ListSessions),
+        Action::Resume(id) => send(Request::Resume(id)),
+        Action::SetModel(model) => send(Request::SetModel(model)),
+        Action::NewSession => send(Request::NewSession),
+        Action::McpSignIn(name) => {
+            tokio::spawn(sign_in_to_mcp_server(
+                name,
+                events.clone(),
+                requests.clone(),
+            ));
+        }
+        Action::McpSignOut(name) => {
+            tokio::spawn(sign_out_of_mcp_server(
+                name,
+                events.clone(),
+                requests.clone(),
+            ));
+        }
+        Action::Cancel => {
+            let _ = cancel.send(());
+        }
+    }
 }
 
 fn opening_app(agent: &Agent, startup: &mcp::Startup, history_path: Option<PathBuf>) -> App {
