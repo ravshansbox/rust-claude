@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, TryLockError},
+    fs::File,
     io::{self, Write},
     path::PathBuf,
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -38,19 +38,7 @@ fn credentials_path() -> Result<PathBuf> {
 async fn lock_credentials() -> Result<File> {
     let path = credentials_path()?.with_file_name("auth.lock");
     config::create_private_dir(path.parent().context("invalid credentials path")?)?;
-    let file = config::private_file()
-        .create(true)
-        .write(true)
-        .open(&path)?;
-    // Waiting without a blocking lock keeps quitting from waiting for
-    // another copy's renewal.
-    loop {
-        match file.try_lock() {
-            Ok(()) => return Ok(file),
-            Err(TryLockError::WouldBlock) => tokio::time::sleep(Duration::from_millis(50)).await,
-            Err(TryLockError::Error(error)) => return Err(error.into()),
-        }
-    }
+    Ok(config::lock_file(&path).await?)
 }
 
 pub(crate) fn now_millis() -> u128 {

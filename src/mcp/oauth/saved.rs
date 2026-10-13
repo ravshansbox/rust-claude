@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, io, path::PathBuf, sync::Mutex};
+use std::{collections::BTreeMap, fs::File, io, path::PathBuf, sync::Mutex};
 
 use crate::{auth::now_millis, config};
 use serde::{Deserialize, Serialize};
@@ -35,6 +35,32 @@ impl Saved {
 
 fn path() -> Option<PathBuf> {
     Some(config::dir()?.join("mcp-auth.json"))
+}
+
+/// The lock file `name` next to mcp-auth.json, with its folder created.
+fn lock_path(name: &str) -> Option<PathBuf> {
+    let path = path()?.with_file_name(name);
+    config::create_private_dir(path.parent()?).ok()?;
+    Some(path)
+}
+
+/// Locks mcp-auth.lock until the returned file is closed, so running copies
+/// change mcp-auth.json one at a time instead of undoing each other's
+/// changes. Changes are quick, so this blocks while it waits.
+fn lock_changes() -> Option<File> {
+    let file = config::private_file()
+        .create(true)
+        .write(true)
+        .open(lock_path("mcp-auth.lock")?)
+        .ok()?;
+    file.lock().ok()?;
+    Some(file)
+}
+
+/// Locks mcp-renew.lock until the returned file is closed, so running
+/// copies renew sign-ins one at a time.
+pub(in crate::mcp) async fn lock_renewals() -> Option<File> {
+    config::lock_file(&lock_path("mcp-renew.lock")?).await.ok()
 }
 
 fn read_all() -> BTreeMap<String, Saved> {
@@ -80,6 +106,8 @@ pub(in crate::mcp) fn load_for(
 
 pub(in crate::mcp) fn save(server_url: &str, saved: &Saved) -> Result<(), String> {
     let _file = FILE.lock();
+    // Without the lock, saving still works; copies just may not take turns.
+    let _lock = lock_changes();
     let mut all = read_all();
     let mut saved = saved.clone();
     if saved.secret_from_config {
@@ -92,6 +120,7 @@ pub(in crate::mcp) fn save(server_url: &str, saved: &Saved) -> Result<(), String
 /// Forgets the sign-in for `server_url`. Returns whether there was one.
 pub(in crate::mcp) fn remove(server_url: &str) -> Result<bool, String> {
     let _file = FILE.lock();
+    let _lock = lock_changes();
     let mut all = read_all();
     if all.remove(server_url).is_none() {
         return Ok(false);

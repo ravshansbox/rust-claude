@@ -149,6 +149,43 @@ async fn keeps_the_client_secret_from_the_config_when_taking_over_tokens() {
 }
 
 #[tokio::test]
+async fn running_copies_renew_an_mcp_sign_in_one_at_a_time() {
+    let _file = AUTH_FILE.read().await;
+    let (url, requests) = http_server(signed_in_mcp).await;
+    save_tokens(&url, "stale", now_millis() - 1);
+    let stale = oauth::load(&url).unwrap();
+    let client = reqwest::Client::new();
+    let (one, other) = tokio::join!(
+        oauth::refresh(&client, &url, &stale, None),
+        oauth::refresh(&client, &url, &stale, None),
+    );
+    assert_eq!(requests_for_path(&requests, "/token").len(), 1);
+    assert_eq!(one.unwrap().saved.access_token, "fresh");
+    assert_eq!(other.unwrap().saved.access_token, "fresh");
+}
+
+#[tokio::test]
+async fn uses_an_mcp_sign_in_another_copy_renewed_while_ours_was_turned_down() {
+    let _file = AUTH_FILE.read().await;
+    let base = Arc::new(Mutex::new(String::new()));
+    let shared = base.clone();
+    let (url, _) = http_server(move |request| {
+        if request.path == "/token" {
+            // A copy that does not take turns renews first, spending r1.
+            save_tokens(&shared.lock().unwrap(), "theirs", now_millis() + 3_600_000);
+            return HttpReply::status(400, r#"{"error":"invalid_grant"}"#);
+        }
+        signed_in_mcp(request)
+    })
+    .await;
+    base.lock().unwrap().clone_from(&url);
+    save_tokens(&url, "stale", now_millis() - 1);
+    let stale = oauth::load(&url).unwrap();
+    let renewed = oauth::refresh(&reqwest::Client::new(), &url, &stale, None).await;
+    assert_eq!(renewed.unwrap().saved.access_token, "theirs");
+}
+
+#[tokio::test]
 async fn renews_expired_oauth_tokens_before_sending_them() {
     let _file = AUTH_FILE.read().await;
     let (url, requests) = http_server(signed_in_mcp).await;

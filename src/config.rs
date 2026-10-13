@@ -101,6 +101,22 @@ pub fn private_file() -> OpenOptions {
     options
 }
 
+/// Locks the file at `path`, creating it, until the returned file is closed.
+/// Waits without a blocking lock, so quitting does not wait for another
+/// copy of rust-coding-agent to let go.
+pub async fn lock_file(path: &Path) -> io::Result<std::fs::File> {
+    let file = private_file().create(true).write(true).open(path)?;
+    loop {
+        match file.try_lock() {
+            Ok(()) => return Ok(file),
+            Err(std::fs::TryLockError::WouldBlock) => {
+                tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+            }
+            Err(std::fs::TryLockError::Error(error)) => return Err(error),
+        }
+    }
+}
+
 /// Writes a file only the user can read and write, through a temporary file
 /// renamed over it, so readers never see a half-written file and a failed
 /// write keeps the old one. A symlink there stays, and its file is replaced.

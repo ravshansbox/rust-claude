@@ -84,31 +84,27 @@ pub(super) struct Renewed {
     pub save_error: Option<String>,
 }
 
-/// Renews `saved` with its refresh token and saves the new tokens. Tokens
-/// another copy of rust-coding-agent saved meanwhile are used instead, unless they
-/// are the ones the server turned down.
+/// Renews `saved` with its refresh token and saves the new tokens. Running
+/// copies of rust-coding-agent take turns, and tokens another copy saved
+/// meanwhile are used instead, unless they are the ones the server turned
+/// down.
 pub(super) async fn refresh(
     client: &reqwest::Client,
     server_url: &str,
     saved: &Saved,
     rejected: Option<&str>,
 ) -> Result<Renewed, String> {
-    if let Some(mut current) = load(server_url)
-        && current.access_token != saved.access_token
-        && Some(current.access_token.as_str()) != rejected
-        && !current.expired()
-    {
-        if saved.secret_from_config && current.client_id == saved.client_id {
-            current.client_secret = saved.client_secret.clone();
-            current.secret_from_config = true;
-        }
-        return Ok(Renewed {
-            saved: current,
-            save_error: None,
-        });
+    let taken_over = |saved| Renewed {
+        saved,
+        save_error: None,
+    };
+    // Without the lock, renewing still works; copies just may not take turns.
+    let _lock = saved::lock_renewals().await;
+    if let Some(current) = saved_meanwhile(server_url, saved, rejected) {
+        return Ok(taken_over(current));
     }
     let refresh_token = saved.refresh_token.as_deref().ok_or("no refresh token")?;
-    let renewed = request_tokens(
+    let renewed = match request_tokens(
         client,
         saved,
         &[
@@ -116,7 +112,17 @@ pub(super) async fn refresh(
             ("refresh_token", refresh_token),
         ],
     )
-    .await?;
+    .await
+    {
+        Ok(renewed) => renewed,
+        // A copy that does not take turns may have renewed the tokens
+        // meanwhile, spending the refresh token we hold.
+        Err(error) => {
+            return saved_meanwhile(server_url, saved, rejected)
+                .map(taken_over)
+                .ok_or(error);
+        }
+    };
     // The endpoint has spent our refresh token, so keep the new tokens even
     // when mcp-auth.json cannot take them.
     let save_error = save(server_url, &renewed).err();
@@ -124,6 +130,21 @@ pub(super) async fn refresh(
         saved: renewed,
         save_error,
     })
+}
+
+/// The tokens saved for `server_url` when another copy has replaced ours
+/// with ones that are neither expired nor `rejected`.
+fn saved_meanwhile(server_url: &str, saved: &Saved, rejected: Option<&str>) -> Option<Saved> {
+    let mut current = load(server_url).filter(|current| {
+        current.access_token != saved.access_token
+            && Some(current.access_token.as_str()) != rejected
+            && !current.expired()
+    })?;
+    if saved.secret_from_config && current.client_id == saved.client_id {
+        current.client_secret = saved.client_secret.clone();
+        current.secret_from_config = true;
+    }
+    Some(current)
 }
 
 const SIGN_IN_TIMEOUT: Duration = Duration::from_secs(300);
