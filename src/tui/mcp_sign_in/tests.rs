@@ -1,4 +1,4 @@
-use super::{Request, UiEvent, sign_out_of_mcp_server};
+use super::{Request, UiEvent, sign_in_to_mcp_server, sign_out_of_mcp_server};
 use crate::{agent::AgentEvent, config};
 
 #[tokio::test]
@@ -29,5 +29,21 @@ async fn restarts_an_mcp_server_after_signing_out() {
         ),
         _ => panic!("no notice for the missing server"),
     }
+    assert!(sent.try_recv().is_err());
+}
+
+#[tokio::test]
+async fn says_why_signing_in_to_an_mcp_server_failed() {
+    let (events, mut shown) = tokio::sync::mpsc::unbounded_channel();
+    let (requests, mut sent) = tokio::sync::mpsc::unbounded_channel();
+    sign_in_to_mcp_server("missing".into(), events, requests).await;
+    match shown.try_recv() {
+        Ok(UiEvent::Agent(AgentEvent::Notice(notice))) => assert_eq!(
+            notice,
+            "MCP sign-in to missing failed: no MCP server named missing"
+        ),
+        _ => panic!("no notice for the missing server"),
+    }
+    assert!(shown.try_recv().is_err());
     assert!(sent.try_recv().is_err());
 }
