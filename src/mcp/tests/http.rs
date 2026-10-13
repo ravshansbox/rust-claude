@@ -233,6 +233,8 @@ async fn reports_a_failing_headers_helper() {
             "echo oops >&2; exit 3",
             "headersHelper exited with status 3: oops",
         ),
+        ("exit 4", "headersHelper exited with status 4"),
+        ("kill -9 $$", "headersHelper exited with a signal"),
         (
             "echo '[1]'",
             "headersHelper must print a JSON object of strings",
