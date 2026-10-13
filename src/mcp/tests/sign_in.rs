@@ -414,6 +414,29 @@ async fn reads_sign_in_parameters_outside_quoted_values() {
 }
 
 #[tokio::test]
+async fn reads_sign_in_parameters_whatever_their_case() {
+    let base = Arc::new(Mutex::new(String::new()));
+    let shared = base.clone();
+    let (url, _) = http_server(move |request| {
+        let base = shared.lock().unwrap().clone();
+        let reply = oauth_mcp(&base, request);
+        if reply.status != 401 {
+            return reply;
+        }
+        HttpReply::status(401, "").with_header(
+            "www-authenticate",
+            &format!(
+                r#"Bearer Resource_Metadata="{base}/.well-known/oauth-protected-resource/mcp", SCOPE="mcp:connect""#
+            ),
+        )
+    })
+    .await;
+    *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
+    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
+}
+
+#[tokio::test]
 async fn asks_for_the_scopes_the_server_lists_when_the_challenge_names_none() {
     let base = Arc::new(Mutex::new(String::new()));
     let shared = base.clone();

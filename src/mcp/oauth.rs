@@ -194,9 +194,10 @@ fn challenge_parameter(challenge: &str, key: &str) -> Option<String> {
             quoted = true;
             continue;
         }
-        let Some(value) = challenge[start..]
-            .strip_prefix(key)
-            .filter(|_| at_key)
+        let Some(value) = challenge
+            .get(start..start + key.len())
+            .filter(|name| at_key && name.eq_ignore_ascii_case(key))
+            .map(|_| &challenge[start + key.len()..])
             .and_then(|after| after.trim_start().strip_prefix('='))
         else {
             continue;
