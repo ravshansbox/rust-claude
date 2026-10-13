@@ -5,13 +5,15 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - id: toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -31,6 +33,8 @@ jobs:
   release:
     needs: check
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     concurrency:
       group: release
       cancel-in-progress: false
