@@ -222,6 +222,7 @@ fn hard_line_breaks(text: &str) -> String {
 #[derive(Default)]
 struct Indented {
     lists: Vec<usize>,
+    depth: usize,
     code: bool,
     blank: bool,
 }
@@ -232,6 +233,11 @@ impl Indented {
         if fenced {
             (self.code, self.blank) = (false, true);
             return false;
+        }
+        let depth = without_quotes(line, usize::MAX).1;
+        if depth > self.depth {
+            let lead = line.len() - line.trim_start().len();
+            self.lists.retain(|&content| content <= lead);
         }
         let rest = unquoted(line);
         if rest.trim().is_empty() {
@@ -260,6 +266,7 @@ impl Indented {
         self.blank = !self.code && (is_heading(line) || rule || paragraph && is_underline(line));
         if !self.code && item.len() < text.len() {
             self.lists.push(indent + text.len() - item.len());
+            self.depth = depth;
         }
         self.code
     }

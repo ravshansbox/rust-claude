@@ -539,3 +539,9 @@ fn keeps_html_blocks_after_an_empty_list_item_free_of_trailing_spaces() {
     ));
     assert_eq!(lines, ["- ", "", "<img src=\"a.png\">", "caption"]);
 }
+
+#[test]
+fn keeps_indented_code_after_a_list_and_a_quote_free_of_trailing_spaces() {
+    let lines = texts(&render_message(Role::Assistant, "- task\n> \n    code", 40));
+    assert_eq!(lines, ["- task", "", "", "```", "code", "```"]);
+}
