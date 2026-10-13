@@ -375,3 +375,13 @@ fn hides_the_backslash_of_a_hard_line_break() {
     ));
     assert_eq!(lines, ["Line one", "Line two \\", "Line three"]);
 }
+
+#[test]
+fn joins_inline_code_split_across_lines_with_one_space() {
+    let lines = render_message(
+        Role::Assistant,
+        "Run `cargo\ntest` now\nand `this\nthat",
+        80,
+    );
+    assert_eq!(trimmed(&lines), ["Run cargo test now", "and `this", "that"]);
+}

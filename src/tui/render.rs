@@ -143,8 +143,10 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 
 fn hard_line_breaks(text: &str) -> String {
     let mut fence = None;
+    let mut code = None;
     let mut out = String::with_capacity(text.len());
-    let mut lines = text.lines().enumerate().peekable();
+    let all: Vec<&str> = text.lines().collect();
+    let mut lines = all.iter().copied().enumerate().peekable();
     while let Some((index, line)) = lines.next() {
         if index > 0 {
             out.push('\n');
@@ -170,11 +172,49 @@ fn hard_line_breaks(text: &str) -> String {
         } else {
             out.push_str(line);
         }
-        if plain && (line.len() - line.trim_end_matches('\\').len()) % 2 == 0 {
+        code = match plain && !line.trim().is_empty() && !is_heading(line) {
+            true => code_span_after(line, code, &all[index + 1..]),
+            false => None,
+        };
+        if plain && code.is_none() && (line.len() - line.trim_end_matches('\\').len()) % 2 == 0 {
             out.push_str("  ");
         }
     }
     out
+}
+
+/// The backtick count of the code span open after `line`, given the one open
+/// before it and the lines that follow.
+fn code_span_after(line: &str, mut open: Option<usize>, later: &[&str]) -> Option<usize> {
+    let bytes = line.as_bytes();
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'\\' if open.is_none() => index += 2,
+            b'`' => {
+                let length = bytes[index..].iter().take_while(|&&b| b == b'`').count();
+                index += length;
+                open = match open {
+                    Some(open_length) if open_length == length => None,
+                    None if has_backtick_run(&line[index..], length)
+                        || later
+                            .iter()
+                            .take_while(|next| !next.trim().is_empty())
+                            .any(|next| has_backtick_run(next, length)) =>
+                    {
+                        Some(length)
+                    }
+                    open => open,
+                };
+            }
+            _ => index += 1,
+        }
+    }
+    open
+}
+
+fn has_backtick_run(text: &str, length: usize) -> bool {
+    text.split(|c| c != '`').any(|run| run.len() == length)
 }
 
 /// The fence character, fence length and quote depth of the code block open
