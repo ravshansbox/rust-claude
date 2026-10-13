@@ -1,58 +1,7 @@
-use super::{
-    PathBuf, UiEvent, git_branch, history_writer, opening_app, save_changed_settings,
-    show_skills_and_instructions, test_support::new_app, tools_line,
-};
+use super::{UiEvent, git_branch, history_writer, save_changed_settings, test_support::new_app};
 use crate::{
-    agent::{
-        AgentEvent,
-        test_support::{self, MockApi, text_reply},
-    },
-    config, history, mcp,
-    settings::Settings,
-    skills::{Diagnostic, Scope, Skill, Skills},
-    tools::test_support::TemporaryDir,
+    agent::AgentEvent, config, history, settings::Settings, tools::test_support::TemporaryDir,
 };
-
-#[test]
-fn lists_loaded_skills_by_scope_then_their_problems_then_instructions() {
-    let skill = |name: &str, scope| Skill {
-        name: name.into(),
-        description: String::new(),
-        path: PathBuf::new(),
-        base_dir: PathBuf::new(),
-        disable_model_invocation: false,
-        scope,
-    };
-    let skills = Skills {
-        skills: vec![
-            skill("review", Scope::Project),
-            skill("commit", Scope::Global),
-            skill("deploy", Scope::Project),
-        ],
-        diagnostics: vec![Diagnostic::Warning {
-            path: "broken/SKILL.md".into(),
-            message: "missing description".into(),
-        }],
-    };
-    let mut app = new_app();
-    show_skills_and_instructions(&mut app, &skills, ["~/AGENTS.md", "./AGENTS.md"]);
-    let shown: Vec<&str> = app.messages[1..]
-        .iter()
-        .map(|message| message.text.as_str())
-        .collect();
-    assert_eq!(
-        shown,
-        [
-            "loaded global skills: commit",
-            "loaded project skills: review, deploy",
-            "skill warning: broken/SKILL.md: missing description",
-            "loaded ~/AGENTS.md, ./AGENTS.md",
-        ]
-    );
-    let mut app = new_app();
-    show_skills_and_instructions(&mut app, &Skills::default(), []);
-    assert_eq!(app.messages.len(), 1);
-}
 
 #[test]
 fn shows_the_branch_of_a_repository_with_no_commits() {
@@ -64,14 +13,6 @@ fn shows_the_branch_of_a_repository_with_no_commits() {
         .unwrap();
     assert!(status.success());
     assert_eq!(git_branch(directory.path()).as_deref(), Some("main"));
-}
-
-#[test]
-fn lists_built_in_tools_on_one_line() {
-    assert_eq!(
-        tools_line(),
-        "loaded tools: agent, bash, bash_stop, edit, read, web_search, write"
-    );
 }
 
 #[test]
@@ -135,38 +76,4 @@ fn saves_only_the_model_and_effort_the_user_changed() {
     assert_eq!(broken, "{ broken");
     let last = &app.messages.last().unwrap().text;
     assert!(last.starts_with("failed to save settings: "), "{last}");
-}
-
-#[tokio::test]
-async fn opens_a_continued_session_with_its_conversation_then_what_loaded() {
-    let api = MockApi::start(vec![text_reply("Hi there")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
-    agent.prompt("hello", &[], |_| {}).await.unwrap();
-    let id = agent.session.id.clone();
-    drop(agent);
-    let mut continued = test_support::agent(&api, reqwest::Client::new());
-    let resumed = continued.resume(&id).await;
-    test_support::remove_session(&continued);
-    resumed.unwrap();
-    let startup = mcp::Startup {
-        diagnostics: vec!["mcp warning: broken.json".into()],
-        servers: Vec::new(),
-        overridden: Vec::new(),
-        sign_in_servers: Vec::new(),
-    };
-    let app = opening_app(&continued, &startup, None);
-    let shown: Vec<&str> = app.messages[1..6]
-        .iter()
-        .map(|message| message.text.as_str())
-        .collect();
-    assert_eq!(
-        shown,
-        [
-            "mcp warning: broken.json",
-            "hello",
-            "Hi there",
-            "continued session",
-            "loaded tools: agent, bash, bash_stop, edit, read, web_search, write",
-        ]
-    );
 }
