@@ -297,3 +297,28 @@ fn keeps_code_quoted_in_a_list_item_free_of_trailing_spaces() {
     assert!(code.ends_with("let x = 1;"), "{lines:?}");
     assert_eq!(lines[lines.len() - 2..], ["> first", "> second"]);
 }
+
+#[test]
+fn shows_markdown_between_two_rules_as_markdown() {
+    let lines = trimmed(&render_message(
+        Role::Assistant,
+        "Intro\n\n---\n## Part *one*\nMore *text*\n\n---\n\nEnd",
+        40,
+    ));
+    assert_eq!(
+        lines,
+        [
+            "Intro",
+            "",
+            "---",
+            "",
+            "## Part one",
+            "",
+            "More text",
+            "",
+            "---",
+            "",
+            "End"
+        ]
+    );
+}

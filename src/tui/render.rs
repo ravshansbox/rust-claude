@@ -148,10 +148,15 @@ fn hard_line_breaks(text: &str) -> String {
         if index > 0 {
             out.push('\n');
         }
-        out.push_str(line);
         let in_code = fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
         fence = next_fence(fence, line);
-        if !in_code && fence.is_none() {
+        let plain = !in_code && fence.is_none();
+        out.push_str(if plain && line.trim_end() == "---" {
+            "----"
+        } else {
+            line
+        });
+        if plain {
             out.push_str("  ");
         }
     }
