@@ -149,22 +149,31 @@ fn hard_line_breaks(text: &str) -> String {
             out.push('\n');
         }
         out.push_str(line);
-        let was_open = fence.is_some();
+        let in_code = fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
         fence = next_fence(fence, line);
-        if !was_open && fence.is_none() {
+        if !in_code && fence.is_none() {
             out.push_str("  ");
         }
     }
     out
 }
 
-/// The fence character and length of the code block open after `line`,
-/// given the one open before it.
-pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(char, usize)> {
-    let mut trimmed = line.trim_start();
-    if open.is_none() {
-        trimmed = without_list_marker(trimmed);
-    }
+/// The fence character, fence length and quote depth of the code block open
+/// after `line`, given the one open before it.
+pub(super) fn next_fence(
+    open: Option<(char, usize, usize)>,
+    line: &str,
+) -> Option<(char, usize, usize)> {
+    let (trimmed, depth) = match open {
+        Some((_, _, depth)) => match without_quotes(line, depth) {
+            (rest, found) if found == depth => (rest.trim_start(), depth),
+            _ => return next_fence(None, line),
+        },
+        None => {
+            let (rest, depth) = without_quotes(line, usize::MAX);
+            (without_list_marker(rest.trim_start()), depth)
+        }
+    };
     let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
         return open;
     };
@@ -174,8 +183,8 @@ pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(cha
     }
     match open {
         None if fence == '`' && trimmed[length..].contains('`') => None,
-        None => Some((fence, length)),
-        Some((open_fence, open_length))
+        None => Some((fence, length, depth)),
+        Some((open_fence, open_length, _))
             if fence == open_fence
                 && length >= open_length
                 && trimmed[length..].trim().is_empty() =>
@@ -184,6 +193,19 @@ pub(super) fn next_fence(open: Option<(char, usize)>, line: &str) -> Option<(cha
         }
         _ => open,
     }
+}
+
+/// `line` after up to `limit` blockquote markers, and how many it had.
+fn without_quotes(line: &str, limit: usize) -> (&str, usize) {
+    let mut rest = line;
+    let mut depth = 0;
+    while depth < limit
+        && let Some(after) = rest.trim_start().strip_prefix('>')
+    {
+        rest = after;
+        depth += 1;
+    }
+    (rest, depth)
 }
 
 /// `line` after a list item marker that starts it, such as `-` or `2.`.
