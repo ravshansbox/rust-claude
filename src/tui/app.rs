@@ -93,7 +93,7 @@ pub(super) struct App {
     pub(super) files: Option<FileList>,
     pub(super) listing_files: bool,
     /// Counts prompts sent, so a list read before the last one is dropped.
-    files_generation: u64,
+    pub(super) files_generation: u64,
     pub(super) prompt_history: Vec<String>,
     pub(super) history_index: Option<usize>,
     pub(super) reads: tools::ReadGroup,
@@ -372,33 +372,6 @@ impl App {
         self.history_index = None;
         self.command_selected = 0;
         self.commands_dismissed = false;
-    }
-
-    /// Whether the file list should start loading now, for an `@` the user
-    /// just typed. Returns the list's generation once until the list arrives.
-    pub(super) fn start_listing_files(&mut self) -> Option<u64> {
-        if self.files.is_some()
-            || self.listing_files
-            || file_query(&self.input, self.cursor).is_none()
-        {
-            return None;
-        }
-        self.listing_files = true;
-        Some(self.files_generation)
-    }
-
-    pub(super) fn set_files(&mut self, generation: u64, files: Vec<String>) {
-        if generation == self.files_generation {
-            self.files = Some(FileList::new(files));
-            self.listing_files = false;
-        }
-    }
-
-    /// Makes the next `@` read the files again, as the prompt may change them.
-    pub(super) fn forget_files(&mut self) {
-        self.files = None;
-        self.listing_files = false;
-        self.files_generation += 1;
     }
 
     pub(super) fn attach_image(&mut self, image: Image) {

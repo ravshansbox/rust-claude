@@ -1,11 +1,11 @@
-use super::{Activity, App, Role};
+use super::{App, Role};
 use crate::agent::AgentEvent;
 use crate::tools::test_support::TemporaryDir;
 use crate::tui::{
     UiEvent, handle_agent_event, handle_input,
     test_support::{new_app, press, screen},
 };
-use crossterm::event::{Event, KeyCode, KeyEvent};
+use crossterm::event::{Event, KeyCode};
 use ratatui::text::Line;
 
 #[test]
@@ -24,44 +24,6 @@ fn merges_consecutive_reads() {
         texts,
         ["read a.rs (2), b.rs", "read failed: missing", "read c.rs"]
     );
-}
-
-#[test]
-fn lists_files_once_in_the_background_and_shows_them_when_ready() {
-    let mut app = new_app();
-    assert!(app.start_listing_files().is_none());
-    handle_input(Event::Paste("read @ma".into()), &mut app, |_| {});
-    assert!(app.visible_suggestions().is_none());
-    let generation = app.start_listing_files().unwrap();
-    handle_input(
-        Event::Key(KeyEvent::from(KeyCode::Char('i'))),
-        &mut app,
-        |_| {},
-    );
-    assert!(app.start_listing_files().is_none());
-    handle_agent_event(
-        UiEvent::Files(generation, vec!["README.md".into(), "src/main.rs".into()]),
-        &mut app,
-    );
-    let suggestions = app.visible_suggestions().unwrap();
-    assert_eq!(suggestions.items, [("src/main.rs".into(), String::new())]);
-    assert!(screen(&mut app).contains("src/main.rs"));
-    assert!(app.start_listing_files().is_none());
-}
-
-#[test]
-fn drops_a_file_list_started_before_the_prompt_was_sent() {
-    for activity in [None, Some(Activity::Working)] {
-        let mut app = new_app();
-        app.activity = activity;
-        handle_input(Event::Paste("read @".into()), &mut app, |_| {});
-        let generation = app.start_listing_files().unwrap();
-        handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), &mut app, |_| {});
-        handle_agent_event(UiEvent::Files(generation, vec!["old.rs".into()]), &mut app);
-        handle_input(Event::Paste("@".into()), &mut app, |_| {});
-        assert!(app.start_listing_files().is_some(), "{activity:?}");
-        assert!(!screen(&mut app).contains("old.rs"), "{activity:?}");
-    }
 }
 
 #[test]

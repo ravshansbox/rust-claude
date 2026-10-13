@@ -1,8 +1,11 @@
 use super::{file_query, files_in, walk};
 use crate::tools::test_support::TemporaryDir;
 use crate::tui::{
+    UiEvent,
+    app::Activity,
+    handle_agent_event,
     keys::{Action, handle_input},
-    test_support::{new_app, press, press_with},
+    test_support::{new_app, press, press_with, screen},
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use std::process::Command;
@@ -179,4 +182,38 @@ fn picks_the_file_named_exactly_before_longer_paths() {
     handle_input(Event::Paste(".rs".into()), &mut app, |_| {});
     press(&mut app, KeyCode::Enter);
     assert_eq!(app.input, "explain @src/lib.rs ");
+}
+
+#[test]
+fn lists_files_once_in_the_background_and_shows_them_when_ready() {
+    let mut app = new_app();
+    assert!(app.start_listing_files().is_none());
+    handle_input(Event::Paste("read @ma".into()), &mut app, |_| {});
+    assert!(app.visible_suggestions().is_none());
+    let generation = app.start_listing_files().unwrap();
+    press(&mut app, KeyCode::Char('i'));
+    assert!(app.start_listing_files().is_none());
+    handle_agent_event(
+        UiEvent::Files(generation, vec!["README.md".into(), "src/main.rs".into()]),
+        &mut app,
+    );
+    let suggestions = app.visible_suggestions().unwrap();
+    assert_eq!(suggestions.items, [("src/main.rs".into(), String::new())]);
+    assert!(screen(&mut app).contains("src/main.rs"));
+    assert!(app.start_listing_files().is_none());
+}
+
+#[test]
+fn drops_a_file_list_started_before_the_prompt_was_sent() {
+    for activity in [None, Some(Activity::Working)] {
+        let mut app = new_app();
+        app.activity = activity;
+        handle_input(Event::Paste("read @".into()), &mut app, |_| {});
+        let generation = app.start_listing_files().unwrap();
+        press(&mut app, KeyCode::Enter);
+        handle_agent_event(UiEvent::Files(generation, vec!["old.rs".into()]), &mut app);
+        handle_input(Event::Paste("@".into()), &mut app, |_| {});
+        assert!(app.start_listing_files().is_some(), "{activity:?}");
+        assert!(!screen(&mut app).contains("old.rs"), "{activity:?}");
+    }
 }

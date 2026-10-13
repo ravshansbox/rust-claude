@@ -1,3 +1,4 @@
+use super::App;
 use ignore::WalkBuilder;
 use std::{path::Path, process::Command};
 
@@ -105,6 +106,35 @@ impl FileList {
             .take(MAX_MATCHES)
             .cloned()
             .collect()
+    }
+}
+
+impl App {
+    /// Whether the file list should start loading now, for an `@` the user
+    /// just typed. Returns the list's generation once until the list arrives.
+    pub(super) fn start_listing_files(&mut self) -> Option<u64> {
+        if self.files.is_some()
+            || self.listing_files
+            || file_query(&self.input, self.cursor).is_none()
+        {
+            return None;
+        }
+        self.listing_files = true;
+        Some(self.files_generation)
+    }
+
+    pub(super) fn set_files(&mut self, generation: u64, files: Vec<String>) {
+        if generation == self.files_generation {
+            self.files = Some(FileList::new(files));
+            self.listing_files = false;
+        }
+    }
+
+    /// Makes the next `@` read the files again, as the prompt may change them.
+    pub(super) fn forget_files(&mut self) {
+        self.files = None;
+        self.listing_files = false;
+        self.files_generation += 1;
     }
 }
 
