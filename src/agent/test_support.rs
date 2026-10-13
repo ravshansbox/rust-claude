@@ -24,6 +24,29 @@ pub(crate) enum Reply {
     CutOff(Vec<Value>),
 }
 
+/// A server that answers one quota request with `body`, and its base URL.
+pub(crate) async fn quota_server(body: Value) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}", listener.local_addr().unwrap());
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        let mut chunk = [0; 1024];
+        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
+            let read = stream.read(&mut chunk).await.unwrap();
+            request.extend_from_slice(&chunk[..read]);
+        }
+        assert!(request.starts_with(b"GET /api/oauth/usage "));
+        let body = body.to_string();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+    });
+    base
+}
+
 pub(crate) fn text_reply(text: &str) -> Reply {
     stopped_reply(text, "end_turn")
 }

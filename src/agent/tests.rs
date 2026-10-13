@@ -517,29 +517,11 @@ async fn reports_a_web_search_that_failed() {
 
 #[tokio::test]
 async fn reads_the_quota_left_and_keeps_the_figures_replies_reported() {
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}", listener.local_addr().unwrap());
-    tokio::spawn(async move {
-        let (mut stream, _) = listener.accept().await.unwrap();
-        let mut request = Vec::new();
-        let mut chunk = [0; 1024];
-        while !request.windows(4).any(|window| window == b"\r\n\r\n") {
-            let read = stream.read(&mut chunk).await.unwrap();
-            request.extend_from_slice(&chunk[..read]);
-        }
-        assert!(request.starts_with(b"GET /api/oauth/usage "));
-        let body = json!({
-            "five_hour": { "utilization": 25.0, "resets_at": "1970-01-01T01:00:00Z" },
-            "seven_day": { "utilization": 90.0, "resets_at": "1970-01-08T00:00:00+00:00" },
-        })
-        .to_string();
-        let response = format!(
-            "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-            body.len()
-        );
-        stream.write_all(response.as_bytes()).await.unwrap();
-    });
+    let base = test_support::quota_server(json!({
+        "five_hour": { "utilization": 25.0, "resets_at": "1970-01-01T01:00:00Z" },
+        "seven_day": { "utilization": 90.0, "resets_at": "1970-01-08T00:00:00+00:00" },
+    }))
+    .await;
     let api = MockApi::start(Vec::new()).await;
     let mut agent = test_support::agent(&api, reqwest::Client::new());
     agent.api_base = base;

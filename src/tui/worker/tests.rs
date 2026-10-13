@@ -1,7 +1,7 @@
 use super::{Request, UiEvent, agent_task, quit};
 use crate::{
     agent::{
-        Agent,
+        Agent, AgentEvent,
         test_support::{self, MockApi, Reply},
     },
     auth::{Credentials, tests::AUTH_FILE},
@@ -102,6 +102,23 @@ async fn stops_running_request_when_quitting() {
     let stopped = tokio::time::timeout(Duration::from_secs(5), worker.quit()).await;
     test_support::remove_session_files(&session_id);
     assert!(stopped.is_ok());
+}
+
+#[tokio::test]
+async fn shows_the_quota_left_once_it_arrives() {
+    let mut agent = agent();
+    agent.api_base =
+        test_support::quota_server(json!({ "five_hour": { "utilization": 25.0 } })).await;
+    let session_id = agent.session.id.clone();
+    let mut worker = Worker::spawn(agent);
+    let shown = worker
+        .wait_for(|event| {
+            matches!(event, UiEvent::Agent(AgentEvent::Stats(stats)) if stats.quota.five_hour_remaining == Some(75.0))
+        })
+        .await;
+    worker.quit().abort();
+    test_support::remove_session_files(&session_id);
+    assert!(shown);
 }
 
 /// An agent whose sign-in has expired and whose renewal never answers.
