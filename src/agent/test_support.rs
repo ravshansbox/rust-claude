@@ -10,6 +10,7 @@ use tokio::{
 
 pub(crate) enum Reply {
     Stall,
+    /// These events; a string is sent as a raw frame.
     Events(Vec<Value>),
     /// These events, sent a few bytes at a time.
     Trickled(Vec<Value>),
@@ -201,11 +202,12 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
 fn event_stream(events: &[Value]) -> String {
     events
         .iter()
-        .map(|event| {
-            format!(
+        .map(|event| match event {
+            Value::String(frame) => frame.clone(),
+            _ => format!(
                 "event: {}\ndata: {event}\n\n",
                 event["type"].as_str().unwrap()
-            )
+            ),
         })
         .collect()
 }
