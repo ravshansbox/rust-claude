@@ -4,6 +4,7 @@ mod draw;
 mod files;
 mod input;
 mod keys;
+mod mcp_sign_in;
 mod mcp_status;
 mod message;
 mod prompt_history;
@@ -35,6 +36,7 @@ use draw::draw;
 use files::list_files;
 use futures::StreamExt;
 use keys::{Action, handle_input, may_change_screen};
+use mcp_sign_in::{sign_in_to_mcp_server, sign_out_of_mcp_server};
 use message::Role;
 use prompt_history::HistorySearch;
 use ratatui::DefaultTerminal;
@@ -43,7 +45,6 @@ use replay::{handle_agent_event, replay_messages};
 use std::{
     io,
     path::{Path, PathBuf},
-    process::Stdio,
     time::{Duration, SystemTime},
 };
 use terminal::{HeldPanics, InputModes, notify};
@@ -51,86 +52,6 @@ use tokio::{
     sync::mpsc,
     time::{MissedTickBehavior, interval},
 };
-
-/// Opens `url` in the default browser, if there is one.
-fn open_in_browser(url: &str) {
-    let program = if cfg!(target_os = "macos") {
-        "open"
-    } else {
-        "xdg-open"
-    };
-    let child = tokio::process::Command::new(program)
-        .arg(url)
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn();
-    if let Ok(mut child) = child {
-        tokio::spawn(async move {
-            let _ = child.wait().await;
-        });
-    }
-}
-
-/// Signs in to the MCP server `name` in the browser, then starts it again.
-async fn sign_in_to_mcp_server(
-    name: String,
-    events: mpsc::UnboundedSender<UiEvent>,
-    requests: mpsc::UnboundedSender<Request>,
-) {
-    let notice = |text: String| {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(text)));
-    };
-    let sign_in = match mcp::begin_sign_in(&name).await {
-        Ok(sign_in) => sign_in,
-        Err(error) => return notice(format!("MCP sign-in to {name} failed: {error}")),
-    };
-    notice(format!(
-        "opening the sign-in page for MCP server {name}; if it does not open, visit {}",
-        sign_in.authorize_url
-    ));
-    open_in_browser(&sign_in.authorize_url);
-    if let Err(error) = sign_in.finish().await {
-        return notice(format!("MCP sign-in to {name} failed: {error}"));
-    }
-    let signed_in = format!("signed in to MCP server {name}");
-    restart_mcp_server(name, signed_in, events, requests).await;
-}
-
-/// Forgets the sign-in for the MCP server `name`, then starts it again.
-async fn sign_out_of_mcp_server(
-    name: String,
-    events: mpsc::UnboundedSender<UiEvent>,
-    requests: mpsc::UnboundedSender<Request>,
-) {
-    match mcp::sign_out(&name) {
-        Ok(signed_out) => restart_mcp_server(name, signed_out, events, requests).await,
-        Err(error) => {
-            let notice = format!("MCP sign-out of {name} failed: {error}");
-            let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
-        }
-    }
-}
-
-/// Shows `notice` and starts the MCP server `name` again in place of the
-/// running one.
-async fn restart_mcp_server(
-    name: String,
-    notice: String,
-    events: mpsc::UnboundedSender<UiEvent>,
-    requests: mpsc::UnboundedSender<Request>,
-) {
-    let Some(server) = mcp::restart(&name) else {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
-        return;
-    };
-    let _ = events.send(UiEvent::McpRestarting {
-        name,
-        scope: server.scope,
-        notice,
-    });
-    let _ = requests.send(Request::ReplaceMcpServer(server.started.await));
-}
 use worker::{Request, UiEvent, agent_task, quit};
 
 pub(crate) use render::{ansi_thinking, ansi_tool_lines, tool_message};
