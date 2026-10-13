@@ -151,11 +151,19 @@ fn hard_line_breaks(text: &str) -> String {
         let in_code = fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
         fence = next_fence(fence, line);
         let plain = !in_code && fence.is_none();
-        out.push_str(if plain && line.trim_end() == "---" {
-            "----"
+        if plain && line.trim_end() == "---" {
+            out.push_str("----");
+        } else if plain && is_heading(line) && !line.trim_end().ends_with("\\}") {
+            match line.trim_end().strip_suffix('}') {
+                Some(text) => {
+                    out.push_str(text);
+                    out.push_str("\\}");
+                }
+                None => out.push_str(line),
+            }
         } else {
-            line
-        });
+            out.push_str(line);
+        }
         if plain {
             out.push_str("  ");
         }
@@ -199,6 +207,16 @@ pub(super) fn next_fence(
         }
         _ => open,
     }
+}
+
+fn is_heading(line: &str) -> bool {
+    let rest = without_list_marker(without_quotes(line, usize::MAX).0.trim_start());
+    let hashes = rest.len() - rest.trim_start_matches('#').len();
+    (1..=6).contains(&hashes)
+        && rest[hashes..]
+            .chars()
+            .next()
+            .is_none_or(|c| c == ' ' || c == '\t')
 }
 
 /// `line` after up to `limit` blockquote markers, and how many it had.

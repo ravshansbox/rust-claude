@@ -322,3 +322,23 @@ fn shows_markdown_between_two_rules_as_markdown() {
         ]
     );
 }
+
+#[test]
+fn shows_braces_at_the_end_of_a_heading() {
+    let lines = trimmed(&render_message(
+        Role::Assistant,
+        "## Point { x, y }\n\n> ### Empty {}\n\n- # Item {a}",
+        40,
+    ));
+    assert_eq!(
+        lines,
+        [
+            "## Point { x, y }",
+            "",
+            "> ### Empty {}",
+            "",
+            "-",
+            "# Item {a}"
+        ]
+    );
+}
