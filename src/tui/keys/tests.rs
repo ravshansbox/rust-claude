@@ -681,3 +681,13 @@ fn compacts_at_the_chosen_effort_level() {
     assert_eq!(effort, Some("medium"));
     assert!(screen(&mut app).contains("compacting"));
 }
+
+#[test]
+fn types_each_character_once_when_the_terminal_reports_key_releases() {
+    let mut app = new_app();
+    let mut release = KeyEvent::from(KeyCode::Char('a'));
+    release.kind = KeyEventKind::Release;
+    press(&mut app, KeyCode::Char('a'));
+    handle_input(Event::Key(release), &mut app, |_| {});
+    assert_eq!(app.input, "a");
+}
