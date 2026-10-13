@@ -285,6 +285,33 @@ async fn reports_a_failing_headers_helper() {
 }
 
 #[tokio::test]
+async fn stops_what_a_headers_helper_left_running() {
+    let (url, requests) = http_server(http_mcp).await;
+    let pid_file = TemporaryFile::new("mcp-helper-child", "");
+    let mut config = http_config(&url);
+    config.headers_helper = Some(format!(
+        r#"sleep 30 & echo $! > '{}'; echo '{{"X-Helper": "ran"}}'"#,
+        pid_file.path().display()
+    ));
+    let started = tokio::time::timeout(
+        Duration::from_secs(5),
+        start("web".into(), Scope::Global, config),
+    )
+    .await
+    .expect("waited for what the headersHelper left running");
+    let mut mcp = Mcp::default();
+    assert_eq!(
+        mcp.add(started).status,
+        "loaded global MCP server: web (1 tools)"
+    );
+    assert_eq!(
+        requests_for(&requests, "initialize")[0].headers["x-helper"],
+        "ran"
+    );
+    assert_eq!(wait_until_gone(pid_file.content().trim()).await, "");
+}
+
+#[tokio::test]
 async fn does_not_sign_in_with_oauth_when_a_headers_helper_is_set() {
     let (url, _) = http_server(|_| HttpReply::status(401, "")).await;
     let mut config = http_config(&url);

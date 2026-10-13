@@ -377,6 +377,17 @@ async fn eventually<T>(mut value: impl FnMut() -> T, done: impl Fn(&T) -> bool) 
     value()
 }
 
+async fn wait_until_gone(pid: &str) -> String {
+    let listed = || {
+        let output = std::process::Command::new("ps")
+            .args(["-o", "stat=", "-p", pid])
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    };
+    eventually(listed, String::is_empty).await
+}
+
 #[tokio::test]
 async fn reports_each_server_as_it_starts() {
     let mut mcp = Mcp::default();

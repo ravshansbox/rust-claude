@@ -77,17 +77,6 @@ async fn stops_what_a_server_left_running_when_it_exits() {
     drop(mcp);
 }
 
-async fn wait_until_gone(pid: &str) -> String {
-    let listed = || {
-        let output = std::process::Command::new("ps")
-            .args(["-o", "stat=", "-p", pid])
-            .output()
-            .unwrap();
-        String::from_utf8_lossy(&output.stdout).trim().to_string()
-    };
-    eventually(listed, String::is_empty).await
-}
-
 #[tokio::test]
 async fn stops_the_server_when_dropped() {
     let pid_file = TemporaryFile::new("mcp-drop", "");
