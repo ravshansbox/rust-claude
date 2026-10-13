@@ -263,6 +263,38 @@ async fn empties_the_build_folder_when_the_compiler_changes() {
 }
 
 #[tokio::test]
+async fn builds_outside_the_project_it_was_started_in() {
+    let dir = TemporaryDir::new("update-outside-project");
+    let (base, _) = github("v0.2.0").await;
+    let mut updater = updater(&base, None);
+    updater.cargo = Some(write_script(
+        dir.path().join("cargo"),
+        format!(
+            "#!/bin/sh\npwd -P > '{}'\n",
+            dir.path().join("cargo.pwd").display()
+        ),
+    ));
+    updater.rustc = Some(write_script(
+        dir.path().join("rustc"),
+        format!(
+            "#!/bin/sh\npwd -P > '{}'\necho 'rustc 1.99.0'\n",
+            dir.path().join("rustc.pwd").display()
+        ),
+    ));
+    updater.build_dir = Some(dir.path().join("build"));
+    updater.update_dir = dir.path().join("updates");
+    run(updater).await;
+    let updates = dir.path().canonicalize().unwrap().join("updates");
+    for program in ["cargo", "rustc"] {
+        let pwd = std::fs::read_to_string(dir.path().join(format!("{program}.pwd"))).unwrap();
+        assert!(
+            Path::new(pwd.trim_end()).starts_with(&updates),
+            "{program} ran in {pwd}"
+        );
+    }
+}
+
+#[tokio::test]
 async fn refuses_a_release_whose_signature_does_not_match() {
     let dir = TemporaryDir::new("update-bad-signature");
     let (base, _) = github_serving("v0.2.0", source_zip(), Some(SIGNATURE.to_vec())).await;

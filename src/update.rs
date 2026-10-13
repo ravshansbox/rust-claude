@@ -260,11 +260,15 @@ impl Updater {
         Ok(())
     }
 
+    /// Runs cargo, and rustc for the build folder, from the update folder,
+    /// so rustup ignores any `rust-toolchain.toml` of the project open here.
     async fn build(&self, cargo: &Path, folder: &Path) -> Result<()> {
         let mut command = tokio::process::Command::new(cargo);
-        command.args(["install", "--locked", "--force"]);
+        command
+            .current_dir(folder)
+            .args(["install", "--locked", "--force"]);
         if let Some(build_dir) = &self.build_dir {
-            self.prepare_build_dir(build_dir).await;
+            self.prepare_build_dir(build_dir, folder).await;
             command.arg("--target-dir").arg(build_dir);
         }
         let output = command
@@ -288,11 +292,12 @@ impl Updater {
         anyhow::bail!(reason)
     }
 
-    async fn prepare_build_dir(&self, build_dir: &Path) {
+    async fn prepare_build_dir(&self, build_dir: &Path, folder: &Path) {
         let Some(rustc) = &self.rustc else {
             return;
         };
         let Ok(output) = tokio::process::Command::new(rustc)
+            .current_dir(folder)
             .arg("-vV")
             .stdin(std::process::Stdio::null())
             .output()

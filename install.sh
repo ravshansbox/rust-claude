@@ -26,6 +26,8 @@ else
   echo "minisign not found on PATH, installing without checking the signature" >&2
 fi
 unzip -q "$folder/rust-coding-agent.zip" -d "$folder"
+# Build from here, so rustup ignores any rust-toolchain.toml of the current folder.
+cd "$folder"
 build="$HOME/.rust-coding-agent/build"
 (umask 077 && mkdir -p "$build")
 if version=$(rustc -vV 2>/dev/null) && [ "$(cat "$build/rustc-version" 2>/dev/null)" != "$version" ]; then
