@@ -13,6 +13,7 @@ mod render;
 mod replay;
 mod selection;
 mod status;
+mod suggestions;
 mod tasks;
 mod terminal;
 #[cfg(test)]
