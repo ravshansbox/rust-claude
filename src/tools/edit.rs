@@ -58,9 +58,10 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     let absorb_cr = crlf && old_text.starts_with('\n');
     let limit = if replace_all { usize::MAX } else { 1 };
     let (edited, count) = replace(&content, &old_text, &new_text, limit, absorb_cr);
-    let message = match replace_all {
-        false => format!("edited {path}"),
-        true => format!("edited {path} ({})", plural(count, "replacement")),
+    let message = if replace_all {
+        format!("edited {path} ({})", plural(count, "replacement"))
+    } else {
+        format!("edited {path}")
     };
     replace_file(path, edited, Some(content))
         .await
