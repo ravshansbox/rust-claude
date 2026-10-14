@@ -346,7 +346,7 @@ async fn request_tokens(
         bail!(message);
     }
     let data: Value = serde_json::from_str(&text)?;
-    let credentials = Credentials {
+    Ok(Credentials {
         access: data["access_token"]
             .as_str()
             .context("missing access_token")?
@@ -358,8 +358,7 @@ async fn request_tokens(
             .into(),
         expires: expires_at(data["expires_in"].as_u64(), RENEWAL_MARGIN).unwrap_or(u64::MAX.into()),
         renewal_notice: None,
-    };
-    Ok(credentials)
+    })
 }
 
 pub(crate) fn expires_at(seconds: Option<u64>, margin: u128) -> Option<u128> {
