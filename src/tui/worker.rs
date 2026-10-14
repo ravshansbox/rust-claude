@@ -149,7 +149,7 @@ async fn handle_request(
         }
         Request::Compact(effort) => return Some((None, effort)),
         Request::Shell(command) => {
-            while cancel.try_recv().is_ok() {}
+            drain(cancel);
             tokio::select! {
                 result = agent.shell(&command) => {
                     let _ = events.send(UiEvent::Shell(command, result));
@@ -193,7 +193,7 @@ async fn run_turn(
     events: &mpsc::UnboundedSender<UiEvent>,
 ) {
     agent.effort = effort;
-    while cancel.try_recv().is_ok() {}
+    drain(cancel);
 
     let checkpoint = agent.messages().len();
     let cancelled = {
@@ -218,6 +218,11 @@ async fn run_turn(
         let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
     }
     send_stats(agent, events);
+}
+
+/// Drops cancels sent before the work they could cancel started.
+fn drain(cancel: &mut mpsc::UnboundedReceiver<()>) {
+    while cancel.try_recv().is_ok() {}
 }
 
 /// Requests the interface lets Esc cancel.
