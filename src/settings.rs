@@ -55,7 +55,6 @@ fn read_file(path: &Path) -> Result<Settings> {
 fn update_file(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<()> {
     let mut settings = read_file(path)?;
     change(&mut settings);
-    config::create_private_dir(path.parent().context("invalid settings path")?)?;
     config::write_private_file(path, serde_json::to_string_pretty(&settings)?.as_bytes())?;
     Ok(())
 }

@@ -125,7 +125,6 @@ impl Session {
 
     pub fn save_image(&self, image: &Image) -> Result<Value> {
         let directory = self.images_directory()?;
-        config::create_private_dir(&directory)?;
         let hash = hex(&Sha256::digest(&image.data)[..8]);
         let file = format!("{hash}.{}", image.extension());
         let path = directory.join(&file);

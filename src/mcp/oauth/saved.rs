@@ -73,9 +73,6 @@ fn read_all() -> BTreeMap<String, Saved> {
 fn write_all(saved: &BTreeMap<String, Saved>) -> Result<(), String> {
     let path = path().ok_or("HOME is not set")?;
     let write = || -> io::Result<()> {
-        if let Some(parent) = path.parent() {
-            config::create_private_dir(parent)?;
-        }
         let text = serde_json::to_string_pretty(saved)?;
         config::write_private_file(&path, text.as_bytes())
     };

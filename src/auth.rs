@@ -226,7 +226,6 @@ impl Credentials {
     /// and a crash keeps the old sign-in.
     fn save(&self) -> Result<()> {
         let path = credentials_path()?;
-        config::create_private_dir(path.parent().context("invalid credentials path")?)?;
         config::write_private_file(&path, serde_json::to_string_pretty(self)?.as_bytes())?;
         Ok(())
     }

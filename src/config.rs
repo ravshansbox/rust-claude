@@ -75,6 +75,9 @@ pub async fn lock_file(path: &Path) -> io::Result<std::fs::File> {
 /// renamed over it, so readers never see a half-written file and a failed
 /// write keeps the old one. A symlink there stays, and its file is replaced.
 pub fn write_private_file(path: &Path, contents: &[u8]) -> io::Result<()> {
+    if let Some(parent) = path.parent() {
+        create_private_dir(parent)?;
+    }
     let target = match std::fs::canonicalize(path) {
         Ok(target) => target,
         Err(error) if error.kind() == ErrorKind::NotFound => dangling_target(path.to_path_buf()),
