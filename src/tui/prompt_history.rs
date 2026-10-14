@@ -90,9 +90,9 @@ impl App {
         let Some(index) = self.history_index else {
             return;
         };
-        if index + 1 < self.prompt_history.len() {
+        if let Some(prompt) = self.prompt_history.get(index + 1) {
             self.history_index = Some(index + 1);
-            self.input.clone_from(&self.prompt_history[index + 1]);
+            self.input.clone_from(prompt);
         } else {
             self.history_index = None;
             self.input.clear();
