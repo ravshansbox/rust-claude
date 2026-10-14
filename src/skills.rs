@@ -204,9 +204,6 @@ fn collect_from(
         return;
     }
     rules.push(ignore_rules(dir));
-    let mut entries: Vec<_> = entries.flatten().collect();
-    entries.sort_by_key(std::fs::DirEntry::file_name);
-
     let skill_file = dir.join(SKILL_FILE);
     if skill_file.is_file() && !is_ignored(rules, &skill_file, false) {
         files.push(skill_file);
@@ -214,6 +211,8 @@ fn collect_from(
         return;
     }
 
+    let mut entries: Vec<_> = entries.flatten().collect();
+    entries.sort_by_key(std::fs::DirEntry::file_name);
     for entry in entries {
         let name = entry.file_name();
         let name = name.to_string_lossy();
