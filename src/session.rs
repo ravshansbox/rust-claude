@@ -1,4 +1,5 @@
 use std::{
+    cmp::Reverse,
     fs::{File, TryLockError},
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
@@ -154,7 +155,7 @@ impl Session {
                 })
             })
             .collect();
-        summaries.sort_by_key(|summary| std::cmp::Reverse(summary.modified));
+        summaries.sort_by_key(|summary| Reverse(summary.modified));
         Ok(summaries)
     }
 
@@ -216,7 +217,7 @@ fn open_locked(path: &Path, create: bool) -> Result<File> {
 
 fn latest_in_folder(directory: &Path, folder: &str) -> Result<Option<String>> {
     let mut files = session_files(directory)?;
-    files.sort_by_key(|file| std::cmp::Reverse(file.modified));
+    files.sort_by_key(|file| Reverse(file.modified));
     Ok(files
         .into_iter()
         .find(|file| read_folder(&file.path).ok().flatten().as_deref() == Some(folder))
