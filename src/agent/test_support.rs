@@ -165,7 +165,7 @@ async fn read_request(stream: &mut TcpStream) -> Option<(String, Value)> {
     Some((headers, body))
 }
 
-async fn read_chunk(stream: &mut TcpStream, data: &mut Vec<u8>) -> Option<()> {
+pub(crate) async fn read_chunk(stream: &mut TcpStream, data: &mut Vec<u8>) -> Option<()> {
     let mut chunk = [0u8; 8192];
     let read = stream.read(&mut chunk).await.ok()?;
     if read == 0 {

@@ -6,10 +6,11 @@ use std::{
     },
 };
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncWriteExt;
 
 use super::config_file::{OAuthConfig, expand_variables, read_config};
 use super::*;
+use crate::agent::test_support::read_chunk;
 use crate::auth::now_millis;
 use crate::tools::test_support::{TemporaryDir, TemporaryFile};
 
@@ -244,16 +245,11 @@ async fn http_server(
 
 async fn read_http_request(stream: &mut tokio::net::TcpStream) -> Option<HttpRequest> {
     let mut data = Vec::new();
-    let mut chunk = [0u8; 8192];
     let header_end = loop {
         if let Some(end) = data.windows(4).position(|window| window == b"\r\n\r\n") {
             break end + 4;
         }
-        let read = stream.read(&mut chunk).await.ok()?;
-        if read == 0 {
-            return None;
-        }
-        data.extend_from_slice(&chunk[..read]);
+        read_chunk(stream, &mut data).await?;
     };
     let head = String::from_utf8_lossy(&data[..header_end]);
     let mut lines = head.lines();
@@ -269,11 +265,7 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> Option<HttpReq
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
     while data.len() < header_end + length {
-        let read = stream.read(&mut chunk).await.ok()?;
-        if read == 0 {
-            return None;
-        }
-        data.extend_from_slice(&chunk[..read]);
+        read_chunk(stream, &mut data).await?;
     }
     let body = serde_json::from_slice(&data[header_end..]).unwrap_or(Value::Null);
     Some(HttpRequest {
