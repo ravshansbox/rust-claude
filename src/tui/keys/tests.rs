@@ -8,6 +8,7 @@ use crate::tui::{
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
+use std::time::{Duration, SystemTime};
 
 #[test]
 fn redraws_only_for_events_that_may_change_the_screen() {
@@ -298,7 +299,7 @@ fn resumes_the_session_picked_from_the_list() {
     let sessions = [("0", 125), ("1", 3 * 3_600 + 10), ("2", 2 * 86_400 + 10)]
         .map(|(id, age)| SessionSummary {
             id: id.into(),
-            modified: std::time::SystemTime::now() - std::time::Duration::from_secs(age),
+            modified: SystemTime::now() - Duration::from_secs(age),
             preview: format!("prompt {id}\nmore"),
         })
         .into();
