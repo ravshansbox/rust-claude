@@ -21,7 +21,7 @@ fn joins_output_speed_to_stats() {
         tokens_per_second: Some(42.0),
         ..stats_with(Quota::default())
     };
-    assert_eq!(format_stats(&stats), "R6k W88 42t/s");
+    assert_eq!(format_stats(&stats), "↑4 ↓338 R6k W88 42t/s");
 }
 
 #[test]

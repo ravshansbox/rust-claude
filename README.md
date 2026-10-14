@@ -14,7 +14,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Print mode (`-p`) to run one prompt and print the answer
 - Four models, effort levels and thinking shown in the conversation
 - Saved sessions you can resume, automatic compaction and prompt caching
-- Status line with cache tokens, context use and quota
+- Status line with tokens, context use and quota
 - Paste images, `@` file picker and prompt history search
 - `AGENTS.md` instructions and [Agent Skills](https://agentskills.io/specification)
 - MCP servers over stdio or Streamable HTTP, with OAuth sign-in

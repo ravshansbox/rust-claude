@@ -3,11 +3,16 @@ use std::time::SystemTime;
 
 pub(super) fn format_stats(stats: &Stats) -> String {
     let usage = &stats.usage;
-    let mut parts: Vec<String> = [("R", usage.cache_read), ("W", usage.cache_write)]
-        .into_iter()
-        .filter(|(_, count)| *count > 0)
-        .map(|(label, count)| format!("{label}{}", format_tokens(count)))
-        .collect();
+    let mut parts: Vec<String> = [
+        ("↑", usage.input),
+        ("↓", usage.output),
+        ("R", usage.cache_read),
+        ("W", usage.cache_write),
+    ]
+    .into_iter()
+    .filter(|(_, count)| *count > 0)
+    .map(|(label, count)| format!("{label}{}", format_tokens(count)))
+    .collect();
     if let Some(rate) = stats.tokens_per_second {
         parts.push(format!("{rate:.0}t/s"));
     }
