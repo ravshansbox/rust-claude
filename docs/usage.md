@@ -14,6 +14,12 @@ Run one prompt and print the answer with `-p` or `--print`. The argument after i
 rca -p "explain src/main.rs"
 ```
 
+Without `-p`, when standard input is not a terminal, rca reads the prompt from it and runs in print mode. Trailing white space is removed, and an empty prompt is an error. This lets you run the same prompt in a loop, each time in a new session:
+
+```sh
+while :; do cat PROMPT.md | rca || break; done
+```
+
 In print mode, `/skill:name` runs a skill as in the interface. Other commands, such as `/compact`, are not available there; their text is sent as the prompt.
 
 Send images with the prompt with `--image <path>`. Repeat it for more images:

@@ -418,3 +418,56 @@ fn reports_a_missing_image_before_asking_to_sign_in() {
     );
     assert!(!stderr.contains("sign in"), "{stderr}");
 }
+
+#[test]
+fn reads_the_prompt_from_standard_input_without_print() {
+    let setup = Setup::new("stdin-prompt");
+    write_sign_in(&setup.home.join(".rust-coding-agent"));
+    setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    {
+        use std::io::Write;
+        let mut stdin = child.stdin.take().unwrap();
+        stdin.write_all(b"hello from stdin\n").unwrap();
+    }
+    let started = setup.server_started();
+    let output = interrupt(child);
+    let server_stopped = stop_server(&setup.server_pid());
+    let sessions: Vec<String> = std::fs::read_dir(setup.home.join(".rust-coding-agent/sessions"))
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| std::fs::read_to_string(entry.ok()?.path()).ok())
+        .collect();
+
+    assert!(started, "{}", String::from_utf8_lossy(&output.stderr));
+    assert_eq!(output.status.code(), Some(130));
+    assert!(server_stopped);
+    assert!(
+        sessions
+            .iter()
+            .any(|session| session.contains(r#""content":"hello from stdin""#)),
+        "prompt not read from standard input: {sessions:?}"
+    );
+}
+
+#[test]
+fn reports_an_empty_prompt_on_standard_input() {
+    let setup = Setup::new("stdin-empty");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+
+    let output = setup.run(&[]).wait_with_output().unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(stderr.contains("no prompt on standard input"), "{stderr}");
+    assert!(!stderr.contains("sign in"), "{stderr}");
+}

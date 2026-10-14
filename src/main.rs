@@ -54,7 +54,8 @@ async fn run() -> Result<()> {
             println!("A small coding agent for the terminal.\n\n{USAGE}\n\n{OPTIONS}");
             return Ok(());
         }
-        Command::Interactive => (None, Vec::new()),
+        Command::Interactive if io::stdin().is_terminal() => (None, Vec::new()),
+        Command::Interactive => (Some(read_stdin_prompt()?), Vec::new()),
         Command::Print { prompt, images } => (Some(prompt), images),
     };
     let images = load_images(&image_paths)?;
@@ -118,6 +119,15 @@ fn command_line_arguments() -> Result<Vec<String>> {
             })
         })
         .collect()
+}
+
+fn read_stdin_prompt() -> Result<String> {
+    let input = io::read_to_string(io::stdin()).context("failed to read standard input")?;
+    let prompt = input.trim_end();
+    if prompt.is_empty() {
+        bail!("no prompt on standard input\n{USAGE}");
+    }
+    Ok(prompt.to_string())
 }
 
 fn load_images(paths: &[String]) -> Result<Vec<images::Image>> {

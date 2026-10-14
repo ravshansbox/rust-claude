@@ -7,7 +7,7 @@ pub const OPTIONS: &str = "Options:
       --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-coding-agent
       --model <id>         Model to use
       --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
-  -p, --print <prompt>     Run one prompt and print the answer
+  -p, --print <prompt>     Run one prompt and print the answer. Without it, a prompt piped to standard input runs the same way
       --image <path>       Send an image with the prompt in print mode. Repeat for more images
   -h, --help               Show this help";
 
