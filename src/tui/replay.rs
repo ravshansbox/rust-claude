@@ -28,10 +28,10 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
                 app.workspace_stale = true;
             }
             if let Some(error) = error {
-                app.push(Role::Event, format!("{name} failed: {error}"));
+                push_tool_failure(app, &name, &error);
             }
             if let Some(note) = note {
-                app.push(Role::Event, format!("{name}: {note}"));
+                push_tool_note(app, &name, &note);
             }
         }
         UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
@@ -194,8 +194,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                     match result {
                         Some((error, true)) if *error == CANCELLED => cancelled = true,
                         Some((error, true)) => {
-                            let error = error.as_str().unwrap_or_default();
-                            app.push(Role::Event, format!("{name} failed: {error}"));
+                            push_tool_failure(app, name, error.as_str().unwrap_or_default());
                         }
                         Some((Value::Array(replies), false)) if name == tools::agent::NAME => {
                             let descriptions = block["input"]["tasks"]
@@ -212,7 +211,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                             if let Some(note) =
                                 tools::note(name, result.as_str().unwrap_or_default())
                             {
-                                app.push(Role::Event, format!("{name}: {note}"));
+                                push_tool_note(app, name, &note);
                             }
                         }
                         None => {}
@@ -225,8 +224,8 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                 ("assistant", "web_search_tool_result") => {
                     let name = tools::web_search::NAME;
                     match tools::web_search::outcome(&block["content"]) {
-                        Ok(note) => app.push(Role::Event, format!("{name}: {note}")),
-                        Err(error) => app.push(Role::Event, format!("{name} failed: {error}")),
+                        Ok(note) => push_tool_note(app, name, &note),
+                        Err(error) => push_tool_failure(app, name, &error),
                     }
                 }
                 ("user", "text") => replay_prompt(app, block["text"].as_str().unwrap_or_default()),
@@ -240,6 +239,14 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
             append_reply(app, &sources);
         }
     }
+}
+
+fn push_tool_failure(app: &mut App, name: &str, error: &str) {
+    app.push(Role::Event, format!("{name} failed: {error}"));
+}
+
+fn push_tool_note(app: &mut App, name: &str, note: &str) {
+    app.push(Role::Event, format!("{name}: {note}"));
 }
 
 fn append_reply(app: &mut App, text: &str) {
