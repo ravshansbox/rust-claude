@@ -2,7 +2,7 @@ use super::{AgentEvent, Printer};
 use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
 use crate::tools::test_support::TemporaryDir;
 use serde_json::json;
-use std::io;
+use std::{cell::RefCell, io};
 
 const ESCAPES: &str = "\x1b]52;c;aGk=\x07\x1b[2J\u{9b}2J\r";
 
@@ -108,7 +108,7 @@ fn shows_thinking_in_grey_italics() {
 
 #[test]
 fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
-    struct Screen<'a>(&'a std::cell::RefCell<Vec<u8>>);
+    struct Screen<'a>(&'a RefCell<Vec<u8>>);
     impl io::Write for Screen<'_> {
         fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
             self.0.borrow_mut().extend_from_slice(bytes);
@@ -118,7 +118,7 @@ fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
             Ok(())
         }
     }
-    let screen = std::cell::RefCell::new(Vec::new());
+    let screen = RefCell::new(Vec::new());
     let mut printer = Printer::new(Screen(&screen), true, Screen(&screen), true, true, None);
     printer.event(AgentEvent::Text("first".into()));
     printer.event(AgentEvent::Notice("note".into()));
