@@ -1,7 +1,6 @@
 use super::{
     display_model,
     files::FileList,
-    keys::Action,
     mcp_status::McpGroup,
     message::{ChatMessage, Role},
     selection::Selection,
@@ -16,7 +15,6 @@ use crate::{
     tools,
     update::Progress,
 };
-use anyhow::Result;
 use ratatui::layout::Rect;
 use std::path::PathBuf;
 
@@ -213,48 +211,6 @@ impl App {
         self.effort = levels[index];
     }
 
-    pub(super) fn busy(&self) -> bool {
-        self.activity.is_some()
-    }
-
-    pub(super) fn animating(&self) -> bool {
-        self.busy() || self.mcp_loading()
-    }
-
-    pub(super) fn tick_spinner(&mut self) {
-        self.spinner_frame = self.spinner_frame.wrapping_add(1);
-        self.show_loading_mcp_groups();
-    }
-
-    pub(super) fn submit(&mut self, prompt: String) -> Action {
-        self.remember(&prompt);
-        self.start(Activity::Working);
-        let images = self.take_numbered_images(&prompt);
-        let images = images.into_iter().map(|(_, image)| image).collect();
-        Action::Submit(prompt, images, self.effort)
-    }
-
-    pub(super) fn start(&mut self, activity: Activity) {
-        self.activity = Some(activity);
-    }
-
-    /// Starts a turn for a finished background command. The worker may start
-    /// it just as a request is sent, which then waits behind it.
-    pub(super) fn start_background(&mut self) {
-        self.waiting_behind_background = self.activity;
-        self.start(Activity::Working);
-    }
-
-    /// Starts `activity`, or shows it once a background turn ends if one is
-    /// running, as the request then waits behind that turn.
-    pub(super) fn start_after_background(&mut self, activity: Activity) {
-        if self.busy() {
-            self.waiting_behind_background = Some(activity);
-        } else {
-            self.start(activity);
-        }
-    }
-
     /// Returns whether `name` is an effort level.
     pub(super) fn set_effort(&mut self, name: &str) -> bool {
         if let Some(level) = models::find_effort(&self.model, name) {
@@ -287,17 +243,6 @@ impl App {
             group.message = None;
         }
         self.history_index = None;
-    }
-
-    pub(super) fn finish<T>(&mut self, result: Result<T>, on_success: impl FnOnce(&mut Self, T)) {
-        if let Some(last) = self.messages.last_mut() {
-            last.finish_streaming();
-        }
-        match result {
-            Ok(value) => on_success(self, value),
-            Err(error) => self.push(Role::Event, format!("error: {error:#}")),
-        }
-        self.activity = self.waiting_behind_background.take();
     }
 }
 

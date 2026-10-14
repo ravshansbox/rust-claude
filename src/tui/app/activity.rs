@@ -1,3 +1,6 @@
+use super::App;
+use crate::tui::{keys::Action, message::Role};
+use anyhow::Result;
 use std::fmt;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -34,5 +37,64 @@ impl fmt::Display for Activity {
             Self::StartingNewSession => "starting new session",
             Self::LoadingSessions => "loading sessions",
         })
+    }
+}
+
+impl App {
+    pub(in crate::tui) fn busy(&self) -> bool {
+        self.activity.is_some()
+    }
+
+    pub(in crate::tui) fn animating(&self) -> bool {
+        self.busy() || self.mcp_loading()
+    }
+
+    pub(in crate::tui) fn tick_spinner(&mut self) {
+        self.spinner_frame = self.spinner_frame.wrapping_add(1);
+        self.show_loading_mcp_groups();
+    }
+
+    pub(in crate::tui) fn submit(&mut self, prompt: String) -> Action {
+        self.remember(&prompt);
+        self.start(Activity::Working);
+        let images = self.take_numbered_images(&prompt);
+        let images = images.into_iter().map(|(_, image)| image).collect();
+        Action::Submit(prompt, images, self.effort)
+    }
+
+    pub(in crate::tui) fn start(&mut self, activity: Activity) {
+        self.activity = Some(activity);
+    }
+
+    /// Starts a turn for a finished background command. The worker may start
+    /// it just as a request is sent, which then waits behind it.
+    pub(in crate::tui) fn start_background(&mut self) {
+        self.waiting_behind_background = self.activity;
+        self.start(Activity::Working);
+    }
+
+    /// Starts `activity`, or shows it once a background turn ends if one is
+    /// running, as the request then waits behind that turn.
+    pub(in crate::tui) fn start_after_background(&mut self, activity: Activity) {
+        if self.busy() {
+            self.waiting_behind_background = Some(activity);
+        } else {
+            self.start(activity);
+        }
+    }
+
+    pub(in crate::tui) fn finish<T>(
+        &mut self,
+        result: Result<T>,
+        on_success: impl FnOnce(&mut Self, T),
+    ) {
+        if let Some(last) = self.messages.last_mut() {
+            last.finish_streaming();
+        }
+        match result {
+            Ok(value) => on_success(self, value),
+            Err(error) => self.push(Role::Event, format!("error: {error:#}")),
+        }
+        self.activity = self.waiting_behind_background.take();
     }
 }
