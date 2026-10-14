@@ -71,6 +71,12 @@ pub async fn lock_file(path: &Path) -> io::Result<std::fs::File> {
     }
 }
 
+pub fn lock_file_blocking(path: &Path) -> io::Result<std::fs::File> {
+    let file = private_file().create(true).write(true).open(path)?;
+    file.lock()?;
+    Ok(file)
+}
+
 /// Writes a file only the user can read and write, through a temporary file
 /// renamed over it, so readers never see a half-written file and a failed
 /// write keeps the old one. A symlink there stays, and its file is replaced.

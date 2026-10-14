@@ -44,13 +44,9 @@ pub fn history_path() -> Option<PathBuf> {
 /// replaces history.jsonl itself.
 fn lock(path: &Path) -> Result<std::fs::File> {
     config::create_private_dir(path.parent().context("invalid history path")?)?;
-    let lock = config::private_file()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(path.with_extension("jsonl.lock"))?;
-    lock.lock()?;
-    Ok(lock)
+    Ok(config::lock_file_blocking(
+        &path.with_extension("jsonl.lock"),
+    )?)
 }
 
 pub fn append(path: &Path, entry: &Entry) -> Result<()> {

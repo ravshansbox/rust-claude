@@ -48,13 +48,7 @@ fn lock_path(name: &str) -> Option<PathBuf> {
 /// change mcp-auth.json one at a time instead of undoing each other's
 /// changes. Changes are quick, so this blocks while it waits.
 fn lock_changes() -> Option<File> {
-    let file = config::private_file()
-        .create(true)
-        .write(true)
-        .open(lock_path("mcp-auth.lock")?)
-        .ok()?;
-    file.lock().ok()?;
-    Some(file)
+    config::lock_file_blocking(&lock_path("mcp-auth.lock")?).ok()
 }
 
 /// Locks mcp-renew.lock until the returned file is closed, so running
