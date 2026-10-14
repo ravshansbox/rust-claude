@@ -52,7 +52,7 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
     let api = MockApi::start(vec![
         Reply::Trickled(vec![
             test_support::message_start(),
-            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            test_support::text_block_start(),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "héllo 👋 " } }),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "wörld" } }),
             json!({ "type": "content_block_stop", "index": 0 }),
@@ -78,7 +78,7 @@ async fn skips_pings_and_events_it_does_not_know() {
     let api = MockApi::start(vec![Reply::Events(vec![
         test_support::message_start(),
         json!({ "type": "ping" }),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        test_support::text_block_start(),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hel" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "future_delta", "text": "?" } }),
         json!({ "type": "future_event" }),
@@ -96,7 +96,7 @@ async fn skips_frames_without_data_such_as_keep_alive_comments() {
     let api = MockApi::start(vec![Reply::Events(vec![
         json!(": keep-alive\n\n"),
         test_support::message_start(),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        test_support::text_block_start(),
         json!("event: ping\n\n"),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hello" } }),
         json!({ "type": "content_block_stop", "index": 0 }),
@@ -183,7 +183,7 @@ async fn counts_tokens_of_a_reply_that_failed_and_was_retried() {
 async fn discards_a_reply_the_model_declined_partway_through() {
     let refusal = Reply::Events(vec![
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 10, "output_tokens": 1 } } }),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        test_support::text_block_start(),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial answer" } }),
         json!({ "type": "content_block_stop", "index": 0 }),
         json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
@@ -229,7 +229,7 @@ async fn says_the_model_declined_when_it_stops_partway_through_a_tool_call() {
 async fn reports_a_reply_that_ends_before_it_finishes() {
     let cut_off = Reply::Events(vec![
         test_support::message_start(),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        test_support::text_block_start(),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "half an answer" } }),
     ]);
     let (message, requests, _) = fail_then_ask_again(cut_off).await;
@@ -305,7 +305,7 @@ async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
 async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
     let overloaded = Reply::Events(vec![
         test_support::message_start(),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        test_support::text_block_start(),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
         json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
     ]);
@@ -320,7 +320,7 @@ async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
 async fn does_not_retry_a_reply_cut_off_after_text_arrived() {
     let cut_off = Reply::CutOff(vec![
         test_support::message_start(),
-        json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+        test_support::text_block_start(),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
     ]);
     let api = MockApi::start(vec![cut_off, text_reply("hello")]).await;

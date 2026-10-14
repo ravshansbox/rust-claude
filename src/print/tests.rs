@@ -294,7 +294,7 @@ async fn ends_an_answer_that_broke_off_before_the_error_is_shown() {
     let api = MockApi::start(vec![
         Reply::Events(vec![
             test_support::message_start(),
-            json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
+            test_support::text_block_start(),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
             json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
         ]),
