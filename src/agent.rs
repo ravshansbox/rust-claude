@@ -12,6 +12,7 @@ mod queue;
 mod request;
 pub(crate) mod retry;
 mod shell;
+mod stats;
 mod stream;
 mod subagent;
 mod tool_call;
@@ -32,9 +33,7 @@ use crate::{
 };
 pub use cancel::CANCELLED;
 use cancel::cancel_point;
-use context::{
-    active_messages, active_start, context_tokens, has_uncompacted, with_cache_breakpoint,
-};
+use context::{active_messages, active_start, has_uncompacted, with_cache_breakpoint};
 pub use event::AgentEvent;
 pub use http::http_client;
 pub use queue::{Queue, Queued, take_queued};
@@ -44,7 +43,6 @@ use stream::Response;
 pub use system::Instructions;
 use system::{IDENTITY, SYSTEM_PROMPT, load_instructions};
 pub use usage::{Quota, Stats, Usage};
-use usage::{fetch_quota, tokens_per_second, total_usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
 const OAUTH_BETA: &str = "oauth-2025-04-20";
@@ -135,52 +133,11 @@ impl Agent {
         Ok(messages)
     }
 
-    pub async fn quota_request(
-        &mut self,
-    ) -> Result<impl Future<Output = Result<Quota>> + Send + 'static> {
-        let token = self.credentials.access_token(&self.http).await?;
-        Ok(fetch_quota(
-            self.http.clone(),
-            format!("{}/api/oauth/usage", self.api_base),
-            token,
-        ))
-    }
-
-    pub fn merge_quota(&mut self, quota: Quota) {
-        self.quota = Quota {
-            five_hour_remaining: self.quota.five_hour_remaining.or(quota.five_hour_remaining),
-            seven_day_remaining: self.quota.seven_day_remaining.or(quota.seven_day_remaining),
-            five_hour_reset: self.quota.five_hour_reset.or(quota.five_hour_reset),
-            seven_day_reset: self.quota.seven_day_reset.or(quota.seven_day_reset),
-        };
-    }
-
     pub fn new_session(&mut self) -> Result<()> {
         self.session = Session::new()?;
         self.messages.clear();
         self.background = tools::background::Background::default();
         Ok(())
-    }
-
-    pub fn stats(&self) -> Stats {
-        let mut usage = total_usage(&self.messages);
-        usage.add(self.running_subagent_usage());
-        Stats {
-            usage,
-            tokens_per_second: tokens_per_second(&self.messages),
-            context_tokens: context_tokens(&self.messages[active_start(&self.messages)..]),
-            context_window: models::context_window(&self.model),
-            quota: self.quota,
-            background: self.background.len(),
-        }
-    }
-
-    fn running_subagent_usage(&self) -> Usage {
-        let mut total = Usage::default();
-        if let Ok(slots) = self.subagent_usage.lock() {
-            slots.iter().for_each(|usage| total.add(*usage));
-        }
-        total
     }
 
     fn system_prompt(&self) -> Vec<Value> {
