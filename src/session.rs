@@ -132,7 +132,7 @@ impl Session {
         // Images are written whole through a temporary file, so a file of
         // another length is what an older version left cut short.
         let saved = std::fs::metadata(&path)
-            .is_ok_and(|metadata| metadata.len() == image.data.len() as u64);
+            .is_ok_and(|metadata| usize::try_from(metadata.len()) == Ok(image.data.len()));
         if !saved {
             config::write_private_file(&path, &image.data)?;
         }
@@ -385,7 +385,7 @@ fn read_messages(bytes: &[u8]) -> SavedSession {
     }
     SavedSession {
         messages,
-        length: length as u64,
+        length: u64::try_from(length).unwrap_or(u64::MAX),
         drops_mismatched_thinking: marker_at.is_some_and(|at| at < length),
     }
 }
