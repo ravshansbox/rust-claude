@@ -11,14 +11,14 @@ pub const OPTIONS: &str = "Options:
       --image <path>       Send an image with the prompt in print mode. Repeat for more images
   -h, --help               Show this help";
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
     Interactive,
     Print { prompt: String, images: Vec<String> },
 }
 
-#[derive(Debug, Default, PartialEq)]
+#[derive(Debug, Default, PartialEq, Eq)]
 pub struct Options {
     pub model: Option<String>,
     pub effort: Option<String>,
