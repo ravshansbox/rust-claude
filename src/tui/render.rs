@@ -237,10 +237,9 @@ fn without_list_marker(line: &str) -> &str {
         Some('-' | '*' | '+') if digits == 0 => 1,
         _ => return line,
     };
-    match line[marker..].strip_prefix([' ', '\t']) {
-        Some(rest) => rest.trim_start(),
-        None => line,
-    }
+    line[marker..]
+        .strip_prefix([' ', '\t'])
+        .map_or(line, str::trim_start)
 }
 
 pub(crate) fn tool_message(name: &str, summary: &str, diff: Option<&str>) -> String {
