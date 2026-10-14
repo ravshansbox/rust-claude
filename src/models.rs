@@ -33,9 +33,8 @@ pub fn unknown(model: &str) -> String {
 }
 
 pub fn next_known(model: &str) -> &'static str {
-    let index = MODELS
-        .iter()
-        .position(|(id, _)| *id == model)
+    let index = known()
+        .position(|id| id == model)
         .map_or(0, |index| (index + 1) % MODELS.len());
     MODELS[index].0
 }
