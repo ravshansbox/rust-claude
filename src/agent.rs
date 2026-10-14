@@ -9,6 +9,7 @@ mod context;
 mod event;
 mod http;
 mod queue;
+mod request;
 pub(crate) mod retry;
 mod shell;
 mod stream;
@@ -37,7 +38,7 @@ use context::{
 pub use event::AgentEvent;
 pub use http::http_client;
 pub use queue::{Queue, Queued, take_queued};
-use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
+use retry::is_prompt_too_long;
 pub use shell::{parse_shell_message, shell_message};
 use stream::Response;
 pub use system::Instructions;
@@ -233,45 +234,6 @@ impl Agent {
         match self.session.save(&self.messages) {
             Ok(()) => error,
             Err(save_error) => anyhow!("{error:#}; failed to save session: {save_error:#}"),
-        }
-    }
-
-    async fn request(
-        &mut self,
-        mut messages: Vec<Value>,
-        tool_choice: Option<Value>,
-        on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<Response> {
-        self.session.inline_images(&mut messages)?;
-        let mut attempt = 0;
-        loop {
-            match self
-                .stream_message(&messages, tool_choice.as_ref(), on_event)
-                .await
-            {
-                Ok(reply) => return Ok(reply),
-                Err(error)
-                    if is_thinking_mismatch(&error)
-                        && !self.session.drops_mismatched_thinking() =>
-                {
-                    self.session.drop_mismatched_thinking();
-                    on_event(AgentEvent::Notice(
-                        "earlier thinking no longer matches the conversation; retrying without it"
-                            .into(),
-                    ));
-                }
-                Err(error) => {
-                    let Some(delay) = retry_delay(&error, attempt) else {
-                        return Err(error);
-                    };
-                    attempt += 1;
-                    on_event(AgentEvent::Notice(format!(
-                        "{error}; retrying in {}s ({attempt}/{MAX_RETRIES})",
-                        delay.as_secs()
-                    )));
-                    tokio::time::sleep(delay).await;
-                }
-            }
         }
     }
 
