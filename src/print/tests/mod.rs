@@ -1,4 +1,5 @@
-use super::{AgentEvent, Printer};
+use super::Printer;
+use crate::agent::AgentEvent;
 use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
 use crate::tools::test_support::TemporaryDir;
 use serde_json::json;
