@@ -1,4 +1,4 @@
-use super::{ProcessGroup, argument, bash, tool};
+use super::{ProcessGroup, argument, bash, number, tool};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use tokio::task::{AbortHandle, JoinSet};
@@ -75,7 +75,7 @@ impl Background {
     }
 
     pub fn stop(&mut self, input: &Value) -> Result<String, String> {
-        let id = input["id"].as_u64().ok_or("missing argument: id")?;
+        let id = number(input, "id", 1)?.ok_or("missing argument: id")?;
         if self
             .running
             .get(&id)

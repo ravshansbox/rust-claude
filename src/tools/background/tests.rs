@@ -10,6 +10,23 @@ fn refuses_to_stop_a_task_that_is_not_running() {
     );
 }
 
+#[test]
+fn explains_why_a_task_number_is_not_valid() {
+    let cases = [
+        (json!({}), "missing argument: id"),
+        (json!({ "id": "3" }), "id must be a whole number"),
+        (json!({ "id": 1.5 }), "id must be a whole number"),
+        (json!({ "id": -1 }), "id must be at least 1"),
+    ];
+    for (input, error) in cases {
+        assert_eq!(
+            Background::default().stop(&input),
+            Err(error.into()),
+            "{input}"
+        );
+    }
+}
+
 #[tokio::test]
 async fn keeps_the_output_of_a_task_that_finished_before_it_was_stopped() {
     let mut background = Background::default();
