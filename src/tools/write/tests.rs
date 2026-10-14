@@ -3,7 +3,7 @@ use crate::tools::{
     test_support::{TemporaryDir, TemporaryFile},
 };
 use serde_json::json;
-use std::time::Duration;
+use std::{fs::Permissions, os::unix::fs::symlink, time::Duration};
 
 #[tokio::test]
 async fn writes_file_in_new_directory() {
@@ -37,8 +37,8 @@ async fn replaces_target_of_symlink_and_keeps_its_permissions() {
     let target = directory.path().join("script.sh");
     let link = directory.path().join("link.sh");
     std::fs::write(&target, "echo old\n").unwrap();
-    std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o750)).unwrap();
-    std::os::unix::fs::symlink(&target, &link).unwrap();
+    std::fs::set_permissions(&target, Permissions::from_mode(0o750)).unwrap();
+    symlink(&target, &link).unwrap();
     let input = json!({ "path": link, "content": "echo new\n" });
     assert_eq!(
         call("write", &input).await,
@@ -74,7 +74,7 @@ async fn writes_file_in_read_only_folder() {
 async fn creates_target_of_dangling_symlink() {
     let directory = TemporaryDir::new("write-dangling");
     let link = directory.path().join("link.txt");
-    std::os::unix::fs::symlink("target.txt", &link).unwrap();
+    symlink("target.txt", &link).unwrap();
     let input = json!({ "path": link, "content": "new" });
     assert_eq!(
         call("write", &input).await,
@@ -93,7 +93,7 @@ async fn refuses_read_only_file() {
     let directory = TemporaryDir::new("write-read-only-file");
     let path = directory.path().join("file.txt");
     std::fs::write(&path, "old").unwrap();
-    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o444)).unwrap();
+    std::fs::set_permissions(&path, Permissions::from_mode(0o444)).unwrap();
     let input = json!({ "path": path, "content": "new" });
     let result = call("write", &input).await;
     assert!(
