@@ -77,6 +77,13 @@ async fn rejects_offset_past_end_of_file() {
     assert_eq!(last_line, Ok("two\n".into()));
 }
 
+#[tokio::test]
+async fn names_a_single_line_in_the_singular_when_offset_is_past_the_end() {
+    let file = TemporaryFile::new("offset-one-line", "one\n");
+    let past_end = call("read", &json!({ "path": file.path(), "offset": 3 })).await;
+    assert!(past_end.unwrap_err().ends_with("which has 1 line"));
+}
+
 #[cfg(unix)]
 #[tokio::test]
 async fn refuses_pipes_and_devices() {

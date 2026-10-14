@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT, argument, failed, number, regular_file, tool, truncate};
+use super::{MAX_OUTPUT, argument, failed, number, plural, regular_file, tool, truncate};
 use serde_json::{Value, json};
 use std::{
     fmt::Write,
@@ -38,7 +38,10 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     .flatten()
     .map_err(failed("read", path))?;
     read.map_err(|line_count| {
-        format!("offset {offset} is past the end of {path}, which has {line_count} lines")
+        format!(
+            "offset {offset} is past the end of {path}, which has {}",
+            plural(line_count, "line")
+        )
     })
 }
 
