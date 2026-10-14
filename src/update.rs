@@ -1,5 +1,5 @@
 use std::{
-    ffi::{OsStr, OsString},
+    ffi::OsStr,
     io::{self, Cursor},
     path::{Path, PathBuf},
     process::Stdio,
@@ -110,12 +110,13 @@ impl Updater {
             return None;
         }
         let config_dir = config::dir()?;
+        let path = std::env::var_os("PATH");
         Some(Self {
             http: reqwest::Client::new(),
             releases_url: RELEASES_URL.into(),
             current_version: env!("CARGO_PKG_VERSION"),
-            cargo: find_on_path("cargo", std::env::var_os("PATH")),
-            rustc: find_on_path("rustc", std::env::var_os("PATH")),
+            cargo: find_on_path("cargo", path.as_deref()),
+            rustc: find_on_path("rustc", path.as_deref()),
             build_dir: Some(config_dir.join("build")),
             bin_dir: cargo_bin_dir(),
             update_dir: config_dir.join("updates"),
@@ -384,9 +385,9 @@ fn parse_version(text: &str) -> Option<[u64; 3]> {
     parts.next().is_none().then_some(version)
 }
 
-pub fn find_on_path(program: &str, path: Option<OsString>) -> Option<PathBuf> {
+pub fn find_on_path(program: &str, path: Option<&OsStr>) -> Option<PathBuf> {
     let file = format!("{program}{}", std::env::consts::EXE_SUFFIX);
-    std::env::split_paths(&path?)
+    std::env::split_paths(path?)
         .map(|directory| directory.join(&file))
         .find(|candidate| candidate.is_file())
 }

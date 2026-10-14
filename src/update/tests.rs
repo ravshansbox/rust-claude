@@ -511,7 +511,7 @@ fn finds_programs_on_path() {
     let cargo = fake_cargo(dir.path(), 0);
     let path =
         std::env::join_paths([dir.path().join("missing"), dir.path().to_path_buf()]).unwrap();
-    assert_eq!(find_on_path("cargo", Some(path.clone())), Some(cargo));
-    assert_eq!(find_on_path("rustc", Some(path)), None);
+    assert_eq!(find_on_path("cargo", Some(&path)), Some(cargo));
+    assert_eq!(find_on_path("rustc", Some(&path)), None);
     assert_eq!(find_on_path("cargo", None), None);
 }
