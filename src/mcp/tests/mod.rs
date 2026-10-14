@@ -108,6 +108,10 @@ fn echo_server() -> ServerConfig {
     )
 }
 
+pub(crate) async fn echo_start(name: &str) -> Started {
+    start(name.into(), Scope::Project, echo_server()).await
+}
+
 fn server_answering_calls_with(call: &str) -> ServerConfig {
     server_with("", call)
 }

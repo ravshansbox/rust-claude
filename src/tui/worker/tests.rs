@@ -280,6 +280,48 @@ async fn runs_requests_while_mcp_servers_start() {
 }
 
 #[tokio::test]
+async fn stops_offering_the_tools_of_a_server_replaced_by_a_failed_one() {
+    let api = MockApi::start(vec![
+        test_support::text_reply("one"),
+        test_support::text_reply("two"),
+    ])
+    .await;
+    let agent = test_support::agent(&api);
+    let session_id = agent.session.id.clone();
+    let mut worker = Worker::spawn(agent);
+    worker
+        .mcp_servers
+        .send(mcp::tests::echo_start("docs").await)
+        .unwrap();
+    let loaded = worker
+        .wait_for(|event| matches!(event, UiEvent::McpServer(added) if !added.failed))
+        .await;
+    worker.prompt("first", "medium");
+    let first = worker.wait_for_done().await;
+    worker
+        .requests
+        .send(Request::ReplaceMcpServer(mcp::failed_start("docs", "gone")))
+        .unwrap();
+    let replaced = worker
+        .wait_for(|event| {
+            matches!(
+                event,
+                UiEvent::McpServer(added) if added.status == "MCP server docs failed: gone"
+            )
+        })
+        .await;
+    worker.prompt("second", "medium");
+    let second = worker.wait_for_done().await;
+    let _ = worker.quit().await;
+    test_support::remove_session_files(&session_id);
+    assert!(loaded && first && replaced && second);
+    let requests = api.requests().await;
+    let tools = |request: &serde_json::Value| request["tools"].to_string();
+    assert!(tools(&requests[0]).contains("mcp__docs__echo"));
+    assert!(!tools(&requests[1]).contains("mcp__docs__echo"));
+}
+
+#[tokio::test]
 async fn starts_a_turn_when_a_background_command_finishes() {
     let api = MockApi::start(vec![
         test_support::tool_reply(
