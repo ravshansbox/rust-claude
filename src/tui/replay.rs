@@ -1,8 +1,10 @@
 use super::{Activity, App, Picker, PickerKind, Role, time_ago, worker::UiEvent};
 use crate::{
     agent::{AgentEvent, CANCELLED, parse_shell_message},
+    session::SessionSummary,
     skills, tools,
 };
+use anyhow::Result;
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -67,53 +69,14 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Update(progress) => app.show_update(&progress),
         UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
         UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
-        UiEvent::Done(result) => {
-            app.tasks.clear();
-            // Esc may come just as the reply finishes; it still keeps the
-            // queued prompts from being sent.
-            let cancelled = app.activity == Some(Activity::Cancelling);
-            if cancelled && result.is_ok() {
-                app.push(Role::Event, "cancelled");
-            }
-            if cancelled || result.is_err() {
-                app.restore_queued();
-            }
-            if app.notifications && !app.focused && !cancelled {
-                app.notification = Some(match &result {
-                    Ok(()) => "Done".into(),
-                    Err(error) => {
-                        let error = format!("{error:#}");
-                        format!("Failed: {}", error.lines().next().unwrap_or_default())
-                    }
-                });
-            }
-            app.finish(result, |_, ()| {});
-        }
+        UiEvent::Done(result) => finish_reply(app, result),
         UiEvent::Cancelled(result) => {
             app.tasks.clear();
             app.push(Role::Event, "cancelled");
             app.restore_queued();
             app.finish(result, |_, ()| {});
         }
-        UiEvent::Sessions(result) => app.finish(result, |app, sessions| {
-            if sessions.is_empty() {
-                app.push(Role::Event, "no session to resume");
-                return;
-            }
-            app.open_picker(Picker {
-                kind: PickerKind::Session,
-                title: "Resume session",
-                items: sessions
-                    .into_iter()
-                    .map(|session| {
-                        let preview = session.preview.lines().next().unwrap_or_default();
-                        let label = format!("{:>8}  {preview}", time_ago(session.modified));
-                        (session.id, label)
-                    })
-                    .collect(),
-                selected: 0,
-            });
-        }),
+        UiEvent::Sessions(result) => app.finish(result, open_session_picker),
         UiEvent::NewSession(result) => app.finish(result, |app, ()| {
             app.clear_session();
             app.push(Role::Event, "new session");
@@ -139,6 +102,49 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push(Role::Event, "resumed session");
         }),
     }
+}
+
+fn finish_reply(app: &mut App, result: Result<()>) {
+    app.tasks.clear();
+    // Esc may come just as the reply finishes; it still keeps the
+    // queued prompts from being sent.
+    let cancelled = app.activity == Some(Activity::Cancelling);
+    if cancelled && result.is_ok() {
+        app.push(Role::Event, "cancelled");
+    }
+    if cancelled || result.is_err() {
+        app.restore_queued();
+    }
+    if app.notifications && !app.focused && !cancelled {
+        app.notification = Some(match &result {
+            Ok(()) => "Done".into(),
+            Err(error) => {
+                let error = format!("{error:#}");
+                format!("Failed: {}", error.lines().next().unwrap_or_default())
+            }
+        });
+    }
+    app.finish(result, |_, ()| {});
+}
+
+fn open_session_picker(app: &mut App, sessions: Vec<SessionSummary>) {
+    if sessions.is_empty() {
+        app.push(Role::Event, "no session to resume");
+        return;
+    }
+    app.open_picker(Picker {
+        kind: PickerKind::Session,
+        title: "Resume session",
+        items: sessions
+            .into_iter()
+            .map(|session| {
+                let preview = session.preview.lines().next().unwrap_or_default();
+                let label = format!("{:>8}  {preview}", time_ago(session.modified));
+                (session.id, label)
+            })
+            .collect(),
+        selected: 0,
+    });
 }
 
 pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
