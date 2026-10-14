@@ -293,7 +293,7 @@ async fn writes_piped_answers_byte_for_byte() {
 async fn ends_an_answer_that_broke_off_before_the_error_is_shown() {
     let api = MockApi::start(vec![
         Reply::Events(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            test_support::message_start(),
             json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
             json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),

@@ -51,7 +51,7 @@ async fn retries_a_reply_that_stops_arriving() {
 async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
     let api = MockApi::start(vec![
         Reply::Trickled(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            test_support::message_start(),
             json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "héllo 👋 " } }),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "wörld" } }),
@@ -76,7 +76,7 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
 #[tokio::test]
 async fn skips_pings_and_events_it_does_not_know() {
     let api = MockApi::start(vec![Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "ping" }),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hel" } }),
@@ -95,7 +95,7 @@ async fn skips_pings_and_events_it_does_not_know() {
 async fn skips_frames_without_data_such_as_keep_alive_comments() {
     let api = MockApi::start(vec![Reply::Events(vec![
         json!(": keep-alive\n\n"),
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!("event: ping\n\n"),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hello" } }),
@@ -228,7 +228,7 @@ async fn says_the_model_declined_when_it_stops_partway_through_a_tool_call() {
 #[tokio::test]
 async fn reports_a_reply_that_ends_before_it_finishes() {
     let cut_off = Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "half an answer" } }),
     ]);
@@ -245,7 +245,7 @@ async fn reports_a_reply_that_ends_before_it_finishes() {
 #[tokio::test]
 async fn does_not_run_a_tool_call_cut_off_by_the_output_limit() {
     let cut_off = Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo cut" } }),
         json!({ "type": "content_block_stop", "index": 0 }),
@@ -272,7 +272,7 @@ async fn does_not_run_a_tool_call_cut_off_by_the_output_limit() {
 #[tokio::test]
 async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
     let broken = Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo broken" } }),
         json!({ "type": "content_block_stop", "index": 0 }),
@@ -304,7 +304,7 @@ async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
 #[tokio::test]
 async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
     let overloaded = Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
         json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
@@ -319,7 +319,7 @@ async fn does_not_retry_an_overloaded_reply_after_text_arrived() {
 #[tokio::test]
 async fn does_not_retry_a_reply_cut_off_after_text_arrived() {
     let cut_off = Reply::CutOff(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
     ]);
@@ -368,7 +368,7 @@ async fn continues_a_reply_the_api_paused() {
 async fn shows_thinking_as_it_streams_and_sends_it_back_signed() {
     let api = MockApi::start(vec![
         Reply::Events(vec![
-            json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+            test_support::message_start(),
             json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "" } }),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "Let me " } }),
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "check." } }),

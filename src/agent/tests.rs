@@ -134,7 +134,7 @@ async fn saves_finished_tool_rounds_while_the_prompt_runs() {
 #[tokio::test]
 async fn keeps_finished_tool_calls_when_cancelled_during_a_later_call() {
     let two_tool_calls = Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "call-1", "name": "bash", "input": { "command": "echo first-done" } } }),
         json!({ "type": "content_block_stop", "index": 0 }),
         json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "call-2", "name": "bash", "input": { "command": "sleep 30" } } }),
@@ -353,7 +353,7 @@ async fn keeps_the_conversation_cached_when_a_queued_prompt_follows_a_tool_round
 #[tokio::test]
 async fn keeps_the_conversation_cached_after_a_round_with_many_tool_calls() {
     let mut events = vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "plan", "signature": "sig" } }),
         json!({ "type": "content_block_stop", "index": 0 }),
         json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "text", "text": "running" } }),
@@ -409,7 +409,7 @@ fn keeps_prompt_and_finished_tool_rounds_on_cancel() {
 
 fn web_search_reply(result: &Value) -> Reply {
     Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        test_support::message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {} } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"query\": \"rust " } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "release\"}" } }),

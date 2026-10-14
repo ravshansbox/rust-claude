@@ -47,6 +47,11 @@ pub(crate) async fn quota_server(body: Value) -> String {
     base
 }
 
+/// The first event of a reply, using one input and one output token.
+pub(crate) fn message_start() -> Value {
+    json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } })
+}
+
 pub(crate) fn text_reply(text: &str) -> Reply {
     stopped_reply(text, "end_turn")
 }
@@ -54,7 +59,7 @@ pub(crate) fn text_reply(text: &str) -> Reply {
 /// A text reply that ends with `stop_reason`.
 pub(crate) fn stopped_reply(text: &str, stop_reason: &str) -> Reply {
     Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": text } }),
         json!({ "type": "content_block_stop", "index": 0 }),
@@ -65,7 +70,7 @@ pub(crate) fn stopped_reply(text: &str, stop_reason: &str) -> Reply {
 
 pub(crate) fn tool_reply(id: &str, name: &str, input: &Value) -> Reply {
     Reply::Events(vec![
-        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
+        message_start(),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": id, "name": name, "input": input } }),
         json!({ "type": "content_block_stop", "index": 0 }),
         json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
