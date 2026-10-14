@@ -1,4 +1,5 @@
 use std::{
+    fmt,
     fs::File,
     io::{self, Write},
     path::PathBuf,
@@ -53,8 +54,8 @@ pub(crate) fn now_millis() -> u128 {
 #[derive(Debug)]
 struct Unusable(String);
 
-impl std::fmt::Display for Unusable {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for Unusable {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(&self.0)
     }
 }
