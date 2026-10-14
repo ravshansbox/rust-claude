@@ -1,4 +1,7 @@
-use std::io::{self, ErrorKind};
+use std::{
+    fs::{File, Metadata, OpenOptions},
+    io::{self, ErrorKind},
+};
 
 use serde_json::{Value, json};
 
@@ -72,7 +75,7 @@ fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
     }
 }
 
-async fn regular_file(path: &str) -> Result<std::fs::Metadata, String> {
+async fn regular_file(path: &str) -> Result<Metadata, String> {
     let metadata = tokio::fs::metadata(path)
         .await
         .map_err(|error| format!("failed to read {path}: {error}"))?;
@@ -94,10 +97,7 @@ async fn replace_file(path: &str, contents: String, expected: Option<String>) ->
         let (target, metadata) = match std::fs::canonicalize(&path) {
             Ok(target) => {
                 // Refuses a file the user made read-only, as writing in place would.
-                let metadata = std::fs::OpenOptions::new()
-                    .write(true)
-                    .open(&target)?
-                    .metadata()?;
+                let metadata = OpenOptions::new().write(true).open(&target)?.metadata()?;
                 if !metadata.is_file() {
                     return Err(io::Error::other("not a regular file"));
                 }
@@ -113,7 +113,7 @@ async fn replace_file(path: &str, contents: String, expected: Option<String>) ->
             }
             Err(error) => return Err(error),
         };
-        let mut options = std::fs::OpenOptions::new();
+        let mut options = OpenOptions::new();
         #[cfg(unix)]
         if let Some(metadata) = &metadata {
             use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
@@ -124,7 +124,7 @@ async fn replace_file(path: &str, contents: String, expected: Option<String>) ->
             }
             options.mode(metadata.mode() & 0o777);
         }
-        let prepare = |file: &std::fs::File| {
+        let prepare = |file: &File| {
             let Some(metadata) = &metadata else {
                 return Ok(());
             };
