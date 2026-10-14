@@ -68,7 +68,7 @@ fn get<T: Clone>(value: &Mutex<Option<T>>) -> Option<T> {
     value.lock().ok().and_then(|value| value.clone())
 }
 
-fn set<T>(value: &Mutex<Option<T>>, new: Option<T>) {
+fn set<T>(value: &Mutex<T>, new: T) {
     if let Ok(mut value) = value.lock() {
         *value = new;
     }
@@ -268,9 +268,7 @@ impl Http {
         for (name, value) in &dynamic {
             headers.insert(name, value.clone());
         }
-        if let Ok(mut current) = self.headers.lock() {
-            *current = headers;
-        }
+        set(&self.headers, headers);
         Ok(())
     }
 
