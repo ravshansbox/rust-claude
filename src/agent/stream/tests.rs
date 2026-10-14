@@ -49,12 +49,7 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
     ])
     .await;
     let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
-        if let AgentEvent::Text(delta) = event {
-            text.push_str(&delta);
-        }
-    })
-    .await;
+    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
     result.unwrap();
     assert_eq!(text, "héllo 👋 wörlddone");
     let requests = api.requests().await;
@@ -79,12 +74,7 @@ async fn skips_pings_and_events_it_does_not_know() {
     ])])
     .await;
     let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
-        if let AgentEvent::Text(delta) = event {
-            text.push_str(&delta);
-        }
-    })
-    .await;
+    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
     result.unwrap();
     assert_eq!(text, "hello");
 }
@@ -103,12 +93,7 @@ async fn skips_frames_without_data_such_as_keep_alive_comments() {
     ])])
     .await;
     let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
-        if let AgentEvent::Text(delta) = event {
-            text.push_str(&delta);
-        }
-    })
-    .await;
+    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
     result.unwrap();
     assert_eq!(text, "hello");
 }
@@ -117,12 +102,7 @@ async fn skips_frames_without_data_such_as_keep_alive_comments() {
 async fn retries_an_overloaded_reply_whose_error_breaks_off() {
     let api = MockApi::start(vec![Reply::CutOffOverloaded, text_reply("hello")]).await;
     let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
-        if let AgentEvent::Text(delta) = event {
-            text.push_str(&delta);
-        }
-    })
-    .await;
+    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
     result.unwrap();
     assert_eq!(text, "hello");
     assert_eq!(api.requests().await.len(), 2);
@@ -360,12 +340,7 @@ async fn does_not_retry_a_reply_cut_off_after_text_arrived() {
     ]);
     let api = MockApi::start(vec![cut_off, text_reply("hello")]).await;
     let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", |event| {
-        if let AgentEvent::Text(delta) = event {
-            text.push_str(&delta);
-        }
-    })
-    .await;
+    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
     assert!(result.is_err());
     assert_eq!(text, "partial");
     assert_eq!(api.requests().await.len(), 1);
@@ -393,12 +368,7 @@ async fn continues_a_reply_the_api_paused() {
     ])
     .await;
     let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "search", |event| {
-        if let AgentEvent::Text(delta) = event {
-            text.push_str(&delta);
-        }
-    })
-    .await;
+    let (_, result) = test_support::run_prompt(&api, "search", test_support::text(&mut text)).await;
     result.unwrap();
     assert_eq!(text, "searching done");
     let requests = api.requests().await;

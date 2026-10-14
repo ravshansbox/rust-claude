@@ -284,6 +284,14 @@ pub(crate) fn notices(notices: &mut Vec<String>) -> impl FnMut(AgentEvent) + '_ 
     }
 }
 
+pub(crate) fn text(text: &mut String) -> impl FnMut(AgentEvent) + '_ {
+    |event| {
+        if let AgentEvent::Text(delta) = event {
+            text.push_str(&delta);
+        }
+    }
+}
+
 /// Removes the session files a test agent wrote under the test config folder.
 pub(crate) fn remove_session(agent: &Agent) {
     remove_session_files(&agent.session.id);

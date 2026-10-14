@@ -1,6 +1,5 @@
 use super::{Credentials, credentials_path, exchange_code, finish_renewal, parse_pasted_code};
 use crate::agent::{
-    AgentEvent,
     retry::retry_delay,
     test_support::{self, MockApi, Reply, text_reply},
 };
@@ -395,13 +394,7 @@ async fn renews_a_sign_in_the_api_turned_down_and_sends_the_request_again() {
     let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
     let mut agent = test_support::agent(&api, reqwest::Client::new());
     let mut text = String::new();
-    let result = agent
-        .prompt("hi", &[], |event| {
-            if let AgentEvent::Text(delta) = event {
-                text.push_str(&delta);
-            }
-        })
-        .await;
+    let result = agent.prompt("hi", &[], test_support::text(&mut text)).await;
     test_support::remove_session(&agent);
     let _ = std::fs::remove_file(&path);
     result.unwrap();
