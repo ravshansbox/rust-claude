@@ -89,6 +89,21 @@ fn keeps_finished_paragraphs_of_a_streaming_reply() {
 }
 
 #[test]
+fn keeps_finished_paragraphs_after_inline_code_that_starts_a_line() {
+    let mut app = new_app();
+    let stream = |app: &mut App, text: &str| {
+        handle_agent_event(UiEvent::Agent(AgentEvent::Text(text.into())), app);
+        screen(app);
+    };
+    stream(&mut app, "```a` is inline code.\n\nSecond\n");
+    let rendered = app.messages.last_mut().unwrap().rendered.as_mut().unwrap();
+    rendered.lines[0] = Line::raw("cached");
+    stream(&mut app, " paragraph goes on");
+    let rendered = app.messages.last().unwrap().rendered.as_ref().unwrap();
+    assert_eq!(rendered.lines[0], Line::raw("cached"));
+}
+
+#[test]
 fn renders_a_finished_reply_the_same_as_the_whole_reply() {
     let reply =
         "See [docs] and[^1].\n\nMore text.\n\n[docs]: https://example.com\n\n[^1]: A note.\n";

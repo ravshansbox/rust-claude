@@ -236,7 +236,9 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         }
         let indent = line.len() - trimmed.len();
         match open {
-            None if indent == 0 => open = Some((fence, length)),
+            None if indent == 0 && !(fence == '`' && trimmed[length..].contains('`')) => {
+                open = Some((fence, length));
+            }
             Some((open_fence, open_length))
                 if indent <= 3
                     && fence == open_fence
