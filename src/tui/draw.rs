@@ -137,7 +137,9 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     );
     app.bottom_button = Rect::default();
     if pinned_height > 0 {
-        let width = (Line::raw(BOTTOM_BUTTON).width() as u16).min(chat.width);
+        let width = u16::try_from(Line::raw(BOTTOM_BUTTON).width())
+            .unwrap_or(u16::MAX)
+            .min(chat.width);
         app.bottom_button = Rect {
             x: chat.x + chat.width - width,
             width,
@@ -244,7 +246,7 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
             ))
         })
         .collect();
-    let width = width.min(chat.width as usize) as u16;
+    let width = u16::try_from(width).unwrap_or(u16::MAX).min(chat.width);
     let area = Rect {
         y: chat.y + chat.height - height,
         height,
