@@ -1,5 +1,5 @@
 use std::{
-    fs::OpenOptions,
+    fs::{File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{
@@ -58,20 +58,20 @@ pub fn private_file() -> OpenOptions {
 /// Locks the file at `path`, creating it, until the returned file is closed.
 /// Waits without a blocking lock, so quitting does not wait for another
 /// copy of rust-coding-agent to let go.
-pub async fn lock_file(path: &Path) -> io::Result<std::fs::File> {
+pub async fn lock_file(path: &Path) -> io::Result<File> {
     let file = private_file().create(true).write(true).open(path)?;
     loop {
         match file.try_lock() {
             Ok(()) => return Ok(file),
-            Err(std::fs::TryLockError::WouldBlock) => {
+            Err(TryLockError::WouldBlock) => {
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
             }
-            Err(std::fs::TryLockError::Error(error)) => return Err(error),
+            Err(TryLockError::Error(error)) => return Err(error),
         }
     }
 }
 
-pub fn lock_file_blocking(path: &Path) -> io::Result<std::fs::File> {
+pub fn lock_file_blocking(path: &Path) -> io::Result<File> {
     let file = private_file().create(true).write(true).open(path)?;
     file.lock()?;
     Ok(file)
@@ -131,7 +131,7 @@ pub fn replace_file(
     path: &Path,
     contents: &[u8],
     mut options: OpenOptions,
-    prepare: impl FnOnce(&std::fs::File) -> io::Result<()>,
+    prepare: impl FnOnce(&File) -> io::Result<()>,
 ) -> io::Result<()> {
     options.write(true).create_new(true);
     // Only the start of the name, so the temporary name stays within the
