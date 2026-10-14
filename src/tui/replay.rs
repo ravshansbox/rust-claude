@@ -186,42 +186,8 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                         block["thinking"].as_str().unwrap_or_default(),
                     );
                 }
-                ("assistant", "tool_use") => {
-                    let name = block["name"].as_str().unwrap_or_default();
-                    let result = block["id"].as_str().and_then(|id| results.get(id));
-                    if cancelled {
-                        continue;
-                    }
-                    app.push_tool(
-                        name,
-                        tools::summary(name, &block["input"]),
-                        tools::diff(name, &block["input"]).as_deref(),
-                    );
-                    match result {
-                        Some((error, true)) if *error == CANCELLED => cancelled = true,
-                        Some((error, true)) => {
-                            push_tool_failure(app, name, error.as_str().unwrap_or_default());
-                        }
-                        Some((Value::Array(replies), false)) if name == tools::agent::NAME => {
-                            let descriptions = block["input"]["tasks"]
-                                .as_array()
-                                .into_iter()
-                                .flatten()
-                                .map(|task| task["description"].as_str().unwrap_or_default());
-                            let replies = replies
-                                .iter()
-                                .map(|reply| reply["text"].as_str().unwrap_or_default());
-                            app.push_finished_tasks(descriptions.zip(replies));
-                        }
-                        Some((result, false)) => {
-                            if let Some(note) =
-                                tools::note(name, result.as_str().unwrap_or_default())
-                            {
-                                push_tool_note(app, name, &note);
-                            }
-                        }
-                        None => {}
-                    }
+                ("assistant", "tool_use") if !cancelled => {
+                    cancelled = replay_tool_use(app, block, &results);
                 }
                 ("assistant", "server_tool_use") => {
                     let name = block["name"].as_str().unwrap_or_default();
@@ -245,6 +211,39 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
             append_reply(app, &sources);
         }
     }
+}
+
+fn replay_tool_use(app: &mut App, block: &Value, results: &HashMap<&str, (&Value, bool)>) -> bool {
+    let name = block["name"].as_str().unwrap_or_default();
+    app.push_tool(
+        name,
+        tools::summary(name, &block["input"]),
+        tools::diff(name, &block["input"]).as_deref(),
+    );
+    match block["id"].as_str().and_then(|id| results.get(id)) {
+        Some((error, true)) if *error == CANCELLED => return true,
+        Some((error, true)) => {
+            push_tool_failure(app, name, error.as_str().unwrap_or_default());
+        }
+        Some((Value::Array(replies), false)) if name == tools::agent::NAME => {
+            let descriptions = block["input"]["tasks"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|task| task["description"].as_str().unwrap_or_default());
+            let replies = replies
+                .iter()
+                .map(|reply| reply["text"].as_str().unwrap_or_default());
+            app.push_finished_tasks(descriptions.zip(replies));
+        }
+        Some((result, false)) => {
+            if let Some(note) = tools::note(name, result.as_str().unwrap_or_default()) {
+                push_tool_note(app, name, &note);
+            }
+        }
+        None => {}
+    }
+    false
 }
 
 fn push_tool_failure(app: &mut App, name: &str, error: &str) {
