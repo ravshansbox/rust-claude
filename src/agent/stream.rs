@@ -159,17 +159,8 @@ impl Agent {
                     "message_start" => usage.update_from_response(&event["message"]["usage"]),
                     "content_block_start" => {
                         first_token.get_or_insert_with(Instant::now);
-                        let block = event["content_block"].take();
                         partial_json.clear();
-                        if block["type"] == "web_search_tool_result" {
-                            let outcome = tools::web_search::outcome(&block["content"]);
-                            on_event(AgentEvent::ToolDone {
-                                name: tools::web_search::NAME.into(),
-                                note: outcome.as_ref().ok().cloned(),
-                                error: outcome.err(),
-                            });
-                        }
-                        content.push(block);
+                        start_block(&mut content, event["content_block"].take(), on_event);
                     }
                     "content_block_delta" => {
                         apply_delta(
@@ -192,17 +183,7 @@ impl Agent {
                             u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
                         });
                     }
-                    "error" => {
-                        let message = event["error"].to_string();
-                        let retry = matches!(
-                            event["error"]["type"].as_str(),
-                            Some("overloaded_error" | "api_error" | "rate_limit_error")
-                        );
-                        if retry && content.is_empty() {
-                            return Err(retryable(message, None));
-                        }
-                        bail!(message);
-                    }
+                    "error" => return Err(stream_error(&event["error"], content.is_empty())),
                     _ => {}
                 }
                 self.pending_usage = retried;
@@ -218,6 +199,30 @@ impl Agent {
             retried,
         })
     }
+}
+
+fn start_block(content: &mut Vec<Value>, block: Value, on_event: &mut impl FnMut(AgentEvent)) {
+    if block["type"] == "web_search_tool_result" {
+        let outcome = tools::web_search::outcome(&block["content"]);
+        on_event(AgentEvent::ToolDone {
+            name: tools::web_search::NAME.into(),
+            note: outcome.as_ref().ok().cloned(),
+            error: outcome.err(),
+        });
+    }
+    content.push(block);
+}
+
+fn stream_error(error: &Value, nothing_received: bool) -> anyhow::Error {
+    let message = error.to_string();
+    let retry = matches!(
+        error["type"].as_str(),
+        Some("overloaded_error" | "api_error" | "rate_limit_error")
+    );
+    if retry && nothing_received {
+        return retryable(message, None);
+    }
+    anyhow::anyhow!(message)
 }
 
 fn check_finished(
