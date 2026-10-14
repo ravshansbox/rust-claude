@@ -20,34 +20,34 @@ static RUNS: AtomicUsize = AtomicUsize::new(0);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Progress {
     Available(String),
-    CargoMissing(String),
-    Downloading(String),
-    Downloaded(String, Duration),
-    Building(String),
-    Built(String, Duration),
-    Ready(String),
-    DownloadFailed(String, String, Duration),
-    BuildFailed(String, String, Duration),
-    Failed(String, String),
+    CargoMissing,
+    Downloading,
+    Downloaded(Duration),
+    Building,
+    Built(Duration),
+    Ready,
+    DownloadFailed(String, Duration),
+    BuildFailed(String, Duration),
+    Failed(String),
 }
 
 impl Progress {
     pub fn message(&self) -> String {
         match self {
             Self::Available(version) => format!("update {version} available"),
-            Self::CargoMissing(_) => "cargo not found on PATH, install Rust to update".into(),
-            Self::Downloading(_) => "downloading".into(),
-            Self::Downloaded(_, took) => format!("downloaded in {}", format_took(*took)),
-            Self::Building(_) => "building".into(),
-            Self::Built(_, took) => format!("built in {}", format_took(*took)),
-            Self::Ready(_) => "installed, restart rust-coding-agent to use it".into(),
-            Self::DownloadFailed(_, error, took) => {
+            Self::CargoMissing => "cargo not found on PATH, install Rust to update".into(),
+            Self::Downloading => "downloading".into(),
+            Self::Downloaded(took) => format!("downloaded in {}", format_took(*took)),
+            Self::Building => "building".into(),
+            Self::Built(took) => format!("built in {}", format_took(*took)),
+            Self::Ready => "installed, restart rust-coding-agent to use it".into(),
+            Self::DownloadFailed(error, took) => {
                 format!("download failed after {}: {error}", format_took(*took))
             }
-            Self::BuildFailed(_, error, took) => {
+            Self::BuildFailed(error, took) => {
                 format!("build failed after {}: {error}", format_took(*took))
             }
-            Self::Failed(_, error) => format!("failed: {error}"),
+            Self::Failed(error) => format!("failed: {error}"),
         }
     }
 
@@ -139,7 +139,7 @@ impl Updater {
         let version = format!("v{}", release.tag_name.trim_start_matches('v'));
         report(Progress::Available(version.clone()));
         let Some(cargo) = &self.cargo else {
-            report(Progress::CargoMissing(version));
+            report(Progress::CargoMissing);
             return;
         };
         let folder = self.update_dir.join(format!(
@@ -150,10 +150,10 @@ impl Updater {
         if let Err(error) = config::create_private_dir(&self.update_dir)
             .and_then(|()| create_update_folder(&folder))
         {
-            report(Progress::Failed(
-                version,
-                format!("creating {}: {error}", folder.display()),
-            ));
+            report(Progress::Failed(format!(
+                "creating {}: {error}",
+                folder.display()
+            )));
             return;
         }
         let folder = UpdateFolder(folder);
@@ -165,28 +165,24 @@ impl Updater {
                     .find(|asset| asset.name == name)
                     .map(|asset| asset.browser_download_url.clone())
                     .with_context(|| format!("the release has no {name}"))
-                    .map_err(|error| Progress::Failed(version.clone(), format!("{error:#}")))
+                    .map_err(|error| Progress::Failed(format!("{error:#}")))
             };
             let url = asset_url(ASSET)?;
             let signature_url = asset_url(SIGNATURE_ASSET)?;
-            report(Progress::Downloading(version.clone()));
+            report(Progress::Downloading);
             let started = Instant::now();
             self.download(&url, &signature_url, &version, &folder.0)
                 .await
                 .map_err(|error| {
-                    Progress::DownloadFailed(
-                        version.clone(),
-                        format!("{error:#}"),
-                        started.elapsed(),
-                    )
+                    Progress::DownloadFailed(format!("{error:#}"), started.elapsed())
                 })?;
-            report(Progress::Downloaded(version.clone(), started.elapsed()));
-            report(Progress::Building(version.clone()));
+            report(Progress::Downloaded(started.elapsed()));
+            report(Progress::Building);
             let started = Instant::now();
-            self.build(cargo, &folder.0).await.map_err(|error| {
-                Progress::BuildFailed(version.clone(), format!("{error:#}"), started.elapsed())
-            })?;
-            report(Progress::Built(version.clone(), started.elapsed()));
+            self.build(cargo, &folder.0)
+                .await
+                .map_err(|error| Progress::BuildFailed(format!("{error:#}"), started.elapsed()))?;
+            report(Progress::Built(started.elapsed()));
             Ok(())
         }
         .await;
@@ -196,7 +192,7 @@ impl Updater {
                 if let Some(bin_dir) = &self.bin_dir {
                     link_alias(bin_dir);
                 }
-                report(Progress::Ready(version));
+                report(Progress::Ready);
             }
             Err(failure) => report(failure),
         }

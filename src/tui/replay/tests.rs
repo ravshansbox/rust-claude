@@ -61,11 +61,11 @@ fn adds_each_update_step_to_the_version_line() {
     let seconds = std::time::Duration::from_secs;
     for progress in [
         Progress::Available("v0.2.0".into()),
-        Progress::Downloading("v0.2.0".into()),
-        Progress::Downloaded("v0.2.0".into(), seconds(3)),
-        Progress::Building("v0.2.0".into()),
-        Progress::Built("v0.2.0".into(), seconds(125)),
-        Progress::Ready("v0.2.0".into()),
+        Progress::Downloading,
+        Progress::Downloaded(seconds(3)),
+        Progress::Building,
+        Progress::Built(seconds(125)),
+        Progress::Ready,
     ] {
         handle_agent_event(UiEvent::Update(progress), &mut app);
     }
@@ -90,10 +90,10 @@ fn replaces_the_failed_step_with_why_it_failed() {
     let seconds = std::time::Duration::from_secs;
     for progress in [
         Progress::Available("v0.2.0".into()),
-        Progress::Downloading("v0.2.0".into()),
-        Progress::Downloaded("v0.2.0".into(), seconds(3)),
-        Progress::Building("v0.2.0".into()),
-        Progress::BuildFailed("v0.2.0".into(), "error: x".into(), seconds(70)),
+        Progress::Downloading,
+        Progress::Downloaded(seconds(3)),
+        Progress::Building,
+        Progress::BuildFailed("error: x".into(), seconds(70)),
     ] {
         handle_agent_event(UiEvent::Update(progress), &mut app);
     }
@@ -117,10 +117,7 @@ fn shows_update_progress_with_the_version_after_clearing() {
         &mut app,
     );
     app.clear_session();
-    handle_agent_event(
-        UiEvent::Update(Progress::Downloading("v0.2.0".into())),
-        &mut app,
-    );
+    handle_agent_event(UiEvent::Update(Progress::Downloading), &mut app);
     let shown = screen(&mut app);
     assert!(
         shown.contains(concat!(

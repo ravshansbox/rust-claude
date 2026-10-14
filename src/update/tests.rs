@@ -406,24 +406,24 @@ async fn stops_cargo_and_deletes_the_update_folder_when_quit_while_building() {
 #[test]
 fn shows_how_long_each_step_took() {
     let seconds = std::time::Duration::from_secs;
-    let built = |took| Progress::Built("v0.2.0".into(), seconds(took)).message();
+    let built = |took| Progress::Built(seconds(took)).message();
     assert_eq!(built(0), "built in 0s");
     assert_eq!(built(42), "built in 42s");
     assert_eq!(built(125), "built in 2m 5s");
     assert_eq!(
-        Progress::Downloaded("v0.2.0".into(), seconds(3)).message(),
+        Progress::Downloaded(seconds(3)).message(),
         "downloaded in 3s"
     );
     assert_eq!(
-        Progress::DownloadFailed("v0.2.0".into(), "error: x".into(), seconds(3)).message(),
+        Progress::DownloadFailed("error: x".into(), seconds(3)).message(),
         "download failed after 3s: error: x"
     );
     assert_eq!(
-        Progress::BuildFailed("v0.2.0".into(), "error: x".into(), seconds(70)).message(),
+        Progress::BuildFailed("error: x".into(), seconds(70)).message(),
         "build failed after 1m 10s: error: x"
     );
     assert_eq!(
-        Progress::Failed("v0.2.0".into(), "no zip".into()).message(),
+        Progress::Failed("no zip".into()).message(),
         "failed: no zip"
     );
 }
