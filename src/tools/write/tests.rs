@@ -133,8 +133,9 @@ async fn keeps_group_of_file() {
     std::fs::write(&path, "old").unwrap();
     let current = std::fs::metadata(&path).unwrap().gid();
     let mut groups = vec![0; 256];
+    let length = libc::c_int::try_from(groups.len()).unwrap();
     // SAFETY: the buffer holds as many groups as the length passed.
-    let count = unsafe { libc::getgroups(groups.len() as i32, groups.as_mut_ptr()) };
+    let count = unsafe { libc::getgroups(length, groups.as_mut_ptr()) };
     groups.truncate(usize::try_from(count).unwrap_or(0));
     let Some(&group) = groups.iter().find(|&&group| group != current) else {
         return;
