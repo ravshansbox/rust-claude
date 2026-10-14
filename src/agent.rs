@@ -41,7 +41,7 @@ use retry::is_prompt_too_long;
 pub use shell::{parse_shell_message, shell_message};
 use stream::Response;
 pub use system::Instructions;
-use system::{IDENTITY, SYSTEM_PROMPT, load_instructions};
+use system::load_instructions;
 pub use usage::{Quota, Stats, Usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
@@ -138,23 +138,6 @@ impl Agent {
         self.messages.clear();
         self.background = tools::background::Background::default();
         Ok(())
-    }
-
-    fn system_prompt(&self) -> Vec<Value> {
-        let mut system = vec![
-            json!({ "type": "text", "text": IDENTITY }),
-            json!({ "type": "text", "text": SYSTEM_PROMPT }),
-        ];
-        for instructions in &self.instructions {
-            system.push(json!({
-                "type": "text",
-                "text": format!("# Instructions from {}\n\n{}", instructions.label, instructions.text),
-            }));
-        }
-        if let Some(text) = skills::format_for_prompt(&self.skills.skills) {
-            system.push(json!({ "type": "text", "text": text }));
-        }
-        system
     }
 
     pub async fn prompt(
