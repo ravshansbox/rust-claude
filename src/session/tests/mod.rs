@@ -1,7 +1,8 @@
 use super::{
-    Image, Session, current_folder, inline_images, latest_in_folder, new_uuid, read_folder,
+    Session, current_folder, images::inline_images, latest_in_folder, new_uuid, read_folder,
     sessions_directory,
 };
+use crate::images::Image;
 use crate::tools::test_support::TemporaryDir;
 use serde_json::json;
 use std::{
