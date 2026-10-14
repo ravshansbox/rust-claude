@@ -15,7 +15,7 @@ async fn reply_text(api: &MockApi) -> String {
 
 async fn fail_then_ask_again(first: Reply) -> (String, Vec<serde_json::Value>, Agent) {
     let api = MockApi::start(vec![first, text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let failed = agent.prompt("hi", &[], |_| {}).await;
     let next = agent.prompt("again", &[], |_| {}).await;
     test_support::remove_session(&agent);
@@ -28,7 +28,7 @@ async fn fail_then_ask_again(first: Reply) -> (String, Vec<serde_json::Value>, A
 async fn retries_a_reply_that_stops_arriving() {
     let api = MockApi::start(vec![Reply::Stall, text_reply("hello")]).await;
     let http = http_client_with(Duration::from_millis(300)).unwrap();
-    let mut agent = test_support::agent(&api, http);
+    let mut agent = test_support::agent_with_http(&api, http);
     let mut text = String::new();
     let mut notices = Vec::new();
     let result = tokio::time::timeout(
@@ -117,7 +117,7 @@ async fn retries_an_overloaded_reply_whose_error_breaks_off() {
 #[tokio::test]
 async fn says_why_the_api_could_not_be_reached() {
     let api = MockApi::start(vec![]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.api_base = "http://127.0.0.1:1".into();
     let mut notices = Vec::new();
     let result = agent
@@ -280,7 +280,7 @@ async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
         json!({ "type": "message_stop" }),
     ]);
     let api = MockApi::start(vec![broken, text_reply("ok")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut tools_started = 0;
     let first = agent
         .prompt("hi", &[], |event| {
@@ -383,7 +383,7 @@ async fn shows_thinking_as_it_streams_and_sends_it_back_signed() {
         text_reply("again"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut thinking = Vec::new();
     let result = agent
         .prompt("hi", &[], |event| {

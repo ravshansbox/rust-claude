@@ -13,7 +13,7 @@ use crate::{
 #[tokio::test]
 async fn reports_why_a_prompt_failed_when_saving_the_session_also_fails() {
     let api = MockApi::start(vec![Reply::BadRequest("prompt is too long".into())]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     // A session file in a folder that does not exist cannot be written.
     agent.session.id = format!("{}/missing", agent.session.id);
     let error = agent.prompt("hi", &[], |_| {}).await.unwrap_err();
@@ -33,7 +33,7 @@ async fn drops_thinking_bound_to_a_changed_conversation_for_the_rest_of_the_sess
         text_reply("after restart"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut notices = Vec::new();
     let first = agent.prompt("one", &[], |_| {}).await;
     let second = agent
@@ -43,7 +43,7 @@ async fn drops_thinking_bound_to_a_changed_conversation_for_the_rest_of_the_sess
     // Close the session, as quitting does, so that it can be resumed.
     let id = agent.session.id.clone();
     drop(agent);
-    let mut restarted = test_support::agent(&api, reqwest::Client::new());
+    let mut restarted = test_support::agent(&api);
     let resumed = restarted.resume(&id).await;
     let after_restart = restarted.prompt("four", &[], |_| {}).await;
     test_support::remove_session(&restarted);
@@ -79,7 +79,7 @@ async fn turns_thinking_off_without_asking_to_drop_mismatched_thinking() {
         ("claude-haiku-5-5", "disabled"),
     ] {
         let api = MockApi::start(vec![text_reply("done")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
+        let mut agent = test_support::agent(&api);
         agent.model = model.into();
         agent.effort = "off";
         agent.session.drop_mismatched_thinking();
@@ -105,7 +105,7 @@ async fn saves_finished_tool_rounds_while_the_prompt_runs() {
         Reply::Stall,
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let session_file = test_support::session_file(&agent);
     let mut prompt = Box::pin(agent.prompt("run it", &[], |_| {}));
     let second_request_sent = tokio::time::timeout(Duration::from_secs(5), async {
@@ -142,7 +142,7 @@ async fn keeps_finished_tool_calls_when_cancelled_during_a_later_call() {
         json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
     ]);
     let api = MockApi::start(vec![two_tool_calls, text_reply("ok")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let session_file = test_support::session_file(&agent);
     let finished = std::cell::Cell::new(0);
     let mut prompt = Box::pin(agent.prompt("run both", &[], |event| {
@@ -207,7 +207,7 @@ async fn shows_only_context_counts_the_api_reported() {
         text_reply("summary of the work"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let before = agent.stats().context_tokens;
     let mut counts = Vec::new();
     let result = agent
@@ -239,7 +239,7 @@ async fn lets_prompts_be_queued_while_queued_images_are_saved() {
         text_reply("done"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let small = Image {
         media_type: "image/png",
         data: vec![1; 16],
@@ -296,7 +296,7 @@ async fn keeps_prompts_queued_when_their_image_cannot_be_saved() {
         text_reply("done"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let image = Image {
         media_type: "image/png",
         data: vec![1; 16],
@@ -330,7 +330,7 @@ async fn keeps_the_conversation_cached_when_a_queued_prompt_follows_a_tool_round
         text_reply("done"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.queue.lock().unwrap().push(Queued {
         prompt: "also this".into(),
         images: Vec::new(),
@@ -454,7 +454,7 @@ async fn shows_a_web_search_its_results_and_the_sources_cited() {
         text_reply("again"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut lines = Vec::new();
     let mut text = String::new();
     let result = agent
@@ -526,7 +526,7 @@ async fn reads_the_quota_left_and_keeps_the_figures_replies_reported() {
     }))
     .await;
     let api = MockApi::start(Vec::new()).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.api_base = base;
     agent.quota.five_hour_remaining = Some(40.0);
     let quota = agent.quota_request().await.unwrap().await.unwrap();
@@ -545,7 +545,7 @@ async fn reports_a_skill_whose_file_was_removed_without_sending_the_prompt() {
     let directory = crate::tools::test_support::TemporaryDir::new("agent-removed-skill");
     let path = directory.path().join("SKILL.md");
     let api = MockApi::start(vec![text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.skills.skills = vec![Skill {
         name: "demo".into(),
         description: "Demo.".into(),
@@ -565,7 +565,7 @@ async fn reports_a_skill_whose_file_was_removed_without_sending_the_prompt() {
 #[tokio::test]
 async fn sends_pasted_images_before_the_prompt() {
     let api = MockApi::start(vec![text_reply("a red square")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let image = Image {
         media_type: "image/png",
         data: b"png".to_vec(),
@@ -586,7 +586,7 @@ async fn sends_pasted_images_before_the_prompt() {
 #[tokio::test]
 async fn sends_a_shell_command_and_its_output_with_the_next_prompt() {
     let api = MockApi::start(vec![text_reply("it printed hi")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let output = agent.shell("echo hi").await;
     let result = agent.prompt("what did it print?", &[], |_| {}).await;
     test_support::remove_session(&agent);
@@ -631,7 +631,7 @@ async fn runs_a_command_in_the_background_and_gives_its_output_when_it_finishes(
         text_reply("waiting"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut counts = Vec::new();
     let result = tokio::time::timeout(
         Duration::from_secs(5),
@@ -673,7 +673,7 @@ async fn stops_a_background_command() {
         text_reply("stopped"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let started = agent.prompt("start it", &[], |_| {}).await;
     let pid = pid_file.wait_for_content().await;
     let stopped = agent.prompt("stop it", &[], |_| {}).await;
@@ -701,7 +701,7 @@ async fn stops_background_commands_when_a_new_session_starts() {
         text_reply("started"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let started = agent.prompt("start it", &[], |_| {}).await;
     let pid = pid_file.wait_for_content().await;
     test_support::remove_session(&agent);

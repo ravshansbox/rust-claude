@@ -9,7 +9,7 @@ use super::super::{
 /// returns the compaction error and the messages sent with the next prompt.
 async fn failed_compaction(summary: Reply) -> (String, String) {
     let api = MockApi::start(vec![text_reply("hello"), summary, text_reply("ok")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let first = agent.prompt("hi", &[], |_| {}).await;
     let compacted = agent.compact(|_| {}).await;
     let next = agent.prompt("next", &[], |_| {}).await;
@@ -47,7 +47,7 @@ async fn keeps_the_conversation_when_the_summary_is_empty() {
 #[tokio::test]
 async fn says_there_is_nothing_to_compact_in_a_new_session() {
     let api = MockApi::start(Vec::new()).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let compacted = agent.compact(|_| {}).await;
     test_support::remove_session(&agent);
     assert_eq!(compacted.unwrap_err().to_string(), "nothing to compact");
@@ -62,7 +62,7 @@ async fn answers_the_prompt_when_automatic_compaction_fails() {
         text_reply("ok"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut notices = Vec::new();
     let first = agent.prompt("hi", &[], |_| {}).await;
     let next = agent
@@ -91,7 +91,7 @@ async fn keeps_queued_prompts_word_for_word_when_compacting_after_a_tool_round()
         text_reply("done"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.queue.lock().unwrap().push(Queued {
         prompt: "also update the README".into(),
         images: Vec::new(),
@@ -123,7 +123,7 @@ async fn does_not_summarise_again_when_the_request_after_compaction_is_too_long(
         10_000,
     )
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.queue.lock().unwrap().push(Queued {
         prompt: "x".repeat(15_000),
         images: Vec::new(),

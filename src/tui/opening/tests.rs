@@ -48,11 +48,11 @@ fn lists_loaded_skills_by_scope_then_their_problems_then_instructions() {
 #[tokio::test]
 async fn opens_a_continued_session_with_its_conversation_then_what_loaded() {
     let api = MockApi::start(vec![text_reply("Hi there")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.prompt("hello", &[], |_| {}).await.unwrap();
     let id = agent.session.id.clone();
     drop(agent);
-    let mut continued = test_support::agent(&api, reqwest::Client::new());
+    let mut continued = test_support::agent(&api);
     let resumed = continued.resume(&id).await;
     test_support::remove_session(&continued);
     resumed.unwrap();

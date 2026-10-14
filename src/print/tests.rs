@@ -183,7 +183,7 @@ async fn answers_each_background_command_when_it_finishes() {
     let mut out = Vec::new();
     let mut err = Vec::new();
     let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut checkpoint = None;
     let result = super::run(&mut agent, &mut printer, "go", &[], &mut checkpoint).await;
     test_support::remove_session(&agent);
@@ -301,7 +301,7 @@ async fn ends_an_answer_that_broke_off_before_the_error_is_shown() {
         Reply::BadRequest("bad".into()),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut outputs = Vec::new();
     for _ in 0..2 {
         let mut out = Vec::new();

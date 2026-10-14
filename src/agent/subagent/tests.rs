@@ -43,7 +43,7 @@ async fn runs_a_task_in_a_subagent_and_returns_its_final_reply() {
         text_reply("done"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let result = agent.prompt("ask a subagent", &[], |_| {}).await;
     let sessions = config::dir().unwrap().join("sessions");
     let saved_with_prompt = std::fs::read_dir(&sessions)
@@ -223,7 +223,7 @@ async fn runs_parallel_tasks_at_the_same_time() {
         Reply::Stall,
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut prompt = Box::pin(agent.prompt("both", &[], |_| {}));
     let both_sent = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
@@ -389,7 +389,7 @@ async fn counts_the_tokens_subagents_use_in_the_totals() {
         text_reply("done"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut inputs = Vec::new();
     let result = agent
         .prompt("go", &[], |event| {
@@ -401,7 +401,7 @@ async fn counts_the_tokens_subagents_use_in_the_totals() {
     let context_tokens = agent.stats().context_tokens;
     let id = agent.session.id.clone();
     drop(agent);
-    let mut resumed = test_support::agent(&api, reqwest::Client::new());
+    let mut resumed = test_support::agent(&api);
     let loaded = resumed.resume(&id).await;
     test_support::remove_session(&resumed);
     result.unwrap();
@@ -447,7 +447,7 @@ async fn counts_finished_subagent_replies_when_cancelled() {
         Reply::Stall,
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let one_done = std::cell::Cell::new(false);
     let mut prompt = Box::pin(agent.prompt("go", &[], |event| {
         if matches!(event, AgentEvent::TaskDone { reply: Ok(_), .. }) {

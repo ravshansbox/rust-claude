@@ -185,7 +185,7 @@ async fn uses_an_effort_the_new_model_supports_for_background_turns() {
         test_support::text_reply("finished"),
     ])
     .await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     agent.model = "claude-haiku-5-5".into();
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
@@ -223,7 +223,7 @@ async fn uses_the_effort_chosen_since_the_last_prompt_for_background_turns() {
         test_support::text_reply("finished"),
     ])
     .await;
-    let agent = test_support::agent(&api, reqwest::Client::new());
+    let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     worker
@@ -289,7 +289,7 @@ async fn starts_a_turn_when_a_background_command_finishes() {
         test_support::text_reply("seen it"),
     ])
     .await;
-    let agent = test_support::agent(&api, reqwest::Client::new());
+    let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     worker
@@ -329,7 +329,7 @@ async fn runs_a_prompt_already_sent_before_a_finished_background_command() {
         test_support::text_reply("seen it"),
     ])
     .await;
-    let agent = test_support::agent(&api, reqwest::Client::new());
+    let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     for prompt in ["watch it", "meanwhile"] {
@@ -360,7 +360,7 @@ async fn runs_a_prompt_already_sent_before_a_finished_background_command() {
 #[tokio::test]
 async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
     let api = MockApi::start(vec![Reply::Stall, test_support::text_reply("hi")]).await;
-    let agent = test_support::agent(&api, reqwest::Client::new());
+    let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     worker
@@ -398,7 +398,7 @@ async fn starts_lists_and_resumes_sessions() {
         test_support::text_reply("three"),
     ])
     .await;
-    let agent = test_support::agent(&api, reqwest::Client::new());
+    let agent = test_support::agent(&api);
     let first_id = agent.session.id.clone();
     let second_prompt = format!("after {first_id}");
     let mut worker = Worker::spawn(agent);
@@ -481,7 +481,7 @@ async fn compacts_the_conversation_and_continues_from_the_summary() {
         test_support::text_reply("two"),
     ])
     .await;
-    let agent = test_support::agent(&api, reqwest::Client::new());
+    let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     worker

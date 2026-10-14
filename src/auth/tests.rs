@@ -392,7 +392,7 @@ async fn renews_a_sign_in_the_api_turned_down_and_sends_the_request_again() {
     let endpoint = TokenEndpoint::start("refresh", false).await;
     let path = no_credentials_file();
     let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let mut text = String::new();
     let result = agent.prompt("hi", &[], test_support::text(&mut text)).await;
     test_support::remove_session(&agent);
@@ -448,7 +448,7 @@ async fn uses_a_sign_in_another_instance_renewed_after_the_api_turned_ours_down(
             .to_string(),
     );
     let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let result = agent.prompt("hi", &[], |_| {}).await;
     test_support::remove_session(&agent);
     let _ = std::fs::remove_file(&path);
@@ -469,7 +469,7 @@ async fn asks_to_sign_in_again_when_a_sign_in_the_api_turned_down_cannot_be_rene
     let _endpoint = TokenEndpoint::start("other", false).await;
     let path = no_credentials_file();
     let api = MockApi::start(vec![Reply::Unauthorized, text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let mut agent = test_support::agent(&api);
     let result = agent.prompt("hi", &[], |_| {}).await;
     test_support::remove_session(&agent);
     // The next start reads what was saved and, unable to renew it, signs

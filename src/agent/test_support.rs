@@ -262,7 +262,11 @@ pub(crate) fn credentials(expires: u64) -> Credentials {
     .unwrap()
 }
 
-pub(crate) fn agent(api: &MockApi, http: reqwest::Client) -> Agent {
+pub(crate) fn agent(api: &MockApi) -> Agent {
+    agent_with_http(api, reqwest::Client::new())
+}
+
+pub(crate) fn agent_with_http(api: &MockApi, http: reqwest::Client) -> Agent {
     let mut agent = Agent::new(
         http,
         credentials(4_102_444_800_000),
@@ -278,7 +282,7 @@ pub(crate) async fn run_prompt(
     prompt: &str,
     on_event: impl FnMut(AgentEvent),
 ) -> (Agent, anyhow::Result<()>) {
-    let mut agent = agent(api, reqwest::Client::new());
+    let mut agent = agent(api);
     let result = agent.prompt(prompt, &[], on_event).await;
     remove_session(&agent);
     (agent, result)
