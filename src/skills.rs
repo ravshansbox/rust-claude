@@ -74,7 +74,7 @@ pub fn same_dir(a: &Path, b: &Path) -> bool {
 
 fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skills {
     let project_dir = cwd.join(".rust-coding-agent");
-    let user_agents_dir = home.map(|home| home.join(".agents").join("skills"));
+    let user_agents_dir = home.map(agents_skill_dir);
     let project = (!config_dir.is_some_and(|config_dir| same_dir(config_dir, &project_dir)))
         .then(|| (project_dir.join("skills"), Mode::RustClaude, Scope::Project));
     let ancestors = ancestor_agents_skill_dirs(cwd)
@@ -138,14 +138,18 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
 
 fn ancestor_agents_skill_dirs(start: &Path) -> Vec<PathBuf> {
     let Some(repository_root) = start.ancestors().find(|dir| dir.join(".git").exists()) else {
-        return vec![start.join(".agents").join("skills")];
+        return vec![agents_skill_dir(start)];
     };
     start
         .ancestors()
         .take_while(|dir| *dir != repository_root)
         .chain([repository_root])
-        .map(|dir| dir.join(".agents").join("skills"))
+        .map(agents_skill_dir)
         .collect()
+}
+
+fn agents_skill_dir(dir: &Path) -> PathBuf {
+    dir.join(".agents").join("skills")
 }
 
 fn collect_skill_files(dir: &Path, mode: Mode) -> Vec<PathBuf> {
