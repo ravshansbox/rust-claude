@@ -351,7 +351,7 @@ fn sets_the_effort_level_picked_from_the_list() {
     press(&mut app, KeyCode::Down);
     let mut acted = false;
     press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |_| {
-        acted = true
+        acted = true;
     });
     assert!(!acted);
     assert!(app.picker.is_none());

@@ -28,7 +28,7 @@ async fn restarts_only_enabled_mcp_servers_after_signing_out() {
     assert!(matches!(sent.try_recv(), Ok(Request::ReplaceMcpServer(_))));
     match shown.try_recv() {
         Ok(UiEvent::Agent(AgentEvent::Notice(notice))) => {
-            assert_eq!(notice, "MCP server off was not signed in")
+            assert_eq!(notice, "MCP server off was not signed in");
         }
         _ => panic!("no notice for the disabled server"),
     }
