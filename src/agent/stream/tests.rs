@@ -2,7 +2,8 @@ use serde_json::json;
 use std::time::Duration;
 
 use crate::agent::{
-    Agent, AgentEvent, http_client_with,
+    Agent, AgentEvent,
+    http::http_client_with,
     test_support::{self, MockApi, Reply, stopped_reply, text_reply},
 };
 

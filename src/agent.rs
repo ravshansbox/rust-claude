@@ -1,13 +1,11 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
-};
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
 mod compact;
 mod context;
+mod http;
 mod queue;
 pub(crate) mod retry;
 mod stream;
@@ -31,6 +29,7 @@ use context::{
     active_messages, active_start, context_tokens, has_uncompacted, is_compaction,
     with_cache_breakpoint,
 };
+pub use http::http_client;
 pub use queue::{Queue, Queued, take_queued};
 use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
 use stream::Response;
@@ -109,24 +108,6 @@ pub fn parse_shell_message(text: &str) -> Option<(&str, &str)> {
         .strip_prefix("<bash-input>")?
         .split_once("</bash-input>\n<bash-output>")?;
     Some((command, rest.strip_suffix("</bash-output>")?))
-}
-
-/// Gives up on a connection attempt after this long.
-const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// Gives up when no data arrives for this long, so a dead connection fails
-/// and gets retried instead of hanging. Long, because the API can take a
-/// while to start replying to a large prompt.
-const READ_TIMEOUT: Duration = Duration::from_secs(300);
-
-pub fn http_client() -> Result<reqwest::Client> {
-    http_client_with(READ_TIMEOUT)
-}
-
-fn http_client_with(read_timeout: Duration) -> Result<reqwest::Client> {
-    Ok(reqwest::Client::builder()
-        .connect_timeout(CONNECT_TIMEOUT)
-        .read_timeout(read_timeout)
-        .build()?)
 }
 
 pub struct Agent {
