@@ -5,14 +5,14 @@ async fn sums_up_http_servers_without_a_sign_in_as_anonymous() {
     let (url, _) = http_server(http_mcp).await;
     let mut mcp = Mcp::default();
     let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
-    assert_eq!(added.summary, "web (anonymous, 1 tools)");
+    assert_eq!(added.summary, "web (anonymous, 1 tool)");
     let (url, _) = http_server(http_mcp).await;
     let mut config = http_config(&url);
     config
         .headers
         .insert("Authorization".into(), "Bearer secret".into());
     let added = mcp.add(start("keyed".into(), Scope::Global, config).await);
-    assert_eq!(added.summary, "keyed (1 tools)");
+    assert_eq!(added.summary, "keyed (1 tool)");
 }
 
 #[tokio::test]
@@ -27,7 +27,7 @@ async fn calls_http_server_tools() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, config).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     let initialize = &requests_for(&requests, "initialize")[0];
@@ -247,7 +247,7 @@ async fn sends_headers_from_the_headers_helper() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, config).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     for method in ["initialize", "tools/call"] {
@@ -313,7 +313,7 @@ async fn stops_what_a_headers_helper_left_running() {
     let mut mcp = Mcp::default();
     assert_eq!(
         mcp.add(started).status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     assert_eq!(
         requests_for(&requests, "initialize")[0].headers["x-helper"],
@@ -389,7 +389,7 @@ async fn retries_connecting_after_a_transient_http_error() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     assert_eq!(requests_for(&requests, "initialize").len(), 3);
     let (url, requests) = http_server(|request| match request.body["method"].as_str() {

@@ -375,10 +375,11 @@ impl Mcp {
         let summary = match &status {
             Ok(_) => {
                 let server = self.servers.last();
-                let tools = server.map_or(0, |server| server.tools.len());
+                let tools =
+                    crate::tools::plural(server.map_or(0, |server| server.tools.len()), "tool");
                 match server.and_then(|server| server.connection.user()) {
-                    Some(user) => format!("{name} ({user}, {tools} tools)"),
-                    None => format!("{name} ({tools} tools)"),
+                    Some(user) => format!("{name} ({user}, {tools})"),
+                    None => format!("{name} ({tools})"),
                 }
             }
             Err(failed) => {
@@ -438,9 +439,9 @@ impl Mcp {
             true
         });
         let loaded = format!(
-            "loaded {} MCP server: {name} ({} tools)",
+            "loaded {} MCP server: {name} ({})",
             server.scope,
-            server.tools.len()
+            crate::tools::plural(server.tools.len(), "tool")
         );
         self.servers.push(Arc::new(server));
         (diagnostics, Ok(loaded))

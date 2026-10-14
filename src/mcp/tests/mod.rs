@@ -365,7 +365,7 @@ async fn replaces_a_server_that_starts_again() {
     assert_eq!(
         mcp.replace(start("test".into(), Scope::Project, echo_server()).await)
             .status,
-        "loaded project MCP server: test (1 tools)"
+        "loaded project MCP server: test (1 tool)"
     );
     assert_eq!(mcp.definitions().count(), 1);
     mcp.replace(failed_start("test", "gone"));
@@ -400,7 +400,7 @@ async fn reports_each_server_as_it_starts() {
     let started = start("test".into(), Scope::Project, echo_server()).await;
     assert_eq!(
         mcp.add(started).status,
-        "loaded project MCP server: test (1 tools)"
+        "loaded project MCP server: test (1 tool)"
     );
     let mut broken = echo_server();
     broken.command = None;
@@ -451,7 +451,7 @@ async fn sums_up_each_server_in_short() {
     let added = mcp.add(start("test".into(), Scope::Project, echo_server()).await);
     assert_eq!(
         (added.summary.as_str(), added.failed),
-        ("test (1 tools)", false)
+        ("test (1 tool)", false)
     );
     let added = mcp.add(failed_start("broken", "command is missing"));
     assert_eq!(

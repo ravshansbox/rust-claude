@@ -54,7 +54,7 @@ fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) ->
     })
 }
 
-fn plural(count: usize, noun: &str) -> String {
+pub(crate) fn plural(count: usize, noun: &str) -> String {
     match count {
         1 => format!("1 {noun}"),
         _ => format!("{count} {noun}s"),

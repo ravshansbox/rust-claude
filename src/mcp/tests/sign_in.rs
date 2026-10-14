@@ -61,7 +61,7 @@ async fn renews_oauth_tokens_that_an_http_server_turns_down() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     let saved = oauth::load(&url).unwrap();
@@ -84,7 +84,7 @@ async fn keeps_renewed_oauth_tokens_that_could_not_be_saved() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     let path = config::dir().unwrap().join("mcp-auth.json");
     let aside = path.with_extension("aside");
@@ -121,7 +121,7 @@ async fn sends_the_client_secret_from_the_config_when_renewing() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, config).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     let token_form = requests_for_path(&requests, "/token")[0].form();
     assert_eq!(token_form["client_secret"], "own-secret");
@@ -196,7 +196,7 @@ async fn renews_expired_oauth_tokens_before_sending_them() {
     assert_eq!(
         mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
             .status,
-        "loaded global MCP server: web (1 tools)"
+        "loaded global MCP server: web (1 tool)"
     );
     let tokens_sent: Vec<String> = requests_for(&requests, "initialize")
         .iter()
@@ -379,8 +379,8 @@ async fn signs_in_to_an_http_server_with_oauth() {
     assert_eq!(parameters["code_challenge"], challenge);
     let mut mcp = Mcp::default();
     let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
-    assert_eq!(added.status, "loaded global MCP server: web (1 tools)");
-    assert_eq!(added.summary, "web (signed in, 1 tools)");
+    assert_eq!(added.status, "loaded global MCP server: web (1 tool)");
+    assert_eq!(added.summary, "web (signed in, 1 tool)");
 }
 
 fn jwt(claims: &Value) -> String {
@@ -436,7 +436,7 @@ async fn hides_the_user_in_the_id_token_from_the_summary() {
     }));
     assert_eq!(
         summary_after_sign_in(json!({ "id_token": id_token })).await,
-        "web (signed in, 1 tools)"
+        "web (signed in, 1 tool)"
     );
 }
 
@@ -445,7 +445,7 @@ async fn hides_the_user_in_the_access_token_from_the_summary() {
     let _file = AUTH_FILE.read().await;
     let access_token = jwt(&json!({ "sub": "123", "email": "alice@example.com" }));
     let summary = summary_after_sign_in(json!({ "access_token": access_token })).await;
-    assert_eq!(summary, "web (signed in, 1 tools)");
+    assert_eq!(summary, "web (signed in, 1 tool)");
 }
 
 #[tokio::test]
@@ -455,7 +455,7 @@ async fn keeps_the_user_when_renewed_tokens_do_not_name_one() {
     save_tokens_as(&url, "stale", now_millis() - 1, Some("alice"));
     let mut mcp = Mcp::default();
     let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
-    assert_eq!(added.summary, "web (signed in, 1 tools)");
+    assert_eq!(added.summary, "web (signed in, 1 tool)");
     assert_eq!(oauth::load(&url).unwrap().user.as_deref(), Some("alice"));
 }
 
