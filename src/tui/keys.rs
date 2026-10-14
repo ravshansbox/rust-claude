@@ -148,14 +148,21 @@ fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool
         (KeyCode::Enter, _) if !app.busy() && !app.input.trim().is_empty() => {
             return submit_input(app, act);
         }
+        (KeyCode::Char('v'), KeyModifiers::CONTROL) => act(Action::PasteImage),
+        (KeyCode::Char('r'), KeyModifiers::CONTROL) => app.open_history_search(),
+        _ => edit_input(key, app),
+    }
+    false
+}
+
+fn edit_input(key: KeyEvent, app: &mut App) {
+    match (key.code, key.modifiers) {
         (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
             app.cursor = previous_word_start(&app.input, app.cursor);
         }
         (KeyCode::Right | KeyCode::Char('f'), KeyModifiers::ALT) => {
             app.cursor = next_word_end(&app.input, app.cursor);
         }
-        (KeyCode::Char('v'), KeyModifiers::CONTROL) => act(Action::PasteImage),
-        (KeyCode::Char('r'), KeyModifiers::CONTROL) => app.open_history_search(),
         (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
         (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
         (KeyCode::Left, _) => app.cursor = previous_grapheme(&app.input, app.cursor),
@@ -171,7 +178,6 @@ fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool
         }
         _ => {}
     }
-    false
 }
 
 fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {
