@@ -3,6 +3,7 @@ use super::{
     input::{expand_tabs, input_rows},
 };
 use crate::highlight::{self, Colour};
+use pulldown_cmark::{Event, Options as ParseOptions, Parser, Tag};
 use ratatui::{
     buffer::CellWidth,
     style::{Color, Modifier, Style},
@@ -142,404 +143,44 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
 }
 
 fn hard_line_breaks(text: &str) -> String {
-    let mut fence = None;
-    let mut code = None;
-    let mut indented = Indented {
-        blank: true,
-        ..Indented::default()
-    };
-    let mut html: Option<(&[&str], usize)> = None;
-    let mut paragraph = false;
-    let mut out = String::with_capacity(text.len());
-    let all: Vec<&str> = text.lines().collect();
-    let mut lines = all.iter().copied().enumerate().peekable();
-    while let Some((index, line)) = lines.next() {
-        if index > 0 {
-            out.push('\n');
-        }
-        if html.is_some_and(|(_, depth)| without_quotes(line, depth).1 < depth) {
-            html = None;
-        }
-        let plain = match html {
-            Some((ends, depth)) => {
-                indented.next(line, true);
-                html = html_after(line, ends, depth).map(|ends| (ends, depth));
-                false
-            }
-            None => {
-                let in_code =
-                    fence.is_some_and(|(_, _, depth)| without_quotes(line, depth).1 == depth);
-                fence = next_fence(fence, line);
-                let fenced = in_code || fence.is_some();
-                let plain = !indented.next(line, fenced) && !fenced;
-                match plain.then(|| html_block(line, paragraph)).flatten() {
-                    Some(ends) => {
-                        indented.next(line, true);
-                        let depth = without_quotes(line, usize::MAX).1;
-                        html = html_after(line, ends, depth).map(|ends| (ends, depth));
-                        false
+    let mut text = text.to_string();
+    let options = ParseOptions::ENABLE_STRIKETHROUGH
+        | ParseOptions::ENABLE_TASKLISTS
+        | ParseOptions::ENABLE_HEADING_ATTRIBUTES
+        | ParseOptions::ENABLE_YAML_STYLE_METADATA_BLOCKS
+        | ParseOptions::ENABLE_SUPERSCRIPT
+        | ParseOptions::ENABLE_SUBSCRIPT
+        | ParseOptions::ENABLE_MATH
+        | ParseOptions::ENABLE_FOOTNOTES
+        | ParseOptions::ENABLE_DEFINITION_LIST
+        | ParseOptions::ENABLE_GFM
+        | ParseOptions::ENABLE_TABLES;
+    'parse: loop {
+        let mut edits = Vec::new();
+        for (event, range) in Parser::new_ext(&text, options).into_offset_iter() {
+            match event {
+                Event::Start(Tag::MetadataBlock(_)) => {
+                    text.insert(range.start, '-');
+                    continue 'parse;
+                }
+                Event::Start(Tag::Heading { .. }) => {
+                    let heading = text[range.clone()].trim_end();
+                    let end = range.start + heading.rfind('\n').unwrap_or(heading.len());
+                    let line = text[..end].trim_end();
+                    if line.ends_with('}') && !line.ends_with("\\}") {
+                        edits.push((line.len() - 1, "\\"));
                     }
-                    None => plain,
                 }
+                Event::SoftBreak => edits.push((range.start, "  ")),
+                _ => {}
             }
-        };
-        if plain && line.trim_end() == "---" {
-            out.push_str("----");
-        } else if plain
-            && (is_heading(line)
-                || block_text(line).is_some()
-                    && lines.peek().is_some_and(|(_, next)| is_underline(next)))
-            && !line.trim_end().ends_with("\\}")
-        {
-            match line.trim_end().strip_suffix('}') {
-                Some(text) => {
-                    out.push_str(text);
-                    out.push_str("\\}");
-                }
-                None => out.push_str(line),
-            }
-        } else {
-            out.push_str(line);
         }
-        code = match plain && !line.trim().is_empty() && !is_heading(line) {
-            true => span_after(line, code, &all[index + 1..], !indented.lists.is_empty()),
-            false => None,
-        };
-        paragraph = plain
-            && !unquoted(line).trim().is_empty()
-            && !is_heading(line)
-            && !is_rule(line)
-            && !(paragraph && is_underline(line))
-            && (paragraph || !is_empty_item(line));
-        if plain && code.is_none() && (line.len() - line.trim_end_matches('\\').len()) % 2 == 0 {
-            out.push_str("  ");
+        edits.sort_unstable();
+        for (offset, insert) in edits.into_iter().rev() {
+            text.insert_str(offset, insert);
         }
+        return text;
     }
-    out
-}
-
-/// Tracks indented code blocks and the content columns of open list items.
-#[derive(Default)]
-struct Indented {
-    lists: Vec<usize>,
-    depth: usize,
-    code: bool,
-    blank: bool,
-}
-
-impl Indented {
-    /// Whether `line` is in an indented code block.
-    fn next(&mut self, line: &str, fenced: bool) -> bool {
-        if fenced {
-            (self.code, self.blank) = (false, true);
-            return false;
-        }
-        let depth = without_quotes(line, usize::MAX).1;
-        if depth > self.depth {
-            let lead = line.len() - line.trim_start().len();
-            self.lists.retain(|&content| content <= lead);
-        }
-        let rest = unquoted(line);
-        if rest.trim().is_empty() {
-            self.blank = true;
-            return self.code;
-        }
-        let indent = rest
-            .chars()
-            .take_while(|c| matches!(c, ' ' | '\t'))
-            .fold(0, |column, c| match c {
-                '\t' => column + 4 - column % 4,
-                _ => column + 1,
-            });
-        let text = rest.trim_start();
-        let rule = is_rule(line);
-        let item = match rule {
-            true => text,
-            false => without_list_marker(text),
-        };
-        if self.blank || rule || item.len() < text.len() {
-            self.lists.retain(|&content| content <= indent);
-        }
-        let base = self.lists.last().copied().unwrap_or(0);
-        let paragraph = !self.blank && !self.code;
-        self.code = indent >= base + 4 && (self.blank || self.code);
-        self.blank = !self.code && (is_heading(line) || rule || paragraph && is_underline(line));
-        if !self.code && item.len() < text.len() {
-            self.lists.push(indent + text.len() - item.len());
-            self.depth = depth;
-        }
-        self.code
-    }
-}
-
-const RAW_ENDS: &[&str] = &["</pre>", "</script>", "</style>", "</textarea>"];
-
-const BLOCK_TAGS: &[&str] = &[
-    "address",
-    "article",
-    "aside",
-    "base",
-    "basefont",
-    "blockquote",
-    "body",
-    "caption",
-    "center",
-    "col",
-    "colgroup",
-    "dd",
-    "details",
-    "dialog",
-    "dir",
-    "div",
-    "dl",
-    "dt",
-    "fieldset",
-    "figcaption",
-    "figure",
-    "footer",
-    "form",
-    "frame",
-    "frameset",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "head",
-    "header",
-    "hr",
-    "html",
-    "iframe",
-    "legend",
-    "li",
-    "link",
-    "main",
-    "menu",
-    "menuitem",
-    "nav",
-    "noframes",
-    "ol",
-    "optgroup",
-    "option",
-    "p",
-    "param",
-    "search",
-    "section",
-    "summary",
-    "table",
-    "tbody",
-    "td",
-    "tfoot",
-    "th",
-    "thead",
-    "title",
-    "tr",
-    "track",
-    "ul",
-];
-
-/// The end markers of the HTML block that `line` starts, if any. No markers
-/// means the block ends at a blank line.
-fn html_block(line: &str, paragraph: bool) -> Option<&'static [&'static str]> {
-    let rest = without_list_marker(block_text(line)?).to_ascii_lowercase();
-    let rest = rest.strip_prefix('<')?;
-    let name_end = |name: &str| {
-        rest.strip_prefix(name)
-            .and_then(|after| after.chars().next())
-            .is_none_or(|c| c.is_whitespace() || c == '>')
-    };
-    if ["pre", "script", "style", "textarea"]
-        .iter()
-        .any(|name| rest.starts_with(name) && name_end(name))
-    {
-        return Some(RAW_ENDS);
-    }
-    let markers: [(&str, &'static [&'static str]); 3] =
-        [("!--", &["-->"]), ("?", &["?>"]), ("![cdata[", &["]]>"])];
-    if let Some((_, ends)) = markers.iter().find(|(start, _)| rest.starts_with(start)) {
-        return Some(ends);
-    }
-    if rest.starts_with('!') && rest[1..].starts_with(|c: char| c.is_ascii_alphabetic()) {
-        return Some(&[">"]);
-    }
-    let tag = rest.strip_prefix('/').unwrap_or(rest);
-    let name: String = tag
-        .chars()
-        .take_while(|c| c.is_ascii_alphanumeric() || *c == '-')
-        .collect();
-    let after = &tag[name.len()..];
-    if BLOCK_TAGS.contains(&name.as_str())
-        && (after.starts_with("/>")
-            || after
-                .chars()
-                .next()
-                .is_none_or(|c| c.is_whitespace() || c == '>'))
-    {
-        return Some(&[]);
-    }
-    let complete = name.starts_with(|c: char| c.is_ascii_alphabetic())
-        && match rest.starts_with('/') {
-            true => after.trim_start().strip_prefix('>'),
-            false => tag_end(after),
-        }
-        .is_some_and(|tail| tail.trim().is_empty());
-    (!paragraph && complete).then_some(&[])
-}
-
-/// The text after an open tag's attributes and closing `>`, if they are valid.
-fn tag_end(mut rest: &str) -> Option<&str> {
-    loop {
-        let trimmed = rest.trim_start();
-        if let Some(tail) = trimmed.strip_prefix("/>").or(trimmed.strip_prefix('>')) {
-            return Some(tail);
-        }
-        if trimmed.len() == rest.len()
-            || !trimmed.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_' || c == ':')
-        {
-            return None;
-        }
-        let name = trimmed
-            .find(|c: char| !(c.is_ascii_alphanumeric() || "_.:-".contains(c)))
-            .unwrap_or(trimmed.len());
-        rest = &trimmed[name..];
-        let Some(value) = rest.trim_start().strip_prefix('=') else {
-            continue;
-        };
-        let value = value.trim_start();
-        rest = match value.chars().next()? {
-            quote @ ('"' | '\'') => {
-                let close = value[1..].find(quote)?;
-                &value[close + 2..]
-            }
-            _ => {
-                let end = value
-                    .find(|c: char| c.is_whitespace() || "\"'=<>`".contains(c))
-                    .unwrap_or(value.len());
-                if end == 0 {
-                    return None;
-                }
-                &value[end..]
-            }
-        };
-    }
-}
-
-/// The end markers of the HTML block still open after `line`.
-fn html_after(
-    line: &str,
-    ends: &'static [&'static str],
-    depth: usize,
-) -> Option<&'static [&'static str]> {
-    let lower = line.to_ascii_lowercase();
-    match ends.is_empty() {
-        true => (!without_quotes(line, depth).0.trim().is_empty()).then_some(ends),
-        false => (!ends.iter().any(|end| lower.contains(end))).then_some(ends),
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
-enum InlineSpan {
-    Code(usize),
-    Math(bool),
-}
-
-/// The code or math span open after `line`, given the one open before it and
-/// the lines that follow.
-fn span_after(
-    line: &str,
-    mut open: Option<InlineSpan>,
-    later: &[&str],
-    in_list: bool,
-) -> Option<InlineSpan> {
-    let bytes = line.as_bytes();
-    let depth = without_quotes(line, usize::MAX).1;
-    let paragraph = || {
-        later.iter().copied().take_while(move |next| {
-            !next.trim().is_empty()
-                && !starts_block(next, in_list)
-                && without_quotes(next, usize::MAX).1 <= depth
-        })
-    };
-    let mut index = 0;
-    while index < bytes.len() {
-        match (bytes[index], open) {
-            (b'\\', None | Some(InlineSpan::Math(_))) => index += 2,
-            (b'`', None | Some(InlineSpan::Code(_))) => {
-                let length = bytes[index..].iter().take_while(|&&b| b == b'`').count();
-                index += length;
-                open = match open {
-                    Some(InlineSpan::Code(open_length)) if open_length == length => None,
-                    None if has_backtick_run(&line[index..], length)
-                        || paragraph().any(|next| has_backtick_run(next, length)) =>
-                    {
-                        Some(InlineSpan::Code(length))
-                    }
-                    open => open,
-                };
-            }
-            (b'$', Some(InlineSpan::Math(display))) => {
-                index += 1 + usize::from(display);
-                open = None;
-            }
-            (b'$', None) => {
-                let display = bytes.get(index + 1) == Some(&b'$');
-                let after = index + 1 + usize::from(display);
-                let opens = bytes
-                    .get(index + 1)
-                    .is_some_and(|b| !b.is_ascii_whitespace())
-                    && std::iter::once(&line[after..])
-                        .chain(paragraph())
-                        .enumerate()
-                        .find_map(|(row, text)| math_close(text, display, row == 0))
-                        .unwrap_or(false);
-                match opens {
-                    true => (open, index) = (Some(InlineSpan::Math(display)), after),
-                    false => index += 1,
-                }
-            }
-            _ => index += 1,
-        }
-    }
-    open
-}
-
-/// Whether the first `$` in `text` closes a math span, if it has one.
-fn math_close(text: &str, display: bool, first: bool) -> Option<bool> {
-    let bytes = text.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        match bytes[index] {
-            b'\\' => index += 2,
-            b'$' if display => return Some(bytes.get(index + 1) == Some(&b'$')),
-            b'$' => {
-                return Some(
-                    (index > 0 || first)
-                        && index
-                            .checked_sub(1)
-                            .is_none_or(|before| !bytes[before].is_ascii_whitespace()),
-                );
-            }
-            _ => index += 1,
-        }
-    }
-    None
-}
-
-fn starts_block(line: &str, in_list: bool) -> bool {
-    is_heading(line)
-        || is_rule(line)
-        || next_fence(None, line).is_some()
-        || block_text(line).is_some_and(|text| {
-            without_list_marker(text).len() < text.len()
-                && (in_list
-                    || !text.starts_with(|c: char| c.is_ascii_digit())
-                    || matches!(text.trim_start_matches('0').get(..2), Some("1." | "1)")))
-        })
-}
-
-fn has_backtick_run(text: &str, length: usize) -> bool {
-    text.split(|c| c != '`').any(|run| run.len() == length)
 }
 
 /// The fence character, fence length and quote depth of the code block open
@@ -580,58 +221,6 @@ pub(super) fn next_fence(
     }
 }
 
-/// `line` after its quote markers and leading spaces, unless it is indented
-/// code.
-fn block_text(line: &str) -> Option<&str> {
-    let rest = unquoted(line);
-    if rest.starts_with('\t') || rest.starts_with("    ") {
-        return None;
-    }
-    Some(rest.trim_start())
-}
-
-/// `line` after its quote markers and the space after them.
-fn unquoted(line: &str) -> &str {
-    match without_quotes(line, usize::MAX) {
-        (rest, 0) => rest,
-        (rest, _) => rest.strip_prefix(' ').unwrap_or(rest),
-    }
-}
-
-fn is_heading(line: &str) -> bool {
-    let Some(rest) = block_text(line) else {
-        return false;
-    };
-    let rest = without_list_marker(rest);
-    let hashes = rest.len() - rest.trim_start_matches('#').len();
-    (1..=6).contains(&hashes)
-        && rest[hashes..]
-            .chars()
-            .next()
-            .is_none_or(|c| c == ' ' || c == '\t')
-}
-
-fn is_rule(line: &str) -> bool {
-    block_text(line).is_some_and(|rest| {
-        let marks: Vec<char> = rest.chars().filter(|c| !matches!(c, ' ' | '\t')).collect();
-        marks.len() >= 3
-            && matches!(marks[0], '*' | '-' | '_')
-            && marks.iter().all(|&c| c == marks[0])
-    })
-}
-
-fn is_underline(line: &str) -> bool {
-    block_text(line)
-        .map(str::trim_end)
-        .and_then(|rest| {
-            rest.chars()
-                .next()
-                .filter(|c| matches!(c, '=' | '-'))
-                .map(|c| (rest, c))
-        })
-        .is_some_and(|(rest, c)| rest.chars().all(|other| other == c))
-}
-
 /// `line` after up to `limit` blockquote markers, and how many it had.
 fn without_quotes(line: &str, limit: usize) -> (&str, usize) {
     let mut rest = line;
@@ -643,18 +232,6 @@ fn without_quotes(line: &str, limit: usize) -> (&str, usize) {
         depth += 1;
     }
     (rest, depth)
-}
-
-fn is_empty_item(line: &str) -> bool {
-    block_text(line).is_some_and(|text| {
-        let text = text.trim_end();
-        let digits = text.len() - text.trim_start_matches(|c: char| c.is_ascii_digit()).len();
-        match &text[digits..] {
-            "." | ")" => (1..=9).contains(&digits),
-            "-" | "*" | "+" => digits == 0,
-            _ => false,
-        }
-    })
 }
 
 /// `line` after a list item marker that starts it, such as `-` or `2.`.

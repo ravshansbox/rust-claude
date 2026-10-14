@@ -12,6 +12,7 @@ getrandom = "0.4.3"
 ignore = "0.4.33"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "tiff"] }
 minisign-verify = "0.3.0"
+pulldown-cmark = "0.13.4"
 ratatui = { version = "0.30", features = ["unstable-rendered-line-info"] }
 reqwest = { version = "0.13.5", features = ["form", "json"] }
 serde = { version = "1", features = ["derive"] }

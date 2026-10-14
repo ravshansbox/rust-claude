@@ -196,7 +196,7 @@ fn has_table(text: &str) -> bool {
 /// shows once the reply finishes.
 fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
     let mut finished = 0;
-    // The code block `hard_line_breaks` sees open, by its simpler rule.
+    // The code block `next_fence` sees open, by its simpler rule.
     let mut block = None;
     // The fence character and length of the open code block that starts the line.
     let mut open: Option<(char, usize)> = None;
