@@ -39,24 +39,19 @@ pub async fn read_image() -> Result<Option<Vec<u8>>> {
     // after writing part of it.
     let _remove = RemoveOnDrop(&path);
     for class in ["PNGf", "TIFF"] {
+        let read = format!("set imageData to the clipboard as «class {class}»");
+        let script = [
+            "on run argv",
+            &read,
+            "set fileReference to open for access POSIX file (item 1 of argv) with write permission",
+            "set eof fileReference to 0",
+            "write imageData to fileReference",
+            "close access fileReference",
+            "end run",
+        ];
         let status = output(
             Command::new("osascript")
-                .args([
-                    "-e",
-                    "on run argv",
-                    "-e",
-                    &format!("set imageData to the clipboard as «class {class}»"),
-                    "-e",
-                    "set fileReference to open for access POSIX file (item 1 of argv) with write permission",
-                    "-e",
-                    "set eof fileReference to 0",
-                    "-e",
-                    "write imageData to fileReference",
-                    "-e",
-                    "close access fileReference",
-                    "-e",
-                    "end run",
-                ])
+                .args(script.into_iter().flat_map(|line| ["-e", line]))
                 .arg(&path),
             HELPER_TIMEOUT,
         )
