@@ -21,6 +21,7 @@ sha2 = "0.11.0"
 similar = "3.2.0"
 syntect = "5"
 terminal-colorsaurus = "1.0.3"
+time = { version = "0.3.55", features = ["parsing"] }
 tokio = { version = "1", features = ["full"] }
 tui-markdown = "0.3.11"
 unicode-segmentation = "1.13.3"

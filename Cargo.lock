@@ -2267,6 +2267,7 @@ dependencies = [
  "similar",
  "syntect",
  "terminal-colorsaurus",
+ "time",
  "tokio",
  "tui-markdown",
  "unicode-segmentation",

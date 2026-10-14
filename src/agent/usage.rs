@@ -1,6 +1,7 @@
 use anyhow::{Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize)]
 #[serde(default)]
@@ -96,31 +97,8 @@ impl Quota {
 }
 
 fn parse_timestamp(text: &str) -> Option<u64> {
-    let number = |range: std::ops::Range<usize>| text.get(range)?.parse::<i64>().ok();
-    let year = number(0..4)?;
-    let month = number(5..7)?;
-    let day = number(8..10)?;
-    let hour = number(11..13)?;
-    let minute = number(14..16)?;
-    let second = number(17..19)?;
-    let rest = text.get(19..)?;
-    let zone = &rest[rest.find(['Z', '+', '-'])?..];
-    let offset = match zone.as_bytes().first()? {
-        b'Z' => 0,
-        sign => {
-            let hours: i64 = zone.get(1..3)?.parse().ok()?;
-            let minutes: i64 = zone.get(4..6)?.parse().ok()?;
-            let offset = hours * 3_600 + minutes * 60;
-            if *sign == b'-' { -offset } else { offset }
-        }
-    };
-    let shifted_year = if month <= 2 { year - 1 } else { year };
-    let era = shifted_year.div_euclid(400);
-    let year_of_era = shifted_year - era * 400;
-    let day_of_year = (153 * ((month + 9) % 12) + 2) / 5 + day - 1;
-    let day_of_era = year_of_era * 365 + year_of_era / 4 - year_of_era / 100 + day_of_year;
-    let days = era * 146_097 + day_of_era - 719_468;
-    u64::try_from(days * 86_400 + hour * 3_600 + minute * 60 + second - offset).ok()
+    let time = OffsetDateTime::parse(text, &Rfc3339).ok()?;
+    u64::try_from(time.unix_timestamp()).ok()
 }
 
 pub(super) fn tokens_per_second(messages: &[Value]) -> Option<f64> {
