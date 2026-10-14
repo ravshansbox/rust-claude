@@ -1,5 +1,8 @@
 use super::{HeldPanics, InputModes, notify};
-use std::sync::{Mutex, PoisonError};
+use std::{
+    panic::AssertUnwindSafe,
+    sync::{Mutex, PoisonError},
+};
 
 /// Tests that change the process-wide panic hook take turns.
 static PANIC_HOOK: Mutex<()> = Mutex::new(());
@@ -7,7 +10,7 @@ static PANIC_HOOK: Mutex<()> = Mutex::new(());
 #[test]
 fn turns_input_modes_off_after_a_panic() {
     let mut output = Vec::new();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         let _modes = InputModes::enable(&mut output).unwrap();
         panic!("drawing failed");
     }));
@@ -85,7 +88,7 @@ fn shows_held_panics_and_passes_on_later_ones_after_the_interface_panics() {
             .push(info.to_string());
     }));
     let mut output = Vec::new();
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+    let result = std::panic::catch_unwind(AssertUnwindSafe(|| {
         let _held = HeldPanics::install(&mut output);
         agent_panics();
         panic!("the interface broke");
