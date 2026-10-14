@@ -130,10 +130,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
             .map(|line| Line::styled(expand_tabs(line.to_string()), thinking_style()))
             .collect(),
         Role::Tool => tool_message_lines(text, width),
-        Role::Event => text
-            .lines()
-            .map(|line| Line::raw(expand_tabs(line.to_string())))
-            .collect(),
+        Role::Event => text.lines().map(raw_line).collect(),
     }
 }
 
@@ -387,10 +384,7 @@ fn tool_lines(text: &str, theme: Theme, background: Option<Colour>) -> Vec<Line<
                     .into_iter()
                     .map(|line| highlighted_line(line, dark)),
             ),
-            None => lines.extend(
-                body.lines()
-                    .map(|line| Line::raw(expand_tabs(line.to_string()))),
-            ),
+            None => lines.extend(body.lines().map(raw_line)),
         }
     }
     if joins && lines.len() > 1 {
@@ -437,6 +431,10 @@ fn highlighted_line(line: highlight::HighlightedLine, dark: bool) -> Line<'stati
         Some((red, green, blue)) => line.style(Style::new().bg(Color::Rgb(red, green, blue))),
         None => line,
     }
+}
+
+fn raw_line(line: &str) -> Line<'static> {
+    Line::raw(expand_tabs(line.to_string()))
 }
 
 /// The line with its own text, and tabs shown as spaces.
