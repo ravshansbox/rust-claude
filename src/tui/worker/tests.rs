@@ -57,6 +57,11 @@ impl Worker {
             .unwrap_or(false)
     }
 
+    async fn wait_for_done(&mut self) -> bool {
+        self.wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
+            .await
+    }
+
     fn quit(self) -> JoinHandle<()> {
         quit(self.requests, self.cancel);
         self.task
@@ -296,15 +301,11 @@ async fn starts_a_turn_when_a_background_command_finishes() {
         .requests
         .send(Request::Prompt("watch it".into(), Vec::new(), "off"))
         .unwrap();
-    let first = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let first = worker.wait_for_done().await;
     let delivered = worker
         .wait_for(|event| matches!(event, UiEvent::Background(text) if text.contains("finished")))
         .await;
-    let second = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let second = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(first && delivered && second);
@@ -341,9 +342,7 @@ async fn runs_a_prompt_already_sent_before_a_finished_background_command() {
     let delivered = worker
         .wait_for(|event| matches!(event, UiEvent::Background(_)))
         .await;
-    let done = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let done = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(delivered && done);
@@ -378,9 +377,7 @@ async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
         .requests
         .send(Request::Prompt("second".into(), Vec::new(), "off"))
         .unwrap();
-    let done = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let done = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(cancelled && done);
@@ -406,17 +403,13 @@ async fn starts_lists_and_resumes_sessions() {
         .requests
         .send(Request::Prompt("first".into(), Vec::new(), "off"))
         .unwrap();
-    let first = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let first = worker.wait_for_done().await;
     worker.requests.send(Request::NewSession).unwrap();
     worker
         .requests
         .send(Request::Prompt(second_prompt.clone(), Vec::new(), "off"))
         .unwrap();
-    let second = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let second = worker.wait_for_done().await;
     worker.requests.send(Request::ListSessions).unwrap();
     let listed = worker
         .wait_for(|event| {
@@ -452,9 +445,7 @@ async fn starts_lists_and_resumes_sessions() {
         .requests
         .send(Request::Prompt("third".into(), Vec::new(), "off"))
         .unwrap();
-    let third = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let third = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&first_id);
     if let Some(id) = &second_id {
@@ -488,20 +479,14 @@ async fn compacts_the_conversation_and_continues_from_the_summary() {
         .requests
         .send(Request::Prompt("first".into(), Vec::new(), "medium"))
         .unwrap();
-    let first = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let first = worker.wait_for_done().await;
     worker.requests.send(Request::Compact("high")).unwrap();
-    let compacted = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let compacted = worker.wait_for_done().await;
     worker
         .requests
         .send(Request::Prompt("second".into(), Vec::new(), "medium"))
         .unwrap();
-    let second = worker
-        .wait_for(|event| matches!(event, UiEvent::Done(Ok(()))))
-        .await;
+    let second = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
     assert!(first && compacted && second);
