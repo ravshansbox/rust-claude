@@ -1,5 +1,7 @@
 use std::path::{Path, PathBuf};
 
+use crate::skills;
+
 pub(super) const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
 pub(super) const SYSTEM_PROMPT: &str =
@@ -29,7 +31,7 @@ fn load_instructions_from(home: Option<&Path>, cwd: &Path) -> Vec<Instructions> 
             home.join(INSTRUCTIONS_FILE),
         ));
     }
-    if !home.is_some_and(|home| same_path(home, cwd)) {
+    if !home.is_some_and(|home| skills::same_dir(home, cwd)) {
         candidates.push((
             format!("./{INSTRUCTIONS_FILE}"),
             cwd.join(INSTRUCTIONS_FILE),
@@ -43,13 +45,6 @@ fn load_instructions_from(home: Option<&Path>, cwd: &Path) -> Vec<Instructions> 
             (!text.trim().is_empty()).then_some(Instructions { label, text })
         })
         .collect()
-}
-
-fn same_path(a: &Path, b: &Path) -> bool {
-    match (a.canonicalize(), b.canonicalize()) {
-        (Ok(a), Ok(b)) => a == b,
-        _ => a == b,
-    }
 }
 
 #[cfg(test)]
