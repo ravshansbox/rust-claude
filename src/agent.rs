@@ -11,6 +11,7 @@ mod http;
 mod queue;
 mod request;
 pub(crate) mod retry;
+mod sessions;
 mod shell;
 mod stats;
 mod stream;
@@ -27,7 +28,7 @@ use crate::{
     images::Image,
     mcp::Mcp,
     models,
-    session::{Session, SessionSummary},
+    session::Session,
     skills::{self, Skills},
     tools,
 };
@@ -119,27 +120,6 @@ impl Agent {
         self.credentials.take_renewal_notice()
     }
 
-    pub async fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
-        let id = self.session.id.clone();
-        tokio::task::spawn_blocking(move || Session::list_except(&id)).await?
-    }
-
-    pub async fn resume(&mut self, id: &str) -> Result<Vec<Value>> {
-        let id = id.to_string();
-        let (session, messages) = tokio::task::spawn_blocking(move || Session::load(&id)).await??;
-        self.session = session;
-        self.messages.clone_from(&messages);
-        self.background = tools::background::Background::default();
-        Ok(messages)
-    }
-
-    pub fn new_session(&mut self) -> Result<()> {
-        self.session = Session::new()?;
-        self.messages.clear();
-        self.background = tools::background::Background::default();
-        Ok(())
-    }
-
     pub async fn prompt(
         &mut self,
         prompt: &str,
@@ -166,15 +146,6 @@ impl Agent {
         }));
         self.session.save(&self.messages)?;
         Ok(output)
-    }
-
-    /// Saves the session after `error` stopped a prompt or compaction. A save
-    /// that also fails is reported after `error`, which stays visible.
-    fn save_after_failure(&mut self, error: anyhow::Error) -> anyhow::Error {
-        match self.session.save(&self.messages) {
-            Ok(()) => error,
-            Err(save_error) => anyhow!("{error:#}; failed to save session: {save_error:#}"),
-        }
     }
 
     fn push_prompt(&mut self, prompt: &str, images: &[Image]) -> Result<()> {
