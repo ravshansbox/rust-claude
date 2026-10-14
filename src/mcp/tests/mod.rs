@@ -158,6 +158,7 @@ struct HttpReply {
     status: u16,
     headers: Vec<(String, String)>,
     body: String,
+    delay: Duration,
 }
 
 impl HttpReply {
@@ -166,6 +167,7 @@ impl HttpReply {
             status: 200,
             headers: vec![("content-type".into(), "application/json".into())],
             body: body.to_string(),
+            delay: Duration::ZERO,
         }
     }
 
@@ -177,6 +179,7 @@ impl HttpReply {
                 .iter()
                 .map(|event| format!("event: message\ndata: {event}\n\n"))
                 .collect(),
+            delay: Duration::ZERO,
         }
     }
 
@@ -185,6 +188,7 @@ impl HttpReply {
             status,
             headers: Vec::new(),
             body: body.into(),
+            delay: Duration::ZERO,
         }
     }
 
@@ -195,6 +199,11 @@ impl HttpReply {
     fn with_header(mut self, name: &str, value: &str) -> Self {
         self.headers.retain(|(existing, _)| existing != name);
         self.headers.push((name.into(), value.into()));
+        self
+    }
+
+    fn after(mut self, delay: Duration) -> Self {
+        self.delay = delay;
         self
     }
 }
@@ -225,6 +234,7 @@ async fn http_server(
                     tokio::time::sleep(Duration::from_secs(30)).await;
                     return;
                 }
+                tokio::time::sleep(reply.delay).await;
                 let mut response = format!(
                     "HTTP/1.1 {} X\r\ncontent-length: {}\r\nconnection: close\r\n",
                     reply.status,

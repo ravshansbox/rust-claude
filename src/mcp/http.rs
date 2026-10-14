@@ -156,6 +156,7 @@ impl Http {
         let mut delays = CONNECT_RETRY_DELAYS.iter();
         let mut renewed = false;
         loop {
+            drop(self.renewing.lock().await);
             let error = match self.post(message).await {
                 Ok(response) => return Ok(response),
                 Err(error) => error,
