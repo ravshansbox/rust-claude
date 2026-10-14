@@ -62,7 +62,7 @@ fn read_lines(
         // characters past the cut.
         let room = MAX_OUTPUT - text.len();
         (&mut reader)
-            .take(room as u64 + 4)
+            .take(u64::try_from(room + 4).unwrap_or(u64::MAX))
             .read_until(b'\n', &mut line)?;
         if line.is_empty() {
             if index == offset - 1 && offset > 1 {
