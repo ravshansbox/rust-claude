@@ -399,11 +399,10 @@ impl Agent {
 
     async fn request(
         &mut self,
-        messages: Vec<Value>,
+        mut messages: Vec<Value>,
         tool_choice: Option<Value>,
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Response> {
-        let mut messages = messages;
         self.session.inline_images(&mut messages)?;
         let mut attempt = 0;
         loop {
