@@ -35,7 +35,7 @@ use keys::{Action, handle_input, may_change_screen};
 use mcp_sign_in::{sign_in_to_mcp_server, sign_out_of_mcp_server};
 use message::Role;
 use opening::opening_app;
-use prompt_history::HistorySearch;
+use prompt_history::{HistorySearch, finish_history, history_writer, send_history};
 use ratatui::DefaultTerminal;
 use render::{BACKGROUND, THEME, Theme};
 use replay::handle_agent_event;
@@ -300,43 +300,6 @@ fn send_blocking(
     tokio::task::spawn_blocking(move || {
         let _ = events.send(event());
     });
-}
-
-fn send_history(app: &mut App, sender: &std::sync::mpsc::Sender<(PathBuf, history::Entry)>) {
-    for entry in app.unsaved_history.drain(..) {
-        let _ = sender.send(entry);
-    }
-}
-
-fn finish_history(
-    app: &mut App,
-    sender: std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
-    writer: std::thread::JoinHandle<()>,
-) {
-    send_history(app, &sender);
-    drop(sender);
-    let _ = writer.join();
-}
-
-/// Adds prompts to their history files one at a time, in order, on a thread
-/// of its own, so a lock held by another copy does not hold up the interface.
-/// It finishes the prompts sent to it once the sender is dropped.
-fn history_writer(
-    events: mpsc::UnboundedSender<UiEvent>,
-) -> (
-    std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
-    std::thread::JoinHandle<()>,
-) {
-    let (sender, entries) = std::sync::mpsc::channel::<(PathBuf, history::Entry)>();
-    let writer = std::thread::spawn(move || {
-        for (path, entry) in entries {
-            if let Err(error) = history::append(&path, &entry) {
-                let notice = format!("failed to save prompt history: {error:#}");
-                send_notice(&events, notice);
-            }
-        }
-    });
-    (sender, writer)
 }
 
 fn send_changed_effort(

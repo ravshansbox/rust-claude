@@ -1,6 +1,7 @@
-use super::{App, message::Role};
+use super::{App, UiEvent, message::Role, send_notice};
 use crate::{history, session};
 use std::path::PathBuf;
+use tokio::sync::mpsc;
 
 pub(super) struct HistorySearch {
     pub(super) all: bool,
@@ -100,6 +101,46 @@ impl App {
         self.cursor = self.input.len();
         self.commands_dismissed = self.history_index.is_some();
     }
+}
+
+pub(super) fn send_history(
+    app: &mut App,
+    sender: &std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
+) {
+    for entry in app.unsaved_history.drain(..) {
+        let _ = sender.send(entry);
+    }
+}
+
+pub(super) fn finish_history(
+    app: &mut App,
+    sender: std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
+    writer: std::thread::JoinHandle<()>,
+) {
+    send_history(app, &sender);
+    drop(sender);
+    let _ = writer.join();
+}
+
+/// Adds prompts to their history files one at a time, in order, on a thread
+/// of its own, so a lock held by another copy does not hold up the interface.
+/// It finishes the prompts sent to it once the sender is dropped.
+pub(super) fn history_writer(
+    events: mpsc::UnboundedSender<UiEvent>,
+) -> (
+    std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
+    std::thread::JoinHandle<()>,
+) {
+    let (sender, entries) = std::sync::mpsc::channel::<(PathBuf, history::Entry)>();
+    let writer = std::thread::spawn(move || {
+        for (path, entry) in entries {
+            if let Err(error) = history::append(&path, &entry) {
+                let notice = format!("failed to save prompt history: {error:#}");
+                send_notice(&events, notice);
+            }
+        }
+    });
+    (sender, writer)
 }
 
 #[cfg(test)]
