@@ -140,7 +140,8 @@ async fn run_print(
             if let Err(error) = agent.cancel_unsent(prompt, images) {
                 eprintln!("failed to save session: {error}");
             }
-            return interrupted(agent, status).await;
+            drop(agent);
+            return self::stopped(status).await;
         }
     }
     for diagnostic in &agent.mcp.diagnostics {
@@ -171,7 +172,8 @@ async fn run_print(
             {
                 eprintln!("failed to save session: {error}");
             }
-            return interrupted(agent, status).await;
+            drop(agent);
+            return self::stopped(status).await;
         }
     };
     printer.finish(result)
@@ -208,11 +210,6 @@ impl StopSignals {
 
 /// How long stopping waits for a sign-in renewal to be saved.
 const RENEWAL_WAIT: Duration = Duration::from_secs(5);
-
-async fn interrupted(agent: agent::Agent, status: i32) -> Result<()> {
-    drop(agent);
-    stopped(status).await
-}
 
 /// Exits after a stop signal, once a sign-in renewal in progress is saved.
 async fn stopped(status: i32) -> Result<()> {
