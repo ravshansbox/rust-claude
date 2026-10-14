@@ -124,7 +124,31 @@ pub(super) async fn agent_task(
             let _ = events.send(UiEvent::Cancelled(result));
             continue;
         }
-        if let Request::Shell(command) = request {
+        let Some((prompt, effort)) =
+            handle_request(&mut agent, request, &mut cancel, &events).await
+        else {
+            continue;
+        };
+        run_turn(&mut agent, prompt, effort, &mut cancel, &events).await;
+        send_stats(&agent, &events);
+    }
+}
+
+/// Handles `request`, and returns the prompt and effort of a turn it starts.
+async fn handle_request(
+    agent: &mut Agent,
+    request: Request,
+    cancel: &mut mpsc::UnboundedReceiver<()>,
+    events: &mpsc::UnboundedSender<UiEvent>,
+) -> Option<(Option<(String, Vec<Image>)>, &'static str)> {
+    match request {
+        Request::Prompt(prompt, images, effort) => return Some((Some((prompt, images)), effort)),
+        Request::Background(message) => {
+            let _ = events.send(UiEvent::Background(message.clone()));
+            return Some((Some((message, Vec::new())), agent.effort));
+        }
+        Request::Compact(effort) => return Some((None, effort)),
+        Request::Shell(command) => {
             while cancel.try_recv().is_ok() {}
             tokio::select! {
                 result = agent.shell(&command) => {
@@ -134,50 +158,31 @@ pub(super) async fn agent_task(
                     let _ = events.send(UiEvent::Cancelled(Ok(())));
                 }
             }
-            send_stats(&agent, &events);
-            continue;
         }
-        let (prompt, effort) = match request {
-            Request::Prompt(prompt, images, effort) => (Some((prompt, images)), effort),
-            Request::Background(message) => {
-                let _ = events.send(UiEvent::Background(message.clone()));
-                (Some((message, Vec::new())), agent.effort)
-            }
-            Request::Compact(effort) => (None, effort),
-            Request::Shell(_) => continue,
-            Request::ReplaceMcpServer(started) => {
-                let _ = events.send(UiEvent::McpServer(agent.mcp.replace(started)));
-                send_stats(&agent, &events);
-                continue;
-            }
-            Request::ListSessions => {
-                let _ = events.send(UiEvent::Sessions(agent.list_sessions().await));
-                continue;
-            }
-            Request::Resume(id) => {
-                let _ = events.send(UiEvent::Resumed(agent.resume(&id).await));
-                send_stats(&agent, &events);
-                continue;
-            }
-            Request::SetModel(model) => {
-                agent.effort = models::supported_effort(&model, agent.effort);
-                agent.model = model;
-                send_stats(&agent, &events);
-                continue;
-            }
-            Request::SetEffort(effort) => {
-                agent.effort = effort;
-                continue;
-            }
-            Request::NewSession => {
-                let _ = events.send(UiEvent::NewSession(agent.new_session()));
-                send_stats(&agent, &events);
-                continue;
-            }
-        };
-        run_turn(&mut agent, prompt, effort, &mut cancel, &events).await;
-        send_stats(&agent, &events);
+        Request::ReplaceMcpServer(started) => {
+            let _ = events.send(UiEvent::McpServer(agent.mcp.replace(started)));
+        }
+        Request::ListSessions => {
+            let _ = events.send(UiEvent::Sessions(agent.list_sessions().await));
+            return None;
+        }
+        Request::Resume(id) => {
+            let _ = events.send(UiEvent::Resumed(agent.resume(&id).await));
+        }
+        Request::SetModel(model) => {
+            agent.effort = models::supported_effort(&model, agent.effort);
+            agent.model = model;
+        }
+        Request::SetEffort(effort) => {
+            agent.effort = effort;
+            return None;
+        }
+        Request::NewSession => {
+            let _ = events.send(UiEvent::NewSession(agent.new_session()));
+        }
     }
+    send_stats(agent, events);
+    None
 }
 
 async fn run_turn(
