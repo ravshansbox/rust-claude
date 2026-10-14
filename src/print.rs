@@ -16,7 +16,7 @@ pub async fn run<Out: Write, Err: Write>(
     checkpoint: &mut Option<usize>,
 ) -> anyhow::Result<()> {
     turn(agent, printer, prompt, images, checkpoint).await?;
-    while let Some(message) = agent.next_background().await {
+    while let Some(message) = agent.background.next().await {
         printer.flush_reads();
         if let Some((summary, output)) = tools::background::display(&message) {
             printer.tool(&tui::tool_message(

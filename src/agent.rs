@@ -6,7 +6,6 @@ use std::{
 use anyhow::{Result, anyhow, bail};
 use serde_json::{Value, json};
 
-mod background;
 mod compact;
 mod context;
 mod queue;
@@ -151,7 +150,7 @@ pub struct Agent {
     /// Whether this agent runs a task for another agent. A subagent cannot
     /// start subagents or background commands, and its conversation is not saved.
     subagent: bool,
-    background: tools::background::Background,
+    pub(crate) background: tools::background::Background,
 }
 
 impl Agent {
@@ -544,7 +543,9 @@ impl Agent {
         });
         let result = if name == tools::agent::NAME && !self.subagent {
             self.run_tasks(&block["input"], on_event).await
-        } else if let Some(result) = self.call_background(name, &block["input"]) {
+        } else if !self.subagent
+            && let Some(result) = self.background.call(name, &block["input"])
+        {
             on_event(AgentEvent::Stats(self.stats()));
             result.map(Value::from)
         } else {

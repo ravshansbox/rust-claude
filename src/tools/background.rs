@@ -46,6 +46,13 @@ impl Drop for Running {
 }
 
 impl Background {
+    pub fn call(&mut self, name: &str, input: &Value) -> Option<Result<String, String>> {
+        if runs_in_background(name, input) {
+            return Some(self.start(input));
+        }
+        (name == STOP).then(|| self.stop(input))
+    }
+
     pub fn start(&mut self, input: &Value) -> Result<String, String> {
         let command = argument(input, "command")?.to_string();
         let (child, timeout) = bash::start(input)?;
