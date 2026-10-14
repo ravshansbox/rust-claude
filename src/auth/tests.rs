@@ -5,7 +5,7 @@ use crate::agent::{
     test_support::{self, MockApi, Reply, text_reply},
 };
 use serde_json::{Value, json};
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::{TcpListener, TcpStream},
@@ -147,14 +147,14 @@ async fn read_body(stream: &mut TcpStream) -> Value {
     }
 }
 
-fn no_credentials_file() -> std::path::PathBuf {
+fn no_credentials_file() -> PathBuf {
     let path = credentials_path().unwrap();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let _ = std::fs::remove_file(&path);
     path
 }
 
-fn credentials_file(saved: &str) -> std::path::PathBuf {
+fn credentials_file(saved: &str) -> PathBuf {
     let path = credentials_path().unwrap();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     std::fs::write(&path, saved).unwrap();
