@@ -19,7 +19,7 @@ use crate::{
 };
 use anyhow::Result;
 use ratatui::layout::Rect;
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 const VERSION_LINE: &str = concat!("Rust Coding Agent v", env!("CARGO_PKG_VERSION"));
 
@@ -46,8 +46,8 @@ impl Activity {
     }
 }
 
-impl std::fmt::Display for Activity {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+impl fmt::Display for Activity {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         formatter.write_str(match self {
             Self::Working => "working",
             Self::Compacting => "compacting",
