@@ -1,5 +1,4 @@
 use std::{
-    fmt::Write as _,
     fs::{File, TryLockError},
     io::{BufRead, BufReader, Read, Write},
     path::{Path, PathBuf},
@@ -36,12 +35,7 @@ fn sessions_directory() -> Result<PathBuf> {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    bytes
-        .iter()
-        .fold(String::with_capacity(bytes.len() * 2), |mut hex, byte| {
-            let _ = write!(hex, "{byte:02x}");
-            hex
-        })
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn new_uuid() -> Result<String> {
@@ -143,20 +137,17 @@ impl Session {
     }
 
     pub fn list_except(id: &str) -> Result<Vec<SessionSummary>> {
-        let mut summaries = Vec::new();
-        for file in session_files(&sessions_directory()?)? {
-            if file.id == id {
-                continue;
-            }
-            let Ok(preview) = read_preview(&file.path) else {
-                continue;
-            };
-            summaries.push(SessionSummary {
-                id: file.id,
-                modified: file.modified,
-                preview,
-            });
-        }
+        let mut summaries: Vec<SessionSummary> = session_files(&sessions_directory()?)?
+            .into_iter()
+            .filter(|file| file.id != id)
+            .filter_map(|file| {
+                Some(SessionSummary {
+                    preview: read_preview(&file.path).ok()?,
+                    id: file.id,
+                    modified: file.modified,
+                })
+            })
+            .collect();
         summaries.sort_by_key(|summary| std::cmp::Reverse(summary.modified));
         Ok(summaries)
     }
@@ -238,28 +229,23 @@ fn session_files(directory: &Path) -> Result<Vec<SessionFile>> {
     if !directory.exists() {
         return Ok(Vec::new());
     }
-    let mut files = Vec::new();
-    for entry in std::fs::read_dir(directory)? {
-        let path = entry?.path();
-        if path
-            .extension()
-            .is_none_or(|extension| extension != "jsonl")
-        {
-            continue;
-        }
-        let Some(id) = path.file_stem().and_then(|stem| stem.to_str()) else {
-            continue;
-        };
-        let Ok(modified) = std::fs::metadata(&path).and_then(|metadata| metadata.modified()) else {
-            continue;
-        };
-        files.push(SessionFile {
-            id: id.to_string(),
-            path,
-            modified,
-        });
-    }
-    Ok(files)
+    let paths = std::fs::read_dir(directory)?
+        .map(|entry| entry.map(|entry| entry.path()))
+        .collect::<std::io::Result<Vec<_>>>()?;
+    Ok(paths
+        .into_iter()
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "jsonl")
+        })
+        .filter_map(|path| {
+            let id = path.file_stem()?.to_str()?.to_string();
+            let modified = std::fs::metadata(&path)
+                .and_then(|metadata| metadata.modified())
+                .ok()?;
+            Some(SessionFile { id, path, modified })
+        })
+        .collect())
 }
 
 fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
