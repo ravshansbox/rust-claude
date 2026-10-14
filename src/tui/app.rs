@@ -19,46 +19,13 @@ use crate::{
 };
 use anyhow::Result;
 use ratatui::layout::Rect;
-use std::{fmt, path::PathBuf};
+use std::path::PathBuf;
+
+mod activity;
+
+pub(super) use activity::Activity;
 
 const VERSION_LINE: &str = concat!("Rust Coding Agent v", env!("CARGO_PKG_VERSION"));
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) enum Activity {
-    Working,
-    Compacting,
-    Running,
-    Cancelling,
-    Resuming,
-    StartingNewSession,
-    LoadingSessions,
-}
-
-impl Activity {
-    /// Whether Esc can stop it.
-    pub(super) fn can_cancel(self) -> bool {
-        matches!(self, Self::Working | Self::Compacting | Self::Running)
-    }
-
-    /// Whether prompts sent meanwhile are queued for the model.
-    fn can_queue(self) -> bool {
-        matches!(self, Self::Working | Self::Compacting)
-    }
-}
-
-impl fmt::Display for Activity {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        formatter.write_str(match self {
-            Self::Working => "working",
-            Self::Compacting => "compacting",
-            Self::Running => "running",
-            Self::Cancelling => "cancelling",
-            Self::Resuming => "resuming",
-            Self::StartingNewSession => "starting new session",
-            Self::LoadingSessions => "loading sessions",
-        })
-    }
-}
 
 #[derive(Default)]
 pub(super) struct App {
