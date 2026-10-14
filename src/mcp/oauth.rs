@@ -62,8 +62,34 @@ pub(super) async fn request_tokens(
             .map(str::to_string)
             .or_else(|| saved.refresh_token.clone()),
         expires_at: expires_at(reply["expires_in"].as_u64(), EXPIRY_MARGIN),
+        user: user(&reply).or_else(|| saved.user.clone()),
         ..saved.clone()
     })
+}
+
+/// The user named in the ID token, or else in the access token, when
+/// either is a JWT.
+fn user(reply: &Value) -> Option<String> {
+    ["id_token", "access_token"]
+        .into_iter()
+        .filter_map(|token| jwt_claims(reply[token].as_str()?))
+        .find_map(|claims| {
+            ["preferred_username", "email", "name", "sub"]
+                .into_iter()
+                .find_map(|claim| claims[claim].as_str().filter(|value| !value.is_empty()))
+                .map(str::to_string)
+        })
+}
+
+fn jwt_claims(token: &str) -> Option<Value> {
+    use base64::Engine;
+    let [_, payload, _] = token.split('.').collect::<Vec<_>>()[..] else {
+        return None;
+    };
+    let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD
+        .decode(payload.trim_end_matches('='))
+        .ok()?;
+    serde_json::from_slice(&payload).ok()
 }
 
 async fn send(

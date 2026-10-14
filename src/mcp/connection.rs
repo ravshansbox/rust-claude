@@ -143,6 +143,10 @@ impl Connection {
         self.send(json!({ "jsonrpc": "2.0", "method": method }))
     }
 
+    pub(super) fn user(&self) -> Option<String> {
+        self.session.as_ref()?.user()
+    }
+
     /// What to tell the user about the last sign-in renewal, until it is
     /// shown.
     pub(super) fn take_renewal_notice(&self) -> Option<String> {

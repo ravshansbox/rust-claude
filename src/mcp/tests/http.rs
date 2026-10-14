@@ -1,6 +1,21 @@
 use super::*;
 
 #[tokio::test]
+async fn sums_up_http_servers_without_a_sign_in_as_anonymous() {
+    let (url, _) = http_server(http_mcp).await;
+    let mut mcp = Mcp::default();
+    let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    assert_eq!(added.summary, "web (anonymous, 1 tools)");
+    let (url, _) = http_server(http_mcp).await;
+    let mut config = http_config(&url);
+    config
+        .headers
+        .insert("Authorization".into(), "Bearer secret".into());
+    let added = mcp.add(start("keyed".into(), Scope::Global, config).await);
+    assert_eq!(added.summary, "keyed (1 tools)");
+}
+
+#[tokio::test]
 async fn calls_http_server_tools() {
     let (url, requests) = http_server(http_mcp).await;
     let mut config = http_config(&url);

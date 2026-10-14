@@ -42,6 +42,7 @@ fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
             refresh_token: Some("r1".into()),
             expires_at: Some(expires_at),
             secret_from_config: false,
+            user: None,
         },
     )
     .unwrap();
@@ -373,11 +374,88 @@ async fn signs_in_to_an_http_server_with_oauth() {
     );
     assert_eq!(parameters["code_challenge"], challenge);
     let mut mcp = Mcp::default();
-    assert_eq!(
-        mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
-            .status,
-        "loaded global MCP server: web (1 tools)"
+    let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    assert_eq!(added.status, "loaded global MCP server: web (1 tools)");
+    assert_eq!(added.summary, "web (signed in, 1 tools)");
+}
+
+fn jwt(claims: &Value) -> String {
+    use base64::Engine;
+    let encode =
+        |value: &Value| base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(value.to_string());
+    format!(
+        "{}.{}.signature",
+        encode(&json!({ "alg": "RS256" })),
+        encode(claims)
+    )
+}
+
+/// Signs in to a server whose token endpoint adds `tokens` to its reply,
+/// and returns the summary of the server started with that sign-in.
+async fn summary_after_sign_in(tokens: Value) -> String {
+    let bearer = format!(
+        "Bearer {}",
+        tokens["access_token"].as_str().unwrap_or("issued")
     );
+    let (url, _) = oauth_server_with(move |base, request| {
+        if request.headers.get("authorization") == Some(&bearer) {
+            return http_mcp(request);
+        }
+        let mut reply = oauth_mcp(base, request);
+        if request.path == "/token" && reply.status == 200 {
+            let mut body: Value = serde_json::from_str(&reply.body).unwrap();
+            for (key, value) in tokens.as_object().unwrap() {
+                body[key] = value.clone();
+            }
+            reply = HttpReply::json(&body);
+        }
+        reply
+    })
+    .await;
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
+    let authorize_url = sign_in.authorize_url.clone();
+    let finished = tokio::spawn(sign_in.finish());
+    visit_callback(&authorize_url, "the-code", None).await;
+    assert_eq!(finished.await.unwrap(), Ok(()));
+    let mut mcp = Mcp::default();
+    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await)
+        .summary
+}
+
+#[tokio::test]
+async fn sums_up_a_signed_in_server_by_the_user_in_its_id_token() {
+    let _file = AUTH_FILE.read().await;
+    let id_token = jwt(&json!({
+        "sub": "123",
+        "email": "alice@example.com",
+        "preferred_username": "alice",
+    }));
+    assert_eq!(
+        summary_after_sign_in(json!({ "id_token": id_token })).await,
+        "web (alice, 1 tools)"
+    );
+}
+
+#[tokio::test]
+async fn sums_up_a_signed_in_server_by_the_user_in_its_access_token() {
+    let _file = AUTH_FILE.read().await;
+    let access_token = jwt(&json!({ "sub": "123", "email": "alice@example.com" }));
+    let summary = summary_after_sign_in(json!({ "access_token": access_token })).await;
+    assert_eq!(summary, "web (alice@example.com, 1 tools)");
+}
+
+#[tokio::test]
+async fn keeps_the_user_when_renewed_tokens_do_not_name_one() {
+    let _file = AUTH_FILE.read().await;
+    let (url, _) = http_server(signed_in_mcp).await;
+    save_tokens(&url, "stale", now_millis() - 1);
+    let mut saved = oauth::load(&url).unwrap();
+    saved.user = Some("alice".into());
+    oauth::save(&url, &saved).unwrap();
+    let mut mcp = Mcp::default();
+    let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    assert_eq!(added.summary, "web (alice, 1 tools)");
+    assert_eq!(oauth::load(&url).unwrap().user.as_deref(), Some("alice"));
 }
 
 #[tokio::test]

@@ -356,8 +356,12 @@ impl Mcp {
         let (diagnostics, status) = self.add_server(started);
         let summary = match &status {
             Ok(_) => {
-                let tools = self.servers.last().map_or(0, |server| server.tools.len());
-                format!("{name} ({tools} tools)")
+                let server = self.servers.last();
+                let tools = server.map_or(0, |server| server.tools.len());
+                match server.and_then(|server| server.connection.user()) {
+                    Some(user) => format!("{name} ({user}, {tools} tools)"),
+                    None => format!("{name} ({tools} tools)"),
+                }
             }
             Err(failed) => {
                 sign_in_summary(&name, failed).unwrap_or_else(|| format!("{name} (failed)"))

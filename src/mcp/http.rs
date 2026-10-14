@@ -92,6 +92,15 @@ impl OAuthSession {
 pub(super) struct HttpSession(Arc<Http>);
 
 impl HttpSession {
+    /// Who the server acts for, when it signs in with OAuth.
+    pub(super) fn user(&self) -> Option<String> {
+        let oauth = self.0.oauth.as_ref()?;
+        Some(match oauth.current() {
+            None => "anonymous".into(),
+            Some(saved) => saved.user.unwrap_or_else(|| "signed in".into()),
+        })
+    }
+
     pub(super) fn take_renewal_notice(&self) -> Option<String> {
         let oauth = self.0.oauth.as_ref()?;
         oauth.renewal_notice.lock().ok()?.take()

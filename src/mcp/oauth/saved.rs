@@ -25,6 +25,9 @@ pub(in crate::mcp) struct Saved {
     /// When the access token is renewed, in milliseconds since 1970.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expires_at: Option<u128>,
+    /// Who signed in, as named in the tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user: Option<String>,
     /// Whether `client_secret` comes from mcp.json, so it is not saved.
     #[serde(skip)]
     pub secret_from_config: bool,
