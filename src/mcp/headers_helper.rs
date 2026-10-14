@@ -1,6 +1,5 @@
 use std::{collections::HashMap, process::Stdio, time::Duration};
 
-use serde_json::Value;
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::http::MAX_ERROR_BODY;
@@ -63,20 +62,28 @@ impl HeadersHelper {
                 format!("headersHelper exited with {status}: {stderr}")
             });
         }
-        let invalid = || "headersHelper must print a JSON object of strings".to_string();
-        let headers: HashMap<String, Value> =
-            serde_json::from_slice(&stdout).map_err(|_| invalid())?;
-        let mut map = reqwest::header::HeaderMap::new();
-        for (name, value) in headers {
-            let value = value.as_str().ok_or_else(invalid)?;
-            let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| format!("headersHelper gave invalid header name {name:?}"))?;
-            let value = reqwest::header::HeaderValue::from_str(value)
-                .map_err(|_| format!("headersHelper gave invalid value for header {name}"))?;
-            map.insert(header_name, value);
-        }
-        Ok(map)
+        let headers: HashMap<String, String> = serde_json::from_slice(&stdout)
+            .map_err(|_| "headersHelper must print a JSON object of strings".to_string())?;
+        header_map(&headers, "headersHelper gave ", |_, value| {
+            Ok(value.to_string())
+        })
     }
+}
+
+pub(super) fn header_map(
+    headers: &HashMap<String, String>,
+    prefix: &str,
+    value: impl Fn(&str, &str) -> Result<String, String>,
+) -> Result<reqwest::header::HeaderMap, String> {
+    let mut map = reqwest::header::HeaderMap::new();
+    for (name, text) in headers {
+        let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+            .map_err(|_| format!("{prefix}invalid header name {name:?}"))?;
+        let value = reqwest::header::HeaderValue::from_str(&value(name, text)?)
+            .map_err(|_| format!("{prefix}invalid value for header {name}"))?;
+        map.insert(header_name, value);
+    }
+    Ok(map)
 }
 
 async fn read_all(mut reader: impl AsyncRead + Unpin) -> Vec<u8> {

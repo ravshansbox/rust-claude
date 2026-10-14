@@ -11,7 +11,7 @@ use super::{
     DEFAULT_TIMEOUT, MAX_LINE, NEEDS_SIGN_IN,
     config_file::{ServerConfig, expand_variables, uses_oauth},
     connection::{Connection, Pending, handle_message},
-    headers_helper::HeadersHelper,
+    headers_helper::{HeadersHelper, header_map},
     oauth,
 };
 
@@ -528,16 +528,10 @@ impl Connection {
         if !(url.starts_with("http://") || url.starts_with("https://")) {
             return Err("url must be an http or https URL".into());
         }
-        let mut headers = reqwest::header::HeaderMap::new();
-        for (name, value) in &config.headers {
-            let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
-                .map_err(|_| format!("invalid header name {name:?}"))?;
-            let value = expand_variables(value)
-                .map_err(|variable| format!("header {name} uses {variable}, which is not set"))?;
-            let value = reqwest::header::HeaderValue::from_str(&value)
-                .map_err(|_| format!("invalid value for header {name}"))?;
-            headers.insert(header_name, value);
-        }
+        let headers = header_map(&config.headers, "", |name, value| {
+            expand_variables(value)
+                .map_err(|variable| format!("header {name} uses {variable}, which is not set"))
+        })?;
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(30))
             .build()
