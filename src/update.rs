@@ -2,6 +2,7 @@ use std::{
     ffi::{OsStr, OsString},
     io::{self, Cursor},
     path::{Path, PathBuf},
+    process::Stdio,
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
@@ -272,7 +273,7 @@ impl Updater {
         let output = command
             .arg("--path")
             .arg(folder.join("rust-coding-agent"))
-            .stdin(std::process::Stdio::null())
+            .stdin(Stdio::null())
             .output()
             .await
             .context("running cargo")?;
@@ -297,7 +298,7 @@ impl Updater {
         let Ok(output) = tokio::process::Command::new(rustc)
             .current_dir(folder)
             .arg("-vV")
-            .stdin(std::process::Stdio::null())
+            .stdin(Stdio::null())
             .output()
             .await
         else {
