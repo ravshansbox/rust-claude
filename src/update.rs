@@ -1,22 +1,23 @@
 use std::{
     ffi::OsStr,
-    io::{self, Cursor},
+    io,
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
     time::Instant,
 };
 
 use anyhow::{Context, Result};
-use serde::Deserialize;
 
 use crate::{config, settings::Settings};
 
 mod alias;
 mod build;
+mod download;
 mod progress;
 
 pub use alias::link_alias_beside_this_program;
 use alias::link_alias_to;
+use download::Release;
 pub use progress::Progress;
 
 pub const RELEASES_URL: &str =
@@ -26,19 +27,6 @@ const ASSET: &str = "rust-coding-agent.zip";
 const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
 const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
 static RUNS: AtomicUsize = AtomicUsize::new(0);
-
-#[derive(Deserialize)]
-struct Release {
-    tag_name: String,
-    #[serde(default)]
-    assets: Vec<Asset>,
-}
-
-#[derive(Deserialize)]
-struct Asset {
-    name: String,
-    browser_download_url: String,
-}
 
 pub struct Updater {
     pub http: reqwest::Client,
@@ -162,64 +150,6 @@ impl Updater {
             .map_err(|error| Progress::BuildFailed(format!("{error:#}"), started.elapsed()))?;
         report(Progress::Built(started.elapsed()));
         Ok(())
-    }
-
-    fn get(&self, url: &str) -> reqwest::RequestBuilder {
-        self.http
-            .get(url)
-            .header(reqwest::header::USER_AGENT, PACKAGE)
-    }
-
-    async fn latest_release(&self) -> Result<Release> {
-        Ok(self
-            .get(&self.releases_url)
-            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
-            .send()
-            .await?
-            .error_for_status()?
-            .json()
-            .await?)
-    }
-
-    async fn fetch(&self, url: &str) -> Result<Vec<u8>> {
-        Ok(self
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?
-            .into())
-    }
-
-    /// Downloads the zip and unpacks it, once its signature shows it was
-    /// made with the release key.
-    async fn download(
-        &self,
-        url: &str,
-        signature_url: &str,
-        version: &str,
-        folder: &Path,
-    ) -> Result<()> {
-        let bytes = self.fetch(url).await?;
-        let signature = self.fetch(signature_url).await?;
-        let signed_as = minisign_verify::PublicKey::from_base64(self.public_key)
-            .and_then(|key| {
-                let signature =
-                    minisign_verify::Signature::decode(&String::from_utf8_lossy(&signature))?;
-                key.verify(&bytes, &signature, false)?;
-                Ok(signature.trusted_comment().to_string())
-            })
-            .map_err(|_| anyhow::anyhow!("the signature of {ASSET} is not valid"))?;
-        if signed_as.strip_prefix("rust-coding-agent ") != Some(version) {
-            anyhow::bail!("{ASSET} is signed as {signed_as}, not {version}");
-        }
-        let target = folder.to_path_buf();
-        tokio::task::spawn_blocking(move || {
-            zip::ZipArchive::new(Cursor::new(bytes))?.extract(target)
-        })
-        .await?
-        .with_context(|| format!("unpacking {ASSET}"))
     }
 }
 
