@@ -1,5 +1,4 @@
 use super::{
-    display_model,
     files::FileList,
     mcp_status::McpGroup,
     message::{ChatMessage, Role},
@@ -10,7 +9,7 @@ use crate::{
     agent::{Queue, Stats},
     history,
     images::Image,
-    mcp, models,
+    mcp,
     skills::Skill,
     tools,
     update::Progress,
@@ -20,6 +19,7 @@ use std::path::PathBuf;
 
 mod activity;
 mod input;
+mod model;
 mod queue;
 mod tool_messages;
 
@@ -200,39 +200,6 @@ impl App {
 
     pub(super) fn scroll_to_bottom(&mut self) {
         self.scroll_from_bottom = 0;
-    }
-
-    pub(super) fn cycle_effort(&mut self) {
-        let levels = models::effort_levels(&self.model);
-        let index = levels
-            .iter()
-            .position(|level| *level == self.effort)
-            .map_or(0, |index| (index + 1) % levels.len());
-        self.effort = levels[index];
-    }
-
-    /// Returns whether `name` is an effort level.
-    pub(super) fn set_effort(&mut self, name: &str) -> bool {
-        if let Some(level) = models::find_effort(&self.model, name) {
-            self.effort = level;
-            self.push(Role::Event, format!("effort: {level}"));
-            true
-        } else {
-            self.push(
-                Role::Event,
-                format!(
-                    "unknown effort level: {name} (options: {})",
-                    models::effort_levels(&self.model).join(", ")
-                ),
-            );
-            false
-        }
-    }
-
-    pub(super) fn set_model(&mut self, model: &str) {
-        self.model = model.into();
-        self.effort = models::supported_effort(model, self.effort);
-        self.push(Role::Event, format!("model: {}", display_model(model)));
     }
 
     pub(super) fn clear_session(&mut self) {
