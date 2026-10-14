@@ -1,7 +1,7 @@
 use std::{
     cmp::Reverse,
     fs::{File, TryLockError},
-    io::{BufRead, BufReader, Read, Write},
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
     time::{Duration, SystemTime},
 };
@@ -116,11 +116,7 @@ impl Session {
             lines.push(b'\n');
         }
         let length = file.metadata()?.len();
-        if let Err(error) = file.write_all(&lines) {
-            // Remove a partly written line, so the next save starts on a new line.
-            let _ = file.set_len(length);
-            return Err(error.into());
-        }
+        config::append_whole(file, length, &lines)?;
         self.saved += new_messages.len();
         self.drops_mismatched_thinking_unsaved = false;
         Ok(())

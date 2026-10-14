@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    io::{Read, Seek, SeekFrom, Write},
+    io::{Read, Seek, SeekFrom},
     path::{Path, PathBuf},
 };
 
@@ -67,12 +67,7 @@ pub fn append(path: &Path, entry: &Entry) -> Result<()> {
             line.insert(0, '\n');
         }
     }
-    if let Err(error) = file.write_all(line.as_bytes()) {
-        // Remove a partly written line, so the next prompt starts on a new line.
-        let _ = file.set_len(length);
-        return Err(error.into());
-    }
-    Ok(())
+    Ok(config::append_whole(&mut file, length, line.as_bytes())?)
 }
 
 /// Reads every prompt in the history file, oldest first.

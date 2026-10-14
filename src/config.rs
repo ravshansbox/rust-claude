@@ -89,6 +89,16 @@ fn open_lock_file(path: &Path) -> io::Result<File> {
     private_file().create(true).write(true).open(path)
 }
 
+/// Appends `contents` to `file`, which is `length` long, and cuts off a
+/// partly written line on failure, so the next write starts on a new line.
+pub fn append_whole(file: &mut File, length: u64, contents: &[u8]) -> io::Result<()> {
+    let written = file.write_all(contents);
+    if written.is_err() {
+        let _ = file.set_len(length);
+    }
+    written
+}
+
 /// Writes a file only the user can read and write, through a temporary file
 /// renamed over it, so readers never see a half-written file and a failed
 /// write keeps the old one. A symlink there stays, and its file is replaced.
