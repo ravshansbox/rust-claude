@@ -23,15 +23,18 @@ fn open_in_browser(url: &str) {
     }
 }
 
+/// Shows `text` as a notice.
+fn send_notice(events: &mpsc::UnboundedSender<UiEvent>, text: String) {
+    let _ = events.send(UiEvent::Agent(AgentEvent::Notice(text)));
+}
+
 /// Signs in to the MCP server `name` in the browser, then starts it again.
 pub(super) async fn sign_in_to_mcp_server(
     name: String,
     events: mpsc::UnboundedSender<UiEvent>,
     requests: mpsc::UnboundedSender<Request>,
 ) {
-    let notice = |text: String| {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(text)));
-    };
+    let notice = |text| send_notice(&events, text);
     let sign_in = match mcp::begin_sign_in(&name).await {
         Ok(sign_in) => sign_in,
         Err(error) => return notice(format!("MCP sign-in to {name} failed: {error}")),
@@ -56,10 +59,7 @@ pub(super) async fn sign_out_of_mcp_server(
 ) {
     match mcp::sign_out(&name) {
         Ok(signed_out) => restart_mcp_server(name, signed_out, events, requests).await,
-        Err(error) => {
-            let notice = format!("MCP sign-out of {name} failed: {error}");
-            let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
-        }
+        Err(error) => send_notice(&events, format!("MCP sign-out of {name} failed: {error}")),
     }
 }
 
@@ -72,8 +72,7 @@ async fn restart_mcp_server(
     requests: mpsc::UnboundedSender<Request>,
 ) {
     let Some(server) = mcp::restart(&name) else {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
-        return;
+        return send_notice(&events, notice);
     };
     let _ = events.send(UiEvent::McpRestarting {
         name,
