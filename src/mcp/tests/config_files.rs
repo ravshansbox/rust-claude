@@ -34,7 +34,7 @@ fn reads_oauth_settings_from_global_and_project_configs() {
     let mut servers = BTreeMap::new();
     let mut diagnostics = Vec::new();
     read_config(file.path(), Scope::Project, &mut servers, &mut diagnostics);
-    assert!(diagnostics.is_empty());
+    assert_eq!(diagnostics, Vec::<String>::new());
     assert_eq!(servers["figma"].0, Scope::Project);
     assert_eq!(
         servers["figma"]
@@ -183,8 +183,8 @@ fn labels_servers_global_when_run_from_the_home_folder() {
     let (servers, overridden, diagnostics) =
         read_configs(Some(&home.join(".rust-coding-agent")), home);
     assert_eq!(servers["docs"].0, Scope::Global);
-    assert!(overridden.is_empty());
-    assert!(diagnostics.is_empty());
+    assert_eq!(overridden, Vec::<String>::new());
+    assert_eq!(diagnostics, Vec::<String>::new());
 }
 
 #[test]

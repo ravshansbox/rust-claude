@@ -413,7 +413,7 @@ async fn reports_each_server_as_it_starts() {
         ["MCP server test: skipped tool echo because its name clashes with test/echo"]
     );
     assert_eq!(added.status, "loaded global MCP server: test (0 tools)");
-    assert!(mcp.diagnostics.is_empty());
+    assert_eq!(mcp.diagnostics, Vec::<String>::new());
 }
 
 #[test]

@@ -99,7 +99,7 @@ async fn keeps_renewed_oauth_tokens_that_could_not_be_saved() {
         notices[0].starts_with("renewed the sign-in to MCP server web, but cannot save"),
         "{notices:?}"
     );
-    assert!(mcp.take_renewal_notices().is_empty());
+    assert_eq!(mcp.take_renewal_notices(), Vec::<String>::new());
 }
 
 #[tokio::test]
