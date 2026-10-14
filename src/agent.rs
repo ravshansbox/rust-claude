@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 mod compact;
 mod context;
+mod event;
 mod http;
 mod queue;
 pub(crate) mod retry;
@@ -30,6 +31,7 @@ use context::{
     active_messages, active_start, context_tokens, has_uncompacted, is_compaction,
     with_cache_breakpoint,
 };
+pub use event::AgentEvent;
 pub use http::http_client;
 pub use queue::{Queue, Queued, take_queued};
 use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
@@ -51,46 +53,6 @@ fn cancel_point(messages: &[Value], checkpoint: usize) -> usize {
         .iter()
         .rposition(|message| message["role"] == "user" || is_compaction(message))
         .map_or(checkpoint, |index| checkpoint + index + 1)
-}
-
-pub enum AgentEvent {
-    Text(String),
-    Thinking(String),
-    ToolStart {
-        name: String,
-        summary: String,
-        diff: Option<String>,
-    },
-    ToolDone {
-        name: String,
-        error: Option<String>,
-        note: Option<String>,
-    },
-    Stats(Stats),
-    Notice(String),
-    Queued(String),
-    /// A subagent started on task `task`, counting from 0.
-    TaskStart {
-        task: usize,
-        description: String,
-    },
-    /// The subagent on `task` has made `count` tool calls so far.
-    TaskToolCalls {
-        task: usize,
-        count: usize,
-    },
-    /// The latest stats of the subagent on `task`.
-    TaskStats {
-        task: usize,
-        stats: Stats,
-    },
-    /// The subagent on `task` finished with `reply` after `tool_calls` tool
-    /// calls, or failed or did not run, as the error tells the main agent.
-    TaskDone {
-        task: usize,
-        reply: Result<String, String>,
-        tool_calls: usize,
-    },
 }
 
 fn text_of(blocks: &[Value]) -> String {
