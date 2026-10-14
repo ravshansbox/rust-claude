@@ -1,4 +1,4 @@
-use super::super::parse_pasted_code;
+use super::super::login::parse_pasted_code;
 
 #[test]
 fn accepts_a_pasted_code_with_the_state_we_sent() {

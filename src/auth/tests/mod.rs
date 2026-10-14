@@ -1,4 +1,4 @@
-use super::{Credentials, credentials_path, exchange_code};
+use super::{Credentials, credentials_path, login::exchange_code};
 use crate::agent::{
     retry::retry_delay,
     test_support::{self, MockApi, Reply, text_reply},
