@@ -120,9 +120,8 @@ pub fn write_private_file(path: &Path, contents: &[u8]) -> io::Result<()> {
     };
     #[cfg(not(unix))]
     let permissions = None;
-    replace_file(path, contents, private_file(), |file| match permissions {
-        Some(permissions) => file.set_permissions(permissions),
-        None => Ok(()),
+    replace_file(path, contents, private_file(), |file| {
+        permissions.map_or(Ok(()), |permissions| file.set_permissions(permissions))
     })
 }
 
