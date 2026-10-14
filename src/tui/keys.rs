@@ -303,6 +303,50 @@ fn handle_suggestion_key(key: KeyEvent, app: &mut App) -> bool {
     true
 }
 
+fn effort_picker(app: &App) -> Picker {
+    let levels = models::effort_levels(&app.model);
+    Picker {
+        kind: PickerKind::Effort,
+        title: "Select effort level",
+        items: levels
+            .iter()
+            .map(|level| (level.to_string(), level.to_string()))
+            .collect(),
+        selected: levels
+            .iter()
+            .position(|level| *level == app.effort)
+            .unwrap_or_default(),
+    }
+}
+
+fn model_picker(current: &str) -> Picker {
+    Picker {
+        kind: PickerKind::Model,
+        title: "Select model",
+        items: models::known()
+            .map(|model| (model.to_string(), display_model(model).to_string()))
+            .collect(),
+        selected: models::known()
+            .position(|model| model == current)
+            .unwrap_or_default(),
+    }
+}
+
+fn mcp_action(argument: &str) -> Option<Action> {
+    match argument
+        .split_once(char::is_whitespace)
+        .map(|(action, server)| (action, server.trim()))
+    {
+        Some(("login", server)) if !server.is_empty() => {
+            Some(Action::McpSignIn(server.to_string()))
+        }
+        Some(("logout", server)) if !server.is_empty() => {
+            Some(Action::McpSignOut(server.to_string()))
+        }
+        _ => None,
+    }
+}
+
 fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Action)) -> bool {
     let trimmed = prompt.trim();
     let (command, argument) = trimmed
@@ -320,38 +364,13 @@ fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Action)) -> bo
             app.start(Activity::Compacting);
             act(Action::Compact(app.effort));
         }
-        "/effort" if argument.is_empty() => {
-            let levels = models::effort_levels(&app.model);
-            app.open_picker(Picker {
-                kind: PickerKind::Effort,
-                title: "Select effort level",
-                items: levels
-                    .iter()
-                    .map(|level| (level.to_string(), level.to_string()))
-                    .collect(),
-                selected: levels
-                    .iter()
-                    .position(|level| *level == app.effort)
-                    .unwrap_or_default(),
-            });
-        }
+        "/effort" if argument.is_empty() => app.open_picker(effort_picker(app)),
         "/effort" => {
             if !app.set_effort(argument) {
                 app.restore_input(prompt);
             }
         }
-        "/model" if argument.is_empty() => {
-            app.open_picker(Picker {
-                kind: PickerKind::Model,
-                title: "Select model",
-                items: models::known()
-                    .map(|model| (model.to_string(), display_model(model).to_string()))
-                    .collect(),
-                selected: models::known()
-                    .position(|model| model == app.model)
-                    .unwrap_or_default(),
-            });
-        }
+        "/model" if argument.is_empty() => app.open_picker(model_picker(&app.model)),
         "/model" if models::is_known(argument) => {
             app.set_model(argument);
             act(Action::SetModel(argument.to_string()));
@@ -364,17 +383,9 @@ fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Action)) -> bo
             app.start(Activity::LoadingSessions);
             act(Action::ListSessions);
         }
-        "/mcp" => match argument
-            .split_once(char::is_whitespace)
-            .map(|(action, server)| (action, server.trim()))
-        {
-            Some(("login", server)) if !server.is_empty() => {
-                act(Action::McpSignIn(server.to_string()));
-            }
-            Some(("logout", server)) if !server.is_empty() => {
-                act(Action::McpSignOut(server.to_string()));
-            }
-            _ => {
+        "/mcp" => match mcp_action(argument) {
+            Some(action) => act(action),
+            None => {
                 app.push(
                     Role::Event,
                     "usage: /mcp login <server> or /mcp logout <server>",
