@@ -75,7 +75,7 @@ fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
             .as_u64()
             .filter(|number| *number >= min)
             .map(Some)
-            .ok_or_else(|| format!("{key} must be at least 1")),
+            .ok_or_else(|| format!("{key} must be at least {min}")),
     }
 }
 

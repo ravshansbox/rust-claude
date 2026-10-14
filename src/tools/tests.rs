@@ -27,7 +27,7 @@ async fn rejects_invalid_numbers() {
         (
             "read",
             json!({ "path": "Cargo.toml", "offset": -5 }),
-            "offset must be at least 1",
+            "offset must be at least 0",
         ),
         (
             "bash",
