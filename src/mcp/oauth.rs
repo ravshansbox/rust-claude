@@ -479,10 +479,8 @@ pub(super) async fn begin(
             client_secret,
             token_endpoint: discovered.token_endpoint,
             resource: Some(discovered.resource),
-            access_token: String::new(),
-            refresh_token: None,
-            expires_at: None,
             secret_from_config,
+            ..Default::default()
         },
     })
 }

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 static FILE: Mutex<()> = Mutex::new(());
 
 /// The sign-in for one server URL, as saved in mcp-auth.json.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Default, Serialize, Deserialize)]
 pub(in crate::mcp) struct Saved {
     pub client_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
