@@ -175,33 +175,44 @@ pub(super) async fn agent_task(
                 continue;
             }
         };
-        agent.effort = effort;
-        while cancel.try_recv().is_ok() {}
-
-        let checkpoint = agent.messages().len();
-        let cancelled = {
-            let on_event = |event| {
-                let _ = events.send(UiEvent::Agent(event));
-            };
-            let run = async {
-                match &prompt {
-                    Some((prompt, images)) => agent.prompt(prompt, images, on_event).await,
-                    None => agent.compact(on_event).await,
-                }
-            };
-            tokio::select! {
-                result = run => {
-                    let _ = events.send(UiEvent::Done(result));
-                    false
-                }
-                _ = cancel.recv() => true,
-            }
-        };
-        if cancelled {
-            let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
-        }
+        run_turn(&mut agent, prompt, effort, &mut cancel, &events).await;
         send_stats(&agent, &events);
     }
+}
+
+async fn run_turn(
+    agent: &mut Agent,
+    prompt: Option<(String, Vec<Image>)>,
+    effort: &'static str,
+    cancel: &mut mpsc::UnboundedReceiver<()>,
+    events: &mpsc::UnboundedSender<UiEvent>,
+) {
+    agent.effort = effort;
+    while cancel.try_recv().is_ok() {}
+
+    let checkpoint = agent.messages().len();
+    let cancelled = {
+        let on_event = |event| {
+            let _ = events.send(UiEvent::Agent(event));
+        };
+        let run = async {
+            match &prompt {
+                Some((prompt, images)) => agent.prompt(prompt, images, on_event).await,
+                None => agent.compact(on_event).await,
+            }
+        };
+        tokio::select! {
+            result = run => {
+                let _ = events.send(UiEvent::Done(result));
+                false
+            }
+            _ = cancel.recv() => true,
+        }
+    };
+    if cancelled {
+        let _ = events.send(UiEvent::Cancelled(agent.cancel(checkpoint)));
+    }
+    send_stats(agent, events);
 }
 
 /// Requests the interface lets Esc cancel.
