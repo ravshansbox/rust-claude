@@ -1,5 +1,6 @@
 use std::{
     collections::BTreeMap,
+    fmt::Write,
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -9,6 +10,7 @@ use std::{
 use tokio::io::AsyncWriteExt;
 
 use super::config_file::{OAuthConfig, expand_variables, read_config};
+use super::tool::MAX_TOOL_NAME;
 use super::*;
 use crate::agent::test_support::read_chunk;
 use crate::auth::now_millis;
