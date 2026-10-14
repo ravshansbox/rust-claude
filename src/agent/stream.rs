@@ -206,10 +206,20 @@ fn finish_message(event: &Value, usage: &mut Usage, first_token: Option<Instant>
 }
 
 fn start_block(content: &mut Vec<Value>, block: Value, on_event: &mut impl FnMut(AgentEvent)) {
-    if block["type"] == "web_search_tool_result" {
-        let outcome = tools::web_search::outcome(&block["content"]);
+    let result = match block["type"].as_str() {
+        Some("web_search_tool_result") => Some((
+            tools::web_search::NAME,
+            tools::web_search::outcome(&block["content"]),
+        )),
+        Some("web_fetch_tool_result") => Some((
+            tools::web_fetch::NAME,
+            tools::web_fetch::outcome(&block["content"]),
+        )),
+        _ => None,
+    };
+    if let Some((name, outcome)) = result {
         on_event(AgentEvent::ToolDone {
-            name: tools::web_search::NAME.into(),
+            name: name.into(),
             note: outcome.as_ref().ok().cloned(),
             error: outcome.err(),
         });

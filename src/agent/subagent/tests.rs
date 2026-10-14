@@ -55,6 +55,7 @@ async fn runs_a_task_in_a_subagent_and_returns_its_final_reply() {
         "{}",
         child["tools"]
     );
+    assert!(tool_names(child).contains(&"web_fetch".to_string()));
     assert!(tool_names(&requests[0]).contains(&"bash_stop".to_string()));
     assert!(!tool_names(child).contains(&"bash_stop".to_string()));
     let background = |request: &Value| {

@@ -168,8 +168,10 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
             ))
         })
         .collect();
-    for message in messages {
+    let mut context_start = 0;
+    for (index, message) in messages.iter().enumerate() {
         if message["stop_reason"] == "compacted" {
+            context_start = index + 1;
             app.push(Role::Event, "compacted conversation");
             continue;
         }
@@ -201,9 +203,15 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
                     let name = block["name"].as_str().unwrap_or_default();
                     app.push_tool(name, tools::summary(name, &block["input"]), None);
                 }
-                ("assistant", "web_search_tool_result") => {
-                    let name = tools::web_search::NAME;
-                    match tools::web_search::outcome(&block["content"]) {
+                ("assistant", kind @ ("web_search_tool_result" | "web_fetch_tool_result")) => {
+                    let (name, outcome) = if kind == "web_search_tool_result" {
+                        let outcome = tools::web_search::outcome(&block["content"]);
+                        (tools::web_search::NAME, outcome)
+                    } else {
+                        let outcome = tools::web_fetch::outcome(&block["content"]);
+                        (tools::web_fetch::NAME, outcome)
+                    };
+                    match outcome {
                         Ok(note) => push_tool_note(app, name, &note),
                         Err(error) => push_tool_failure(app, name, &error),
                     }
@@ -214,7 +222,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
         }
         if role == "assistant"
             && let Some(blocks) = message["content"].as_array()
-            && let Some(sources) = tools::sources::sources(blocks)
+            && let Some(sources) = tools::sources::sources(&messages[context_start..=index], blocks)
         {
             append_reply(app, &sources);
         }

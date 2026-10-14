@@ -9,8 +9,9 @@ The agent can use these tools:
 - `agent`: run tasks in subagents. See [Subagents](#subagents)
 - `bash_stop`: stop a background command. See [Background commands](#background-commands)
 - `web_search`: search the web. See [Web search](#web-search)
+- `web_fetch`: read a web page or PDF. See [Web fetch](#web-fetch)
 
-At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, bash, bash_stop, edit, read, web_search, write`.
+At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, bash, bash_stop, edit, read, web_fetch, web_search, write`.
 
 The agent can also use tools from [MCP servers](mcp.md).
 
@@ -35,6 +36,12 @@ Subagents cannot run commands in the background or use `bash_stop`. They do not 
 `web_search` is Anthropic's [web search tool](https://docs.claude.com/en/docs/agents-and-tools/tool-use/web-search-tool) (`web_search_20250305`). It runs on Anthropic's servers and works with a Pro or Max sign-in. The model decides when to search, and there is no limit on searches. Subagents can use it too.
 
 Each search shows its query, such as `web_search latest stable Rust release`, followed by the number of results, such as `web_search: 9 results`, or why it failed, such as `web_search failed: too_many_requests`. When a reply cites pages, a `Sources:` list with each page's title and URL follows the reply. This works in the interface, in resumed sessions and in print mode, where the search lines go to standard error and the sources to standard output with the reply.
+
+## Web fetch
+
+`web_fetch` is Anthropic's [web fetch tool](https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-fetch-tool) (`web_fetch_20250910`). It runs on Anthropic's servers and works with a Pro or Max sign-in. It reads web pages as text and PDF files as documents, but not pages that need JavaScript to show their content. It can fetch only URLs that appear earlier in the conversation, for example in your prompt or in search results. Because it runs on Anthropic's servers, it cannot reach `localhost` or private networks; the agent can use `curl` through `bash` for those. The model decides when to fetch, and there is no limit on fetches or page size. Subagents can use it too.
+
+Each fetch shows its URL, such as `web_fetch https://example.com`, followed by the page title, or the URL when the page has none, such as `web_fetch: Example Domain`, or why it failed, such as `web_fetch failed: url_not_accessible`. Citations are turned on, so pages a reply cites are listed under `Sources:` as for web search, in the interface, in resumed sessions and in print mode.
 
 ## Paused replies
 

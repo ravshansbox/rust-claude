@@ -1,4 +1,4 @@
-use super::{agent, background, plural, web_search};
+use super::{agent, background, plural, web_fetch, web_search};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -7,6 +7,7 @@ pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "read" | "write" | "edit" => "path",
         web_search::NAME => "query",
+        web_fetch::NAME => "url",
         "bash" if background::runs_in_background(name, input) => {
             return "in the background".into();
         }

@@ -16,6 +16,7 @@ mod read;
 pub mod sources;
 #[cfg(test)]
 pub(crate) mod test_support;
+pub mod web_fetch;
 pub mod web_search;
 mod write;
 
@@ -40,6 +41,7 @@ pub fn definitions() -> Value {
         edit::definition(),
         agent::definition(),
         background::stop_definition(),
+        web_fetch::definition(),
         web_search::definition()
     ])
 }
