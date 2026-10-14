@@ -173,7 +173,7 @@ pub(super) async fn agent_task(
         agent.effort = effort;
         while cancel.try_recv().is_ok() {}
 
-        let checkpoint = agent.history_len();
+        let checkpoint = agent.messages().len();
         let cancelled = {
             let on_event = |event| {
                 let _ = events.send(UiEvent::Agent(event));

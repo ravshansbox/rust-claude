@@ -37,7 +37,7 @@ async fn turn<Out: Write, Err: Write>(
     images: &[Image],
     checkpoint: &mut Option<usize>,
 ) -> anyhow::Result<()> {
-    *checkpoint = Some(agent.history_len());
+    *checkpoint = Some(agent.messages().len());
     agent
         .prompt(prompt, images, |event| printer.event(event))
         .await?;

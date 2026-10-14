@@ -188,10 +188,6 @@ impl Agent {
         &self.messages
     }
 
-    pub fn history_len(&self) -> usize {
-        self.messages.len()
-    }
-
     pub fn take_renewal_notice(&mut self) -> Option<String> {
         self.credentials.take_renewal_notice()
     }
