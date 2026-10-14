@@ -5,7 +5,9 @@ use super::{
 use crate::tools::test_support::{TemporaryDir, TemporaryFile};
 use serde_json::json;
 use std::{
+    fs::File,
     io::Write,
+    path::PathBuf,
     time::{Duration, SystemTime},
 };
 
@@ -87,7 +89,7 @@ fn continues_latest_session_in_current_folder() {
             format!("{}\n", json!({ "type": "session", "cwd": folder })),
         )
         .unwrap();
-        std::fs::File::options()
+        File::options()
             .write(true)
             .open(&path)
             .and_then(|file| file.set_modified(now - Duration::from_secs(age)))
@@ -99,7 +101,7 @@ fn continues_latest_session_in_current_folder() {
 
 /// Saves the messages to a new session and closes it, returning its id
 /// and file.
-fn save_new(messages: &[serde_json::Value]) -> (String, std::path::PathBuf) {
+fn save_new(messages: &[serde_json::Value]) -> (String, PathBuf) {
     let mut session = Session::new().unwrap();
     session.save(messages).unwrap();
     let path = sessions_directory()
@@ -115,7 +117,7 @@ fn saves_session_folder_and_messages() {
     let loaded = Session::load(&id);
     let folder = read_folder(&path);
     std::fs::remove_file(&path).unwrap();
-    let home = std::path::PathBuf::from(std::env::var_os("HOME").unwrap());
+    let home = PathBuf::from(std::env::var_os("HOME").unwrap());
     assert!(!path.starts_with(home.join(".rust-coding-agent")));
     assert_eq!(loaded.unwrap().1, messages);
     assert_eq!(folder.unwrap(), Some(current_folder()));
@@ -319,7 +321,7 @@ fn lists_other_sessions_newest_first() {
             .save(&[json!({ "role": "user", "content": prompt })])
             .unwrap();
         let path = directory.join(format!("{}.jsonl", session.id));
-        std::fs::File::options()
+        File::options()
             .write(true)
             .open(&path)
             .unwrap()
