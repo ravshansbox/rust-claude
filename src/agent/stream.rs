@@ -59,12 +59,12 @@ impl Agent {
         (body, beta)
     }
 
-    pub(super) async fn stream_message(
+    async fn send_request(
         &mut self,
         messages: &[Value],
         tool_choice: Option<&Value>,
         on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<Response> {
+    ) -> Result<reqwest::Response> {
         let mut token = self.credentials.access_token(&self.http).await?;
         if let Some(notice) = self.credentials.take_renewal_notice() {
             on_event(AgentEvent::Notice(notice));
@@ -73,7 +73,7 @@ impl Agent {
         // The API may turn down a token before it expires, as when the
         // sign-in was revoked; renewing it is then worth one more try.
         let mut renewed = false;
-        let mut response = loop {
+        let response = loop {
             let response = self
                 .http
                 .post(format!("{}/v1/messages", self.api_base))
@@ -114,7 +114,16 @@ impl Agent {
             }
             bail!(message);
         }
+        Ok(response)
+    }
 
+    pub(super) async fn stream_message(
+        &mut self,
+        messages: &[Value],
+        tool_choice: Option<&Value>,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<Response> {
+        let mut response = self.send_request(messages, tool_choice, on_event).await?;
         let mut content = Vec::new();
         let mut partial_json = String::new();
         let mut input_error = None;
@@ -163,60 +172,15 @@ impl Agent {
                         content.push(block);
                     }
                     "content_block_delta" => {
-                        let delta = &mut event["delta"];
-                        let Some(block) = content.last_mut() else {
-                            continue;
-                        };
-                        let key = match delta["type"].as_str().unwrap_or_default() {
-                            "text_delta" => "text",
-                            "thinking_delta" => "thinking",
-                            "signature_delta" => "signature",
-                            "citations_delta" => {
-                                let citation = delta["citation"].take();
-                                match block.get_mut("citations") {
-                                    Some(Value::Array(citations)) => citations.push(citation),
-                                    _ => block["citations"] = Value::Array(vec![citation]),
-                                }
-                                continue;
-                            }
-                            "input_json_delta" => {
-                                partial_json
-                                    .push_str(delta["partial_json"].as_str().unwrap_or_default());
-                                continue;
-                            }
-                            _ => continue,
-                        };
-                        let addition = delta[key].as_str().unwrap_or_default();
-                        match block.get_mut(key) {
-                            Some(Value::String(text)) => text.push_str(addition),
-                            _ => block[key] = json!(addition),
-                        }
-                        match key {
-                            "text" => on_event(AgentEvent::Text(addition.into())),
-                            "thinking" => on_event(AgentEvent::Thinking(addition.into())),
-                            _ => {}
-                        }
+                        apply_delta(
+                            &mut content,
+                            &mut partial_json,
+                            &mut event["delta"],
+                            on_event,
+                        );
                     }
                     "content_block_stop" => {
-                        if let Some(block) = content.last_mut()
-                            && (block["type"] == "tool_use" || block["type"] == "server_tool_use")
-                            && !partial_json.is_empty()
-                        {
-                            match serde_json::from_str(&partial_json) {
-                                Ok(input) => block["input"] = input,
-                                Err(error) => input_error = Some(error),
-                            }
-                        }
-                        if let Some(block) = content.last()
-                            && block["type"] == "server_tool_use"
-                        {
-                            let name = block["name"].as_str().unwrap_or_default();
-                            on_event(AgentEvent::ToolStart {
-                                name: name.into(),
-                                summary: tools::summary(name, &block["input"]),
-                                diff: None,
-                            });
-                        }
+                        finish_block(&mut content, &partial_json, &mut input_error, on_event);
                     }
                     "message_delta" => {
                         stop_reason = event["delta"]["stop_reason"]
@@ -246,26 +210,100 @@ impl Agent {
             }
             buffer.drain(..start);
         }
-        if stop_reason.is_empty() {
-            bail!("response ended before the reply finished");
-        }
-        // A refusal is reported as such by the caller, which drops the reply
-        // along with any tool call it left unfinished.
-        if stop_reason != "refusal" {
-            if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use")
-            {
-                bail!("reply stopped ({stop_reason}) before its tool call finished");
-            }
-            if let Some(error) = input_error {
-                return Err(error.into());
-            }
-        }
+        check_finished(&stop_reason, &content, input_error)?;
         Ok(Response {
             content,
             stop_reason,
             usage,
             retried,
         })
+    }
+}
+
+fn check_finished(
+    stop_reason: &str,
+    content: &[Value],
+    input_error: Option<serde_json::Error>,
+) -> Result<()> {
+    if stop_reason.is_empty() {
+        bail!("response ended before the reply finished");
+    }
+    // A refusal is reported as such by the caller, which drops the reply
+    // along with any tool call it left unfinished.
+    if stop_reason != "refusal" {
+        if stop_reason != "tool_use" && content.iter().any(|block| block["type"] == "tool_use") {
+            bail!("reply stopped ({stop_reason}) before its tool call finished");
+        }
+        if let Some(error) = input_error {
+            return Err(error.into());
+        }
+    }
+    Ok(())
+}
+
+fn apply_delta(
+    content: &mut [Value],
+    partial_json: &mut String,
+    delta: &mut Value,
+    on_event: &mut impl FnMut(AgentEvent),
+) {
+    let Some(block) = content.last_mut() else {
+        return;
+    };
+    let key = match delta["type"].as_str().unwrap_or_default() {
+        "text_delta" => "text",
+        "thinking_delta" => "thinking",
+        "signature_delta" => "signature",
+        "citations_delta" => {
+            let citation = delta["citation"].take();
+            match block.get_mut("citations") {
+                Some(Value::Array(citations)) => citations.push(citation),
+                _ => block["citations"] = Value::Array(vec![citation]),
+            }
+            return;
+        }
+        "input_json_delta" => {
+            partial_json.push_str(delta["partial_json"].as_str().unwrap_or_default());
+            return;
+        }
+        _ => return,
+    };
+    let addition = delta[key].as_str().unwrap_or_default();
+    match block.get_mut(key) {
+        Some(Value::String(text)) => text.push_str(addition),
+        _ => block[key] = json!(addition),
+    }
+    match key {
+        "text" => on_event(AgentEvent::Text(addition.into())),
+        "thinking" => on_event(AgentEvent::Thinking(addition.into())),
+        _ => {}
+    }
+}
+
+fn finish_block(
+    content: &mut [Value],
+    partial_json: &str,
+    input_error: &mut Option<serde_json::Error>,
+    on_event: &mut impl FnMut(AgentEvent),
+) {
+    if let Some(block) = content.last_mut()
+        && (block["type"] == "tool_use" || block["type"] == "server_tool_use")
+        && !partial_json.is_empty()
+    {
+        match serde_json::from_str(partial_json) {
+            Ok(input) => block["input"] = input,
+            Err(error) => *input_error = Some(error),
+        }
+    }
+    if let Some(block) = content.last()
+        && block["type"] == "server_tool_use"
+    {
+        let name = block["name"].as_str().unwrap_or_default();
+        on_event(AgentEvent::ToolStart {
+            name: name.into(),
+            summary: tools::summary(name, &block["input"]),
+            diff: None,
+        });
     }
 }
 
