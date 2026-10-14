@@ -10,7 +10,7 @@ use crate::tui::{
 use crate::update::Progress;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use serde_json::json;
-use std::io;
+use std::{io, time::Duration};
 
 #[test]
 fn notifies_when_a_run_ends_while_the_terminal_is_unfocused() {
@@ -58,7 +58,7 @@ fn shows_queued_prompt_when_the_agent_adds_it() {
 fn adds_each_update_step_to_the_version_line() {
     let mut app = new_app();
     app.push(Role::Event, "loaded AGENTS.md");
-    let seconds = std::time::Duration::from_secs;
+    let seconds = Duration::from_secs;
     for progress in [
         Progress::Available("v0.2.0".into()),
         Progress::Downloading,
@@ -87,7 +87,7 @@ fn adds_each_update_step_to_the_version_line() {
 #[test]
 fn replaces_the_failed_step_with_why_it_failed() {
     let mut app = new_app();
-    let seconds = std::time::Duration::from_secs;
+    let seconds = Duration::from_secs;
     for progress in [
         Progress::Available("v0.2.0".into()),
         Progress::Downloading,
