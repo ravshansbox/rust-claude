@@ -163,8 +163,8 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             }
             AgentEvent::ToolDone { name, error, note } => {
                 let text = match (error, note) {
-                    (Some(error), _) => format!("{name} failed: {error}"),
-                    (None, Some(note)) => format!("{name}: {note}"),
+                    (Some(error), _) => tui::tool_failure(&name, &error),
+                    (None, Some(note)) => tui::tool_note(&name, &note),
                     (None, None) => return,
                 };
                 self.flush_reads();

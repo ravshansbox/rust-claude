@@ -1,4 +1,6 @@
-use super::{Activity, App, Picker, PickerKind, Role, time_ago, worker::UiEvent};
+use super::{
+    Activity, App, Picker, PickerKind, Role, time_ago, tool_failure, tool_note, worker::UiEvent,
+};
 use crate::{
     agent::{AgentEvent, CANCELLED, parse_shell_message},
     session::SessionSummary,
@@ -253,11 +255,11 @@ fn replay_tool_use(app: &mut App, block: &Value, results: &HashMap<&str, (&Value
 }
 
 fn push_tool_failure(app: &mut App, name: &str, error: &str) {
-    app.push(Role::Event, format!("{name} failed: {error}"));
+    app.push(Role::Event, tool_failure(name, error));
 }
 
 fn push_tool_note(app: &mut App, name: &str, note: &str) {
-    app.push(Role::Event, format!("{name}: {note}"));
+    app.push(Role::Event, tool_note(name, note));
 }
 
 fn append_reply(app: &mut App, text: &str) {

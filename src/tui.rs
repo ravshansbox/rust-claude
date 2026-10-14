@@ -51,7 +51,7 @@ use tokio::{
 };
 use worker::{Request, UiEvent, agent_task, quit, send_notice};
 
-pub(crate) use render::{ansi_thinking, ansi_tool_lines, tool_message};
+pub(crate) use render::{ansi_thinking, ansi_tool_lines, tool_failure, tool_message, tool_note};
 pub(crate) use tasks::finished_task;
 
 /// Whether the terminal has a dark theme, and its background if it says.

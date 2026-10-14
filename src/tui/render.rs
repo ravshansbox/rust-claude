@@ -251,6 +251,14 @@ pub(crate) fn tool_message(name: &str, summary: &str, diff: Option<&str>) -> Str
     }
 }
 
+pub(crate) fn tool_failure(name: &str, error: &str) -> String {
+    format!("{name} failed: {error}")
+}
+
+pub(crate) fn tool_note(name: &str, note: &str) -> String {
+    format!("{name}: {note}")
+}
+
 fn tool_message_lines(text: &str, width: u16) -> Vec<Line<'static>> {
     let width = usize::from(width.max(1));
     tool_lines(text, theme(), BACKGROUND.get().copied().flatten())
