@@ -7,6 +7,7 @@ use crate::{
     auth::tests::AUTH_FILE,
     config,
     mcp::{self, Started},
+    tools::test_support::TemporaryDir,
 };
 use serde_json::json;
 use std::time::Duration;
@@ -179,6 +180,28 @@ async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
     let _ = std::fs::remove_file(&session);
     assert!(cancelled);
     assert!(saved.contains("hello"), "session file: {saved:?}");
+}
+
+#[tokio::test]
+async fn cancels_a_shell_command_sent_while_renewing_the_sign_in() {
+    let _lock = AUTH_FILE.lock().await;
+    let (agent, _api) = agent_renewing_sign_in().await;
+    let directory = TemporaryDir::new("worker-cancelled-shell");
+    let marker = directory.path().join("ran");
+    let mut worker = Worker::spawn(agent);
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    worker
+        .requests
+        .send(Request::Shell(format!("touch '{}'", marker.display())))
+        .unwrap();
+    worker.cancel.send(()).unwrap();
+    let cancelled = worker
+        .wait_for(|event| matches!(event, UiEvent::Cancelled(Ok(()))))
+        .await;
+    tokio::time::sleep(Duration::from_millis(200)).await;
+    worker.quit().abort();
+    assert!(cancelled);
+    assert!(!marker.exists());
 }
 
 #[tokio::test]
