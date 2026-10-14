@@ -30,7 +30,7 @@ pub struct Credentials {
 }
 
 fn credentials_path() -> Result<PathBuf> {
-    Ok(config::dir().context("HOME is not set")?.join("auth.json"))
+    config::file("auth.json")
 }
 
 /// Locks auth.lock until the returned file is closed, so running copies

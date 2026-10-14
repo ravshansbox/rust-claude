@@ -18,6 +18,12 @@ pub fn dir() -> Option<PathBuf> {
     CONFIG_DIR.get().cloned().or_else(default_dir)
 }
 
+pub fn file(name: &str) -> anyhow::Result<PathBuf> {
+    dir()
+        .map(|dir| dir.join(name))
+        .ok_or_else(|| anyhow::anyhow!("HOME is not set"))
+}
+
 #[cfg(not(test))]
 fn default_dir() -> Option<PathBuf> {
     let home = PathBuf::from(std::env::var_os("HOME")?);

@@ -1,7 +1,4 @@
-use std::{
-    io::ErrorKind,
-    path::{Path, PathBuf},
-};
+use std::{io::ErrorKind, path::Path};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -18,17 +15,11 @@ pub struct Settings {
     pub extra: serde_json::Map<String, serde_json::Value>,
 }
 
-fn settings_path() -> Result<PathBuf> {
-    Ok(config::dir()
-        .context("HOME is not set")?
-        .join("settings.json"))
-}
-
 impl Settings {
     /// Reads settings.json, or the defaults when it is missing. When it
     /// cannot be read, update checks are off, so a typo cannot turn them on.
     pub fn load() -> Self {
-        settings_path()
+        config::file("settings.json")
             .map(|path| load_file(&path))
             .unwrap_or_default()
     }
@@ -36,7 +27,7 @@ impl Settings {
     /// Applies `change` to settings.json, keeping the settings it leaves
     /// alone. Fails instead of replacing a file it cannot read.
     pub fn update(change: impl FnOnce(&mut Self)) -> Result<()> {
-        update_file(&settings_path()?, change)
+        update_file(&config::file("settings.json")?, change)
     }
 }
 

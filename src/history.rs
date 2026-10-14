@@ -36,7 +36,7 @@ impl Entry {
 }
 
 pub fn history_path() -> Option<PathBuf> {
-    Some(config::dir()?.join("history.jsonl"))
+    config::file("history.jsonl").ok()
 }
 
 /// Locks the history file against other running copies until the returned

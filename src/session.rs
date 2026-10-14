@@ -32,7 +32,7 @@ pub struct Session {
 }
 
 fn sessions_directory() -> Result<PathBuf> {
-    Ok(config::dir().context("HOME is not set")?.join("sessions"))
+    config::file("sessions")
 }
 
 fn hex(bytes: &[u8]) -> String {
