@@ -59,7 +59,7 @@ pub fn private_file() -> OpenOptions {
 /// Waits without a blocking lock, so quitting does not wait for another
 /// copy of rust-coding-agent to let go.
 pub async fn lock_file(path: &Path) -> io::Result<File> {
-    let file = private_file().create(true).write(true).open(path)?;
+    let file = open_lock_file(path)?;
     loop {
         match file.try_lock() {
             Ok(()) => return Ok(file),
@@ -72,9 +72,13 @@ pub async fn lock_file(path: &Path) -> io::Result<File> {
 }
 
 pub fn lock_file_blocking(path: &Path) -> io::Result<File> {
-    let file = private_file().create(true).write(true).open(path)?;
+    let file = open_lock_file(path)?;
     file.lock()?;
     Ok(file)
+}
+
+fn open_lock_file(path: &Path) -> io::Result<File> {
+    private_file().create(true).write(true).open(path)
 }
 
 /// Writes a file only the user can read and write, through a temporary file
