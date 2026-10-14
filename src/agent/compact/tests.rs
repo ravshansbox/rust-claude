@@ -2,45 +2,13 @@ use serde_json::json;
 
 use super::super::{
     Queued,
-    test_support::{self, MockApi, full_context, stopped_reply, text_reply, tool_reply},
+    test_support::{self, MockApi, Reply, full_context, stopped_reply, text_reply, tool_reply},
 };
 
-#[tokio::test]
-async fn keeps_the_conversation_when_the_summary_does_not_finish() {
-    for stop_reason in ["max_tokens", "model_context_window_exceeded", "refusal"] {
-        let api = MockApi::start(vec![
-            text_reply("hello"),
-            stopped_reply("partial summary", stop_reason),
-            text_reply("ok"),
-        ])
-        .await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let first = agent.prompt("hi", &[], |_| {}).await;
-        let compacted = agent.compact(|_| {}).await;
-        let next = agent.prompt("next", &[], |_| {}).await;
-        test_support::remove_session(&agent);
-        first.unwrap();
-        next.unwrap();
-        let message = compacted.unwrap_err().to_string();
-        assert!(
-            message.contains("not compacted"),
-            "{stop_reason}: {message}"
-        );
-        let requests = api.requests().await;
-        let after = requests[2]["messages"].to_string();
-        assert!(!after.contains("partial summary"), "{stop_reason}: {after}");
-        assert!(after.contains("hello"), "{stop_reason}: {after}");
-    }
-}
-
-#[tokio::test]
-async fn keeps_the_conversation_when_the_summary_is_empty() {
-    let api = MockApi::start(vec![
-        text_reply("hello"),
-        text_reply("  "),
-        text_reply("ok"),
-    ])
-    .await;
+/// Compacts between two prompts with `summary` as the summary reply, and
+/// returns the compaction error and the messages sent with the next prompt.
+async fn failed_compaction(summary: Reply) -> (String, String) {
+    let api = MockApi::start(vec![text_reply("hello"), summary, text_reply("ok")]).await;
     let mut agent = test_support::agent(&api, reqwest::Client::new());
     let first = agent.prompt("hi", &[], |_| {}).await;
     let compacted = agent.compact(|_| {}).await;
@@ -48,12 +16,31 @@ async fn keeps_the_conversation_when_the_summary_is_empty() {
     test_support::remove_session(&agent);
     first.unwrap();
     next.unwrap();
-    assert_eq!(
-        compacted.unwrap_err().to_string(),
-        "compaction returned no summary"
-    );
     let requests = api.requests().await;
-    let after = requests[2]["messages"].to_string();
+    (
+        compacted.unwrap_err().to_string(),
+        requests[2]["messages"].to_string(),
+    )
+}
+
+#[tokio::test]
+async fn keeps_the_conversation_when_the_summary_does_not_finish() {
+    for stop_reason in ["max_tokens", "model_context_window_exceeded", "refusal"] {
+        let (message, after) =
+            failed_compaction(stopped_reply("partial summary", stop_reason)).await;
+        assert!(
+            message.contains("not compacted"),
+            "{stop_reason}: {message}"
+        );
+        assert!(!after.contains("partial summary"), "{stop_reason}: {after}");
+        assert!(after.contains("hello"), "{stop_reason}: {after}");
+    }
+}
+
+#[tokio::test]
+async fn keeps_the_conversation_when_the_summary_is_empty() {
+    let (message, after) = failed_compaction(text_reply("  ")).await;
+    assert_eq!(message, "compaction returned no summary");
     assert!(after.contains("hello"), "{after}");
 }
 
