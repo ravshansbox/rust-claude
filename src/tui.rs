@@ -46,7 +46,8 @@ use std::{
 use terminal::{HeldPanics, InputModes, notify};
 use tokio::{
     sync::mpsc,
-    time::{MissedTickBehavior, interval},
+    task::JoinError,
+    time::{Interval, MissedTickBehavior, interval},
 };
 use worker::{Request, UiEvent, agent_task, quit, send_notice};
 
@@ -101,10 +102,8 @@ async fn run_loop(
     start_updater(&settings, &background_events);
     let mut worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
-    let mut redraw = interval(REDRAW_INTERVAL);
-    redraw.set_missed_tick_behavior(MissedTickBehavior::Skip);
-    let mut spinner = interval(SPINNER_INTERVAL);
-    spinner.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    let mut redraw = skipping_interval(REDRAW_INTERVAL);
+    let mut spinner = skipping_interval(SPINNER_INTERVAL);
     let mut dirty = true;
     let mut saved_model = app.model.clone();
     let mut saved_effort = app.effort;
@@ -115,10 +114,7 @@ async fn run_loop(
         tokio::select! {
             joined = &mut worker => {
                 worker_stopped = true;
-                break Err(match joined {
-                    Err(error) if error.is_panic() => anyhow::anyhow!("the agent crashed"),
-                    _ => anyhow::anyhow!("the agent stopped unexpectedly"),
-                });
+                break Err(worker_error(joined));
             }
             _ = stop.recv() => break Ok(()),
             _ = redraw.tick(), if dirty => {
@@ -171,6 +167,19 @@ async fn run_loop(
         let _ = worker.await;
     }
     result
+}
+
+fn skipping_interval(period: Duration) -> Interval {
+    let mut ticks = interval(period);
+    ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
+    ticks
+}
+
+fn worker_error(joined: Result<(), JoinError>) -> anyhow::Error {
+    match joined {
+        Err(error) if error.is_panic() => anyhow::anyhow!("the agent crashed"),
+        _ => anyhow::anyhow!("the agent stopped unexpectedly"),
+    }
 }
 
 fn send_queued_and_notify(
