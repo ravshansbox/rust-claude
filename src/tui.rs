@@ -152,9 +152,7 @@ async fn run_loop(
         }
         start_background_work(&mut app, &background_events, &history_sender);
     };
-    send_history(&mut app, &history_sender);
-    drop(history_sender);
-    let _ = history_writer.join();
+    finish_history(&mut app, history_sender, history_writer);
     quit(request_tx, cancel_tx);
     if !worker_stopped {
         let _ = worker.await;
@@ -306,6 +304,16 @@ fn send_history(app: &mut App, sender: &std::sync::mpsc::Sender<(PathBuf, histor
     for entry in app.unsaved_history.drain(..) {
         let _ = sender.send(entry);
     }
+}
+
+fn finish_history(
+    app: &mut App,
+    sender: std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
+    writer: std::thread::JoinHandle<()>,
+) {
+    send_history(app, &sender);
+    drop(sender);
+    let _ = writer.join();
 }
 
 /// Adds prompts to their history files one at a time, in order, on a thread
