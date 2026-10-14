@@ -55,8 +55,7 @@ async fn reads_http_replies_sent_as_events() {
         }
     })
     .await;
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    let mcp = started(http_config(&url)).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Ok("streamed".into()))
@@ -91,8 +90,7 @@ async fn reads_events_split_over_lines_with_crlf_endings_and_an_empty_type() {
         _ => http_mcp(request),
     })
     .await;
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    let mcp = started(http_config(&url)).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Ok("split".into()))
@@ -113,8 +111,7 @@ async fn fails_calls_when_an_http_reply_is_too_long() {
         .await;
         let mut config = http_config(&url);
         config.timeout = Some(60);
-        let mut mcp = Mcp::default();
-        mcp.add(start("web".into(), Scope::Global, config).await);
+        let mcp = started(config).await;
         assert_eq!(
             mcp.call("mcp__web__echo", &json!({})).await,
             Some(Err("server sent a reply longer than 32 MiB".into())),
@@ -158,8 +155,7 @@ async fn times_out_when_an_http_server_does_not_answer() {
     .await;
     let mut config = http_config(&url);
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, config).await);
+    let mcp = started(config).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Err("tools/call timed out after 1 seconds".into()))
@@ -177,8 +173,7 @@ async fn stops_waiting_for_an_http_notification_the_server_does_not_answer() {
     .await;
     let mut config = http_config(&url);
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, config).await);
+    let mcp = started(config).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Err("tools/call timed out after 1 seconds".into()))
@@ -198,8 +193,7 @@ async fn expands_environment_variables_in_http_headers() {
     config
         .headers
         .insert("X-Home".into(), "home=${HOME}, cost=$5".into());
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, config).await);
+    let mut mcp = started(config).await;
     let initialize = &requests_for(&requests, "initialize")[0];
     assert_eq!(
         initialize.headers["x-home"],
@@ -348,8 +342,7 @@ async fn runs_the_headers_helper_again_after_401_and_for_a_new_session() {
         r#"n=$(($(cat '{0}' 2>/dev/null || echo 0) + 1)); echo $n > '{0}'; printf '{{"Authorization": "Bearer t%s"}}' $n"#,
         counter.path().display()
     ));
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, config).await);
+    let mcp = started(config).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Ok("pong".into()))
@@ -414,8 +407,7 @@ async fn starts_a_new_http_session_when_the_old_one_expires() {
         }
     })
     .await;
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    let mcp = started(http_config(&url)).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Ok("pong".into()))
@@ -454,8 +446,7 @@ async fn tries_a_new_http_session_again_after_a_failed_renewal() {
         }
     })
     .await;
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    let mcp = started(http_config(&url)).await;
     assert!(matches!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Err(_))
@@ -486,8 +477,7 @@ async fn rejects_urls_that_are_not_http() {
 #[tokio::test]
 async fn ends_the_http_session_when_dropped() {
     let (url, requests) = http_server(http_mcp).await;
-    let mut mcp = Mcp::default();
-    mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
+    let mcp = started(http_config(&url)).await;
     drop(mcp);
     let deleted = || -> Vec<String> {
         requests
@@ -500,4 +490,10 @@ async fn ends_the_http_session_when_dropped() {
     };
     let deleted = eventually(deleted, |deleted| !deleted.is_empty()).await;
     assert_eq!(deleted, ["s1"]);
+}
+
+async fn started(config: ServerConfig) -> Mcp {
+    let mut mcp = Mcp::default();
+    mcp.add(start("web".into(), Scope::Global, config).await);
+    mcp
 }
