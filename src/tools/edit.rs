@@ -1,4 +1,4 @@
-use super::{argument, plural, regular_file, replace_file, tool};
+use super::{argument, failed, plural, regular_file, replace_file, tool};
 use serde_json::{Value, json};
 
 /// Larger files are refused rather than loaded whole into memory.
@@ -34,7 +34,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     }
     let content = tokio::fs::read_to_string(path)
         .await
-        .map_err(|error| format!("failed to read {path}: {error}"))?;
+        .map_err(failed("read", path))?;
     let mut old_text = old_text.to_string();
     let mut new_text = argument(input, "new_text")?.to_string();
     let crlf = uses_crlf(&content);
@@ -66,7 +66,7 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     replace_file(path, edited, Some(content))
         .await
         .map(|()| message)
-        .map_err(|error| format!("failed to write {path}: {error}"))
+        .map_err(failed("write", path))
 }
 
 /// A file uses Windows line endings when its first line ends with CRLF.

@@ -75,10 +75,14 @@ fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
     }
 }
 
+fn failed(action: &str, path: &str) -> impl Fn(io::Error) -> String + Copy {
+    move |error| format!("failed to {action} {path}: {error}")
+}
+
 async fn regular_file(path: &str) -> Result<Metadata, String> {
     let metadata = tokio::fs::metadata(path)
         .await
-        .map_err(|error| format!("failed to read {path}: {error}"))?;
+        .map_err(failed("read", path))?;
     if !metadata.is_file() {
         return Err(format!("{path} is not a regular file"));
     }
