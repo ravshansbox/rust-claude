@@ -2,7 +2,7 @@ use serde_json::json;
 use std::time::Duration;
 
 use crate::agent::{
-    AgentEvent, http_client_with,
+    Agent, AgentEvent, http_client_with,
     test_support::{self, MockApi, Reply, stopped_reply, text_reply},
 };
 
@@ -11,6 +11,17 @@ async fn reply_text(api: &MockApi) -> String {
     let (_, result) = test_support::run_prompt(api, "hi", test_support::text(&mut text)).await;
     result.unwrap();
     text
+}
+
+async fn fail_then_ask_again(first: Reply) -> (String, Vec<serde_json::Value>, Agent) {
+    let api = MockApi::start(vec![first, text_reply("hello")]).await;
+    let mut agent = test_support::agent(&api, reqwest::Client::new());
+    let failed = agent.prompt("hi", &[], |_| {}).await;
+    let next = agent.prompt("again", &[], |_| {}).await;
+    test_support::remove_session(&agent);
+    next.unwrap();
+    let message = failed.unwrap_err().to_string();
+    (message, api.requests().await, agent)
 }
 
 #[tokio::test]
@@ -178,15 +189,8 @@ async fn discards_a_reply_the_model_declined_partway_through() {
         json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
         json!({ "type": "message_stop" }),
     ]);
-    let api = MockApi::start(vec![refusal, text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
-    let declined = agent.prompt("hi", &[], |_| {}).await;
-    let next = agent.prompt("again", &[], |_| {}).await;
-    test_support::remove_session(&agent);
-    let message = declined.unwrap_err().to_string();
+    let (message, requests, agent) = fail_then_ask_again(refusal).await;
     assert!(message.contains("declined to answer"), "{message}");
-    next.unwrap();
-    let requests = api.requests().await;
     let resent = requests[1]["messages"].to_string();
     assert!(!resent.contains("partial answer"), "{resent}");
     assert!(resent.contains("again"), "{resent}");
@@ -209,18 +213,11 @@ async fn says_the_model_declined_when_it_stops_partway_through_a_tool_call() {
             json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
             json!({ "type": "message_stop" }),
         ]);
-        let api = MockApi::start(vec![refusal, text_reply("hello")]).await;
-        let mut agent = test_support::agent(&api, reqwest::Client::new());
-        let declined = agent.prompt("hi", &[], |_| {}).await;
-        let next = agent.prompt("again", &[], |_| {}).await;
-        test_support::remove_session(&agent);
-        let message = declined.unwrap_err().to_string();
+        let (message, requests, agent) = fail_then_ask_again(refusal).await;
         assert!(
             message.contains("declined to answer"),
             "{partial}: {message}"
         );
-        next.unwrap();
-        let requests = api.requests().await;
         let resent = requests[1]["messages"].to_string();
         assert!(!resent.contains("touch declined"), "{partial}: {resent}");
         let usage = agent.stats().usage;
@@ -235,18 +232,11 @@ async fn reports_a_reply_that_ends_before_it_finishes() {
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "half an answer" } }),
     ]);
-    let api = MockApi::start(vec![cut_off, text_reply("hello")]).await;
-    let mut agent = test_support::agent(&api, reqwest::Client::new());
-    let failed = agent.prompt("hi", &[], |_| {}).await;
-    let next = agent.prompt("again", &[], |_| {}).await;
-    test_support::remove_session(&agent);
-    let message = failed.unwrap_err().to_string();
+    let (message, requests, _) = fail_then_ask_again(cut_off).await;
     assert!(
         message.contains("response ended before the reply finished"),
         "{message}"
     );
-    next.unwrap();
-    let requests = api.requests().await;
     assert_eq!(requests.len(), 2);
     let resent = requests[1]["messages"].to_string();
     assert!(!resent.contains("half an answer"), "{resent}");
