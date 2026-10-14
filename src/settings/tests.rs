@@ -61,7 +61,7 @@ fn keeps_settings_it_does_not_know_when_one_changes() {
 #[cfg(unix)]
 #[test]
 fn saves_settings_only_the_user_can_read() {
-    use crate::config::permissions;
+    use crate::config::test_support::permissions;
     use std::os::unix::fs::PermissionsExt;
     let (_directory, path) = written_settings_file("private", "{}");
     std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();

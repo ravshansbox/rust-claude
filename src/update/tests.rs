@@ -493,7 +493,7 @@ fn skips_debug_builds_such_as_cargo_run() {
 
 #[test]
 fn creates_a_new_update_folder_only_the_user_can_open() {
-    use crate::config::permissions;
+    use crate::config::test_support::permissions;
 
     let dir = TemporaryDir::new("update-update-folder");
     let folder = dir.path().join("update");

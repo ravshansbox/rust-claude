@@ -100,7 +100,7 @@ fn keeps_prompts_another_copy_sent_after_loading() {
 #[cfg(unix)]
 #[test]
 fn saves_history_only_the_user_can_read() {
-    use crate::config::permissions;
+    use crate::config::test_support::permissions;
     let root = TemporaryDir::new("private-history");
     let directory = root.path().join("config");
     let path = directory.join("history.jsonl");

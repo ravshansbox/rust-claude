@@ -1,4 +1,4 @@
-use super::{WRITES, permissions, replace_file, write_private_file};
+use super::{WRITES, replace_file, test_support::permissions, write_private_file};
 use crate::tools::test_support::TemporaryDir;
 use std::sync::atomic::Ordering;
 

@@ -232,7 +232,7 @@ fn drops_tool_call_whose_results_were_not_written() {
 #[cfg(unix)]
 #[test]
 fn saves_session_and_images_only_the_user_can_read() {
-    use crate::config::permissions;
+    use crate::config::test_support::permissions;
     let mut session = Session::new().unwrap();
     session
         .save(&[json!({ "role": "user", "content": "secret" })])
