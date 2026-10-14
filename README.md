@@ -11,7 +11,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Built-in tools: `bash`, `read`, `write`, `edit`, `agent`, `bash_stop` and `web_search`
 - Subagents that run tasks at the same time or one after another
 - Background commands, such as watching a CI run, whose output comes back when they finish
-- Print mode (`-p` or standard input) to run one prompt and print the answer
+- Print mode (`--print` or standard input) to run one prompt and print the answer
 - Four models, effort levels and thinking shown in the conversation
 - Saved sessions you can resume, automatic compaction and prompt caching
 - Status line with tokens, context use and quota
@@ -46,10 +46,10 @@ rca
 Run one prompt and print the answer:
 
 ```sh
-rca -p "explain src/main.rs"
+rca --print "explain src/main.rs"
 ```
 
-Show all options with `-h` or `--help`.
+Show all options with `--help`.
 
 ## Documentation
 

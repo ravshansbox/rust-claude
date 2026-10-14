@@ -144,7 +144,7 @@ fn ctrl_c_in_print_mode_stops_started_processes() {
     write_sign_in(&setup.home.join(".rust-coding-agent"));
     setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
-    let child = setup.run(&["-p", "hello"]);
+    let child = setup.run(&["--print", "hello"]);
     let started = setup.server_started();
     let output = interrupt(child);
     let server_stopped = stop_server(&setup.server_pid());
@@ -174,7 +174,7 @@ fn hangup_and_terminate_in_print_mode_stop_started_processes() {
         write_sign_in(&setup.home.join(".rust-coding-agent"));
         setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
-        let child = setup.run(&["-p", "hello"]);
+        let child = setup.run(&["--print", "hello"]);
         let started = setup.server_started();
         let output = signal(child, &format!("-{name}"));
         let server_stopped = stop_server(&setup.server_pid());
@@ -194,7 +194,12 @@ fn reads_sign_in_and_mcp_servers_from_config_dir() {
     std::fs::create_dir_all(&setup.project).unwrap();
     std::fs::create_dir_all(&setup.home).unwrap();
 
-    let child = setup.run(&["--config-dir", config_dir.to_str().unwrap(), "-p", "hello"]);
+    let child = setup.run(&[
+        "--config-dir",
+        config_dir.to_str().unwrap(),
+        "--print",
+        "hello",
+    ]);
     let started = setup.server_started();
     let output = interrupt(child);
     stop_server(&setup.server_pid());
@@ -215,7 +220,7 @@ fn continuing_without_a_session_fails_before_asking_to_sign_in() {
     std::fs::create_dir_all(&setup.home).unwrap();
 
     let output = setup
-        .run(&["-c", "-p", "hello"])
+        .run(&["--continue", "--print", "hello"])
         .wait_with_output()
         .unwrap();
 
@@ -235,7 +240,7 @@ fn rejects_a_model_that_is_not_in_the_list_before_asking_to_sign_in() {
     std::fs::create_dir_all(&setup.home).unwrap();
 
     let output = setup
-        .run(&["--model", "claude-opus-4-5", "-p", "hello"])
+        .run(&["--model", "claude-opus-4-5", "--print", "hello"])
         .wait_with_output()
         .unwrap();
 
@@ -263,7 +268,7 @@ fn ctrl_c_while_the_sign_in_renews_at_start_waits_for_the_renewal() {
     proxy.set_nonblocking(true).unwrap();
     let proxy_url = format!("http://{}", proxy.local_addr().unwrap());
     let child = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
-        .args(["-p", "hello"])
+        .args(["--print", "hello"])
         .current_dir(&setup.project)
         .env("HOME", &setup.home)
         .env("HTTPS_PROXY", &proxy_url)
@@ -307,7 +312,7 @@ fn ctrl_c_at_the_sign_in_prompt_exits_as_cancelled() {
     std::fs::create_dir_all(&setup.project).unwrap();
     std::fs::create_dir_all(&setup.home).unwrap();
     let mut child = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
-        .args(["-p", "hello"])
+        .args(["--print", "hello"])
         .current_dir(&setup.project)
         .env("HOME", &setup.home)
         .stdin(Stdio::piped())
@@ -348,7 +353,7 @@ fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
     std::fs::create_dir_all(&setup.project).unwrap();
     std::fs::create_dir_all(&setup.home).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
-        .args(["-p", "hello", "--image"])
+        .args(["--print", "hello", "--image"])
         .arg(std::ffi::OsStr::from_bytes(b"photo-\xff.png"))
         .current_dir(&setup.project)
         .env("HOME", &setup.home)
@@ -367,7 +372,7 @@ fn moves_the_old_config_folder_to_the_new_one() {
     write_sign_in(&setup.home.join(".rust-claude"));
     setup.write_hanging_server(&setup.project.join(".rust-coding-agent"));
 
-    let child = setup.run(&["-p", "hello"]);
+    let child = setup.run(&["--print", "hello"]);
     let started = setup.server_started();
     let output = interrupt(child);
     stop_server(&setup.server_pid());
@@ -406,7 +411,7 @@ fn reports_a_missing_image_before_asking_to_sign_in() {
     std::fs::create_dir_all(&setup.home).unwrap();
 
     let output = setup
-        .run(&["-p", "describe", "--image", "missing.png"])
+        .run(&["--print", "describe", "--image", "missing.png"])
         .wait_with_output()
         .unwrap();
 

@@ -1,15 +1,15 @@
 use anyhow::{Context, Result, bail};
 
-pub const USAGE: &str = "usage: rust-coding-agent [-h|--help] [-c|--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [-p|--print <prompt> [--image <path>]...]";
+pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]...]";
 
 pub const OPTIONS: &str = "Options:
-  -c, --continue           Continue the latest session in the current folder
-      --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-coding-agent
-      --model <id>         Model to use
-      --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
-  -p, --print <prompt>     Run one prompt and print the answer. Without it, a prompt piped to standard input runs the same way
-      --image <path>       Send an image with the prompt in print mode. Repeat for more images
-  -h, --help               Show this help";
+  --continue           Continue the latest session in the current folder
+  --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-coding-agent
+  --model <id>         Model to use
+  --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
+  --print <prompt>     Run one prompt and print the answer. Without it, a prompt piped to standard input runs the same way
+  --image <path>       Send an image with the prompt in print mode. Repeat for more images
+  --help               Show this help";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
@@ -40,7 +40,7 @@ fn set_value(
     }
 }
 
-/// Reads arguments left to right, so a value such as the prompt after `-p`
+/// Reads arguments left to right, so a value such as the prompt after `--print`
 /// is never mistaken for an option.
 pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
     let mut arguments = arguments.into_iter();
@@ -61,9 +61,9 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
                     bail!(USAGE);
                 }
             }
-            "-p" | "--print" => set_value(&mut prompt, &mut arguments)?,
-            "-c" | "--continue" if !options.continue_session => options.continue_session = true,
-            "-h" | "--help" if !help => help = true,
+            "--print" => set_value(&mut prompt, &mut arguments)?,
+            "--continue" if !options.continue_session => options.continue_session = true,
+            "--help" if !help => help = true,
             _ => bail!(USAGE),
         }
     }

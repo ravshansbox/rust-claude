@@ -8,13 +8,13 @@ Start the interactive interface:
 rca
 ```
 
-Run one prompt and print the answer with `-p` or `--print`. The argument after it is always the prompt, even when it starts with `-`:
+Run one prompt and print the answer with `--print`. The argument after it is always the prompt, even when it starts with `-`:
 
 ```sh
-rca -p "explain src/main.rs"
+rca --print "explain src/main.rs"
 ```
 
-Without `-p`, when standard input is not a terminal, rca reads the prompt from it and runs in print mode. Trailing white space is removed, and an empty prompt is an error. This lets you run the same prompt in a loop, each time in a new session:
+Without `--print`, when standard input is not a terminal, rca reads the prompt from it and runs in print mode. Trailing white space is removed, and an empty prompt is an error. This lets you run the same prompt in a loop, each time in a new session:
 
 ```sh
 while :; do cat PROMPT.md | rca || break; done
@@ -25,7 +25,7 @@ In print mode, `/skill:name` runs a skill as in the interface. Other commands, s
 Send images with the prompt with `--image <path>`. Repeat it for more images:
 
 ```sh
-rca -p "what is wrong in this screenshot?" --image error.png
+rca --print "what is wrong in this screenshot?" --image error.png
 ```
 
 In print mode, tool calls and thinking go to standard error. When standard error is a terminal, they look as they do in the interface, with the same colours and syntax highlighting, and thinking is grey and in italics. A blank line separates each tool call, thinking block, notice and part of the answer. The interface does the same, except that notices in a row, such as the lines shown at start, have no blank lines between them. When standard output and standard error are both a terminal, these blank lines go to standard error, so standard output holds only the answer. rust-coding-agent removes control characters other than newline and tab, such as escape sequences that clear the screen or set the clipboard, from the tool calls, tool errors, notices and MCP messages it shows, and from the answer when standard output is a terminal. A piped answer is written byte for byte.
@@ -34,11 +34,11 @@ Press Ctrl+C in print mode to stop. rust-coding-agent stops running commands and
 
 Choose the model and effort level for one run with `--model <id>` and `--effort <level>`. See [Settings](configuration.md#settings).
 
-Continue the latest session started in the current folder with `-c` or `--continue`. It works in the interface and in print mode:
+Continue the latest session started in the current folder with `--continue`. It works in the interface and in print mode:
 
 ```sh
-rca -c
-rca -c -p "now add tests"
+rca --continue
+rca --continue --print "now add tests"
 ```
 
 If no session in the folder can be continued, rust-coding-agent stops with an error.
@@ -53,7 +53,7 @@ If `~/.rust-coding-agent` does not exist but `~/.rust-claude` from before the re
 
 Sessions hold whole conversations and tool output, so rust-coding-agent creates `~/.rust-coding-agent` and the folders and files it writes there so that only you can read them. Folders and files made by older versions keep their permissions. If `settings.json` or `auth.json` is a symlink, for example into a dotfiles folder, saving keeps the symlink and replaces the file it points to.
 
-Show help with `-h` or `--help`. An unknown option, or an argument that is not valid UTF-8 text, stops rust-coding-agent with the usage line.
+Show help with `--help`. An unknown option, or an argument that is not valid UTF-8 text, stops rust-coding-agent with the usage line.
 
 The interface starts with the name and version, such as `Rust Coding Agent v0.1.0`, above the start-up lines. Builds from `main` show `v0.0.0`.
 
