@@ -4,7 +4,10 @@ use super::{
     App, Role,
     status::{format_context, format_stats},
 };
-use crate::{agent, agent::Stats, tools};
+use crate::{
+    agent::{self, Stats},
+    tools,
+};
 
 pub(super) struct Task {
     message: usize,
