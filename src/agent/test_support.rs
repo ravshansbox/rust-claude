@@ -208,11 +208,9 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
         }
         Some(Reply::Trickled(events)) => {
             let body = event_stream(&events);
-            let head = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-                body.len()
-            );
-            let _ = stream.write_all(head.as_bytes()).await;
+            let _ = stream
+                .write_all(event_stream_head(body.len()).as_bytes())
+                .await;
             for piece in body.as_bytes().chunks(5) {
                 let _ = stream.write_all(piece).await;
                 let _ = stream.flush().await;
@@ -232,10 +230,7 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
         }
         Some(Reply::CutOff(events)) => {
             let body = event_stream(&events);
-            let head = format!(
-                "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-                body.len() + 100
-            );
+            let head = event_stream_head(body.len() + 100);
             let _ = stream.write_all(head.as_bytes()).await;
             let _ = stream.write_all(body.as_bytes()).await;
         }
@@ -246,6 +241,12 @@ async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
         }
         None => bad_request(stream, "no scripted reply").await,
     }
+}
+
+fn event_stream_head(content_length: usize) -> String {
+    format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {content_length}\r\nconnection: close\r\n\r\n"
+    )
 }
 
 fn event_stream(events: &[Value]) -> String {
