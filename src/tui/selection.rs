@@ -90,7 +90,7 @@ impl App {
     /// trailing spaces.
     fn selected_text(&self, start: Point, end: Point) -> String {
         let width = self.conversation_area.width;
-        let height = (end.row - start.row + 1).min(u16::MAX as usize) as u16;
+        let height = u16::try_from(end.row - start.row + 1).unwrap_or(u16::MAX);
         let area = Rect::new(0, 0, width, height);
         let mut buffer = Buffer::empty(area);
         conversation(self, width, start.row, height).render(area, &mut buffer);

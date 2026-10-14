@@ -27,9 +27,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
     let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
     let footer_paragraph = footer(app);
-    let footer_height = footer_paragraph
-        .line_count(frame.area().width)
-        .min(u16::MAX as usize) as u16;
+    let footer_height =
+        u16::try_from(footer_paragraph.line_count(frame.area().width)).unwrap_or(u16::MAX);
     let [chat, input, footer] = Layout::vertical([
         Constraint::Min(1),
         Constraint::Length(input_lines.len().min(u16::MAX as usize - 2) as u16 + 2),
@@ -340,7 +339,7 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
         filled += height;
         lines.push(line);
     }
-    let offset = (top - skipped).min(u16::MAX as usize) as u16;
+    let offset = u16::try_from(top - skipped).unwrap_or(u16::MAX);
     Paragraph::new(Text::from(lines))
         .wrap(Wrap { trim: false })
         .scroll((offset, 0))
