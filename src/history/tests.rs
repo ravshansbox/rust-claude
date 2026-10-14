@@ -1,6 +1,6 @@
 use super::{Entry, MAX_ENTRIES, append, load, newest_unique, trim};
 use crate::tools::test_support::TemporaryDir;
-use std::io::Write;
+use std::{io::Write, path::Path};
 
 fn history_file(name: &str) -> (TemporaryDir, std::path::PathBuf) {
     let directory = TemporaryDir::new(&format!("{name}history"));
@@ -8,14 +8,14 @@ fn history_file(name: &str) -> (TemporaryDir, std::path::PathBuf) {
     (directory, path)
 }
 
-fn write_full_history(path: &std::path::Path) {
+fn write_full_history(path: &Path) {
     let text: String = (0..MAX_ENTRIES + 5)
         .map(|index| format!("{{\"prompt\":\"p{index}\",\"cwd\":\"/project\"}}\n"))
         .collect();
     std::fs::write(path, text).unwrap();
 }
 
-fn append_raw(path: &std::path::Path, bytes: &[u8]) {
+fn append_raw(path: &Path, bytes: &[u8]) {
     let mut file = std::fs::OpenOptions::new().append(true).open(path).unwrap();
     file.write_all(bytes).unwrap();
 }
