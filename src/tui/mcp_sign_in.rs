@@ -30,9 +30,10 @@ pub(super) async fn sign_in_to_mcp_server(
     requests: mpsc::UnboundedSender<Request>,
 ) {
     let notice = |text| send_notice(&events, text);
+    let failed = |error| notice(format!("MCP sign-in to {name} failed: {error}"));
     let sign_in = match mcp::begin_sign_in(&name).await {
         Ok(sign_in) => sign_in,
-        Err(error) => return notice(format!("MCP sign-in to {name} failed: {error}")),
+        Err(error) => return failed(error),
     };
     notice(format!(
         "opening the sign-in page for MCP server {name}; if it does not open, visit {}",
@@ -40,7 +41,7 @@ pub(super) async fn sign_in_to_mcp_server(
     ));
     open_in_browser(&sign_in.authorize_url);
     if let Err(error) = sign_in.finish().await {
-        return notice(format!("MCP sign-in to {name} failed: {error}"));
+        return failed(error);
     }
     let signed_in = format!("signed in to MCP server {name}");
     restart_mcp_server(name, signed_in, events, requests).await;
