@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::Cursor, sync::OnceLock};
+use std::{borrow::Cow, io::Cursor, ops::Range, sync::OnceLock};
 
 use syntect::{
     easy::HighlightLines,
@@ -149,7 +149,7 @@ impl Language {
 
 struct Embedded {
     language: Language,
-    range: std::ops::Range<usize>,
+    range: Range<usize>,
 }
 
 fn embedded_code(command: &str) -> Vec<Embedded> {
@@ -181,7 +181,7 @@ fn ends_word(character: char) -> bool {
     character.is_whitespace() || ";|&()<>".contains(character)
 }
 
-fn code_after(command: &str, start: usize, language: Language) -> Option<std::ops::Range<usize>> {
+fn code_after(command: &str, start: usize, language: Language) -> Option<Range<usize>> {
     let line_end = command[start..]
         .find('\n')
         .map_or(command.len(), |offset| start + offset);
@@ -213,7 +213,7 @@ fn code_after(command: &str, start: usize, language: Language) -> Option<std::op
     }
 }
 
-fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<std::ops::Range<usize>> {
+fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<Range<usize>> {
     let specification = heredoc.strip_prefix('-').unwrap_or(heredoc).trim_start();
     let delimiter: String = specification
         .chars()
@@ -234,7 +234,7 @@ fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<std::op
     Some(body_start..command.len())
 }
 
-fn quoted_body(command: &str, start: usize, quote: char) -> std::ops::Range<usize> {
+fn quoted_body(command: &str, start: usize, quote: char) -> Range<usize> {
     let mut escaped = false;
     for (offset, character) in command[start..].char_indices() {
         if escaped {
