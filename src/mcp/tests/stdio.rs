@@ -200,6 +200,18 @@ async fn reports_tool_calls_the_server_marks_as_errors() {
 }
 
 #[tokio::test]
+async fn reports_tool_calls_the_server_rejects_with_its_message_and_code() {
+    let server = server_answering_calls_with(
+        r#"printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32602,"message":"unknown tool: echo"}}\n' "$id""#,
+    );
+    let mcp = started(server).await;
+    assert_eq!(
+        call_test_echo(&mcp).await,
+        Some(Err("unknown tool: echo (-32602)".into()))
+    );
+}
+
+#[tokio::test]
 async fn fails_when_the_server_repeats_a_tool_list_cursor() {
     let config = server_with(
         r#"    *'"tools/list"'*) printf '{"jsonrpc":"2.0","id":%s,"result":{"tools":[],"nextCursor":"again"}}\n' "$id" ;;"#,
