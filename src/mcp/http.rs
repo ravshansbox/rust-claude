@@ -500,18 +500,24 @@ async fn read_event_stream(
     let mut buffer = Vec::new();
     let mut data = Vec::new();
     let mut is_message = true;
+    let mut after_cr = false;
     while let Some(chunk) = response
         .chunk()
         .await
         .map_err(|error| read_error(method, error))?
     {
         buffer.extend_from_slice(&chunk);
-        while let Some(end) = buffer.iter().position(|&byte| byte == b'\n') {
+        while let Some(end) = buffer
+            .iter()
+            .position(|&byte| byte == b'\n' || byte == b'\r')
+        {
             let mut line: Vec<u8> = buffer.drain(..=end).collect();
-            line.pop();
-            if line.last() == Some(&b'\r') {
-                line.pop();
+            let ending = line.pop();
+            if after_cr && line.is_empty() && ending == Some(b'\n') {
+                after_cr = false;
+                continue;
             }
+            after_cr = ending == Some(b'\r');
             if line.is_empty() {
                 if is_message
                     && let Ok(reply) = serde_json::from_slice::<Value>(&data)

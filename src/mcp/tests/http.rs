@@ -105,6 +105,25 @@ async fn reads_events_split_over_lines_with_crlf_endings_and_an_empty_type() {
 }
 
 #[tokio::test]
+async fn reads_events_with_cr_line_endings() {
+    let (url, _) = http_server(|request| match request.body["method"].as_str() {
+        Some("tools/call") => HttpReply {
+            status: 200,
+            headers: vec![("content-type".into(), "text/event-stream".into())],
+            body: format!(
+                "event: other\rdata: {{}}\r\rdata: {{\"jsonrpc\": \"2.0\", \"id\": {}, \"result\": {{\"content\": [{{\"type\": \"text\", \"text\": \"cr\"}}]}}}}\r\r",
+                request.body["id"]
+            ),
+            delay: Duration::ZERO,
+        },
+        _ => http_mcp(request),
+    })
+    .await;
+    let mcp = started(http_config(&url)).await;
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("cr".into())));
+}
+
+#[tokio::test]
 async fn fails_calls_when_an_http_reply_is_too_long() {
     for content_type in ["application/json", "text/event-stream"] {
         let (url, _) = http_server(move |request| match request.body["method"].as_str() {
