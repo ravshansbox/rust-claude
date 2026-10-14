@@ -2,9 +2,7 @@ use super::*;
 
 #[tokio::test]
 async fn shows_server_errors_when_a_call_times_out() {
-    let mut config = server_answering_calls_with("echo stuck >&2");
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    let mcp = started_with_short_timeout(server_answering_calls_with("echo stuck >&2")).await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Err(
@@ -15,9 +13,11 @@ async fn shows_server_errors_when_a_call_times_out() {
 
 #[tokio::test]
 async fn keeps_whole_characters_in_the_end_of_server_errors() {
-    let mut config = server_answering_calls_with(&format!("echo '{}' >&2", "é".repeat(2_000)));
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    let mcp = started_with_short_timeout(server_answering_calls_with(&format!(
+        "echo '{}' >&2",
+        "é".repeat(2_000)
+    )))
+    .await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Err(format!(
@@ -76,12 +76,11 @@ async fn stops_what_a_server_left_running_when_it_exits() {
 #[tokio::test]
 async fn stops_the_server_when_dropped() {
     let pid_file = TemporaryFile::new("mcp-drop", "");
-    let mut config = server_answering_calls_with(&format!(
+    let mcp = started_with_short_timeout(server_answering_calls_with(&format!(
         "echo $$ > '{}'; sleep 30",
         pid_file.path().display()
-    ));
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    )))
+    .await;
     let _ = mcp.call("mcp__test__echo", &json!({})).await;
     let pid = pid_file.content();
     drop(mcp);
@@ -91,15 +90,14 @@ async fn stops_the_server_when_dropped() {
 #[tokio::test]
 async fn tells_the_server_when_a_call_times_out() {
     let log = TemporaryFile::new("mcp-cancel", "");
-    let mut config = server_with(
+    let mcp = started_with_short_timeout(server_with(
         &format!(
             r#"    *'"notifications/cancelled"'*) printf '%s\n' "$line" >> '{}' ;;"#,
             log.path().display()
         ),
         ":",
-    );
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    ))
+    .await;
     assert!(
         mcp.call("mcp__test__echo", &json!({}))
             .await
@@ -115,9 +113,7 @@ async fn tells_the_server_when_a_call_times_out() {
 
 #[tokio::test]
 async fn times_out_when_the_server_stops_reading() {
-    let mut config = server_answering_calls_with("sleep 30");
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    let mcp = started_with_short_timeout(server_answering_calls_with("sleep 30")).await;
     let timed_out = Some(Err("tools/call timed out after 1 seconds".into()));
     assert_eq!(mcp.call("mcp__test__echo", &json!({})).await, timed_out);
     let large = json!({ "text": "a".repeat(1_000_000) });
@@ -305,4 +301,9 @@ async fn started(config: ServerConfig) -> Mcp {
     let mut mcp = Mcp::default();
     mcp.add(start("test".into(), Scope::Project, config).await);
     mcp
+}
+
+async fn started_with_short_timeout(mut config: ServerConfig) -> Mcp {
+    config.timeout = Some(1);
+    started(config).await
 }

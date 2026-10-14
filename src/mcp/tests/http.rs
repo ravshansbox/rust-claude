@@ -153,9 +153,7 @@ async fn times_out_when_an_http_server_does_not_answer() {
         _ => http_mcp(request),
     })
     .await;
-    let mut config = http_config(&url);
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    let mcp = started_with_short_timeout(http_config(&url)).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Err("tools/call timed out after 1 seconds".into()))
@@ -171,9 +169,7 @@ async fn stops_waiting_for_an_http_notification_the_server_does_not_answer() {
         _ => http_mcp(request),
     })
     .await;
-    let mut config = http_config(&url);
-    config.timeout = Some(1);
-    let mcp = started(config).await;
+    let mcp = started_with_short_timeout(http_config(&url)).await;
     assert_eq!(
         mcp.call("mcp__web__echo", &json!({})).await,
         Some(Err("tools/call timed out after 1 seconds".into()))
@@ -496,4 +492,9 @@ async fn started(config: ServerConfig) -> Mcp {
     let mut mcp = Mcp::default();
     mcp.add(start("web".into(), Scope::Global, config).await);
     mcp
+}
+
+async fn started_with_short_timeout(mut config: ServerConfig) -> Mcp {
+    config.timeout = Some(1);
+    started(config).await
 }
