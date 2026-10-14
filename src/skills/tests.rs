@@ -87,6 +87,24 @@ fn loads_skills_from_all_locations_and_keeps_first_on_collision() {
     );
 }
 
+#[cfg(unix)]
+#[test]
+fn loads_a_skill_linked_into_two_locations_once_without_a_collision() {
+    let directory = TemporaryDir::new("skills-linked-twice");
+    let root = directory.path();
+    let home = root.join("home");
+    let cwd = root.join("project");
+    let shared = home.join(".agents/skills/shared");
+    write(&shared.join("SKILL.md"), "---\ndescription: Shared.\n---\n");
+    std::fs::create_dir_all(cwd.join(".rust-coding-agent/skills")).unwrap();
+    std::os::unix::fs::symlink(&shared, cwd.join(".rust-coding-agent/skills/shared")).unwrap();
+
+    let loaded = load_from(None, Some(&home), &cwd);
+    assert_eq!(names(&loaded), ["shared"]);
+    assert_eq!(scopes(&loaded), [Scope::Project]);
+    assert!(loaded.diagnostics.is_empty(), "{:?}", loaded.diagnostics);
+}
+
 #[test]
 fn loads_agents_skills_only_from_the_current_folder_outside_a_repository() {
     let directory = TemporaryDir::new("skills-no-repository");
