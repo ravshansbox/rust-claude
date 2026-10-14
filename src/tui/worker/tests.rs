@@ -43,6 +43,12 @@ impl Worker {
         }
     }
 
+    fn prompt(&self, text: &str, effort: &'static str) {
+        self.requests
+            .send(Request::Prompt(text.into(), Vec::new(), effort))
+            .unwrap();
+    }
+
     async fn wait_for(&mut self, mut matches: impl FnMut(&UiEvent) -> bool) -> bool {
         let wait = async {
             while let Some(event) = self.events.recv().await {
@@ -160,10 +166,7 @@ async fn cancels_a_prompt_sent_while_renewing_the_sign_in() {
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     tokio::time::sleep(Duration::from_millis(200)).await;
-    worker
-        .requests
-        .send(Request::Prompt("hello".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("hello", "off");
     worker.cancel.send(()).unwrap();
     let cancelled = worker
         .wait_for(|event| matches!(event, UiEvent::Cancelled(Ok(()))))
@@ -194,10 +197,7 @@ async fn uses_an_effort_the_new_model_supports_for_background_turns() {
     agent.model = "claude-haiku-5-5".into();
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
-    worker
-        .requests
-        .send(Request::Prompt("go".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("go", "off");
     worker
         .requests
         .send(Request::SetModel("claude-opus-5-5".into()))
@@ -231,10 +231,7 @@ async fn uses_the_effort_chosen_since_the_last_prompt_for_background_turns() {
     let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
-    worker
-        .requests
-        .send(Request::Prompt("go".into(), Vec::new(), "medium"))
-        .unwrap();
+    worker.prompt("go", "medium");
     worker.requests.send(Request::SetEffort("high")).unwrap();
     worker
         .wait_for(|event| matches!(event, UiEvent::Background(_)))
@@ -297,10 +294,7 @@ async fn starts_a_turn_when_a_background_command_finishes() {
     let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
-    worker
-        .requests
-        .send(Request::Prompt("watch it".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("watch it", "off");
     let first = worker.wait_for_done().await;
     let delivered = worker
         .wait_for(|event| matches!(event, UiEvent::Background(text) if text.contains("finished")))
@@ -334,10 +328,7 @@ async fn runs_a_prompt_already_sent_before_a_finished_background_command() {
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
     for prompt in ["watch it", "meanwhile"] {
-        worker
-            .requests
-            .send(Request::Prompt(prompt.into(), Vec::new(), "off"))
-            .unwrap();
+        worker.prompt(prompt, "off");
     }
     let delivered = worker
         .wait_for(|event| matches!(event, UiEvent::Background(_)))
@@ -362,10 +353,7 @@ async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
     let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
-    worker
-        .requests
-        .send(Request::Prompt("first".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("first", "off");
     while api.requests().await.is_empty() {
         tokio::time::sleep(Duration::from_millis(10)).await;
     }
@@ -373,10 +361,7 @@ async fn cancels_a_running_prompt_and_keeps_it_for_the_next_one() {
     let cancelled = worker
         .wait_for(|event| matches!(event, UiEvent::Cancelled(Ok(()))))
         .await;
-    worker
-        .requests
-        .send(Request::Prompt("second".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("second", "off");
     let done = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
@@ -399,16 +384,10 @@ async fn starts_lists_and_resumes_sessions() {
     let first_id = agent.session.id.clone();
     let second_prompt = format!("after {first_id}");
     let mut worker = Worker::spawn(agent);
-    worker
-        .requests
-        .send(Request::Prompt("first".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("first", "off");
     let first = worker.wait_for_done().await;
     worker.requests.send(Request::NewSession).unwrap();
-    worker
-        .requests
-        .send(Request::Prompt(second_prompt.clone(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt(&second_prompt, "off");
     let second = worker.wait_for_done().await;
     worker.requests.send(Request::ListSessions).unwrap();
     let listed = worker
@@ -441,10 +420,7 @@ async fn starts_lists_and_resumes_sessions() {
             true
         })
         .await;
-    worker
-        .requests
-        .send(Request::Prompt("third".into(), Vec::new(), "off"))
-        .unwrap();
+    worker.prompt("third", "off");
     let third = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&first_id);
@@ -475,17 +451,11 @@ async fn compacts_the_conversation_and_continues_from_the_summary() {
     let agent = test_support::agent(&api);
     let session_id = agent.session.id.clone();
     let mut worker = Worker::spawn(agent);
-    worker
-        .requests
-        .send(Request::Prompt("first".into(), Vec::new(), "medium"))
-        .unwrap();
+    worker.prompt("first", "medium");
     let first = worker.wait_for_done().await;
     worker.requests.send(Request::Compact("high")).unwrap();
     let compacted = worker.wait_for_done().await;
-    worker
-        .requests
-        .send(Request::Prompt("second".into(), Vec::new(), "medium"))
-        .unwrap();
+    worker.prompt("second", "medium");
     let second = worker.wait_for_done().await;
     let _ = worker.quit().await;
     test_support::remove_session_files(&session_id);
