@@ -174,14 +174,7 @@ impl Agent {
                         finish_block(&mut content, &partial_json, &mut input_error, on_event);
                     }
                     "message_delta" => {
-                        stop_reason = event["delta"]["stop_reason"]
-                            .as_str()
-                            .unwrap_or_default()
-                            .into();
-                        usage.update_from_response(&event["usage"]);
-                        usage.duration_ms = first_token.map_or(0, |start| {
-                            u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
-                        });
+                        stop_reason = finish_message(&event, &mut usage, first_token);
                     }
                     "error" => return Err(stream_error(&event["error"], content.is_empty())),
                     _ => {}
@@ -199,6 +192,17 @@ impl Agent {
             retried,
         })
     }
+}
+
+fn finish_message(event: &Value, usage: &mut Usage, first_token: Option<Instant>) -> String {
+    usage.update_from_response(&event["usage"]);
+    usage.duration_ms = first_token.map_or(0, |start| {
+        u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+    });
+    event["delta"]["stop_reason"]
+        .as_str()
+        .unwrap_or_default()
+        .into()
 }
 
 fn start_block(content: &mut Vec<Value>, block: Value, on_event: &mut impl FnMut(AgentEvent)) {
