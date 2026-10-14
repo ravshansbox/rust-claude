@@ -27,6 +27,16 @@ struct PostError {
     expired: Option<String>,
 }
 
+impl PostError {
+    fn fatal(message: String) -> Self {
+        Self {
+            message,
+            transient: false,
+            expired: None,
+        }
+    }
+}
+
 /// A Streamable HTTP server. Each message is a POST; the server answers a
 /// request with JSON or an event stream, and other messages with 202.
 struct Http {
@@ -74,11 +84,7 @@ impl OAuthSession {
         if let Some(reason) = reason {
             let _ = write!(message, " (could not renew the sign-in: {reason})");
         }
-        PostError {
-            message,
-            transient: false,
-            expired: None,
-        }
+        PostError::fatal(message)
     }
 }
 
@@ -257,11 +263,7 @@ impl Http {
         let Some(helper) = &self.headers_helper else {
             return Ok(());
         };
-        let dynamic = helper.run(&self.url).await.map_err(|message| PostError {
-            message,
-            transient: false,
-            expired: None,
-        })?;
+        let dynamic = helper.run(&self.url).await.map_err(PostError::fatal)?;
         let mut headers = self.static_headers.clone();
         for (name, value) in &dynamic {
             headers.insert(name, value.clone());
