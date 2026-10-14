@@ -20,6 +20,10 @@ const MAX_LIST_ROWS: usize = 10;
 const BOTTOM_BUTTON: &str = "↓ Bottom (End)";
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+fn saturating_u16(value: usize) -> u16 {
+    u16::try_from(value).unwrap_or(u16::MAX)
+}
+
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let input_width = usize::from(frame.area().width.max(1));
     app.input_width = input_width;
@@ -27,15 +31,10 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
     let input_lines: Vec<Line> = input_rows.into_iter().map(Line::raw).collect();
     let footer_paragraph = footer(app);
-    let footer_height =
-        u16::try_from(footer_paragraph.line_count(frame.area().width)).unwrap_or(u16::MAX);
+    let footer_height = saturating_u16(footer_paragraph.line_count(frame.area().width));
     let [chat, input, footer] = Layout::vertical([
         Constraint::Min(1),
-        Constraint::Length(
-            u16::try_from(input_lines.len())
-                .unwrap_or(u16::MAX)
-                .saturating_add(2),
-        ),
+        Constraint::Length(saturating_u16(input_lines.len()).saturating_add(2)),
         Constraint::Length(footer_height),
     ])
     .areas(frame.area());
@@ -107,13 +106,12 @@ fn conversation_layout(
     } else {
         Vec::new()
     };
-    let pinned_height = u16::try_from(
+    let pinned_height = saturating_u16(
         pinned_lines
             .iter()
             .map(|line| wrapped_height(line, chat.width))
             .sum::<usize>(),
     )
-    .unwrap_or(u16::MAX)
     .min((chat.height - panel_height).saturating_sub(1));
     let conversation_area = Rect {
         height: chat.height - panel_height - pinned_height,
@@ -141,9 +139,7 @@ fn draw_bottom_button(frame: &mut Frame, chat: Rect, pinned_area: Rect) -> Rect 
     if pinned_area.height == 0 {
         return Rect::default();
     }
-    let width = u16::try_from(Line::raw(BOTTOM_BUTTON).width())
-        .unwrap_or(u16::MAX)
-        .min(chat.width);
+    let width = saturating_u16(Line::raw(BOTTOM_BUTTON).width()).min(chat.width);
     let button = Rect {
         x: chat.x + chat.width - width,
         width,
@@ -162,12 +158,7 @@ fn panel<'a>(
     history_search: Option<&'a HistorySearch>,
     chat: Rect,
 ) -> Option<Panel<'a>> {
-    let panel_height = |content: usize| {
-        u16::try_from(content)
-            .unwrap_or(u16::MAX)
-            .saturating_add(1)
-            .min(chat.height)
-    };
+    let panel_height = |content: usize| saturating_u16(content).saturating_add(1).min(chat.height);
     if let Some(picker) = picker {
         let count = picker.items.len();
         let height = panel_height(count.min(MAX_LIST_ROWS) + 1);
@@ -221,8 +212,8 @@ fn draw_input(
     cursor_row: usize,
     cursor_column: usize,
 ) {
-    let cursor_row = u16::try_from(cursor_row).unwrap_or(u16::MAX);
-    let cursor_column = u16::try_from(cursor_column).unwrap_or(u16::MAX);
+    let cursor_row = saturating_u16(cursor_row);
+    let cursor_column = saturating_u16(cursor_column);
     let input_scroll = cursor_row.saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
         Paragraph::new(input_lines)
@@ -265,9 +256,7 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
         return;
     };
     let matches = suggestions.items;
-    let height = u16::try_from(matches.len().min(MAX_LIST_ROWS))
-        .unwrap_or(u16::MAX)
-        .min(chat.height);
+    let height = saturating_u16(matches.len().min(MAX_LIST_ROWS)).min(chat.height);
     let selected = app.command_selected.min(matches.len() - 1);
     let first = (selected + 1).saturating_sub(usize::from(height));
     let name_width = matches
@@ -297,7 +286,7 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
             ))
         })
         .collect();
-    let width = u16::try_from(width).unwrap_or(u16::MAX).min(chat.width);
+    let width = saturating_u16(width).min(chat.width);
     let area = Rect {
         y: chat.y + chat.height - height,
         height,
@@ -392,7 +381,7 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
         filled += height;
         lines.push(line);
     }
-    let offset = u16::try_from(top - skipped).unwrap_or(u16::MAX);
+    let offset = saturating_u16(top - skipped);
     Paragraph::new(Text::from(lines))
         .wrap(Wrap { trim: false })
         .scroll((offset, 0))
