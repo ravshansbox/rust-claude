@@ -479,13 +479,12 @@ async fn read_json(
     }
     let body: Value = serde_json::from_slice(&body)
         .map_err(|error| format!("server sent invalid JSON: {error}"))?;
-    match body {
-        Value::Array(replies) => replies.iter().for_each(|reply| {
-            handle(reply);
-        }),
-        reply => {
-            handle(&reply);
-        }
+    let replies = match &body {
+        Value::Array(replies) => replies.as_slice(),
+        reply => std::slice::from_ref(reply),
+    };
+    for reply in replies {
+        handle(reply);
     }
     Ok(())
 }
