@@ -146,16 +146,11 @@ impl MockApi {
 
 async fn read_request(stream: &mut TcpStream) -> Option<(String, Value)> {
     let mut data = Vec::new();
-    let mut chunk = [0u8; 8192];
     let header_end = loop {
         if let Some(end) = data.windows(4).position(|window| window == b"\r\n\r\n") {
             break end + 4;
         }
-        let read = stream.read(&mut chunk).await.ok()?;
-        if read == 0 {
-            return None;
-        }
-        data.extend_from_slice(&chunk[..read]);
+        read_chunk(stream, &mut data).await?;
     };
     let headers = String::from_utf8_lossy(&data[..header_end]).to_lowercase();
     let length: usize = headers
@@ -164,14 +159,20 @@ async fn read_request(stream: &mut TcpStream) -> Option<(String, Value)> {
         .and_then(|value| value.trim().parse().ok())
         .unwrap_or(0);
     while data.len() < header_end + length {
-        let read = stream.read(&mut chunk).await.ok()?;
-        if read == 0 {
-            return None;
-        }
-        data.extend_from_slice(&chunk[..read]);
+        read_chunk(stream, &mut data).await?;
     }
     let body = serde_json::from_slice(&data[header_end..]).unwrap_or(Value::Null);
     Some((headers, body))
+}
+
+async fn read_chunk(stream: &mut TcpStream, data: &mut Vec<u8>) -> Option<()> {
+    let mut chunk = [0u8; 8192];
+    let read = stream.read(&mut chunk).await.ok()?;
+    if read == 0 {
+        return None;
+    }
+    data.extend_from_slice(&chunk[..read]);
+    Some(())
 }
 
 async fn respond(mut stream: TcpStream, reply: Option<Reply>) {
