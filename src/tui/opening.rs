@@ -63,7 +63,7 @@ fn show_skills_and_instructions<'a>(
         }
     }
     for diagnostic in &skills.diagnostics {
-        app.push(Role::Event, diagnostic.to_string());
+        app.push(Role::Event, diagnostic);
     }
     let labels: Vec<&str> = instructions.into_iter().collect();
     if !labels.is_empty() {
