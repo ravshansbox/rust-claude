@@ -60,7 +60,7 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
             json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "{\"path\": \"ünï" } }),
             json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "cødé.txt\"}" } }),
             test_support::block_stop(1),
-            json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+            test_support::message_delta("tool_use"),
             json!({ "type": "message_stop" }),
         ]),
         text_reply("done"),
@@ -84,7 +84,7 @@ async fn skips_pings_and_events_it_does_not_know() {
         json!({ "type": "future_event" }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "lo" } }),
         test_support::block_stop(0),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+        test_support::message_delta("end_turn"),
         json!({ "type": "message_stop" }),
     ])])
     .await;
@@ -100,7 +100,7 @@ async fn skips_frames_without_data_such_as_keep_alive_comments() {
         json!("event: ping\n\n"),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hello" } }),
         test_support::block_stop(0),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+        test_support::message_delta("end_turn"),
         json!({ "type": "message_stop" }),
     ])])
     .await;
@@ -249,7 +249,7 @@ async fn does_not_run_a_tool_call_cut_off_by_the_output_limit() {
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo cut" } }),
         test_support::block_stop(0),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "max_tokens" }, "usage": { "output_tokens": 1 } }),
+        test_support::message_delta("max_tokens"),
         json!({ "type": "message_stop" }),
     ]);
     let api = MockApi::start(vec![cut_off]).await;
@@ -276,7 +276,7 @@ async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": "t1", "name": "bash", "input": {} } }),
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo broken" } }),
         test_support::block_stop(0),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        test_support::message_delta("tool_use"),
         json!({ "type": "message_stop" }),
     ]);
     let api = MockApi::start(vec![broken, text_reply("ok")]).await;
@@ -377,7 +377,7 @@ async fn shows_thinking_as_it_streams_and_sends_it_back_signed() {
             json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "text", "text": "" } }),
             json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "text_delta", "text": "Done." } }),
             test_support::block_stop(1),
-            json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+            test_support::message_delta("end_turn"),
             json!({ "type": "message_stop" }),
         ]),
         text_reply("again"),

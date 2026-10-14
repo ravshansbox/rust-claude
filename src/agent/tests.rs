@@ -139,7 +139,7 @@ async fn keeps_finished_tool_calls_when_cancelled_during_a_later_call() {
         test_support::block_stop(0),
         json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "tool_use", "id": "call-2", "name": "bash", "input": { "command": "sleep 30" } } }),
         test_support::block_stop(1),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }),
+        test_support::message_delta("tool_use"),
     ]);
     let api = MockApi::start(vec![two_tool_calls, text_reply("ok")]).await;
     let mut agent = test_support::agent(&api);
@@ -363,7 +363,7 @@ async fn keeps_the_conversation_cached_after_a_round_with_many_tool_calls() {
         events.push(json!({ "type": "content_block_start", "index": index, "content_block": { "type": "tool_use", "id": format!("call-{index}"), "name": "bash", "input": { "command": "true" } } }));
         events.push(test_support::block_stop(index));
     }
-    events.push(json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "output_tokens": 1 } }));
+    events.push(test_support::message_delta("tool_use"));
     let api = MockApi::start(vec![Reply::Events(events), text_reply("done")]).await;
     let (_, result) = test_support::run_prompt(&api, "run them all", |_| {}).await;
     result.unwrap();
@@ -422,7 +422,7 @@ fn web_search_reply(result: &Value) -> Reply {
         json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "citations_delta", "citation": { "type": "web_search_result_location", "url": "https://blog.rust-lang.org/", "title": "Rust Blog", "encrypted_index": "def", "cited_text": "Rust 1.99.0" } } }),
         json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "citations_delta", "citation": { "type": "web_search_result_location", "url": "https://releases.rs/", "title": "Rust Versions", "encrypted_index": "ghi", "cited_text": "1.99.0" } } }),
         test_support::block_stop(2),
-        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" }, "usage": { "output_tokens": 1 } }),
+        test_support::message_delta("end_turn"),
         json!({ "type": "message_stop" }),
     ])
 }
