@@ -13,8 +13,8 @@ pub(super) fn opening_app(
     history_path: Option<PathBuf>,
 ) -> App {
     let mut app = App::new(&agent.model, agent.effort, agent.stats());
-    app.skills = agent.skills.skills.clone();
-    app.mcp_sign_in_servers = startup.sign_in_servers.clone();
+    app.skills.clone_from(&agent.skills.skills);
+    app.mcp_sign_in_servers.clone_from(&startup.sign_in_servers);
     for diagnostic in &startup.diagnostics {
         app.push(Role::Event, diagnostic.clone());
     }

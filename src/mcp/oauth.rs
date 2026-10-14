@@ -138,7 +138,7 @@ fn saved_meanwhile(server_url: &str, saved: &Saved, rejected: Option<&str>) -> O
             && !current.expired()
     })?;
     if saved.secret_from_config && current.client_id == saved.client_id {
-        current.client_secret = saved.client_secret.clone();
+        current.client_secret.clone_from(&saved.client_secret);
         current.secret_from_config = true;
     }
     Some(current)
