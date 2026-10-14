@@ -162,8 +162,7 @@ fn preview(content: &str, prefix: &str, max_lines: usize) -> Option<String> {
     }
     let remaining = lines.len().saturating_sub(max_lines);
     if remaining > 0 {
-        let noun = if remaining == 1 { "line" } else { "lines" };
-        let _ = write!(preview, "\n… {remaining} more {noun}");
+        let _ = write!(preview, "\n… {}", super::plural(remaining, "more line"));
     }
     Some(preview)
 }

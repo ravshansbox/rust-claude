@@ -1,4 +1,4 @@
-use super::{argument, regular_file, replace_file, tool};
+use super::{argument, plural, regular_file, replace_file, tool};
 use serde_json::{Value, json};
 
 /// Larger files are refused rather than loaded whole into memory.
@@ -58,10 +58,9 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     let absorb_cr = crlf && old_text.starts_with('\n');
     let limit = if replace_all { usize::MAX } else { 1 };
     let (edited, count) = replace(&content, &old_text, &new_text, limit, absorb_cr);
-    let message = match (replace_all, count) {
-        (false, _) => format!("edited {path}"),
-        (true, 1) => format!("edited {path} (1 replacement)"),
-        (true, count) => format!("edited {path} ({count} replacements)"),
+    let message = match replace_all {
+        false => format!("edited {path}"),
+        true => format!("edited {path} ({})", plural(count, "replacement")),
     };
     replace_file(path, edited, Some(content))
         .await

@@ -1,4 +1,4 @@
-use super::tool;
+use super::{plural, tool};
 use serde_json::{Value, json};
 
 pub const NAME: &str = "agent";
@@ -34,17 +34,12 @@ pub fn definition() -> Value {
 
 pub fn summary(input: &Value) -> String {
     let mode = input["mode"].as_str().unwrap_or_default();
-    match input["tasks"].as_array().map_or(0, Vec::len) {
-        1 => format!("{mode}, 1 task"),
-        count => format!("{mode}, {count} tasks"),
-    }
+    let count = input["tasks"].as_array().map_or(0, Vec::len);
+    format!("{mode}, {}", plural(count, "task"))
 }
 
 pub fn tool_calls(count: usize) -> String {
-    match count {
-        1 => "1 tool call".to_string(),
-        count => format!("{count} tool calls"),
-    }
+    plural(count, "tool call")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

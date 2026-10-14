@@ -48,6 +48,13 @@ fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> 
     })
 }
 
+fn plural(count: usize, noun: &str) -> String {
+    match count {
+        1 => format!("1 {noun}"),
+        _ => format!("{count} {noun}s"),
+    }
+}
+
 fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
     input[key]
         .as_str()
