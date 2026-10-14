@@ -1,4 +1,4 @@
-use super::{Credentials, credentials_path, exchange_code, parse_pasted_code};
+use super::{Credentials, credentials_path, exchange_code};
 use crate::agent::{
     retry::retry_delay,
     test_support::{self, MockApi, Reply, text_reply},
@@ -11,6 +11,7 @@ use tokio::{
     sync::{Mutex, Notify},
 };
 
+mod pasted_code;
 mod prompt;
 mod quitting;
 
@@ -403,25 +404,4 @@ async fn saving_never_leaves_a_reader_with_a_partial_sign_in() {
     assert_eq!(mode, 0o600);
     assert_eq!((saved.access.as_str(), saved.expires), ("new", 2));
     assert_eq!(leftovers, 0);
-}
-
-#[test]
-fn accepts_a_pasted_code_with_the_state_we_sent() {
-    assert_eq!(parse_pasted_code(" abc#xyz\n", "xyz").unwrap(), "abc");
-}
-
-#[test]
-fn rejects_a_pasted_code_with_another_state() {
-    assert_eq!(
-        parse_pasted_code("abc#other", "xyz")
-            .unwrap_err()
-            .to_string(),
-        "OAuth state mismatch"
-    );
-}
-
-#[test]
-fn rejects_a_pasted_code_without_its_state() {
-    let error = parse_pasted_code("abc\n", "xyz").unwrap_err();
-    assert!(error.to_string().contains("whole code"), "{error}");
 }
