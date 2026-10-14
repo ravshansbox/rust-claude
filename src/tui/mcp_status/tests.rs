@@ -180,3 +180,25 @@ fn shows_mcp_servers_again_after_clearing_the_session() {
         ["new session", "loaded project MCP servers: docs (3 tools)"]
     );
 }
+
+#[test]
+fn shows_why_an_mcp_server_failed_below_its_group() {
+    let mut app = new_app();
+    app.start_mcp_servers([("docs", Scope::Project)], []);
+    handle_agent_event(
+        mcp_server_failed(
+            "docs",
+            "docs (failed)",
+            "MCP server docs failed: connection refused",
+        ),
+        &mut app,
+    );
+    let shown = screen(&mut app);
+    let group = shown
+        .find("loaded project MCP servers: docs (failed)")
+        .expect(&shown);
+    let reason = shown
+        .find("MCP server docs failed: connection refused")
+        .expect(&shown);
+    assert!(group < reason, "{shown}");
+}
