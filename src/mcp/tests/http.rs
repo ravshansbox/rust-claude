@@ -513,17 +513,22 @@ async fn ends_the_http_session_when_dropped() {
     let (url, requests) = http_server(http_mcp).await;
     let mcp = started(http_config(&url)).await;
     drop(mcp);
-    let deleted = || -> Vec<String> {
+    let deleted = || -> Vec<(String, Option<String>)> {
         requests
             .lock()
             .unwrap()
             .iter()
             .filter(|request| request.method == "DELETE")
-            .map(|request| request.headers["mcp-session-id"].clone())
+            .map(|request| {
+                (
+                    request.headers["mcp-session-id"].clone(),
+                    request.headers.get("mcp-protocol-version").cloned(),
+                )
+            })
             .collect()
     };
     let deleted = eventually(deleted, |deleted| !deleted.is_empty()).await;
-    assert_eq!(deleted, ["s1"]);
+    assert_eq!(deleted, [("s1".into(), Some("2025-03-26".into()))]);
 }
 
 async fn started(config: ServerConfig) -> Mcp {

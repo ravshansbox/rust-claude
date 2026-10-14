@@ -120,6 +120,9 @@ impl Drop for HttpSession {
             .headers(get(&self.0.headers))
             .header(SESSION_HEADER, session)
             .timeout(Duration::from_secs(1));
+        if let Some(version) = get(&self.0.protocol_version) {
+            request = request.header("mcp-protocol-version", version);
+        }
         if let Some(saved) = self.0.oauth.as_ref().and_then(OAuthSession::current) {
             request = request.bearer_auth(saved.access_token);
         }
