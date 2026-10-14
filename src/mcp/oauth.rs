@@ -248,27 +248,7 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         return Err(format!("the MCP server does not use HTTPS: {server_url}"));
     }
     let url = reqwest::Url::parse(server_url).map_err(|error| error.to_string())?;
-    let probe = client
-        .post(server_url)
-        .header(
-            reqwest::header::ACCEPT,
-            "application/json, text/event-stream",
-        )
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 0,
-            "method": "initialize",
-            "params": super::initialize_params(),
-        }))
-        .send()
-        .await
-        .map_err(|error| format!("cannot reach {server_url}: {error}"))?;
-    let challenge = probe
-        .headers()
-        .get(reqwest::header::WWW_AUTHENTICATE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_string();
+    let challenge = challenge(client, server_url).await?;
     let origin = url.origin().ascii_serialization();
     let resource_urls: Vec<String> = challenge_parameter(&challenge, "resource_metadata")
         .into_iter()
@@ -354,6 +334,31 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         resource: resource.unwrap_or(server_url).to_string(),
         scope,
     })
+}
+
+/// The `WWW-Authenticate` header the server sends to an unsigned `initialize` request.
+async fn challenge(client: &reqwest::Client, server_url: &str) -> Result<String, String> {
+    let probe = client
+        .post(server_url)
+        .header(
+            reqwest::header::ACCEPT,
+            "application/json, text/event-stream",
+        )
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 0,
+            "method": "initialize",
+            "params": super::initialize_params(),
+        }))
+        .send()
+        .await
+        .map_err(|error| format!("cannot reach {server_url}: {error}"))?;
+    Ok(probe
+        .headers()
+        .get(reqwest::header::WWW_AUTHENTICATE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or_default()
+        .to_string())
 }
 
 /// Whether `resource` is `url`, or its origin or a parent path of it.
