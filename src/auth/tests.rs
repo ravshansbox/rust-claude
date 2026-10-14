@@ -165,6 +165,13 @@ fn expired(refresh: &str) -> Credentials {
     serde_json::from_value(json!({ "access": "old", "refresh": refresh, "expires": 0 })).unwrap()
 }
 
+fn renew_in_background() -> tokio::task::JoinHandle<anyhow::Result<String>> {
+    tokio::spawn(async {
+        let mut credentials = expired("first");
+        credentials.access_token(&reqwest::Client::new()).await
+    })
+}
+
 #[tokio::test]
 async fn keeps_the_saved_sign_in_when_the_token_endpoint_is_down() {
     let _lock = AUTH_FILE.lock().await;
@@ -320,10 +327,7 @@ async fn finishes_renewing_after_the_caller_gives_up() {
     let _lock = AUTH_FILE.lock().await;
     let endpoint = TokenEndpoint::start("first", true).await;
     let path = no_credentials_file();
-    let prompt = tokio::spawn(async {
-        let mut credentials = expired("first");
-        credentials.access_token(&reqwest::Client::new()).await
-    });
+    let prompt = renew_in_background();
     endpoint.arrived.notified().await;
     prompt.abort();
     let _ = prompt.await;
@@ -349,10 +353,7 @@ async fn quitting_waits_for_a_renewal_to_be_saved() {
     let _lock = AUTH_FILE.lock().await;
     let endpoint = TokenEndpoint::start("first", true).await;
     let path = no_credentials_file();
-    let prompt = tokio::spawn(async {
-        let mut credentials = expired("first");
-        credentials.access_token(&reqwest::Client::new()).await
-    });
+    let prompt = renew_in_background();
     endpoint.arrived.notified().await;
     prompt.abort();
     let _ = prompt.await;
@@ -373,10 +374,7 @@ async fn quitting_stops_waiting_for_a_renewal_that_hangs() {
     let _lock = AUTH_FILE.lock().await;
     let endpoint = TokenEndpoint::start("first", true).await;
     let path = no_credentials_file();
-    let prompt = tokio::spawn(async {
-        let mut credentials = expired("first");
-        credentials.access_token(&reqwest::Client::new()).await
-    });
+    let prompt = renew_in_background();
     endpoint.arrived.notified().await;
     let waited = tokio::time::timeout(
         Duration::from_secs(5),
