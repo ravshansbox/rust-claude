@@ -31,7 +31,7 @@ fn git_files(directory: &Path) -> Option<Vec<String>> {
     let mut files: Vec<String> = String::from_utf8_lossy(&output.stdout)
         .split('\0')
         .filter(|path| !path.is_empty() && directory.join(path).is_file())
-        .map(String::from)
+        .map(str::to_string)
         .collect();
     files.sort();
     files.dedup();
