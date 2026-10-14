@@ -79,8 +79,8 @@ const WRITE_PREVIEW_LINES: usize = 10;
 
 pub fn diff(name: &str, input: &Value) -> Option<String> {
     match name {
-        "write" => write_preview(input["content"].as_str()?),
-        "bash" => code_preview(input["command"].as_str()?),
+        "write" => preview(input["content"].as_str()?, " ", WRITE_PREVIEW_LINES),
+        "bash" => preview(input["command"].as_str()?, "", usize::MAX),
         "edit" => Some(edit_preview(
             input["old_text"].as_str()?,
             input["new_text"].as_str()?,
@@ -119,21 +119,6 @@ fn terminated(text: &str) -> Cow<'_, str> {
     }
 }
 
-fn code_preview(code: &str) -> Option<String> {
-    if code.is_empty() {
-        return None;
-    }
-    let unit = indent_unit(code.lines());
-    let mut preview = String::with_capacity(code.len());
-    for (index, line) in code.lines().enumerate() {
-        if index > 0 {
-            preview.push('\n');
-        }
-        push_compact_indent(&mut preview, line, unit);
-    }
-    Some(preview)
-}
-
 fn leading_spaces(line: &str) -> usize {
     line.trim_start_matches('\t')
         .chars()
@@ -161,21 +146,21 @@ fn push_compact_indent(preview: &mut String, line: &str, unit: usize) {
     preview.push_str(content);
 }
 
-fn write_preview(content: &str) -> Option<String> {
+fn preview(content: &str, prefix: &str, max_lines: usize) -> Option<String> {
     let lines: Vec<&str> = content.lines().collect();
     if lines.is_empty() {
         return None;
     }
     let unit = indent_unit(lines.iter().copied());
     let mut preview = String::with_capacity(content.len());
-    for (index, line) in lines.iter().take(WRITE_PREVIEW_LINES).enumerate() {
+    for (index, line) in lines.iter().take(max_lines).enumerate() {
         if index > 0 {
             preview.push('\n');
         }
-        preview.push(' ');
+        preview.push_str(prefix);
         push_compact_indent(&mut preview, line, unit);
     }
-    let remaining = lines.len().saturating_sub(WRITE_PREVIEW_LINES);
+    let remaining = lines.len().saturating_sub(max_lines);
     if remaining > 0 {
         let noun = if remaining == 1 { "line" } else { "lines" };
         let _ = write!(preview, "\n… {remaining} more {noun}");
