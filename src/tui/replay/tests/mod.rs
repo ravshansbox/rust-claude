@@ -1,16 +1,14 @@
 mod tasks;
 mod update;
 mod web;
+mod workspace;
 
 use super::{handle_agent_event, replay_messages};
 use crate::agent::{self, AgentEvent};
 use crate::images;
 use crate::skills::{Scope, Skill};
 use crate::tools;
-use crate::tui::{
-    Action, Activity, App, Role, UiEvent, handle_input,
-    test_support::{new_app, screen},
-};
+use crate::tui::{Action, Activity, App, Role, UiEvent, handle_input, test_support::new_app};
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use serde_json::json;
 use std::io;
@@ -319,46 +317,6 @@ fn shows_replacement_count_live_and_replayed() {
     };
     assert_eq!(texts(&live), ["edit a.rs\n-a\n+b", "edit: 3 replacements"]);
     assert_eq!(texts(&replayed), texts(&live));
-}
-
-#[test]
-fn updates_branch_in_status_line_after_commands() {
-    let finished_tool = |name: &str| {
-        UiEvent::Agent(AgentEvent::ToolDone {
-            name: name.into(),
-            error: None,
-            note: None,
-        })
-    };
-    let finished_shell = || UiEvent::Shell("git switch other".into(), Ok(String::new()));
-    for event in [finished_tool("bash"), finished_shell()] {
-        let mut app = new_app();
-        app.workspace = "folder · stale-branch".into();
-        handle_agent_event(event, &mut app);
-        assert!(app.workspace_stale);
-        handle_agent_event(UiEvent::Workspace("folder · other".into()), &mut app);
-        let screen = screen(&mut app);
-        assert!(!screen.contains("stale-branch"));
-        assert!(screen.contains("folder · other"));
-    }
-}
-
-#[test]
-fn keeps_status_line_branch_after_file_tools() {
-    for name in ["read", "write", "edit"] {
-        let mut app = new_app();
-        app.workspace = "folder · branch".into();
-        handle_agent_event(
-            UiEvent::Agent(AgentEvent::ToolDone {
-                name: name.into(),
-                error: None,
-                note: None,
-            }),
-            &mut app,
-        );
-        assert!(!app.workspace_stale, "{name}");
-        assert!(screen(&mut app).contains("folder · branch"), "{name}");
-    }
 }
 
 #[test]
