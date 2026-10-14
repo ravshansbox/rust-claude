@@ -198,13 +198,9 @@ async fn run_loop(
         if std::mem::take(&mut app.workspace_stale) {
             send_blocking(&background_events, || UiEvent::Workspace(workspace_label()));
         }
-        for entry in app.unsaved_history.drain(..) {
-            let _ = history_sender.send(entry);
-        }
+        send_history(&mut app, &history_sender);
     };
-    for entry in app.unsaved_history.drain(..) {
-        let _ = history_sender.send(entry);
-    }
+    send_history(&mut app, &history_sender);
     drop(history_sender);
     let _ = history_writer.join();
     quit(request_tx, cancel_tx);
@@ -268,6 +264,12 @@ fn send_blocking(
     tokio::task::spawn_blocking(move || {
         let _ = events.send(event());
     });
+}
+
+fn send_history(app: &mut App, sender: &std::sync::mpsc::Sender<(PathBuf, history::Entry)>) {
+    for entry in app.unsaved_history.drain(..) {
+        let _ = sender.send(entry);
+    }
 }
 
 /// Adds prompts to their history files one at a time, in order, on a thread
