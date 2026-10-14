@@ -298,16 +298,7 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         }
     }
     let text = |value: &Value| value.as_str().map(str::to_string);
-    let scope = challenge_parameter(&challenge, "scope").or_else(|| {
-        let scopes: Vec<&str> = resource_metadata
-            .as_ref()?
-            .get("scopes_supported")?
-            .as_array()?
-            .iter()
-            .filter_map(Value::as_str)
-            .collect();
-        (!scopes.is_empty()).then(|| scopes.join(" "))
-    });
+    let scope = requested_scope(&challenge, resource_metadata.as_ref());
     Ok(Discovered {
         authorization_endpoint: text(&server_metadata["authorization_endpoint"])
             .unwrap_or_default(),
@@ -315,6 +306,18 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         registration_endpoint: text(&server_metadata["registration_endpoint"]),
         resource: resource.unwrap_or(server_url).to_string(),
         scope,
+    })
+}
+
+fn requested_scope(challenge: &str, resource_metadata: Option<&Value>) -> Option<String> {
+    challenge_parameter(challenge, "scope").or_else(|| {
+        let scopes: Vec<&str> = resource_metadata?
+            .get("scopes_supported")?
+            .as_array()?
+            .iter()
+            .filter_map(Value::as_str)
+            .collect();
+        (!scopes.is_empty()).then(|| scopes.join(" "))
     })
 }
 
