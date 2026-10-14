@@ -72,49 +72,9 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         None
     };
     let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
-    let layout = |app: &App, pinned: bool| {
-        let pinned_lines: Vec<Line> = if pinned {
-            let lines: Vec<Line> = status_lines(app).into_iter().skip(1).collect();
-            if lines.is_empty() {
-                vec![Line::default()]
-            } else {
-                lines
-            }
-        } else {
-            Vec::new()
-        };
-        let pinned_height = u16::try_from(
-            pinned_lines
-                .iter()
-                .map(|line| wrapped_height(line, chat.width))
-                .sum::<usize>(),
-        )
-        .unwrap_or(u16::MAX)
-        .min((chat.height - panel_height).saturating_sub(1));
-        let conversation_area = Rect {
-            height: chat.height - panel_height - pinned_height,
-            ..chat
-        };
-        let wrapped_line_count: usize = app
-            .messages
-            .iter()
-            .enumerate()
-            .map(|(index, message)| app.gap_before(index) + message.height())
-            .sum::<usize>()
-            + if pinned {
-                0
-            } else {
-                status_lines(app)
-                    .iter()
-                    .map(|line| wrapped_height(line, chat.width))
-                    .sum::<usize>()
-            };
-        let max_scroll = wrapped_line_count.saturating_sub(usize::from(conversation_area.height));
-        (pinned_lines, pinned_height, conversation_area, max_scroll)
-    };
     let mut pinned = app.scroll_from_bottom > 0;
     let (mut pinned_lines, mut pinned_height, mut conversation_area, mut max_scroll) =
-        layout(app, pinned);
+        conversation_layout(app, chat, panel_height, pinned);
     app.scroll_from_bottom = if pinned && !app.status_pinned {
         app.scroll_from_bottom.min(max_scroll)
     } else {
@@ -122,7 +82,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     };
     if pinned && app.scroll_from_bottom == 0 {
         pinned = false;
-        (pinned_lines, pinned_height, conversation_area, max_scroll) = layout(app, false);
+        (pinned_lines, pinned_height, conversation_area, max_scroll) =
+            conversation_layout(app, chat, panel_height, false);
     }
     let viewport_height = conversation_area.height;
     app.status_pinned = pinned;
@@ -145,20 +106,84 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         Paragraph::new(pinned_lines).wrap(Wrap { trim: false }),
         pinned_area,
     );
-    app.bottom_button = Rect::default();
-    if pinned_height > 0 {
-        let width = u16::try_from(Line::raw(BOTTOM_BUTTON).width())
-            .unwrap_or(u16::MAX)
-            .min(chat.width);
-        app.bottom_button = Rect {
-            x: chat.x + chat.width - width,
-            width,
-            height: 1,
-            ..pinned_area
+    app.bottom_button = draw_bottom_button(frame, chat, pinned_area);
+
+    draw_panel(frame, chat, panel);
+
+    draw_suggestions(frame, app, chat);
+
+    draw_input(frame, input, input_lines, cursor_row, cursor_column);
+
+    frame.render_widget(footer_paragraph, footer);
+}
+
+fn conversation_layout(
+    app: &App,
+    chat: Rect,
+    panel_height: u16,
+    pinned: bool,
+) -> (Vec<Line<'static>>, u16, Rect, usize) {
+    let pinned_lines: Vec<Line> = if pinned {
+        let lines: Vec<Line> = status_lines(app).into_iter().skip(1).collect();
+        if lines.is_empty() {
+            vec![Line::default()]
+        } else {
+            lines
+        }
+    } else {
+        Vec::new()
+    };
+    let pinned_height = u16::try_from(
+        pinned_lines
+            .iter()
+            .map(|line| wrapped_height(line, chat.width))
+            .sum::<usize>(),
+    )
+    .unwrap_or(u16::MAX)
+    .min((chat.height - panel_height).saturating_sub(1));
+    let conversation_area = Rect {
+        height: chat.height - panel_height - pinned_height,
+        ..chat
+    };
+    let wrapped_line_count: usize = app
+        .messages
+        .iter()
+        .enumerate()
+        .map(|(index, message)| app.gap_before(index) + message.height())
+        .sum::<usize>()
+        + if pinned {
+            0
+        } else {
+            status_lines(app)
+                .iter()
+                .map(|line| wrapped_height(line, chat.width))
+                .sum::<usize>()
         };
-        frame.render_widget(Clear, app.bottom_button);
-        frame.render_widget(Paragraph::new(BOTTOM_BUTTON).dark_gray(), app.bottom_button);
+    let max_scroll = wrapped_line_count.saturating_sub(usize::from(conversation_area.height));
+    (pinned_lines, pinned_height, conversation_area, max_scroll)
+}
+
+fn draw_bottom_button(frame: &mut Frame, chat: Rect, pinned_area: Rect) -> Rect {
+    if pinned_area.height == 0 {
+        return Rect::default();
     }
+    let width = u16::try_from(Line::raw(BOTTOM_BUTTON).width())
+        .unwrap_or(u16::MAX)
+        .min(chat.width);
+    let button = Rect {
+        x: chat.x + chat.width - width,
+        width,
+        height: 1,
+        ..pinned_area
+    };
+    frame.render_widget(Clear, button);
+    frame.render_widget(Paragraph::new(BOTTOM_BUTTON).dark_gray(), button);
+    button
+}
+
+type Panel<'a> = (Paragraph<'a>, u16, Option<(usize, u16, usize)>);
+
+fn draw_panel(frame: &mut Frame, chat: Rect, panel: Option<Panel>) {
     if let Some((view, height, list)) = panel {
         let area = Rect {
             y: chat.y + chat.height - height,
@@ -179,9 +204,15 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
             render_list_scrollbar(frame, list_area, count, selected);
         }
     }
+}
 
-    draw_suggestions(frame, app, chat);
-
+fn draw_input(
+    frame: &mut Frame,
+    input: Rect,
+    input_lines: Vec<Line>,
+    cursor_row: usize,
+    cursor_column: usize,
+) {
     let cursor_row = u16::try_from(cursor_row).unwrap_or(u16::MAX);
     let cursor_column = u16::try_from(cursor_column).unwrap_or(u16::MAX);
     let input_scroll = cursor_row.saturating_sub(input.height.saturating_sub(3));
@@ -195,8 +226,6 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         input.x + cursor_column,
         input.y + cursor_row - input_scroll + 1,
     ));
-
-    frame.render_widget(footer_paragraph, footer);
 }
 
 fn footer(app: &App) -> Paragraph<'static> {
