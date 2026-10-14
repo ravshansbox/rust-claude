@@ -95,26 +95,10 @@ async fn run_loop(
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
     let background_events = event_tx.clone();
     let (history_sender, history_writer) = history_writer(event_tx.clone());
-    let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
-    for server in startup.servers {
-        let mcp_tx = mcp_tx.clone();
-        tokio::spawn(async move {
-            let _ = mcp_tx.send(server.started.await);
-        });
-    }
-    drop(mcp_tx);
+    let mcp_rx = start_mcp_servers(startup.servers);
     let settings = Settings::load();
     app.notifications = settings.notifications != Some(false);
-    if let Some(updater) = Updater::for_this_build(&settings) {
-        let events = background_events.clone();
-        tokio::spawn(async move {
-            updater
-                .run(move |progress| {
-                    let _ = events.send(UiEvent::Update(progress));
-                })
-                .await;
-        });
-    }
+    start_updater(&settings, &background_events);
     let mut worker = tokio::spawn(agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx));
     let mut terminal_events = EventStream::new();
     let mut redraw = interval(REDRAW_INTERVAL);
@@ -173,20 +157,7 @@ async fn run_loop(
                     handle_agent_event(event, &mut app);
                     next = event_rx.try_recv().ok();
                 }
-                if !app.busy()
-                    && let Some((prompt, images)) = app.send_queued()
-                {
-                    let _ = request_tx.send(Request::Prompt(prompt, images, app.effort));
-                }
-                if let Some(message) = app.notification.take()
-                    && !app.busy()
-                {
-                    let _ = notify(
-                        terminal.backend_mut(),
-                        &message,
-                        std::env::var_os("TMUX").is_some(),
-                    );
-                }
+                send_queued_and_notify(&mut app, terminal, &request_tx);
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
             }
         }
@@ -208,6 +179,51 @@ async fn run_loop(
         let _ = worker.await;
     }
     result
+}
+
+fn send_queued_and_notify(
+    app: &mut App,
+    terminal: &mut DefaultTerminal,
+    requests: &mpsc::UnboundedSender<Request>,
+) {
+    if !app.busy()
+        && let Some((prompt, images)) = app.send_queued()
+    {
+        let _ = requests.send(Request::Prompt(prompt, images, app.effort));
+    }
+    if let Some(message) = app.notification.take()
+        && !app.busy()
+    {
+        let _ = notify(
+            terminal.backend_mut(),
+            &message,
+            std::env::var_os("TMUX").is_some(),
+        );
+    }
+}
+
+fn start_mcp_servers(servers: Vec<mcp::StartingServer>) -> mpsc::UnboundedReceiver<mcp::Started> {
+    let (mcp_tx, mcp_rx) = mpsc::unbounded_channel();
+    for server in servers {
+        let mcp_tx = mcp_tx.clone();
+        tokio::spawn(async move {
+            let _ = mcp_tx.send(server.started.await);
+        });
+    }
+    mcp_rx
+}
+
+fn start_updater(settings: &Settings, events: &mpsc::UnboundedSender<UiEvent>) {
+    if let Some(updater) = Updater::for_this_build(settings) {
+        let events = events.clone();
+        tokio::spawn(async move {
+            updater
+                .run(move |progress| {
+                    let _ = events.send(UiEvent::Update(progress));
+                })
+                .await;
+        });
+    }
 }
 
 fn perform(
