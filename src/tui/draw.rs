@@ -182,7 +182,9 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_suggestions(frame, app, chat);
 
-    let input_scroll = (cursor_row as u16).saturating_sub(input.height.saturating_sub(3));
+    let cursor_row = u16::try_from(cursor_row).unwrap_or(u16::MAX);
+    let cursor_column = u16::try_from(cursor_column).unwrap_or(u16::MAX);
+    let input_scroll = cursor_row.saturating_sub(input.height.saturating_sub(3));
     frame.render_widget(
         Paragraph::new(input_lines)
             .block(Block::default().borders(Borders::TOP | Borders::BOTTOM))
@@ -190,8 +192,8 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         input,
     );
     frame.set_cursor_position((
-        input.x + cursor_column as u16,
-        input.y + cursor_row as u16 - input_scroll + 1,
+        input.x + cursor_column,
+        input.y + cursor_row - input_scroll + 1,
     ));
 
     frame.render_widget(footer_paragraph, footer);
