@@ -60,6 +60,7 @@ impl std::fmt::Display for Activity {
     }
 }
 
+#[derive(Default)]
 pub(super) struct App {
     pub(super) input: String,
     pub(super) cursor: usize,
@@ -135,51 +136,16 @@ pub(super) struct Picker {
 impl App {
     pub(super) fn new(model: &str, effort: &'static str, stats: Stats) -> Self {
         let mut app = Self {
-            input: String::new(),
-            cursor: 0,
-            messages: Vec::new(),
             workspace: workspace_label(),
-            workspace_stale: false,
             model: model.into(),
             effort,
-            activity: None,
-            waiting_behind_background: None,
-            spinner_frame: 0,
             stats,
-            scroll_from_bottom: 0,
-            max_scroll: 0,
-            status_pinned: false,
             page_size: 1,
             input_width: usize::MAX,
-            picker: None,
-            command_selected: 0,
-            commands_dismissed: false,
-            files: None,
-            listing_files: false,
-            files_generation: 0,
-            prompt_history: Vec::new(),
-            history_index: None,
-            reads: tools::ReadGroup::default(),
-            tasks: super::tasks::Tasks::default(),
-            skills: Vec::new(),
-            mcp_sign_in_servers: Vec::new(),
-            images: Vec::new(),
-            image_count: 0,
-            queue: Queue::default(),
-            history: Vec::new(),
-            history_file: None,
-            unsaved_history: Vec::new(),
-            history_search: None,
-            mcp_groups: Vec::new(),
-            selection: None,
-            conversation_area: Rect::default(),
-            bottom_button: Rect::default(),
-            conversation_top: 0,
             version_line: VERSION_LINE.into(),
-            version_message: None,
             notifications: true,
             focused: true,
-            notification: None,
+            ..Self::default()
         };
         app.show_version();
         app
