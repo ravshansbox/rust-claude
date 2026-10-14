@@ -1,4 +1,4 @@
-use std::{collections::HashMap, fmt::Write, time::Duration};
+use std::{collections::HashMap, fmt::Write, sync::Arc, time::Duration};
 
 use serde_json::{Value, json};
 
@@ -230,7 +230,7 @@ fn configured(name: &str) -> Result<ServerConfig, String> {
 /// Cloning shares the running servers, so subagents can call their tools.
 #[derive(Clone, Default)]
 pub struct Mcp {
-    servers: Vec<std::sync::Arc<Server>>,
+    servers: Vec<Arc<Server>>,
     pub diagnostics: Vec<String>,
 }
 
@@ -420,7 +420,7 @@ impl Mcp {
             server.scope,
             server.tools.len()
         );
-        self.servers.push(std::sync::Arc::new(server));
+        self.servers.push(Arc::new(server));
         (diagnostics, Ok(loaded))
     }
 
