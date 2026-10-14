@@ -97,15 +97,13 @@ fn edit_preview(old_text: &str, new_text: &str) -> String {
     let diff = similar::TextDiff::from_lines(&*old_text, &*new_text);
     let mut preview = String::with_capacity(old_text.len() + new_text.len());
     for (index, change) in diff.iter_all_changes().enumerate() {
-        if index > 0 {
-            preview.push('\n');
-        }
-        preview.push(match change.tag() {
-            similar::ChangeTag::Delete => '-',
-            similar::ChangeTag::Insert => '+',
-            similar::ChangeTag::Equal => ' ',
-        });
-        push_compact_indent(&mut preview, change.value().trim_end_matches('\n'), unit);
+        let prefix = match change.tag() {
+            similar::ChangeTag::Delete => "-",
+            similar::ChangeTag::Insert => "+",
+            similar::ChangeTag::Equal => " ",
+        };
+        let line = change.value().trim_end_matches('\n');
+        push_line(&mut preview, index, prefix, line, unit);
     }
     preview
 }
@@ -136,7 +134,11 @@ fn indent_unit<'a>(lines: impl Iterator<Item = &'a str>) -> usize {
         .unwrap_or(1)
 }
 
-fn push_compact_indent(preview: &mut String, line: &str, unit: usize) {
+fn push_line(preview: &mut String, index: usize, prefix: &str, line: &str, unit: usize) {
+    if index > 0 {
+        preview.push('\n');
+    }
+    preview.push_str(prefix);
     let content = line.trim_start();
     if content.is_empty() {
         return;
@@ -155,11 +157,7 @@ fn preview(content: &str, prefix: &str, max_lines: usize) -> Option<String> {
     let unit = indent_unit(lines.iter().copied());
     let mut preview = String::with_capacity(content.len());
     for (index, line) in lines.iter().take(max_lines).enumerate() {
-        if index > 0 {
-            preview.push('\n');
-        }
-        preview.push_str(prefix);
-        push_compact_indent(&mut preview, line, unit);
+        push_line(&mut preview, index, prefix, line, unit);
     }
     let remaining = lines.len().saturating_sub(max_lines);
     if remaining > 0 {
