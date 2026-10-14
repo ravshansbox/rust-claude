@@ -149,7 +149,7 @@ fn shows_a_finished_background_command_while_working_on_it() {
         resumed.messages.last().unwrap().text,
         "background task 1 finished\nhi"
     );
-    assert!(resumed.prompt_history.is_empty());
+    assert_eq!(resumed.prompt_history, Vec::<String>::new());
 }
 
 #[test]

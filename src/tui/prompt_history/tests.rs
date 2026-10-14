@@ -81,7 +81,7 @@ fn filters_prompt_history_as_the_user_types() {
     }
     assert_eq!(prompts(&app), ["fix docs", "add docs"]);
     press(&mut app, KeyCode::Char('x'));
-    assert!(prompts(&app).is_empty());
+    assert_eq!(prompts(&app), Vec::<String>::new());
     press(&mut app, KeyCode::Enter);
     assert!(app.history_search.is_none());
     assert_eq!(app.input, "");

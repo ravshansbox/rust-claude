@@ -193,7 +193,7 @@ fn queues_prompts_while_working_and_sends_them_when_done() {
     handle_agent_event(UiEvent::Done(Ok(())), &mut app);
     let (prompt, images) = app.send_queued().unwrap();
     assert_eq!(prompt, "first\n\nsecond");
-    assert!(images.is_empty());
+    assert_eq!(images, Vec::<Image>::new());
     assert!(app.busy());
     assert_eq!(queued_prompts(&app), Vec::<String>::new());
     assert_eq!(app.messages.last().unwrap().text, "first\n\nsecond");
@@ -656,7 +656,7 @@ fn sends_pasted_images_whose_markers_remain() {
         sent,
         Some(("[image 1][image 2 look".into(), vec![image(1)]))
     );
-    assert!(app.images.is_empty());
+    assert_eq!(app.images, Vec::new());
 }
 
 #[test]
