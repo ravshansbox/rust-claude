@@ -29,6 +29,16 @@ async fn rejects_invalid_numbers() {
             json!({ "path": "Cargo.toml", "offset": -5 }),
             "offset must be at least 1",
         ),
+        (
+            "bash",
+            json!({ "command": "echo hi", "timeout": "30" }),
+            "timeout must be a whole number",
+        ),
+        (
+            "read",
+            json!({ "path": "Cargo.toml", "limit": 1.5 }),
+            "limit must be a whole number",
+        ),
     ];
     for (name, input, error) in cases {
         assert_eq!(call(name, &input).await, Err(error.into()), "{input}");

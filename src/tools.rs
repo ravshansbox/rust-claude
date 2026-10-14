@@ -70,6 +70,7 @@ fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
 fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
     match &input[key] {
         Value::Null => Ok(None),
+        value if !value.is_i64() && !value.is_u64() => Err(format!("{key} must be a whole number")),
         value => value
             .as_u64()
             .filter(|number| *number >= min)
