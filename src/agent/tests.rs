@@ -423,7 +423,7 @@ fn web_search_reply(result: &Value) -> Reply {
         json!({ "type": "content_block_delta", "index": 2, "delta": { "type": "citations_delta", "citation": { "type": "web_search_result_location", "url": "https://releases.rs/", "title": "Rust Versions", "encrypted_index": "ghi", "cited_text": "1.99.0" } } }),
         test_support::block_stop(2),
         test_support::message_delta("end_turn"),
-        json!({ "type": "message_stop" }),
+        test_support::message_stop(),
     ])
 }
 

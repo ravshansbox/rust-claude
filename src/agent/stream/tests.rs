@@ -61,7 +61,7 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
             json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "cødé.txt\"}" } }),
             test_support::block_stop(1),
             test_support::message_delta("tool_use"),
-            json!({ "type": "message_stop" }),
+            test_support::message_stop(),
         ]),
         text_reply("done"),
     ])
@@ -85,7 +85,7 @@ async fn skips_pings_and_events_it_does_not_know() {
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "lo" } }),
         test_support::block_stop(0),
         test_support::message_delta("end_turn"),
-        json!({ "type": "message_stop" }),
+        test_support::message_stop(),
     ])])
     .await;
     assert_eq!(reply_text(&api).await, "hello");
@@ -101,7 +101,7 @@ async fn skips_frames_without_data_such_as_keep_alive_comments() {
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "hello" } }),
         test_support::block_stop(0),
         test_support::message_delta("end_turn"),
-        json!({ "type": "message_stop" }),
+        test_support::message_stop(),
     ])])
     .await;
     assert_eq!(reply_text(&api).await, "hello");
@@ -187,7 +187,7 @@ async fn discards_a_reply_the_model_declined_partway_through() {
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial answer" } }),
         test_support::block_stop(0),
         json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
-        json!({ "type": "message_stop" }),
+        test_support::message_stop(),
     ]);
     let (message, requests, agent) = fail_then_ask_again(refusal).await;
     assert!(message.contains("declined to answer"), "{message}");
@@ -211,7 +211,7 @@ async fn says_the_model_declined_when_it_stops_partway_through_a_tool_call() {
             json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": partial } }),
             test_support::block_stop(0),
             json!({ "type": "message_delta", "delta": { "stop_reason": "refusal" }, "usage": { "output_tokens": 5 } }),
-            json!({ "type": "message_stop" }),
+            test_support::message_stop(),
         ]);
         let (message, requests, agent) = fail_then_ask_again(refusal).await;
         assert!(
@@ -250,7 +250,7 @@ async fn does_not_run_a_tool_call_cut_off_by_the_output_limit() {
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo cut" } }),
         test_support::block_stop(0),
         test_support::message_delta("max_tokens"),
-        json!({ "type": "message_stop" }),
+        test_support::message_stop(),
     ]);
     let api = MockApi::start(vec![cut_off]).await;
     let mut tools_started = 0;
@@ -277,7 +277,7 @@ async fn does_not_run_or_keep_a_tool_call_whose_input_is_broken() {
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "input_json_delta", "partial_json": "{\"command\": \"echo broken" } }),
         test_support::block_stop(0),
         test_support::message_delta("tool_use"),
-        json!({ "type": "message_stop" }),
+        test_support::message_stop(),
     ]);
     let api = MockApi::start(vec![broken, text_reply("ok")]).await;
     let mut agent = test_support::agent(&api);
@@ -378,7 +378,7 @@ async fn shows_thinking_as_it_streams_and_sends_it_back_signed() {
             json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "text_delta", "text": "Done." } }),
             test_support::block_stop(1),
             test_support::message_delta("end_turn"),
-            json!({ "type": "message_stop" }),
+            test_support::message_stop(),
         ]),
         text_reply("again"),
     ])

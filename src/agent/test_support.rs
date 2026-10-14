@@ -62,6 +62,11 @@ pub(crate) fn message_delta(stop_reason: &str) -> Value {
     json!({ "type": "message_delta", "delta": { "stop_reason": stop_reason }, "usage": { "output_tokens": 1 } })
 }
 
+/// The last event of a reply.
+pub(crate) fn message_stop() -> Value {
+    json!({ "type": "message_stop" })
+}
+
 /// The end of the block at `index`.
 pub(crate) fn block_stop(index: usize) -> Value {
     json!({ "type": "content_block_stop", "index": index })
@@ -79,7 +84,7 @@ pub(crate) fn stopped_reply(text: &str, stop_reason: &str) -> Reply {
         json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": text } }),
         block_stop(0),
         message_delta(stop_reason),
-        json!({ "type": "message_stop" }),
+        message_stop(),
     ])
 }
 
@@ -89,7 +94,7 @@ pub(crate) fn tool_reply(id: &str, name: &str, input: &Value) -> Reply {
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": id, "name": name, "input": input } }),
         block_stop(0),
         message_delta("tool_use"),
-        json!({ "type": "message_stop" }),
+        message_stop(),
     ])
 }
 
