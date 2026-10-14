@@ -8,11 +8,6 @@ const COMMAND_PREFIX: &str = "/skill:";
 
 pub(crate) fn escape_xml(text: &str) -> String {
     let mut escaped = String::with_capacity(text.len());
-    push_escaped_xml(&mut escaped, text);
-    escaped
-}
-
-fn push_escaped_xml(escaped: &mut String, text: &str) {
     for character in text.chars() {
         match character {
             '&' => escaped.push_str("&amp;"),
@@ -23,6 +18,7 @@ fn push_escaped_xml(escaped: &mut String, text: &str) {
             _ => escaped.push(character),
         }
     }
+    escaped
 }
 
 fn unescape_xml(text: &str) -> Cow<'_, str> {
@@ -55,13 +51,12 @@ pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
          <available_skills>\n",
     );
     for skill in visible {
-        prompt.push_str("  <skill>\n    <name>");
-        push_escaped_xml(&mut prompt, &skill.name);
-        prompt.push_str("</name>\n    <description>");
-        push_escaped_xml(&mut prompt, &skill.description);
-        prompt.push_str("</description>\n    <location>");
-        push_escaped_xml(&mut prompt, &skill.path.to_string_lossy());
-        prompt.push_str("</location>\n  </skill>\n");
+        prompt.push_str(&format!(
+            "  <skill>\n    <name>{}</name>\n    <description>{}</description>\n    <location>{}</location>\n  </skill>\n",
+            escape_xml(&skill.name),
+            escape_xml(&skill.description),
+            escape_xml(&skill.path.to_string_lossy())
+        ));
     }
     prompt.push_str("</available_skills>");
     Some(prompt)
