@@ -146,22 +146,7 @@ fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool
             app.queue_prompt();
         }
         (KeyCode::Enter, _) if !app.busy() && !app.input.trim().is_empty() => {
-            app.scroll_to_bottom();
-            let prompt = app.take_input();
-            if let Some(command) = prompt.strip_prefix('!') {
-                let command = command.trim().to_string();
-                app.remember(&prompt);
-                if !command.is_empty() {
-                    app.start(Activity::Running);
-                    act(Action::Shell(command));
-                }
-                return false;
-            }
-            if prompt.starts_with('/') {
-                return run_command(prompt, app, act);
-            }
-            app.push(Role::User, prompt.clone());
-            act(app.submit(prompt));
+            return submit_input(app, act);
         }
         (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
             app.cursor = previous_word_start(&app.input, app.cursor);
@@ -186,6 +171,26 @@ fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool
         }
         _ => {}
     }
+    false
+}
+
+fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {
+    app.scroll_to_bottom();
+    let prompt = app.take_input();
+    if let Some(command) = prompt.strip_prefix('!') {
+        let command = command.trim().to_string();
+        app.remember(&prompt);
+        if !command.is_empty() {
+            app.start(Activity::Running);
+            act(Action::Shell(command));
+        }
+        return false;
+    }
+    if prompt.starts_with('/') {
+        return run_command(prompt, app, act);
+    }
+    app.push(Role::User, prompt.clone());
+    act(app.submit(prompt));
     false
 }
 
