@@ -75,12 +75,14 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         } else {
             Vec::new()
         };
-        let pinned_height = pinned_lines
-            .iter()
-            .map(|line| wrapped_height(line, chat.width))
-            .sum::<usize>()
-            .min((chat.height - panel_height).saturating_sub(1) as usize)
-            as u16;
+        let pinned_height = u16::try_from(
+            pinned_lines
+                .iter()
+                .map(|line| wrapped_height(line, chat.width))
+                .sum::<usize>(),
+        )
+        .unwrap_or(u16::MAX)
+        .min((chat.height - panel_height).saturating_sub(1));
         let conversation_area = Rect {
             height: chat.height - panel_height - pinned_height,
             ..chat
@@ -216,7 +218,9 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
         return;
     };
     let matches = suggestions.items;
-    let height = (matches.len().min(MAX_LIST_ROWS) as u16).min(chat.height);
+    let height = u16::try_from(matches.len().min(MAX_LIST_ROWS))
+        .unwrap_or(u16::MAX)
+        .min(chat.height);
     let selected = app.command_selected.min(matches.len() - 1);
     let first = (selected + 1).saturating_sub(height as usize);
     let name_width = matches
