@@ -1,6 +1,4 @@
-use super::{
-    Progress, Settings, Updater, alias::link_alias_beside, create_update_folder, find_on_path,
-};
+use super::{Progress, Settings, Updater, create_update_folder, find_on_path};
 use crate::tools::test_support::TemporaryDir;
 use std::{
     io::{Cursor, ErrorKind, Write},
@@ -13,6 +11,7 @@ use tokio::{
     net::TcpListener,
 };
 
+mod alias;
 mod signature;
 
 fn source_zip() -> Vec<u8> {
@@ -149,54 +148,6 @@ async fn downloads_and_builds_a_newer_release_and_offers_a_restart() {
     let log = std::fs::read_to_string(dir.path().join("cargo.log")).unwrap();
     assert!(log.starts_with("install --locked --force --path "), "{log}");
     assert!(log.contains("unpacked"), "{log}");
-}
-
-#[tokio::test]
-async fn links_rca_to_the_installed_binary() {
-    let dir = TemporaryDir::new("update-link");
-    let (base, _) = github("v0.2.0").await;
-    let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
-    updater.bin_dir = Some(dir.path().join("bin"));
-    run(updater).await;
-    assert_eq!(
-        std::fs::read_link(dir.path().join("bin/rca")).unwrap(),
-        Path::new("rust-coding-agent")
-    );
-}
-
-#[cfg(unix)]
-#[test]
-fn links_rca_beside_the_program_at_start() {
-    let dir = TemporaryDir::new("update-start-link");
-    let program = dir.path().join("rust-coding-agent");
-    std::fs::write(&program, "").unwrap();
-    link_alias_beside(&program, false);
-    assert_eq!(
-        std::fs::read_link(dir.path().join("rca")).unwrap(),
-        Path::new("rust-coding-agent")
-    );
-}
-
-#[test]
-fn does_not_link_rca_in_a_debug_build() {
-    let dir = TemporaryDir::new("update-start-link-debug");
-    let program = dir.path().join("rust-coding-agent");
-    std::fs::write(&program, "").unwrap();
-    link_alias_beside(&program, true);
-    assert!(dir.path().join("rca").symlink_metadata().is_err());
-}
-
-#[test]
-fn keeps_an_existing_rca_beside_the_program() {
-    let dir = TemporaryDir::new("update-start-link-existing");
-    let program = dir.path().join("rust-coding-agent");
-    std::fs::write(&program, "").unwrap();
-    std::fs::write(dir.path().join("rca"), "other").unwrap();
-    link_alias_beside(&program, false);
-    assert_eq!(
-        std::fs::read_to_string(dir.path().join("rca")).unwrap(),
-        "other"
-    );
 }
 
 #[tokio::test]
