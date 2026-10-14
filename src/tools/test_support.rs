@@ -1,9 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 /// Whether the process is alive. A zombie, killed but not yet reaped,
 /// counts as stopped.
 pub(crate) fn is_running(pid: &str) -> bool {
-    let output = std::process::Command::new("ps")
+    let output = Command::new("ps")
         .args(["-o", "stat=", "-p", pid.trim()])
         .output()
         .unwrap();
@@ -28,10 +31,7 @@ impl TemporaryFile {
     pub(super) fn fifo(name: &str) -> Self {
         let path = temporary_path(name);
         let _ = std::fs::remove_file(&path);
-        let status = std::process::Command::new("mkfifo")
-            .arg(&path)
-            .status()
-            .unwrap();
+        let status = Command::new("mkfifo").arg(&path).status().unwrap();
         assert!(status.success());
         Self(path)
     }
