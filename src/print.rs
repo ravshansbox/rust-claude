@@ -192,21 +192,14 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 self.flush_reads();
                 self.tool(&tui::tool_message(&name, &summary, diff.as_deref()));
             }
-            AgentEvent::ToolDone {
-                name,
-                error: Some(error),
-                ..
-            } => {
+            AgentEvent::ToolDone { name, error, note } => {
+                let text = match (error, note) {
+                    (Some(error), _) => format!("{name} failed: {error}"),
+                    (None, Some(note)) => format!("{name}: {note}"),
+                    (None, None) => return,
+                };
                 self.flush_reads();
-                self.message(&format!("{name} failed: {error}"));
-            }
-            AgentEvent::ToolDone {
-                name,
-                note: Some(note),
-                ..
-            } => {
-                self.flush_reads();
-                self.message(&format!("{name}: {note}"));
+                self.message(&text);
             }
             AgentEvent::Notice(text) => {
                 self.flush_reads();
