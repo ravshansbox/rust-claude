@@ -195,7 +195,7 @@ fn queues_prompts_while_working_and_sends_them_when_done() {
     assert_eq!(prompt, "first\n\nsecond");
     assert!(images.is_empty());
     assert!(app.busy());
-    assert!(queued_prompts(&app).is_empty());
+    assert_eq!(queued_prompts(&app), Vec::<String>::new());
     assert_eq!(app.messages.last().unwrap().text, "first\n\nsecond");
 }
 
@@ -206,7 +206,7 @@ fn does_not_queue_commands() {
     handle_input(Event::Paste("/new".into()), &mut app, |_| {});
     press(&mut app, KeyCode::Enter);
     assert_eq!(app.input, "/new");
-    assert!(queued_prompts(&app).is_empty());
+    assert_eq!(queued_prompts(&app), Vec::<String>::new());
 }
 
 #[test]
@@ -216,7 +216,7 @@ fn restores_queued_prompts_when_cancelled() {
     handle_input(Event::Paste("draft".into()), &mut app, |_| {});
     handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
     assert_eq!(app.input, "first\n\ndraft");
-    assert!(queued_prompts(&app).is_empty());
+    assert_eq!(queued_prompts(&app), Vec::<String>::new());
     assert!(app.send_queued().is_none());
 }
 
