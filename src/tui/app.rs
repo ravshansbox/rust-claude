@@ -403,6 +403,16 @@ impl App {
         self.start(Activity::Working);
     }
 
+    /// Starts `activity`, or shows it once a background turn ends if one is
+    /// running, as the request then waits behind that turn.
+    pub(super) fn start_after_background(&mut self, activity: Activity) {
+        if self.busy() {
+            self.waiting_behind_background = Some(activity);
+        } else {
+            self.start(activity);
+        }
+    }
+
     /// Returns whether `name` is an effort level.
     pub(super) fn set_effort(&mut self, name: &str) -> bool {
         if let Some(level) = models::find_effort(&self.model, name) {

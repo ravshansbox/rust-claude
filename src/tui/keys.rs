@@ -213,7 +213,7 @@ fn handle_picker_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) 
             app.picker = None;
             match kind {
                 PickerKind::Session => {
-                    app.start(Activity::Resuming);
+                    app.start_after_background(Activity::Resuming);
                     act(Action::Resume(value));
                 }
                 PickerKind::Effort => {
