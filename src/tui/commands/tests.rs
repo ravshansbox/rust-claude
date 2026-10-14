@@ -1,7 +1,7 @@
 use crate::auth::now_millis;
 use crate::mcp::{
     self,
-    tests::sign_in::{AUTH_FILE, save_tokens},
+    tests::sign_in::{AUTH_FILE, save_tokens, save_tokens_as},
 };
 use crate::skills::{Scope, Skill};
 use crate::tui::{
@@ -100,6 +100,37 @@ fn completes_mcp_subcommands_and_server_names() {
     assert_eq!(signing_out, ["linear"]);
     handle_input(Event::Paste("/mcp logout ".into()), &mut app, |_| {});
     assert_eq!(suggested(&app), ["/mcp logout linear"]);
+}
+
+#[test]
+fn marks_signed_in_servers_after_mcp_login() {
+    let _file = AUTH_FILE.blocking_read();
+    let expires_at = now_millis() + 3_600_000;
+    save_tokens("https://notion.example/mcp", "token", expires_at);
+    save_tokens_as(
+        "https://slack.example/mcp",
+        "token",
+        expires_at,
+        Some("alice"),
+    );
+    let mut app = new_app();
+    app.mcp_sign_in_servers = sign_in_servers(&["github", "notion", "slack"]);
+    handle_input(Event::Paste("/mcp login ".into()), &mut app, |_| {});
+    let shown = screen(&mut app);
+    let line = |name: &str| {
+        shown
+            .lines()
+            .find(|line| line.contains(&format!("/mcp login {name}")))
+            .expect(name)
+            .trim_end()
+            .to_string()
+    };
+    assert!(line("github").ends_with("/mcp login github"), "{shown}");
+    assert!(line("notion").ends_with("signed in"), "{shown}");
+    assert!(line("slack").ends_with("signed in as alice"), "{shown}");
+    press(&mut app, KeyCode::Down);
+    press(&mut app, KeyCode::Tab);
+    assert_eq!(app.input, "/mcp login notion");
 }
 
 #[test]

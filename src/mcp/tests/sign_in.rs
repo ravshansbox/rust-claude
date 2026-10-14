@@ -30,6 +30,10 @@ fn signed_in_mcp(request: &HttpRequest) -> HttpReply {
 }
 
 pub(crate) fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
+    save_tokens_as(url, access_token, expires_at, None);
+}
+
+pub(crate) fn save_tokens_as(url: &str, access_token: &str, expires_at: u128, user: Option<&str>) {
     let token_endpoint = url.replace("/mcp", "/token");
     oauth::save(
         url,
@@ -42,7 +46,7 @@ pub(crate) fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
             refresh_token: Some("r1".into()),
             expires_at: Some(expires_at),
             secret_from_config: false,
-            user: None,
+            user: user.map(str::to_string),
         },
     )
     .unwrap();
@@ -448,10 +452,7 @@ async fn sums_up_a_signed_in_server_by_the_user_in_its_access_token() {
 async fn keeps_the_user_when_renewed_tokens_do_not_name_one() {
     let _file = AUTH_FILE.read().await;
     let (url, _) = http_server(signed_in_mcp).await;
-    save_tokens(&url, "stale", now_millis() - 1);
-    let mut saved = oauth::load(&url).unwrap();
-    saved.user = Some("alice".into());
-    oauth::save(&url, &saved).unwrap();
+    save_tokens_as(&url, "stale", now_millis() - 1, Some("alice"));
     let mut mcp = Mcp::default();
     let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
     assert_eq!(added.summary, "web (alice, 1 tools)");

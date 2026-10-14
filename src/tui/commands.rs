@@ -1,4 +1,7 @@
-use crate::{mcp::SignInServer, skills::Skill};
+use crate::{
+    mcp::{SignInServer, SignedIn},
+    skills::Skill,
+};
 
 pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
@@ -27,12 +30,17 @@ fn mcp_matches(rest: &str, sign_in_servers: &[SignInServer]) -> Vec<(String, Str
             sign_in_servers
                 .iter()
                 .filter(|candidate| candidate.name.starts_with(server))
-                .filter(|candidate| subcommand != "logout" || candidate.signed_in())
-                .map(|candidate| {
-                    (
-                        format!("/mcp {subcommand} {}", candidate.name),
-                        String::new(),
-                    )
+                .filter_map(|candidate| {
+                    let signed_in = candidate.signed_in();
+                    if subcommand == "logout" && signed_in.is_none() {
+                        return None;
+                    }
+                    let description = match signed_in {
+                        Some(SignedIn { user: Some(user) }) => format!("signed in as {user}"),
+                        Some(SignedIn { user: None }) => "signed in".into(),
+                        None => String::new(),
+                    };
+                    Some((format!("/mcp {subcommand} {}", candidate.name), description))
                 })
                 .collect()
         }
