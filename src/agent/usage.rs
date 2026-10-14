@@ -134,7 +134,7 @@ pub(super) async fn fetch_quota(
     let response = http
         .get(url)
         .bearer_auth(token)
-        .header("anthropic-beta", "oauth-2025-04-20")
+        .header("anthropic-beta", super::OAUTH_BETA)
         .send()
         .await?;
     let status = response.status();

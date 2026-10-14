@@ -1,5 +1,5 @@
 use super::{
-    Agent, AgentEvent, Usage,
+    Agent, AgentEvent, OAUTH_BETA, Usage,
     retry::{is_retryable_status, retry_after, retryable},
 };
 use crate::{models, tools};
@@ -54,7 +54,7 @@ impl Agent {
             body["thinking"]["block_binding"] = json!({ "prefix_mismatch_behavior": "drop_block" });
             "oauth-2025-04-20,thinking-binding-controls-2026-08-01"
         } else {
-            "oauth-2025-04-20"
+            OAUTH_BETA
         };
         (body, beta)
     }

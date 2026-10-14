@@ -40,6 +40,7 @@ pub use usage::{Quota, Stats, Usage};
 use usage::{fetch_quota, tokens_per_second, total_usage};
 
 const API_BASE: &str = "https://api.anthropic.com";
+const OAUTH_BETA: &str = "oauth-2025-04-20";
 
 /// The result saved for a tool call that was cancelled before it finished.
 pub const CANCELLED: &str = "cancelled by the user";
