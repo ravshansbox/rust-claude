@@ -9,7 +9,7 @@ use crate::agent::{self, AgentEvent};
 use crate::images;
 use crate::skills::{Scope, Skill};
 use crate::tools;
-use crate::tui::{Action, Activity, App, Role, UiEvent, handle_input, test_support::new_app};
+use crate::tui::{Activity, App, Role, UiEvent, handle_input, keys::Action, test_support::new_app};
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use serde_json::json;
 use std::io;
