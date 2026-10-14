@@ -95,7 +95,7 @@ fn shows_the_same_rows_from_any_scroll_position() {
         super::conversation(&app, width, top, height).render(area, &mut buffer);
         buffer
             .content()
-            .chunks(width as usize)
+            .chunks(usize::from(width))
             .map(|row| row.iter().map(Cell::symbol).collect::<String>())
             .collect::<Vec<_>>()
     };
