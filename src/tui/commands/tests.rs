@@ -1,3 +1,8 @@
+use crate::auth::now_millis;
+use crate::mcp::{
+    self,
+    tests::sign_in::{AUTH_FILE, save_tokens},
+};
 use crate::skills::{Scope, Skill};
 use crate::tui::{
     App,
@@ -48,10 +53,26 @@ fn suggested(app: &App) -> Vec<String> {
         .unwrap_or_default()
 }
 
+fn sign_in_servers(names: &[&str]) -> Vec<mcp::SignInServer> {
+    names
+        .iter()
+        .map(|name| mcp::SignInServer {
+            name: name.to_string(),
+            url: format!("https://{name}.example/mcp"),
+        })
+        .collect()
+}
+
 #[test]
 fn completes_mcp_subcommands_and_server_names() {
+    let _file = AUTH_FILE.blocking_read();
+    save_tokens(
+        "https://linear.example/mcp",
+        "token",
+        now_millis() + 3_600_000,
+    );
     let mut app = new_app();
-    app.mcp_sign_in_servers = vec!["figma".into(), "files".into(), "linear".into()];
+    app.mcp_sign_in_servers = sign_in_servers(&["figma", "files", "linear"]);
     handle_input(Event::Paste("/mc".into()), &mut app, |_| {});
     assert_eq!(suggested(&app), ["/mcp"]);
     handle_input(Event::Paste("p ".into()), &mut app, |_| {});
@@ -77,6 +98,8 @@ fn completes_mcp_subcommands_and_server_names() {
         }
     });
     assert_eq!(signing_out, ["linear"]);
+    handle_input(Event::Paste("/mcp logout ".into()), &mut app, |_| {});
+    assert_eq!(suggested(&app), ["/mcp logout linear"]);
 }
 
 #[test]

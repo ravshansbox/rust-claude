@@ -16,7 +16,7 @@ use crate::tools::test_support::{TemporaryDir, TemporaryFile};
 
 mod config_files;
 mod http;
-mod sign_in;
+pub(crate) mod sign_in;
 mod stdio;
 
 #[test]

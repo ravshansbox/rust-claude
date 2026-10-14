@@ -273,7 +273,20 @@ pub struct Startup {
     /// Global servers that project entries override.
     pub overridden: Vec<String>,
     /// HTTP servers that sign in with OAuth.
-    pub sign_in_servers: Vec<String>,
+    pub sign_in_servers: Vec<SignInServer>,
+}
+
+#[derive(Clone)]
+pub struct SignInServer {
+    pub name: String,
+    pub url: String,
+}
+
+impl SignInServer {
+    /// Whether mcp-auth.json holds a sign-in for this server.
+    pub fn signed_in(&self) -> bool {
+        oauth::load(&self.url).is_some()
+    }
 }
 
 fn starting(name: String, scope: Scope, config: ServerConfig) -> StartingServer {
@@ -302,8 +315,13 @@ pub fn startup() -> Startup {
         .collect();
     let sign_in_servers = enabled
         .iter()
-        .filter(|(_, (_, config))| http_url(config).is_some() && uses_oauth(config))
-        .map(|(name, _)| name.clone())
+        .filter(|(_, (_, config))| uses_oauth(config))
+        .filter_map(|(name, (_, config))| {
+            Some(SignInServer {
+                name: name.clone(),
+                url: http_url(config)?.to_string(),
+            })
+        })
         .collect();
     let servers = enabled
         .into_iter()
@@ -481,4 +499,4 @@ impl Mcp {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

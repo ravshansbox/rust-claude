@@ -1,4 +1,4 @@
-use crate::skills::Skill;
+use crate::{mcp::SignInServer, skills::Skill};
 
 pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
@@ -17,7 +17,7 @@ pub(super) const MCP_SUBCOMMANDS: &[(&str, &str)] = &[
 
 /// `/mcp` subcommands, or the servers they apply to, starting with the
 /// input after `/mcp `.
-fn mcp_matches(rest: &str, sign_in_servers: &[String]) -> Vec<(String, String)> {
+fn mcp_matches(rest: &str, sign_in_servers: &[SignInServer]) -> Vec<(String, String)> {
     match rest.split_once(' ') {
         Some((subcommand, server)) => {
             let known = MCP_SUBCOMMANDS.iter().any(|(name, _)| *name == subcommand);
@@ -26,8 +26,14 @@ fn mcp_matches(rest: &str, sign_in_servers: &[String]) -> Vec<(String, String)> 
             }
             sign_in_servers
                 .iter()
-                .filter(|name| name.starts_with(server))
-                .map(|name| (format!("/mcp {subcommand} {name}"), String::new()))
+                .filter(|candidate| candidate.name.starts_with(server))
+                .filter(|candidate| subcommand != "logout" || candidate.signed_in())
+                .map(|candidate| {
+                    (
+                        format!("/mcp {subcommand} {}", candidate.name),
+                        String::new(),
+                    )
+                })
                 .collect()
         }
         None => MCP_SUBCOMMANDS
@@ -43,7 +49,7 @@ fn mcp_matches(rest: &str, sign_in_servers: &[String]) -> Vec<(String, String)> 
 pub(super) fn command_matches(
     input: &str,
     skills: &[Skill],
-    sign_in_servers: &[String],
+    sign_in_servers: &[SignInServer],
 ) -> Vec<(String, String)> {
     if let Some(rest) = input.strip_prefix("/mcp ") {
         let mut matches = mcp_matches(rest, sign_in_servers);

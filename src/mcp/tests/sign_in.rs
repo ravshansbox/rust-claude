@@ -2,7 +2,7 @@ use super::*;
 
 /// Tests share one mcp-auth.json: those that use it take turns with those
 /// that make it unusable.
-static AUTH_FILE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
+pub(crate) static AUTH_FILE: tokio::sync::RwLock<()> = tokio::sync::RwLock::const_new(());
 
 /// Answers like `http_mcp`, but only with the access token `fresh`, and
 /// renews the refresh token `r1` at `/token`.
@@ -29,7 +29,7 @@ fn signed_in_mcp(request: &HttpRequest) -> HttpReply {
     http_mcp(request)
 }
 
-fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
+pub(crate) fn save_tokens(url: &str, access_token: &str, expires_at: u128) {
     let token_endpoint = url.replace("/mcp", "/token");
     oauth::save(
         url,
