@@ -8,6 +8,17 @@ use crate::tui::{
 use crossterm::event::{Event, KeyCode};
 use ratatui::text::Line;
 
+fn stream_in_chunks(reply: &str, size: usize) -> App {
+    let mut app = new_app();
+    let characters: Vec<char> = reply.chars().collect();
+    for chunk in characters.chunks(size) {
+        let text: String = chunk.iter().collect();
+        handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut app);
+        screen(&mut app);
+    }
+    app
+}
+
 #[test]
 fn merges_consecutive_reads() {
     let mut app = new_app();
@@ -33,13 +44,7 @@ fn renders_a_streamed_reply_the_same_as_the_whole_reply() {
         # Heading\n```\nno blank line before or after\n```\nafter\n\
         | a | b |\n| --- | --- |\n| 1 | 2 |\n\n~~~\ntilde\n~~~\n\n\
         > quote\n\n```python\nprint('x')\n```\n\n```\n~~~\n```\nfirst\nsecond\n";
-    let mut streamed = new_app();
-    let characters: Vec<char> = reply.chars().collect();
-    for chunk in characters.chunks(3) {
-        let text: String = chunk.iter().collect();
-        handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut streamed);
-        screen(&mut streamed);
-    }
+    let mut streamed = stream_in_chunks(reply, 3);
     let mut whole = new_app();
     whole.push(Role::Assistant, reply);
     let shown = screen(&mut whole);
@@ -61,12 +66,7 @@ fn renders_streamed_blocks_split_by_blank_lines_the_same_as_the_whole_reply() {
         "> quoted\n\n> more quote\n\nlazy\ncontinued\n",
     ];
     for reply in replies {
-        let mut streamed = new_app();
-        for character in reply.chars() {
-            let text = character.to_string();
-            handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut streamed);
-            screen(&mut streamed);
-        }
+        let mut streamed = stream_in_chunks(reply, 1);
         let mut whole = new_app();
         whole.push(Role::Assistant, reply);
         assert_eq!(screen(&mut streamed), screen(&mut whole), "{reply}");
@@ -92,13 +92,7 @@ fn keeps_finished_paragraphs_of_a_streaming_reply() {
 fn renders_a_finished_reply_the_same_as_the_whole_reply() {
     let reply =
         "See [docs] and[^1].\n\nMore text.\n\n[docs]: https://example.com\n\n[^1]: A note.\n";
-    let mut streamed = new_app();
-    let characters: Vec<char> = reply.chars().collect();
-    for chunk in characters.chunks(3) {
-        let text: String = chunk.iter().collect();
-        handle_agent_event(UiEvent::Agent(AgentEvent::Text(text)), &mut streamed);
-        screen(&mut streamed);
-    }
+    let mut streamed = stream_in_chunks(reply, 3);
     handle_agent_event(UiEvent::Done(Ok(())), &mut streamed);
     let mut whole = new_app();
     whole.push(Role::Assistant, reply);
