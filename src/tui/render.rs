@@ -113,7 +113,7 @@ impl StyleSheet for MarkdownStyleSheet {
 pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'static>> {
     let text = &highlight::strip_controls(text);
     match role {
-        Role::User => user_message_lines(text, width as usize),
+        Role::User => user_message_lines(text, usize::from(width)),
         Role::Assistant => tui_markdown::from_str_with_options(
             &hard_line_breaks(text),
             &Options::new(MarkdownStyleSheet)

@@ -32,7 +32,7 @@ pub(super) fn screen_of_width(app: &mut App, width: u16) -> String {
     let buffer = terminal.backend().buffer();
     buffer
         .content()
-        .chunks(buffer.area.width as usize)
+        .chunks(usize::from(buffer.area.width))
         .map(|row| row.iter().map(Cell::symbol).collect::<String>())
         .collect::<Vec<_>>()
         .join("\n")

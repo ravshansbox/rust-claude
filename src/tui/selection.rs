@@ -33,7 +33,7 @@ impl App {
         let area = self.conversation_area;
         let row = row.clamp(area.top(), area.bottom().saturating_sub(1)) - area.top();
         Point {
-            row: self.conversation_top + row as usize,
+            row: self.conversation_top + usize::from(row),
             column: column
                 .saturating_sub(area.left())
                 .min(area.width.saturating_sub(1)),
