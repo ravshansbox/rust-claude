@@ -353,12 +353,15 @@ fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Action)) -> bo
             app.start(Activity::LoadingSessions);
             act(Action::ListSessions);
         }
-        "/mcp" => match argument.split_once(char::is_whitespace) {
-            Some(("login", server)) if !server.trim().is_empty() => {
-                act(Action::McpSignIn(server.trim().to_string()));
+        "/mcp" => match argument
+            .split_once(char::is_whitespace)
+            .map(|(action, server)| (action, server.trim()))
+        {
+            Some(("login", server)) if !server.is_empty() => {
+                act(Action::McpSignIn(server.to_string()));
             }
-            Some(("logout", server)) if !server.trim().is_empty() => {
-                act(Action::McpSignOut(server.trim().to_string()));
+            Some(("logout", server)) if !server.is_empty() => {
+                act(Action::McpSignOut(server.to_string()));
             }
             _ => {
                 app.push(
