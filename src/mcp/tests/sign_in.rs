@@ -312,6 +312,10 @@ async fn oauth_server_with(
     (url, requests)
 }
 
+async fn begin_web_sign_in(url: &str) -> Result<SignIn, String> {
+    begin_sign_in_with("web", &http_config(url)).await
+}
+
 fn query(url: &str) -> HashMap<String, String> {
     reqwest::Url::parse(url)
         .unwrap()
@@ -337,7 +341,7 @@ async fn signs_in_to_an_http_server_with_oauth() {
     let _file = AUTH_FILE.read().await;
     let (url, requests) = oauth_server().await;
     let base = url.trim_end_matches("/mcp");
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     let parameters = query(&sign_in.authorize_url);
     assert!(
         sign_in
@@ -383,7 +387,7 @@ async fn signs_in_to_an_http_server_with_oauth() {
 async fn signs_in_while_another_connection_to_the_callback_stays_idle() {
     let _file = AUTH_FILE.read().await;
     let (url, _) = oauth_server().await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     let authorize_url = sign_in.authorize_url.clone();
     let callback = reqwest::Url::parse(&query(&authorize_url)["redirect_uri"]).unwrap();
     let _idle = tokio::net::TcpStream::connect(("127.0.0.1", callback.port().unwrap()))
@@ -415,7 +419,7 @@ async fn reads_sign_in_parameters_outside_quoted_values() {
         )
     })
     .await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
 }
 
@@ -434,7 +438,7 @@ async fn reads_sign_in_parameters_whatever_their_case() {
         )
     })
     .await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
 }
 
@@ -460,7 +464,7 @@ async fn asks_for_the_scopes_the_server_lists_when_the_challenge_names_none() {
         )
     })
     .await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "read write");
 }
 
@@ -478,7 +482,7 @@ async fn refuses_sign_in_endpoints_without_https() {
     })
     .await;
     assert_eq!(
-        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        begin_web_sign_in(&url).await.err(),
         Some(
             "the sign-in server's token endpoint does not use HTTPS: http://sign-in.example/token"
                 .into()
@@ -489,9 +493,7 @@ async fn refuses_sign_in_endpoints_without_https() {
 #[tokio::test]
 async fn refuses_to_sign_in_to_a_server_without_https() {
     assert_eq!(
-        begin_sign_in_with("web", &http_config("http://mcp.example/mcp"))
-            .await
-            .err(),
+        begin_web_sign_in("http://mcp.example/mcp").await.err(),
         Some("the MCP server does not use HTTPS: http://mcp.example/mcp".into())
     );
 }
@@ -525,7 +527,7 @@ async fn asks_for_a_client_id_when_the_sign_in_server_does_not_allow_registering
     })
     .await;
     assert_eq!(
-        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        begin_web_sign_in(&url).await.err(),
         Some(
             "the sign-in server does not let rust-coding-agent register; set oauth.clientId in mcp.json"
                 .into()
@@ -545,7 +547,7 @@ async fn reports_a_registration_the_sign_in_server_turned_down() {
     })
     .await;
     assert_eq!(
-        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        begin_web_sign_in(&url).await.err(),
         Some("cannot register Claude Code with the sign-in server: status 401: ".into())
     );
 }
@@ -557,7 +559,7 @@ async fn refuses_resource_metadata_for_another_server() {
     })
     .await;
     assert_eq!(
-        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        begin_web_sign_in(&url).await.err(),
         Some(format!(
             "the sign-in metadata of {url} is for another server: https://other.example/mcp"
         ))
@@ -573,7 +575,7 @@ async fn refuses_resource_metadata_for_a_path_that_only_shares_a_prefix() {
     .await;
     let resource = url.trim_end_matches('p');
     assert_eq!(
-        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        begin_web_sign_in(&url).await.err(),
         Some(format!(
             "the sign-in metadata of {url} is for another server: {resource}"
         ))
@@ -591,7 +593,7 @@ async fn accepts_resource_metadata_for_the_server_origin() {
         metadata["resource"] = json!(resource);
     })
     .await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     assert_eq!(
         query(&sign_in.authorize_url)["resource"],
         url.trim_end_matches("/mcp")
@@ -606,7 +608,7 @@ async fn refuses_a_sign_in_server_that_names_another_issuer() {
     .await;
     let base = url.trim_end_matches("/mcp");
     assert_eq!(
-        begin_sign_in_with("web", &http_config(&url)).await.err(),
+        begin_web_sign_in(&url).await.err(),
         Some(format!(
             "the sign-in server {base}/auth names another issuer: https://other.example"
         ))
@@ -661,7 +663,7 @@ async fn does_not_save_the_client_secret_from_the_config() {
 #[tokio::test]
 async fn reports_failed_sign_ins() {
     let (url, _) = oauth_server().await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     let authorize_url = sign_in.authorize_url.clone();
     let finished = tokio::spawn(sign_in.finish());
     let page = visit_callback(&authorize_url, "the-code", Some("forged")).await;
@@ -670,7 +672,7 @@ async fn reports_failed_sign_ins() {
         finished.await.unwrap(),
         Err("the sign-in page sent back a different state".into())
     );
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     let authorize_url = sign_in.authorize_url.clone();
     let finished = tokio::spawn(sign_in.finish());
     visit_callback(&authorize_url, "wrong-code", None).await;
@@ -678,7 +680,7 @@ async fn reports_failed_sign_ins() {
         finished.await.unwrap(),
         Err("token endpoint answered with status 400: invalid_grant".into())
     );
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     let mut callback = reqwest::Url::parse(&query(&sign_in.authorize_url)["redirect_uri"]).unwrap();
     callback
         .query_pairs_mut()
@@ -707,7 +709,7 @@ async fn reports_failed_sign_ins() {
 #[tokio::test]
 async fn reports_a_sign_in_the_user_declined() {
     let (url, _) = oauth_server().await;
-    let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
     let parameters = query(&sign_in.authorize_url);
     let mut callback = reqwest::Url::parse(&parameters["redirect_uri"]).unwrap();
     callback
