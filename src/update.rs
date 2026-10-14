@@ -1,4 +1,5 @@
 use std::{
+    ffi::{OsStr, OsString},
     io::{self, Cursor},
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
@@ -190,7 +191,7 @@ impl Updater {
         match outcome {
             Ok(()) => {
                 if let Some(bin_dir) = &self.bin_dir {
-                    link_alias_to(bin_dir, std::ffi::OsStr::new("rust-coding-agent"));
+                    link_alias_to(bin_dir, OsStr::new("rust-coding-agent"));
                 }
                 report(Progress::Ready);
             }
@@ -332,7 +333,7 @@ impl Drop for UpdateFolder {
     }
 }
 
-fn link_alias_to(bin_dir: &Path, program: &std::ffi::OsStr) {
+fn link_alias_to(bin_dir: &Path, program: &OsStr) {
     let alias = bin_dir.join("rca");
     if alias.symlink_metadata().is_err() {
         let _ = std::fs::create_dir_all(bin_dir);
@@ -376,7 +377,7 @@ fn parse_version(text: &str) -> Option<[u64; 3]> {
     parts.next().is_none().then_some(version)
 }
 
-pub fn find_on_path(program: &str, path: Option<std::ffi::OsString>) -> Option<PathBuf> {
+pub fn find_on_path(program: &str, path: Option<OsString>) -> Option<PathBuf> {
     let file = format!("{program}{}", std::env::consts::EXE_SUFFIX);
     std::env::split_paths(&path?)
         .map(|directory| directory.join(&file))
