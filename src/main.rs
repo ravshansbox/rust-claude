@@ -40,18 +40,7 @@ fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     update::link_alias_beside_this_program();
-    let arguments = std::env::args_os()
-        .skip(1)
-        .map(|argument| {
-            argument.into_string().map_err(|argument| {
-                anyhow::anyhow!(
-                    "argument is not valid UTF-8: {}\n{USAGE}",
-                    argument.to_string_lossy()
-                )
-            })
-        })
-        .collect::<Result<Vec<_>>>()?;
-    let (command, options) = parse_arguments(arguments)?;
+    let (command, options) = parse_arguments(command_line_arguments()?)?;
     if let Some(config_dir) = &options.config_dir {
         config::set_dir(config_dir.into());
     }
@@ -68,15 +57,7 @@ async fn run() -> Result<()> {
         Command::Interactive => (None, Vec::new()),
         Command::Print { prompt, images } => (Some(prompt), images),
     };
-    let images = image_paths
-        .iter()
-        .map(|path| {
-            std::fs::read(path)
-                .map_err(anyhow::Error::from)
-                .and_then(images::prepare)
-                .with_context(|| format!("failed to load image {path}"))
-        })
-        .collect::<Result<Vec<_>>>()?;
+    let images = load_images(&image_paths)?;
 
     // Look the session up before signing in, so a missing one is reported
     // without asking to sign in first.
@@ -123,6 +104,32 @@ async fn run() -> Result<()> {
         return result;
     };
     run_print(agent, stop, &prompt, &images).await
+}
+
+fn command_line_arguments() -> Result<Vec<String>> {
+    std::env::args_os()
+        .skip(1)
+        .map(|argument| {
+            argument.into_string().map_err(|argument| {
+                anyhow::anyhow!(
+                    "argument is not valid UTF-8: {}\n{USAGE}",
+                    argument.to_string_lossy()
+                )
+            })
+        })
+        .collect()
+}
+
+fn load_images(paths: &[String]) -> Result<Vec<images::Image>> {
+    paths
+        .iter()
+        .map(|path| {
+            std::fs::read(path)
+                .map_err(anyhow::Error::from)
+                .and_then(images::prepare)
+                .with_context(|| format!("failed to load image {path}"))
+        })
+        .collect()
 }
 
 /// Runs the prompt given on the command line and prints the reply.
