@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, fmt::Write};
 
 use anyhow::{Context, Result};
 
@@ -51,12 +51,13 @@ pub fn format_for_prompt(skills: &[Skill]) -> Option<String> {
          <available_skills>\n",
     );
     for skill in visible {
-        prompt.push_str(&format!(
+        let _ = write!(
+            prompt,
             "  <skill>\n    <name>{}</name>\n    <description>{}</description>\n    <location>{}</location>\n  </skill>\n",
             escape_xml(&skill.name),
             escape_xml(&skill.description),
             escape_xml(&skill.path.to_string_lossy())
-        ));
+        );
     }
     prompt.push_str("</available_skills>");
     Some(prompt)
