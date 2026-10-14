@@ -21,6 +21,15 @@ pub struct Segment {
     pub text: String,
 }
 
+impl Segment {
+    fn plain(text: &str) -> Self {
+        Self {
+            foreground: None,
+            text: text.to_string(),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct HighlightedLine {
     pub change: Option<Change>,
@@ -87,10 +96,7 @@ fn highlight_code(highlighter: &mut HighlightLines, code: &str) -> Vec<Segment> 
                 text: text.to_string(),
             })
             .collect(),
-        Err(_) => vec![Segment {
-            foreground: None,
-            text: code.to_string(),
-        }],
+        Err(_) => vec![Segment::plain(code)],
     }
 }
 
@@ -312,10 +318,7 @@ fn highlight_body(syntax: &SyntaxReference, body: &str, dark: bool) -> Vec<Highl
             let Some(change) = change else {
                 return HighlightedLine {
                     change: None,
-                    segments: vec![Segment {
-                        foreground: None,
-                        text: line.to_string(),
-                    }],
+                    segments: vec![Segment::plain(line)],
                 };
             };
             let code = characters.as_str();
@@ -327,10 +330,7 @@ fn highlight_body(syntax: &SyntaxReference, body: &str, dark: bool) -> Vec<Highl
                     highlight_code(&mut new_highlighter, code)
                 }
             };
-            let mut segments = vec![Segment {
-                foreground: None,
-                text: line[..1].to_string(),
-            }];
+            let mut segments = vec![Segment::plain(&line[..1])];
             segments.extend(code_segments);
             HighlightedLine {
                 change: Some(change),
