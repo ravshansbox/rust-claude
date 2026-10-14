@@ -50,7 +50,7 @@ impl Theme {
             Self::Light => (255, 255, 255),
             Self::Dark => (23, 23, 23),
         });
-        Style::new().bg(Color::Rgb(shift(red), shift(green), shift(blue)))
+        Style::new().bg(rgb((shift(red), shift(green), shift(blue))))
     }
 
     fn from_colorfgbg(value: &str) -> Option<Self> {
@@ -420,7 +420,7 @@ fn highlighted_line(line: highlight::HighlightedLine, dark: bool) -> Line<'stati
         .into_iter()
         .map(|segment| {
             let style = match segment.foreground {
-                Some((red, green, blue)) => Style::new().fg(Color::Rgb(red, green, blue)),
+                Some(colour) => Style::new().fg(rgb(colour)),
                 None => Style::new(),
             };
             Span::styled(expand_tabs(segment.text), style)
@@ -428,9 +428,13 @@ fn highlighted_line(line: highlight::HighlightedLine, dark: bool) -> Line<'stati
         .collect();
     let line = Line::from(spans);
     match background {
-        Some((red, green, blue)) => line.style(Style::new().bg(Color::Rgb(red, green, blue))),
+        Some(colour) => line.style(Style::new().bg(rgb(colour))),
         None => line,
     }
+}
+
+const fn rgb((red, green, blue): Colour) -> Color {
+    Color::Rgb(red, green, blue)
 }
 
 fn raw_line(line: &str) -> Line<'static> {
