@@ -307,6 +307,28 @@ fn validates_skill_files() {
 }
 
 #[test]
+fn skips_loose_markdown_with_broken_frontmatter_without_a_warning() {
+    let directory = TemporaryDir::new("skills-loose-broken");
+    let root = directory.path();
+    let home = root.join("home");
+    let cwd = root.join("project");
+    std::fs::create_dir_all(cwd.join(".git")).unwrap();
+    let skills = home.join(".rust-coding-agent/skills");
+    write(
+        &skills.join("notes.md"),
+        "---\ndescription: [unclosed\n---\n",
+    );
+    write(
+        &skills.join("commit.md"),
+        "---\ndescription: Commit.\n---\n",
+    );
+
+    let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &cwd);
+    assert_eq!(names(&loaded), ["commit"]);
+    assert_eq!(loaded.diagnostics, Vec::<String>::new());
+}
+
+#[test]
 fn reads_frontmatter_written_with_windows_line_endings() {
     let directory = TemporaryDir::new("skills-crlf");
     let path = directory.path().join("deploy/SKILL.md");
