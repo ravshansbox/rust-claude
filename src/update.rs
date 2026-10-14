@@ -253,8 +253,7 @@ impl Updater {
             zip::ZipArchive::new(Cursor::new(bytes))?.extract(target)
         })
         .await?
-        .with_context(|| format!("unpacking {ASSET}"))?;
-        Ok(())
+        .with_context(|| format!("unpacking {ASSET}"))
     }
 
     /// Runs cargo, and rustc for the build folder, from the update folder,
