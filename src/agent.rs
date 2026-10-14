@@ -8,6 +8,7 @@ mod context;
 mod http;
 mod queue;
 pub(crate) mod retry;
+mod shell;
 mod stream;
 mod subagent;
 pub(crate) use subagent::is_failure;
@@ -32,6 +33,7 @@ use context::{
 pub use http::http_client;
 pub use queue::{Queue, Queued, take_queued};
 use retry::{MAX_RETRIES, is_prompt_too_long, is_thinking_mismatch, retry_delay};
+pub use shell::{parse_shell_message, shell_message};
 use stream::Response;
 pub use system::Instructions;
 use system::{IDENTITY, SYSTEM_PROMPT, load_instructions};
@@ -97,17 +99,6 @@ fn text_of(blocks: &[Value]) -> String {
         .filter(|block| block["type"] == "text")
         .filter_map(|block| block["text"].as_str())
         .collect()
-}
-
-pub fn shell_message(command: &str, output: &str) -> String {
-    format!("<bash-input>{command}</bash-input>\n<bash-output>{output}</bash-output>")
-}
-
-pub fn parse_shell_message(text: &str) -> Option<(&str, &str)> {
-    let (command, rest) = text
-        .strip_prefix("<bash-input>")?
-        .split_once("</bash-input>\n<bash-output>")?;
-    Some((command, rest.strip_suffix("</bash-output>")?))
 }
 
 pub struct Agent {
