@@ -138,11 +138,7 @@ impl Agent {
                 };
                 let mut event: Value = serde_json::from_str(data)?;
                 match event["type"].as_str().unwrap_or_default() {
-                    "message_start" => {
-                        usage.update_from_response(&event["message"]["usage"]);
-                        self.pending_usage = retried;
-                        self.pending_usage.add(usage);
-                    }
+                    "message_start" => usage.update_from_response(&event["message"]["usage"]),
                     "content_block_start" => {
                         first_token.get_or_insert_with(Instant::now);
                         let block = event["content_block"].take();
@@ -221,8 +217,6 @@ impl Agent {
                         usage.update_from_response(&event["usage"]);
                         usage.duration_ms =
                             first_token.map_or(0, |start| start.elapsed().as_millis() as u64);
-                        self.pending_usage = retried;
-                        self.pending_usage.add(usage);
                     }
                     "error" => {
                         let message = event["error"].to_string();
@@ -237,6 +231,8 @@ impl Agent {
                     }
                     _ => {}
                 }
+                self.pending_usage = retried;
+                self.pending_usage.add(usage);
             }
             buffer.drain(..start);
         }
