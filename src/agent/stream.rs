@@ -215,8 +215,9 @@ impl Agent {
                             .unwrap_or_default()
                             .into();
                         usage.update_from_response(&event["usage"]);
-                        usage.duration_ms =
-                            first_token.map_or(0, |start| start.elapsed().as_millis() as u64);
+                        usage.duration_ms = first_token.map_or(0, |start| {
+                            u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)
+                        });
                     }
                     "error" => {
                         let message = event["error"].to_string();
