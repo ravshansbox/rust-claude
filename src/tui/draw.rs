@@ -239,12 +239,10 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
         .skip(first)
         .take(height as usize)
         .map(|(index, text)| {
-            let text = format!("{text:<width$}");
-            if index == selected {
-                Line::from(text.reversed())
-            } else {
-                Line::raw(text)
-            }
+            Line::from(reversed_if(
+                Span::from(format!("{text:<width$}")),
+                index == selected,
+            ))
         })
         .collect();
     let width = width.min(chat.width as usize) as u16;
@@ -381,11 +379,10 @@ fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let visible = (height as usize).saturating_sub(1).max(1);
     let first = (picker.selected + 1).saturating_sub(visible);
     for (index, (_, text)) in picker.items.iter().enumerate().skip(first).take(visible) {
-        lines.push(if index == picker.selected {
-            Line::from(text.as_str().reversed())
-        } else {
-            Line::raw(text.as_str())
-        });
+        lines.push(Line::from(reversed_if(
+            Span::from(text.as_str()),
+            index == picker.selected,
+        )));
     }
     Paragraph::new(lines)
 }
