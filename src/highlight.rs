@@ -69,13 +69,6 @@ fn syntax_for_path(path: &str) -> &'static SyntaxReference {
         .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
 }
 
-fn syntax_by_extension(extension: &str) -> &'static SyntaxReference {
-    let syntax_set = syntax_set();
-    syntax_set
-        .find_syntax_by_extension(extension)
-        .unwrap_or_else(|| syntax_set.find_syntax_plain_text())
-}
-
 fn change_for_sign(sign: char) -> Option<Change> {
     match sign {
         '-' => Some(Change::Delete),
@@ -142,7 +135,7 @@ impl Language {
             Self::JavaScript => "js",
             Self::Ruby => "rb",
         };
-        syntax_by_extension(extension)
+        syntax_for_path(extension)
     }
 
     fn takes_code(self, flag: &str) -> bool {
@@ -271,7 +264,7 @@ pub fn normalise_lines(text: &str) -> Cow<'_, str> {
 }
 
 fn highlight_command(body: &str, dark: bool) -> Vec<HighlightedLine> {
-    let bash = syntax_by_extension("sh");
+    let bash = syntax_for_path("sh");
     let command = normalise_lines(body);
     let embedded = embedded_code(&command);
     let mut bash_highlighter = HighlightLines::new(bash, theme(dark));
