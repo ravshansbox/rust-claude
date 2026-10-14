@@ -13,6 +13,8 @@ use sha2::{Digest, Sha256};
 
 use crate::{agent, config, images::Image, skills};
 
+const EXTENSION: &str = "jsonl";
+
 pub struct SessionSummary {
     pub id: String,
     pub modified: SystemTime,
@@ -36,7 +38,7 @@ fn sessions_directory() -> Result<PathBuf> {
 }
 
 fn session_path(directory: &Path, id: &str) -> PathBuf {
-    directory.join(format!("{id}.jsonl"))
+    directory.join(format!("{id}.{EXTENSION}"))
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -247,7 +249,7 @@ fn session_files(directory: &Path) -> Result<Vec<SessionFile>> {
         .into_iter()
         .filter(|path| {
             path.extension()
-                .is_some_and(|extension| extension == "jsonl")
+                .is_some_and(|extension| extension == EXTENSION)
         })
         .filter_map(|path| {
             let id = path.file_stem()?.to_str()?.to_string();
