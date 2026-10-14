@@ -602,18 +602,6 @@ async fn sends_a_shell_command_and_its_output_with_the_next_prompt() {
     );
 }
 
-fn tool_result(request: &Value) -> String {
-    request["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|message| message["content"].as_array())
-        .flatten()
-        .rfind(|block| block["type"] == "tool_result")
-        .unwrap()["content"]
-        .to_string()
-}
-
 #[tokio::test]
 async fn runs_a_command_in_the_background_and_gives_its_output_when_it_finishes() {
     let gate = TemporaryFile::new("background-gate", "");
@@ -650,7 +638,7 @@ async fn runs_a_command_in_the_background_and_gives_its_output_when_it_finishes(
     assert!(running);
     assert_eq!(counts, [0, 0, 1, 1]);
     let requests = api.requests().await;
-    let result = tool_result(&requests[1]);
+    let result = test_support::tool_result(&requests[1])["content"].to_string();
     assert!(result.contains("started background task 1"), "{result}");
     let message = message.unwrap().unwrap();
     assert!(message.contains("finished"), "{message}");
@@ -682,7 +670,7 @@ async fn stops_a_background_command() {
     started.unwrap();
     stopped.unwrap();
     let requests = api.requests().await;
-    let result = tool_result(&requests[3]);
+    let result = test_support::tool_result(&requests[3])["content"].to_string();
     assert!(result.contains("stopped background task 1"), "{result}");
     assert!(agent.background.is_empty());
     assert!(!is_running(&pid), "process {pid} still running");

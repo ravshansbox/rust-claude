@@ -1,6 +1,6 @@
 use super::super::{
     AgentEvent,
-    test_support::{self, MockApi, Reply, text_reply, tool_reply},
+    test_support::{self, MockApi, Reply, text_reply, tool_reply, tool_result},
 };
 use crate::config;
 use serde_json::{Value, json};
@@ -13,18 +13,6 @@ fn tool_names(request: &Value) -> Vec<String> {
         .iter()
         .map(|tool| tool["name"].as_str().unwrap().to_string())
         .collect()
-}
-
-fn tool_result(request: &Value) -> Value {
-    request["messages"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter_map(|message| message["content"].as_array())
-        .flatten()
-        .find(|block| block["type"] == "tool_result")
-        .unwrap()
-        .clone()
 }
 
 #[tokio::test]

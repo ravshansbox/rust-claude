@@ -330,6 +330,18 @@ pub(crate) fn text(text: &mut String) -> impl FnMut(AgentEvent) + '_ {
     }
 }
 
+pub(crate) fn tool_result(request: &Value) -> Value {
+    request["messages"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|message| message["content"].as_array())
+        .flatten()
+        .rfind(|block| block["type"] == "tool_result")
+        .unwrap()
+        .clone()
+}
+
 /// Removes the session files a test agent wrote under the test config folder.
 pub(crate) fn remove_session(agent: &Agent) {
     remove_session_files(&agent.session.id);
