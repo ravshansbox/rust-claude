@@ -54,9 +54,19 @@ struct OAuthSession {
     renewal_notice: Mutex<Option<String>>,
 }
 
+fn get<T: Clone>(value: &Mutex<Option<T>>) -> Option<T> {
+    value.lock().ok().and_then(|value| value.clone())
+}
+
+fn set<T>(value: &Mutex<Option<T>>, new: Option<T>) {
+    if let Ok(mut value) = value.lock() {
+        *value = new;
+    }
+}
+
 impl OAuthSession {
     fn current(&self) -> Option<oauth::Saved> {
-        self.saved.lock().ok().and_then(|saved| saved.clone())
+        get(&self.saved)
     }
 
     fn needs_sign_in(&self, reason: Option<String>) -> PostError {
@@ -84,12 +94,7 @@ impl HttpSession {
 
 impl Drop for HttpSession {
     fn drop(&mut self) {
-        let session = self
-            .0
-            .session
-            .lock()
-            .ok()
-            .and_then(|session| session.clone());
+        let session = get(&self.0.session);
         let (Some(session), Ok(runtime)) = (session, tokio::runtime::Handle::try_current()) else {
             return;
         };
@@ -156,35 +161,21 @@ impl Http {
 
     async fn renew(&self, expired: &str) -> Result<(), String> {
         let _renewing = self.renewing.lock().await;
-        let current = self.session.lock().ok().and_then(|session| session.clone());
+        let current = get(&self.session);
         if current.as_deref() != Some(expired) {
             return Ok(());
         }
-        let initialize = self
-            .initialize
-            .lock()
-            .ok()
-            .and_then(|initialize| initialize.clone())
-            .ok_or("session expired before it started")?;
-        let previous = self
-            .protocol_version
-            .lock()
-            .ok()
-            .and_then(|version| version.clone());
-        for value in [&self.session, &self.protocol_version] {
-            if let Ok(mut value) = value.lock() {
-                *value = None;
-            }
-        }
+        let initialize = get(&self.initialize).ok_or("session expired before it started")?;
+        let previous = get(&self.protocol_version);
+        set(&self.session, None);
+        set(&self.protocol_version, None);
         let started = self.start_session(&initialize).await;
         if started.is_err()
             && let Ok(mut session) = self.session.lock()
             && session.is_none()
         {
             *session = current;
-            if let Ok(mut version) = self.protocol_version.lock() {
-                *version = previous;
-            }
+            set(&self.protocol_version, previous);
         }
         started
     }
@@ -216,10 +207,8 @@ impl Http {
     }
 
     fn negotiated(&self, reply: &Value) {
-        if let Some(version) = reply["result"]["protocolVersion"].as_str()
-            && let Ok(mut current) = self.protocol_version.lock()
-        {
-            *current = Some(version.to_string());
+        if let Some(version) = reply["result"]["protocolVersion"].as_str() {
+            set(&self.protocol_version, Some(version.to_string()));
         }
     }
 
@@ -245,17 +234,14 @@ impl Http {
         let renewed = oauth::refresh(&self.client, &self.url, &current, rejected)
             .await
             .map_err(|error| oauth.needs_sign_in(Some(error)))?;
-        if let Some(error) = renewed.save_error
-            && let Ok(mut notice) = oauth.renewal_notice.lock()
-        {
-            *notice = Some(format!(
+        if let Some(error) = renewed.save_error {
+            let notice = format!(
                 "renewed the sign-in to MCP server {}, but {error}",
                 oauth.server_name
-            ));
+            );
+            set(&oauth.renewal_notice, Some(notice));
         }
-        if let Ok(mut saved) = oauth.saved.lock() {
-            *saved = Some(renewed.saved.clone());
-        }
+        set(&oauth.saved, Some(renewed.saved.clone()));
         Ok(Some(renewed.saved.access_token))
     }
 
@@ -348,16 +334,11 @@ impl Http {
         if let Some(token) = token {
             request = request.bearer_auth(token);
         }
-        let session = self.session.lock().ok().and_then(|session| session.clone());
+        let session = get(&self.session);
         if let Some(session) = &session {
             request = request.header(SESSION_HEADER, session);
         }
-        if let Some(version) = self
-            .protocol_version
-            .lock()
-            .ok()
-            .and_then(|version| version.clone())
-        {
+        if let Some(version) = get(&self.protocol_version) {
             request = request.header("mcp-protocol-version", version);
         }
         let response = request.send().await.map_err(|error| PostError {
@@ -385,9 +366,8 @@ impl Http {
             .headers()
             .get(SESSION_HEADER)
             .and_then(|session| session.to_str().ok())
-            && let Ok(mut current) = self.session.lock()
         {
-            *current = Some(session.to_string());
+            set(&self.session, Some(session.to_string()));
         }
         let status = response.status();
         if status.is_success() {
@@ -418,10 +398,8 @@ impl Http {
             return;
         };
         let method = message["method"].as_str().unwrap_or_default();
-        if method == "initialize"
-            && let Ok(mut initialize) = self.initialize.lock()
-        {
-            *initialize = Some(message.clone());
+        if method == "initialize" {
+            set(&self.initialize, Some(message.clone()));
         }
         let handle = |reply: &Value| {
             if method == "initialize" && reply["id"] == id {
