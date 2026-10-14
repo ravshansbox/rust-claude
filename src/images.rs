@@ -18,12 +18,9 @@ pub struct Image {
 
 impl Image {
     pub fn extension(&self) -> &'static str {
-        match self.media_type {
-            "image/jpeg" => "jpg",
-            "image/gif" => "gif",
-            "image/webp" => "webp",
-            _ => "png",
-        }
+        ImageFormat::from_mime_type(self.media_type)
+            .and_then(|format| format.extensions_str().first().copied())
+            .unwrap_or("png")
     }
 }
 
