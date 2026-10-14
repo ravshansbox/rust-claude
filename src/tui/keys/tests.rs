@@ -175,19 +175,26 @@ fn queue_while_working(app: &mut App, prompt: &str) {
     assert!(!submitted);
 }
 
+fn queued_prompts(app: &App) -> Vec<String> {
+    app.queue
+        .lock()
+        .map(|queue| queue.iter().map(|queued| queued.prompt.clone()).collect())
+        .unwrap_or_default()
+}
+
 #[test]
 fn queues_prompts_while_working_and_sends_them_when_done() {
     let mut app = new_app();
     queue_while_working(&mut app, "first");
     queue_while_working(&mut app, "second");
     assert_eq!(app.input, "");
-    assert_eq!(app.queued_prompts(), ["first", "second"]);
+    assert_eq!(queued_prompts(&app), ["first", "second"]);
     handle_agent_event(UiEvent::Done(Ok(())), &mut app);
     let (prompt, images) = app.send_queued().unwrap();
     assert_eq!(prompt, "first\n\nsecond");
     assert!(images.is_empty());
     assert!(app.busy());
-    assert!(app.queued_prompts().is_empty());
+    assert!(queued_prompts(&app).is_empty());
     assert_eq!(app.messages.last().unwrap().text, "first\n\nsecond");
 }
 
@@ -198,7 +205,7 @@ fn does_not_queue_commands() {
     handle_input(Event::Paste("/new".into()), &mut app, |_| {});
     press(&mut app, KeyCode::Enter);
     assert_eq!(app.input, "/new");
-    assert!(app.queued_prompts().is_empty());
+    assert!(queued_prompts(&app).is_empty());
 }
 
 #[test]
@@ -208,7 +215,7 @@ fn restores_queued_prompts_when_cancelled() {
     handle_input(Event::Paste("draft".into()), &mut app, |_| {});
     handle_agent_event(UiEvent::Cancelled(Ok(())), &mut app);
     assert_eq!(app.input, "first\n\ndraft");
-    assert!(app.queued_prompts().is_empty());
+    assert!(queued_prompts(&app).is_empty());
     assert!(app.send_queued().is_none());
 }
 

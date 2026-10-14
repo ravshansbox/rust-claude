@@ -321,14 +321,6 @@ impl App {
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn queued_prompts(&self) -> Vec<String> {
-        self.queue
-            .lock()
-            .map(|queue| queue.iter().map(|queued| queued.prompt.clone()).collect())
-            .unwrap_or_default()
-    }
-
     pub(super) fn send_queued(&mut self) -> Option<(String, Vec<Image>)> {
         let queued = take_queued(&self.queue);
         if queued.is_empty() {
