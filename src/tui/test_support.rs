@@ -5,7 +5,7 @@ use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};
 use ratatui::{Terminal, backend::TestBackend, buffer::Cell};
 
 pub(super) fn new_app() -> App {
-    App::new("model", "medium", Stats::default())
+    App::new(crate::models::DEFAULT, "medium", Stats::default())
 }
 
 pub(super) fn press(app: &mut App, code: KeyCode) -> String {

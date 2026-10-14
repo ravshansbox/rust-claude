@@ -70,7 +70,7 @@ Syntax highlighting in tool calls and in code blocks in replies uses the GitHub 
 | `/compact` | Summarise the conversation to free context |
 | `/mcp login <server>` | Sign in to an MCP server. See [Signing in to MCP servers](mcp.md#signing-in-to-mcp-servers) |
 | `/mcp logout <server>` | Remove the saved sign-in for an MCP server and start it again |
-| `/model [id]` | Select a model. The id must be one of the four models rust-coding-agent knows |
+| `/model [id]` | Select a model. The id must be one of the four models rust-coding-agent knows. The picker and status line show the model name without the version, for example `opus` |
 | `/new` | Start a new session |
 | `/quit` | Quit |
 | `/resume` | Resume a previous session |
@@ -162,7 +162,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 ## Status line
 
-The status line is a single line below the input. It shows the folder and Git branch, the model and effort level, the number of subagents running while any run (for example `2 agents`), the number of [background commands](tools.md#background-commands) running or waiting to be answered (for example `1 background`), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
+The status line is a single line below the input. It shows the folder and Git branch, the model name and effort level (for example `opus:medium`), the number of subagents running while any run (for example `2 agents`), the number of [background commands](tools.md#background-commands) running or waiting to be answered (for example `1 background`), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-coding-agent loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 1h16m` or `7d 81% 3d`. When the first unit is 2 or more, only that unit is shown, rounded to the nearest, so `2h40m` shows as `3h`.
 

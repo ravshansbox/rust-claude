@@ -411,8 +411,8 @@ fn git_branch(dir: &Path) -> Option<String> {
         .or_else(|| git(&["rev-parse", "--abbrev-ref", "HEAD"]))
 }
 
-fn display_model(model: &str) -> &str {
-    model.strip_prefix("claude-").unwrap_or(model)
+fn display_model(model: &str) -> &'static str {
+    crate::models::name(model)
 }
 
 #[cfg(test)]

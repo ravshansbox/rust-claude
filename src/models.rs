@@ -4,21 +4,47 @@ const DEFAULT_MAX_OUTPUT: u64 = 8192;
 const CONTEXT_WINDOW: u64 = 1_000_000;
 const MAX_OUTPUT: u64 = 128_000;
 
-const MODELS: &[(&str, Option<&str>)] = &[
-    ("claude-fable-5-1", None),
-    ("claude-opus-5-5", None),
-    ("claude-sonnet-5-5", Some("between_tools")),
-    ("claude-haiku-5-5", Some("disabled")),
+struct Model {
+    id: &'static str,
+    name: &'static str,
+    thinking_off: Option<&'static str>,
+}
+
+const MODELS: &[Model] = &[
+    Model {
+        id: "claude-fable-5-1",
+        name: "fable",
+        thinking_off: None,
+    },
+    Model {
+        id: "claude-opus-5-5",
+        name: "opus",
+        thinking_off: None,
+    },
+    Model {
+        id: "claude-sonnet-5-5",
+        name: "sonnet",
+        thinking_off: Some("between_tools"),
+    },
+    Model {
+        id: "claude-haiku-5-5",
+        name: "haiku",
+        thinking_off: Some("disabled"),
+    },
 ];
 
-fn find(model: &str) -> Option<&'static (&'static str, Option<&'static str>)> {
-    MODELS.iter().find(|(id, _)| *id == model)
+fn find(model: &str) -> Option<&'static Model> {
+    MODELS.iter().find(|entry| entry.id == model)
 }
 
 pub const DEFAULT: &str = "claude-opus-5-5";
 
 pub fn known() -> impl Iterator<Item = &'static str> {
-    MODELS.iter().map(|(id, _)| *id)
+    MODELS.iter().map(|entry| entry.id)
+}
+
+pub fn name(model: &str) -> &'static str {
+    find(model).expect("model is listed").name
 }
 
 pub fn is_known(model: &str) -> bool {
@@ -36,7 +62,7 @@ pub fn next_known(model: &str) -> &'static str {
     let index = known()
         .position(|id| id == model)
         .map_or(0, |index| (index + 1) % MODELS.len());
-    MODELS[index].0
+    MODELS[index].id
 }
 
 pub fn context_window(model: &str) -> u64 {
@@ -54,7 +80,7 @@ pub fn max_output(model: &str) -> u64 {
 const EFFORT_LEVELS: [&str; 6] = ["off", "low", "medium", "high", "xhigh", "max"];
 
 fn thinking_off(model: &str) -> Option<&'static str> {
-    find(model).and_then(|(_, off)| *off)
+    find(model).and_then(|entry| entry.thinking_off)
 }
 
 pub fn effort_levels(model: &str) -> &'static [&'static str] {

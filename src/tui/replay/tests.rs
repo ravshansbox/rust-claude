@@ -617,7 +617,7 @@ fn shows_how_many_agents_run_on_the_status_line() {
         );
         shown.push(status_line(&mut app));
     }
-    assert!(idle.ends_with("model:medium"), "{idle}");
+    assert!(idle.ends_with("opus:medium"), "{idle}");
     assert_eq!(
         shown,
         [
