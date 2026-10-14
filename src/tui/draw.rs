@@ -31,7 +31,11 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         u16::try_from(footer_paragraph.line_count(frame.area().width)).unwrap_or(u16::MAX);
     let [chat, input, footer] = Layout::vertical([
         Constraint::Min(1),
-        Constraint::Length(input_lines.len().min(u16::MAX as usize - 2) as u16 + 2),
+        Constraint::Length(
+            u16::try_from(input_lines.len())
+                .unwrap_or(u16::MAX)
+                .saturating_add(2),
+        ),
         Constraint::Length(footer_height),
     ])
     .areas(frame.area());
@@ -40,8 +44,12 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         message.render(chat.width);
     }
 
-    let panel_height =
-        |content: usize| (content.min(u16::MAX as usize - 1) as u16 + 1).min(chat.height);
+    let panel_height = |content: usize| {
+        u16::try_from(content)
+            .unwrap_or(u16::MAX)
+            .saturating_add(1)
+            .min(chat.height)
+    };
     let panel = if let Some(picker) = &app.picker {
         let count = picker.items.len();
         let height = panel_height(count.min(MAX_LIST_ROWS) + 1);
