@@ -12,8 +12,11 @@ use serde::Deserialize;
 
 use crate::{config, settings::Settings};
 
+mod alias;
 mod progress;
 
+pub use alias::link_alias_beside_this_program;
+use alias::link_alias_to;
 pub use progress::Progress;
 
 pub const RELEASES_URL: &str =
@@ -289,32 +292,6 @@ struct UpdateFolder(PathBuf);
 impl Drop for UpdateFolder {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
-    }
-}
-
-fn link_alias_to(bin_dir: &Path, program: &OsStr) {
-    let alias = bin_dir.join("rca");
-    if alias.symlink_metadata().is_err() {
-        let _ = std::fs::create_dir_all(bin_dir);
-        #[cfg(unix)]
-        let _ = std::os::unix::fs::symlink(program, &alias);
-    }
-}
-
-/// Adds the `rca` link beside this program if nothing has that name, so
-/// every way of installing gets it. Debug builds, as from `cargo run`, skip it.
-pub fn link_alias_beside_this_program() {
-    if let Ok(program) = std::env::current_exe() {
-        link_alias_beside(&program, cfg!(debug_assertions));
-    }
-}
-
-fn link_alias_beside(program: &Path, debug_build: bool) {
-    if debug_build {
-        return;
-    }
-    if let (Some(dir), Some(name)) = (program.parent(), program.file_name()) {
-        link_alias_to(dir, name);
     }
 }
 

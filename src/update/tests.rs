@@ -1,4 +1,6 @@
-use super::{Progress, Settings, Updater, create_update_folder, find_on_path, link_alias_beside};
+use super::{
+    Progress, Settings, Updater, alias::link_alias_beside, create_update_folder, find_on_path,
+};
 use crate::tools::test_support::TemporaryDir;
 use std::{
     io::{Cursor, ErrorKind, Write},
