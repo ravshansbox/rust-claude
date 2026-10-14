@@ -9,7 +9,7 @@ use super::{
     workspace_label,
 };
 use crate::{
-    agent::{Queue, Queued, Stats, take_queued},
+    agent::{Queue, Stats},
     history,
     images::Image,
     mcp, models,
@@ -22,6 +22,7 @@ use ratatui::layout::Rect;
 use std::path::PathBuf;
 
 mod activity;
+mod queue;
 
 pub(super) use activity::Activity;
 
@@ -274,55 +275,6 @@ impl App {
     pub(super) fn tick_spinner(&mut self) {
         self.spinner_frame = self.spinner_frame.wrapping_add(1);
         self.show_loading_mcp_groups();
-    }
-
-    pub(super) fn can_queue(&self) -> bool {
-        self.activity.is_some_and(Activity::can_queue)
-    }
-
-    pub(super) fn queue_prompt(&mut self) {
-        let prompt = self.take_input();
-        self.remember(&prompt);
-        let images = self.take_numbered_images(&prompt);
-        if let Ok(mut queue) = self.queue.lock() {
-            queue.push(Queued { prompt, images });
-        }
-    }
-
-    pub(super) fn send_queued(&mut self) -> Option<(String, Vec<Image>)> {
-        let queued = take_queued(&self.queue);
-        if queued.is_empty() {
-            return None;
-        }
-        let prompt = queued
-            .iter()
-            .map(|queued| queued.prompt.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let images = queued
-            .into_iter()
-            .flat_map(|queued| queued.images)
-            .map(|(_, image)| image)
-            .collect();
-        self.push(Role::User, prompt.clone());
-        self.start(Activity::Working);
-        Some((prompt, images))
-    }
-
-    pub(super) fn restore_queued(&mut self) {
-        let queued = take_queued(&self.queue);
-        if queued.is_empty() {
-            return;
-        }
-        let mut parts = Vec::new();
-        for queued in queued {
-            parts.push(queued.prompt);
-            self.images.extend(queued.images);
-        }
-        if !self.input.is_empty() {
-            parts.push(std::mem::take(&mut self.input));
-        }
-        self.restore_input(parts.join("\n\n"));
     }
 
     /// Puts back text the user entered so they can fix it.
