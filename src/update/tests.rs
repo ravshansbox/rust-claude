@@ -4,6 +4,7 @@ use std::{
     io::{Cursor, ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
+    time::Duration,
 };
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
@@ -389,7 +390,7 @@ async fn stops_cargo_and_deletes_the_update_folder_when_quit_while_building() {
     updater.update_dir = dir.path().join("updates");
     let update = tokio::spawn(run(updater));
     while !started.exists() {
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        tokio::time::sleep(Duration::from_millis(10)).await;
     }
     update.abort();
     assert!(update.await.unwrap_err().is_cancelled());
@@ -399,13 +400,13 @@ async fn stops_cargo_and_deletes_the_update_folder_when_quit_while_building() {
             .count(),
         0
     );
-    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+    tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(!finished.exists());
 }
 
 #[test]
 fn shows_how_long_each_step_took() {
-    let seconds = std::time::Duration::from_secs;
+    let seconds = Duration::from_secs;
     let built = |took| Progress::Built(seconds(took)).message();
     assert_eq!(built(0), "built in 0s");
     assert_eq!(built(42), "built in 42s");
