@@ -52,10 +52,12 @@ impl App {
         }
     }
 
-    /// Shows the servers loading, one line for each scope, global first.
+    /// Shows the servers loading, one line for each scope, global first, with
+    /// global servers that project entries override on the global line.
     pub(super) fn start_mcp_servers<'a>(
         &mut self,
         servers: impl IntoIterator<Item = (&'a str, Scope)>,
+        overridden: impl IntoIterator<Item = &'a str>,
     ) {
         let mut changed = Vec::new();
         for (name, scope) in servers {
@@ -71,31 +73,22 @@ impl App {
                 overridden: false,
             });
         }
+        let mut overridden = overridden.into_iter().peekable();
+        if overridden.peek().is_some() {
+            let index = self.mcp_group(Scope::Global);
+            let servers = &mut self.mcp_groups[index].servers;
+            servers.extend(overridden.map(|name| McpEntry {
+                name: name.into(),
+                summary: Some(format!("{name} (overridden)")),
+                overridden: true,
+            }));
+            servers.sort_by(|first, second| first.name.cmp(&second.name));
+        }
         for index in 0..self.mcp_groups.len() {
             if self.mcp_groups[index].message.is_none() || changed.contains(&index) {
                 self.show_mcp_group(index);
             }
         }
-    }
-
-    /// Lists global servers that project entries override on the global line.
-    pub(super) fn show_overridden_mcp_servers<'a>(
-        &mut self,
-        names: impl IntoIterator<Item = &'a str>,
-    ) {
-        let mut names = names.into_iter().peekable();
-        if names.peek().is_none() {
-            return;
-        }
-        let index = self.mcp_group(Scope::Global);
-        let servers = &mut self.mcp_groups[index].servers;
-        servers.extend(names.map(|name| McpEntry {
-            name: name.into(),
-            summary: Some(format!("{name} (overridden)")),
-            overridden: true,
-        }));
-        servers.sort_by(|first, second| first.name.cmp(&second.name));
-        self.show_mcp_group(index);
     }
 
     fn mcp_group(&mut self, scope: Scope) -> usize {

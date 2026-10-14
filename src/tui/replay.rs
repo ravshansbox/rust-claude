@@ -19,7 +19,7 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             notice,
         } => {
             app.push(Role::Event, notice);
-            app.start_mcp_servers([(name.as_str(), scope)]);
+            app.start_mcp_servers([(name.as_str(), scope)], []);
         }
         UiEvent::McpServer(mut added) => {
             let diagnostics = std::mem::take(&mut added.diagnostics);

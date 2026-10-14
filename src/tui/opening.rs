@@ -30,8 +30,8 @@ pub(super) fn opening_app(
             .servers
             .iter()
             .map(|server| (server.name.as_str(), server.scope)),
+        startup.overridden.iter().map(String::as_str),
     );
-    app.show_overridden_mcp_servers(startup.overridden.iter().map(String::as_str));
     show_skills_and_instructions(
         &mut app,
         &agent.skills,

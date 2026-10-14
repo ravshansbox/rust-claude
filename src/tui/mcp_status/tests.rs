@@ -28,11 +28,14 @@ fn mcp_server_failed(name: &str, summary: &str, status: &str) -> UiEvent {
 #[test]
 fn groups_mcp_servers_by_scope_on_two_lines_with_spinners() {
     let mut app = new_app();
-    app.start_mcp_servers([
-        ("docs", Scope::Project),
-        ("figma", Scope::Global),
-        ("web", Scope::Global),
-    ]);
+    app.start_mcp_servers(
+        [
+            ("docs", Scope::Project),
+            ("figma", Scope::Global),
+            ("web", Scope::Global),
+        ],
+        [],
+    );
     app.push(Role::User, "hello");
     let shown = screen(&mut app);
     let global = shown
@@ -68,8 +71,7 @@ fn groups_mcp_servers_by_scope_on_two_lines_with_spinners() {
 #[test]
 fn shows_global_mcp_servers_that_project_entries_override() {
     let mut app = new_app();
-    app.start_mcp_servers([("docs", Scope::Project), ("web", Scope::Global)]);
-    app.show_overridden_mcp_servers(["docs"]);
+    app.start_mcp_servers([("docs", Scope::Project), ("web", Scope::Global)], ["docs"]);
     let shown = screen(&mut app);
     assert!(
         shown.contains("global MCP servers: docs (overridden), ⠋ web"),
@@ -102,9 +104,27 @@ fn shows_global_mcp_servers_that_project_entries_override() {
 }
 
 #[test]
+fn shows_the_global_line_first_when_every_global_server_is_overridden() {
+    let mut app = new_app();
+    app.start_mcp_servers([("context7", Scope::Project)], ["context7"]);
+    handle_agent_event(
+        mcp_server_loaded("context7", "context7 (2 tools)"),
+        &mut app,
+    );
+    let shown = screen(&mut app);
+    let global = shown
+        .find("loaded global MCP servers: context7 (overridden)")
+        .expect(&shown);
+    let project = shown
+        .find("loaded project MCP servers: context7 (2 tools)")
+        .expect(&shown);
+    assert!(global < project, "{shown}");
+}
+
+#[test]
 fn animates_mcp_servers_loading() {
     let mut app = new_app();
-    app.start_mcp_servers([("docs", Scope::Project)]);
+    app.start_mcp_servers([("docs", Scope::Project)], []);
     assert!(app.animating());
     app.tick_spinner();
     let shown = screen(&mut app);
@@ -117,7 +137,7 @@ fn animates_mcp_servers_loading() {
 #[test]
 fn shows_a_signed_in_server_loading_again_in_its_group() {
     let mut app = new_app();
-    app.start_mcp_servers([("figma", Scope::Global)]);
+    app.start_mcp_servers([("figma", Scope::Global)], []);
     handle_agent_event(
         mcp_server_failed("figma", "figma (needs sign-in)", "needs sign-in"),
         &mut app,
@@ -146,7 +166,7 @@ fn shows_a_signed_in_server_loading_again_in_its_group() {
 #[test]
 fn shows_mcp_servers_again_after_clearing_the_session() {
     let mut app = new_app();
-    app.start_mcp_servers([("docs", Scope::Project)]);
+    app.start_mcp_servers([("docs", Scope::Project)], []);
     app.clear_session();
     app.push(Role::Event, "new session");
     handle_agent_event(mcp_server_loaded("docs", "docs (3 tools)"), &mut app);
