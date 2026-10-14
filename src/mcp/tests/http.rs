@@ -86,6 +86,42 @@ async fn reads_http_replies_sent_as_events() {
 }
 
 #[tokio::test]
+async fn reads_http_replies_sent_as_a_json_batch() {
+    let (url, _) = http_server(|request| match request.body["method"].as_str() {
+        Some("tools/call") => HttpReply::json(&json!([
+            { "jsonrpc": "2.0", "method": "notifications/progress", "params": {} },
+            {
+                "jsonrpc": "2.0",
+                "id": request.body["id"],
+                "result": { "content": [{ "type": "text", "text": "batched" }] },
+            },
+        ])),
+        _ => http_mcp(request),
+    })
+    .await;
+    let mcp = started(http_config(&url)).await;
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("batched".into())));
+}
+
+#[tokio::test]
+async fn rejects_http_replies_with_an_unsupported_content_type() {
+    let (url, _) = http_server(|request| match request.body["method"].as_str() {
+        Some("tools/call") => {
+            HttpReply::status(200, "pong").with_header("content-type", "Text/Plain; charset=utf-8")
+        }
+        _ => http_mcp(request),
+    })
+    .await;
+    let mcp = started(http_config(&url)).await;
+    assert_eq!(
+        call_web_echo(&mcp).await,
+        Some(Err(
+            "server answered tools/call with unsupported content type \"text/plain\"".into()
+        ))
+    );
+}
+
+#[tokio::test]
 async fn reads_events_split_over_lines_with_crlf_endings_and_an_empty_type() {
     let (url, _) = http_server(|request| match request.body["method"].as_str() {
         Some("tools/call") => HttpReply {
