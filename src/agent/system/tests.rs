@@ -1,7 +1,8 @@
 use super::load_instructions_from;
 use crate::tools::test_support::TemporaryDir;
+use std::path::Path;
 
-fn loaded(home: Option<&std::path::Path>, cwd: &std::path::Path) -> Vec<(String, String)> {
+fn loaded(home: Option<&Path>, cwd: &Path) -> Vec<(String, String)> {
     load_instructions_from(home, cwd)
         .into_iter()
         .map(|instructions| (instructions.label, instructions.text))
