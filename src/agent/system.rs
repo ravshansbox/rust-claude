@@ -1,6 +1,6 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use crate::skills;
+use crate::{config, skills};
 
 pub(super) const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
@@ -18,7 +18,7 @@ pub struct Instructions {
 }
 
 pub(super) fn load_instructions() -> Vec<Instructions> {
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = config::home();
     let cwd = std::env::current_dir().unwrap_or_default();
     load_instructions_from(home.as_deref(), &cwd)
 }

@@ -1,5 +1,5 @@
 use std::{
-    path::{Path, PathBuf},
+    path::Path,
     process::Stdio,
     sync::{Arc, Mutex, atomic::AtomicU64},
     time::Duration,
@@ -103,7 +103,7 @@ async fn read_stderr(mut stderr: impl tokio::io::AsyncRead + Unpin, tail: Arc<Mu
 
 impl Connection {
     pub(super) fn spawn(config: &ServerConfig, command: &str) -> Result<Self, String> {
-        let home = std::env::var_os("HOME").map(PathBuf::from);
+        let home = crate::config::home();
         let mut process = tokio::process::Command::new(expand_home(command, home.as_deref()));
         process
             .args(

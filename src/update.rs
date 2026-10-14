@@ -370,7 +370,7 @@ fn cargo_bin_dir() -> Option<PathBuf> {
     let root = std::env::var_os("CARGO_INSTALL_ROOT")
         .or_else(|| std::env::var_os("CARGO_HOME"))
         .map(PathBuf::from)
-        .or_else(|| std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo")))?;
+        .or_else(|| config::home().map(|home| home.join(".cargo")))?;
     Some(root.join("bin"))
 }
 

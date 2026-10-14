@@ -57,7 +57,7 @@ enum Mode {
 
 pub fn load() -> Skills {
     let config_dir = config::dir();
-    let home = std::env::var_os("HOME").map(PathBuf::from);
+    let home = config::home();
     let cwd = std::env::current_dir().unwrap_or_default();
     load_from(config_dir.as_deref(), home.as_deref(), &cwd)
 }

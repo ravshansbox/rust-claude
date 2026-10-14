@@ -14,6 +14,10 @@ pub fn set_dir(path: PathBuf) {
     let _ = CONFIG_DIR.set(path);
 }
 
+pub fn home() -> Option<PathBuf> {
+    std::env::var_os("HOME").map(PathBuf::from)
+}
+
 pub fn dir() -> Option<PathBuf> {
     CONFIG_DIR.get().cloned().or_else(default_dir)
 }
@@ -26,7 +30,7 @@ pub fn file(name: &str) -> anyhow::Result<PathBuf> {
 
 #[cfg(not(test))]
 fn default_dir() -> Option<PathBuf> {
-    let home = PathBuf::from(std::env::var_os("HOME")?);
+    let home = home()?;
     let dir = home.join(".rust-coding-agent");
     let old = home.join(".rust-claude");
     if !dir.exists() && old.is_dir() {
