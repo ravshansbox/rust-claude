@@ -99,11 +99,8 @@ impl App {
     }
 
     fn mcp_group(&mut self, scope: Scope) -> usize {
-        if let Some(index) = self
-            .mcp_groups
-            .iter()
-            .position(|group| group.scope == scope)
-        {
+        let position = |groups: &[McpGroup]| groups.iter().position(|group| group.scope == scope);
+        if let Some(index) = position(&self.mcp_groups) {
             return index;
         }
         self.mcp_groups.push(McpGroup {
@@ -113,10 +110,7 @@ impl App {
         });
         self.mcp_groups
             .sort_by_key(|group| matches!(group.scope, Scope::Project));
-        self.mcp_groups
-            .iter()
-            .position(|group| group.scope == scope)
-            .unwrap_or_default()
+        position(&self.mcp_groups).unwrap_or_default()
     }
 
     fn mcp_server(&mut self, name: &str) -> Option<(usize, &mut McpEntry)> {
