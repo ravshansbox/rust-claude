@@ -1,3 +1,23 @@
+use anyhow::Result;
+use serde_json::json;
+
+use super::Agent;
+use crate::tools;
+
+impl Agent {
+    pub async fn shell(&mut self, command: &str) -> Result<String> {
+        let output = match tools::call("bash", &json!({ "command": command })).await {
+            Ok(output) | Err(output) => output,
+        };
+        self.messages.push(json!({
+            "role": "user",
+            "content": shell_message(command, &output),
+        }));
+        self.session.save(&self.messages)?;
+        Ok(output)
+    }
+}
+
 pub fn shell_message(command: &str, output: &str) -> String {
     format!("<bash-input>{command}</bash-input>\n<bash-output>{output}</bash-output>")
 }

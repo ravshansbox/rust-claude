@@ -39,7 +39,9 @@ pub use event::AgentEvent;
 pub use http::http_client;
 pub use queue::{Queue, Queued, take_queued};
 use retry::is_prompt_too_long;
-pub use shell::{parse_shell_message, shell_message};
+pub use shell::parse_shell_message;
+#[cfg(test)]
+pub use shell::shell_message;
 use stream::Response;
 pub use system::Instructions;
 use system::load_instructions;
@@ -134,18 +136,6 @@ impl Agent {
             return Err(self.save_after_failure(error));
         }
         self.session.save(&self.messages)
-    }
-
-    pub async fn shell(&mut self, command: &str) -> Result<String> {
-        let output = match tools::call("bash", &json!({ "command": command })).await {
-            Ok(output) | Err(output) => output,
-        };
-        self.messages.push(json!({
-            "role": "user",
-            "content": shell_message(command, &output),
-        }));
-        self.session.save(&self.messages)?;
-        Ok(output)
     }
 
     fn push_prompt(&mut self, prompt: &str, images: &[Image]) -> Result<()> {
