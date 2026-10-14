@@ -1,5 +1,5 @@
-use super::{Request, UiEvent};
-use crate::{agent::AgentEvent, mcp};
+use super::{Request, UiEvent, worker::send_notice};
+use crate::mcp;
 use std::process::Stdio;
 use tokio::sync::mpsc;
 
@@ -21,11 +21,6 @@ fn open_in_browser(url: &str) {
             let _ = child.wait().await;
         });
     }
-}
-
-/// Shows `text` as a notice.
-fn send_notice(events: &mpsc::UnboundedSender<UiEvent>, text: String) {
-    let _ = events.send(UiEvent::Agent(AgentEvent::Notice(text)));
 }
 
 /// Signs in to the MCP server `name` in the browser, then starts it again.

@@ -21,13 +21,8 @@ mod test_support;
 mod worker;
 
 use crate::{
-    StopSignals,
-    agent::{Agent, AgentEvent},
-    clipboard,
-    highlight::Colour,
-    history, images, mcp,
-    settings::Settings,
-    update::Updater,
+    StopSignals, agent::Agent, clipboard, highlight::Colour, history, images, mcp,
+    settings::Settings, update::Updater,
 };
 use anyhow::Result;
 use app::{Activity, App, Picker, PickerKind};
@@ -53,7 +48,7 @@ use tokio::{
     sync::mpsc,
     time::{MissedTickBehavior, interval},
 };
-use worker::{Request, UiEvent, agent_task, quit};
+use worker::{Request, UiEvent, agent_task, quit, send_notice};
 
 pub(crate) use render::{ansi_thinking, ansi_tool_lines, tool_message};
 pub(crate) use tasks::finished_task;
@@ -283,7 +278,7 @@ fn history_writer(
         for (path, entry) in entries {
             if let Err(error) = history::append(&path, &entry) {
                 let notice = format!("failed to save prompt history: {error:#}");
-                let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
+                send_notice(&events, notice);
             }
         }
     });

@@ -55,8 +55,13 @@ pub(super) fn quit(requests: mpsc::UnboundedSender<Request>, cancel: mpsc::Unbou
 
 pub(super) fn notify_renewed(agent: &mut Agent, events: &mpsc::UnboundedSender<UiEvent>) {
     if let Some(notice) = agent.take_renewal_notice() {
-        let _ = events.send(UiEvent::Agent(AgentEvent::Notice(notice)));
+        send_notice(events, notice);
     }
+}
+
+/// Shows `text` as a notice.
+pub(super) fn send_notice(events: &mpsc::UnboundedSender<UiEvent>, text: String) {
+    let _ = events.send(UiEvent::Agent(AgentEvent::Notice(text)));
 }
 
 fn send_stats(agent: &Agent, events: &mpsc::UnboundedSender<UiEvent>) {
