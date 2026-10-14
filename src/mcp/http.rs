@@ -16,8 +16,10 @@ use super::{
 };
 
 mod reply;
+mod session;
 
 use reply::{read_event_stream, read_json};
+pub(super) use session::HttpSession;
 
 pub(super) const MAX_ERROR_BODY: usize = 500;
 const CONNECT_RETRY_DELAYS: [Duration; 2] = [Duration::from_millis(250), Duration::from_secs(1)];
@@ -89,50 +91,6 @@ impl OAuthSession {
             let _ = write!(message, " (could not renew the sign-in: {reason})");
         }
         PostError::fatal(message)
-    }
-}
-
-/// Ends the server's session when the connection is dropped.
-pub(super) struct HttpSession(Arc<Http>);
-
-impl HttpSession {
-    /// Who the server acts for, when it signs in with OAuth.
-    pub(super) fn user(&self) -> Option<String> {
-        let oauth = self.0.oauth.as_ref()?;
-        Some(match oauth.current() {
-            None => "anonymous".into(),
-            Some(_) => "signed in".into(),
-        })
-    }
-
-    pub(super) fn take_renewal_notice(&self) -> Option<String> {
-        let oauth = self.0.oauth.as_ref()?;
-        oauth.renewal_notice.lock().ok()?.take()
-    }
-}
-
-impl Drop for HttpSession {
-    fn drop(&mut self) {
-        let session = get(&self.0.session);
-        let (Some(session), Ok(runtime)) = (session, tokio::runtime::Handle::try_current()) else {
-            return;
-        };
-        let mut request = self
-            .0
-            .client
-            .delete(&self.0.url)
-            .headers(get(&self.0.headers))
-            .header(SESSION_HEADER, session)
-            .timeout(Duration::from_secs(1));
-        if let Some(version) = get(&self.0.protocol_version) {
-            request = request.header("mcp-protocol-version", version);
-        }
-        if let Some(saved) = self.0.oauth.as_ref().and_then(OAuthSession::current) {
-            request = request.bearer_auth(saved.access_token);
-        }
-        runtime.spawn(async move {
-            let _ = request.send().await;
-        });
     }
 }
 
