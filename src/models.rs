@@ -1,49 +1,24 @@
 use serde_json::{Value, json};
 
 const DEFAULT_MAX_OUTPUT: u64 = 8192;
+const CONTEXT_WINDOW: u64 = 1_000_000;
+const MAX_OUTPUT: u64 = 128_000;
 
-struct Model {
-    id: &'static str,
-    context_window: u64,
-    max_output: u64,
-    thinking_off: Option<&'static str>,
-}
-
-const MODELS: &[Model] = &[
-    Model {
-        id: "claude-fable-5-1",
-        context_window: 1_000_000,
-        max_output: 128_000,
-        thinking_off: None,
-    },
-    Model {
-        id: "claude-opus-5-5",
-        context_window: 1_000_000,
-        max_output: 128_000,
-        thinking_off: None,
-    },
-    Model {
-        id: "claude-sonnet-5-5",
-        context_window: 1_000_000,
-        max_output: 128_000,
-        thinking_off: Some("between_tools"),
-    },
-    Model {
-        id: "claude-haiku-5-5",
-        context_window: 1_000_000,
-        max_output: 128_000,
-        thinking_off: Some("disabled"),
-    },
+const MODELS: &[(&str, Option<&str>)] = &[
+    ("claude-fable-5-1", None),
+    ("claude-opus-5-5", None),
+    ("claude-sonnet-5-5", Some("between_tools")),
+    ("claude-haiku-5-5", Some("disabled")),
 ];
 
-fn find(model: &str) -> Option<&'static Model> {
-    MODELS.iter().find(|candidate| candidate.id == model)
+fn find(model: &str) -> Option<&'static (&'static str, Option<&'static str>)> {
+    MODELS.iter().find(|(id, _)| *id == model)
 }
 
 pub const DEFAULT: &str = "claude-opus-5-5";
 
 pub fn known() -> impl Iterator<Item = &'static str> {
-    MODELS.iter().map(|model| model.id)
+    MODELS.iter().map(|(id, _)| *id)
 }
 
 pub fn is_known(model: &str) -> bool {
@@ -60,23 +35,27 @@ pub fn unknown(model: &str) -> String {
 pub fn next_known(model: &str) -> &'static str {
     let index = MODELS
         .iter()
-        .position(|candidate| candidate.id == model)
+        .position(|(id, _)| *id == model)
         .map_or(0, |index| (index + 1) % MODELS.len());
-    MODELS[index].id
+    MODELS[index].0
 }
 
 pub fn context_window(model: &str) -> u64 {
-    find(model).map_or(0, |model| model.context_window)
+    if is_known(model) { CONTEXT_WINDOW } else { 0 }
 }
 
 pub fn max_output(model: &str) -> u64 {
-    find(model).map_or(DEFAULT_MAX_OUTPUT, |model| model.max_output)
+    if is_known(model) {
+        MAX_OUTPUT
+    } else {
+        DEFAULT_MAX_OUTPUT
+    }
 }
 
 const EFFORT_LEVELS: [&str; 6] = ["off", "low", "medium", "high", "xhigh", "max"];
 
 fn thinking_off(model: &str) -> Option<&'static str> {
-    find(model).and_then(|model| model.thinking_off)
+    find(model).and_then(|(_, off)| *off)
 }
 
 pub fn effort_levels(model: &str) -> &'static [&'static str] {
