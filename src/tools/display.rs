@@ -1,3 +1,4 @@
+use super::{agent, background, plural, web_search};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -5,15 +6,15 @@ use std::fmt::Write;
 pub fn summary(name: &str, input: &Value) -> String {
     let key = match name {
         "read" | "write" | "edit" => "path",
-        super::web_search::NAME => "query",
-        "bash" if super::background::runs_in_background(name, input) => {
+        web_search::NAME => "query",
+        "bash" if background::runs_in_background(name, input) => {
             return "in the background".into();
         }
         "bash" => return String::new(),
-        super::background::STOP => {
+        background::STOP => {
             return format!("background task {}", input["id"]);
         }
-        super::agent::NAME => return super::agent::summary(input),
+        agent::NAME => return agent::summary(input),
         _ => return input.to_string(),
     };
     let value = input[key].as_str().unwrap_or_default().to_string();
@@ -162,7 +163,7 @@ fn preview(content: &str, prefix: &str, max_lines: usize) -> Option<String> {
     }
     let remaining = lines.len().saturating_sub(max_lines);
     if remaining > 0 {
-        let _ = write!(preview, "\n… {}", super::plural(remaining, "more line"));
+        let _ = write!(preview, "\n… {}", plural(remaining, "more line"));
     }
     Some(preview)
 }
