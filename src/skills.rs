@@ -347,7 +347,7 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<String>) {
                     .map(|name| name.to_string_lossy().into_owned())
                     .unwrap_or_default()
             },
-            String::from,
+            str::to_string,
         );
     diagnostics.extend(validate_name(&name).into_iter().map(&warning));
     let Some(description) = description else {
