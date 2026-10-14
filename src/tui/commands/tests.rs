@@ -127,7 +127,8 @@ fn marks_signed_in_servers_after_mcp_login() {
     };
     assert!(line("github").ends_with("/mcp login github"), "{shown}");
     assert!(line("notion").ends_with("signed in"), "{shown}");
-    assert!(line("slack").ends_with("signed in as alice"), "{shown}");
+    assert!(line("slack").ends_with("signed in"), "{shown}");
+    assert!(!shown.contains("alice"), "{shown}");
     press(&mut app, KeyCode::Down);
     press(&mut app, KeyCode::Tab);
     assert_eq!(app.input, "/mcp login notion");

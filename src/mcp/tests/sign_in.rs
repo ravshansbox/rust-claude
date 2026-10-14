@@ -427,7 +427,7 @@ async fn summary_after_sign_in(tokens: Value) -> String {
 }
 
 #[tokio::test]
-async fn sums_up_a_signed_in_server_by_the_user_in_its_id_token() {
+async fn hides_the_user_in_the_id_token_from_the_summary() {
     let _file = AUTH_FILE.read().await;
     let id_token = jwt(&json!({
         "sub": "123",
@@ -436,16 +436,16 @@ async fn sums_up_a_signed_in_server_by_the_user_in_its_id_token() {
     }));
     assert_eq!(
         summary_after_sign_in(json!({ "id_token": id_token })).await,
-        "web (alice, 1 tools)"
+        "web (signed in, 1 tools)"
     );
 }
 
 #[tokio::test]
-async fn sums_up_a_signed_in_server_by_the_user_in_its_access_token() {
+async fn hides_the_user_in_the_access_token_from_the_summary() {
     let _file = AUTH_FILE.read().await;
     let access_token = jwt(&json!({ "sub": "123", "email": "alice@example.com" }));
     let summary = summary_after_sign_in(json!({ "access_token": access_token })).await;
-    assert_eq!(summary, "web (alice@example.com, 1 tools)");
+    assert_eq!(summary, "web (signed in, 1 tools)");
 }
 
 #[tokio::test]
@@ -455,7 +455,7 @@ async fn keeps_the_user_when_renewed_tokens_do_not_name_one() {
     save_tokens_as(&url, "stale", now_millis() - 1, Some("alice"));
     let mut mcp = Mcp::default();
     let added = mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
-    assert_eq!(added.summary, "web (alice, 1 tools)");
+    assert_eq!(added.summary, "web (signed in, 1 tools)");
     assert_eq!(oauth::load(&url).unwrap().user.as_deref(), Some("alice"));
 }
 

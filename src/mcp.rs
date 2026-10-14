@@ -282,14 +282,10 @@ pub struct SignInServer {
     pub url: String,
 }
 
-pub struct SignedIn {
-    pub user: Option<String>,
-}
-
 impl SignInServer {
-    /// The sign-in mcp-auth.json holds for this server, if any.
-    pub fn signed_in(&self) -> Option<SignedIn> {
-        oauth::load(&self.url).map(|saved| SignedIn { user: saved.user })
+    /// Whether mcp-auth.json holds a sign-in for this server.
+    pub fn signed_in(&self) -> bool {
+        oauth::load(&self.url).is_some()
     }
 }
 

@@ -97,7 +97,7 @@ impl HttpSession {
         let oauth = self.0.oauth.as_ref()?;
         Some(match oauth.current() {
             None => "anonymous".into(),
-            Some(saved) => saved.user.unwrap_or_else(|| "signed in".into()),
+            Some(_) => "signed in".into(),
         })
     }
 
