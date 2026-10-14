@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, time::Duration};
 
 use crate::{
-    auth::{now_millis, pkce_challenge, random_token},
+    auth::{expires_at, pkce_challenge, random_token},
     skills::escape_xml,
 };
 use serde_json::Value;
@@ -60,10 +60,7 @@ pub(super) async fn request_tokens(
             .as_str()
             .map(str::to_string)
             .or_else(|| saved.refresh_token.clone()),
-        expires_at: reply["expires_in"].as_u64().map(|seconds| {
-            let lifetime = u128::from(seconds) * 1000;
-            now_millis() + lifetime - lifetime.min(2 * EXPIRY_MARGIN) / 2
-        }),
+        expires_at: expires_at(reply["expires_in"].as_u64(), EXPIRY_MARGIN),
         ..saved.clone()
     })
 }

@@ -357,18 +357,15 @@ async fn request_tokens(
             .or(current_refresh)
             .context("missing refresh_token")?
             .into(),
-        expires: expiry(data["expires_in"].as_u64()),
+        expires: expires_at(data["expires_in"].as_u64(), RENEWAL_MARGIN).unwrap_or(u64::MAX.into()),
         renewal_notice: None,
     };
     Ok(credentials)
 }
 
-fn expiry(lifetime: Option<u64>) -> u128 {
-    let Some(lifetime) = lifetime else {
-        return u64::MAX.into();
-    };
-    let lifetime = u128::from(lifetime) * 1000;
-    now_millis() + lifetime - lifetime.min(2 * RENEWAL_MARGIN) / 2
+pub(crate) fn expires_at(seconds: Option<u64>, margin: u128) -> Option<u128> {
+    let lifetime = u128::from(seconds?) * 1000;
+    Some(now_millis() + lifetime - lifetime.min(2 * margin) / 2)
 }
 
 const RENEWAL_MARGIN: u128 = 5 * 60 * 1000;
