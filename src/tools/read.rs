@@ -22,8 +22,12 @@ pub(super) fn definition() -> Value {
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
     let path = argument(input, "path")?;
-    let offset = number(input, "offset", 0)?.map_or(1, |offset| offset.max(1) as usize);
-    let limit = number(input, "limit", 1)?.map_or(usize::MAX, |limit| limit as usize);
+    let offset = number(input, "offset", 0)?.map_or(1, |offset| {
+        usize::try_from(offset.max(1)).unwrap_or(usize::MAX)
+    });
+    let limit = number(input, "limit", 1)?.map_or(usize::MAX, |limit| {
+        usize::try_from(limit).unwrap_or(usize::MAX)
+    });
     regular_file(path).await?;
     let file = PathBuf::from(path);
     let read = tokio::task::spawn_blocking(move || {
