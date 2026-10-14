@@ -518,6 +518,32 @@ async fn reports_a_web_search_that_failed() {
     assert_eq!(errors, ["too_many_requests"]);
 }
 
+#[tokio::test]
+async fn tells_the_model_a_tool_it_named_does_not_exist() {
+    let api = MockApi::start(vec![
+        tool_reply("call-1", "grep", &json!({ "pattern": "fn" })),
+        text_reply("sorry"),
+    ])
+    .await;
+    let mut errors = Vec::new();
+    let (_, result) = test_support::run_prompt(&api, "search", |event| {
+        if let AgentEvent::ToolDone { name, error, .. } = event {
+            errors.push((name, error));
+        }
+    })
+    .await;
+    result.unwrap();
+    assert_eq!(
+        errors,
+        [("grep".to_string(), Some("unknown tool: grep".to_string()))]
+    );
+    let requests = api.requests().await;
+    let result = test_support::tool_result(&requests[1]);
+    assert_eq!(result["tool_use_id"], "call-1");
+    assert_eq!(result["content"], "unknown tool: grep");
+    assert_eq!(result["is_error"], true);
+}
+
 fn web_fetch_reply(url: &str, result: &Value, cited: u64) -> Reply {
     Reply::Events(vec![
         test_support::message_start(),
