@@ -12,7 +12,7 @@ use tokio::io::AsyncWriteExt;
 
 use super::config_file::{OAuthConfig, expand_variables, read_config};
 use super::sign_in::{begin_sign_in_with, sign_out_with};
-use super::tool::MAX_TOOL_NAME;
+use super::tool::{MAX_TOOL_NAME, qualified_name, tool_definition};
 use super::*;
 use crate::agent::test_support::read_chunk;
 use crate::auth::now_millis;

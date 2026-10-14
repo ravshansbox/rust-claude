@@ -7,100 +7,27 @@ mod connection;
 mod headers_helper;
 mod http;
 mod oauth;
+mod server;
 mod sign_in;
 mod stdio;
 mod tool;
 
 pub use self::oauth::Pending as SignIn;
+pub use self::server::Started;
+#[cfg(test)]
+pub use self::server::failed_start;
 pub use self::sign_in::{begin_sign_in, sign_out};
 use self::{
     config_file::{Configs, ServerConfig, enabled, http_url, read_configs, uses_oauth},
-    connection::Connection,
-    tool::{Tool, qualified_name, result_text, tool_definition},
+    server::{Server, initialize_params, start},
+    tool::result_text,
 };
 use crate::{config, skills::Scope, tools};
 
-const PROTOCOL_VERSION: &str = "2025-06-18";
 const DEFAULT_TIMEOUT: u64 = 60;
 const STDERR_TAIL: usize = 4_000;
 const MAX_LINE: usize = 32 << 20;
 const NEEDS_SIGN_IN: &str = "needs sign-in";
-
-struct Server {
-    name: String,
-    scope: Scope,
-    connection: Connection,
-    tools: Vec<Tool>,
-}
-
-async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
-    let mut tools = Vec::new();
-    let mut cursors = std::collections::HashSet::new();
-    let mut params = json!({});
-    loop {
-        let result = connection.request("tools/list", params).await?;
-        tools.extend(result["tools"].as_array().into_iter().flatten().cloned());
-        let Some(cursor) = result["nextCursor"].as_str() else {
-            return Ok(tools);
-        };
-        if !cursors.insert(cursor.to_string()) {
-            return Err(format!("tools/list repeated the cursor {cursor:?}"));
-        }
-        params = json!({ "cursor": cursor });
-    }
-}
-
-fn initialize_params() -> Value {
-    json!({
-        "protocolVersion": PROTOCOL_VERSION,
-        "capabilities": {},
-        "clientInfo": { "name": "Claude Code", "version": env!("CARGO_PKG_VERSION") },
-    })
-}
-
-async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Server, String> {
-    let connection = match (config.kind.as_deref(), &config.command, &config.url) {
-        (Some("sse"), _, _) => {
-            return Err(
-                "the SSE transport is not supported; use the server's Streamable HTTP URL".into(),
-            );
-        }
-        (Some("http" | "streamable-http"), _, Some(url)) | (None, None, Some(url)) => {
-            Connection::http(&name, &config, url)?
-        }
-        (Some("http" | "streamable-http"), _, None) => return Err("url is missing".into()),
-        (None | Some("stdio"), Some(command), _) => Connection::spawn(&config, command)?,
-        (None | Some("stdio"), None, _) => return Err("command is missing".into()),
-        (Some(kind), _, _) => return Err(format!("unknown type {kind:?}")),
-    };
-    let initialize = connection
-        .request("initialize", initialize_params())
-        .await?;
-    connection.notify("notifications/initialized")?;
-    let tools = if initialize["capabilities"]["tools"].is_null() {
-        Vec::new()
-    } else {
-        list_tools(&connection)
-            .await?
-            .into_iter()
-            .filter_map(|tool| {
-                let tool_name = tool["name"].as_str()?.to_string();
-                let qualified_name = qualified_name(&name, &tool_name);
-                Some(Tool {
-                    name: tool_name,
-                    definition: tool_definition(&qualified_name, tool),
-                    qualified_name,
-                })
-            })
-            .collect()
-    };
-    Ok(Server {
-        name,
-        scope,
-        connection,
-        tools,
-    })
-}
 
 fn configs() -> (Configs, Vec<String>, Vec<String>) {
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -120,24 +47,6 @@ fn configured(name: &str) -> Result<ServerConfig, String> {
 pub struct Mcp {
     servers: Vec<Arc<Server>>,
     pub diagnostics: Vec<String>,
-}
-
-pub struct Started {
-    name: String,
-    result: Result<Server, String>,
-}
-
-async fn start(name: String, scope: Scope, config: ServerConfig) -> Started {
-    let result = connect(name.clone(), scope, config).await;
-    Started { name, result }
-}
-
-#[cfg(test)]
-pub fn failed_start(name: &str, error: &str) -> Started {
-    Started {
-        name: name.into(),
-        result: Err(error.into()),
-    }
 }
 
 pub struct StartingServer {
