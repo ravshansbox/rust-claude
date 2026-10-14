@@ -161,15 +161,7 @@ async fn run_loop(
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
             }
         }
-        if let Some(generation) = app.start_listing_files() {
-            send_blocking(&background_events, move || {
-                UiEvent::Files(generation, list_files())
-            });
-        }
-        if std::mem::take(&mut app.workspace_stale) {
-            send_blocking(&background_events, || UiEvent::Workspace(workspace_label()));
-        }
-        send_history(&mut app, &history_sender);
+        start_background_work(&mut app, &background_events, &history_sender);
     };
     send_history(&mut app, &history_sender);
     drop(history_sender);
@@ -270,6 +262,20 @@ fn perform(
             let _ = cancel.send(());
         }
     }
+}
+
+fn start_background_work(
+    app: &mut App,
+    events: &mpsc::UnboundedSender<UiEvent>,
+    history: &std::sync::mpsc::Sender<(PathBuf, history::Entry)>,
+) {
+    if let Some(generation) = app.start_listing_files() {
+        send_blocking(events, move || UiEvent::Files(generation, list_files()));
+    }
+    if std::mem::take(&mut app.workspace_stale) {
+        send_blocking(events, || UiEvent::Workspace(workspace_label()));
+    }
+    send_history(app, history);
 }
 
 fn send_blocking(
