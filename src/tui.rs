@@ -137,10 +137,7 @@ async fn run_loop(
                 let quit = handle_input(event, &mut app, |action| {
                     perform(action, &request_tx, &cancel_tx, &background_events);
                 });
-                if app.effort != sent_effort {
-                    sent_effort = app.effort;
-                    let _ = request_tx.send(Request::SetEffort(sent_effort));
-                }
+                send_changed_effort(&app, &mut sent_effort, &request_tx);
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
                 if quit {
                     break Ok(());
@@ -330,6 +327,17 @@ fn history_writer(
         }
     });
     (sender, writer)
+}
+
+fn send_changed_effort(
+    app: &App,
+    sent_effort: &mut &'static str,
+    requests: &mpsc::UnboundedSender<Request>,
+) {
+    if app.effort != *sent_effort {
+        *sent_effort = app.effort;
+        let _ = requests.send(Request::SetEffort(app.effort));
+    }
 }
 
 fn save_changed_settings(app: &mut App, saved_model: &mut String, saved_effort: &mut &'static str) {
