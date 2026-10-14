@@ -190,7 +190,7 @@ impl Updater {
         match outcome {
             Ok(()) => {
                 if let Some(bin_dir) = &self.bin_dir {
-                    link_alias(bin_dir);
+                    link_alias_to(bin_dir, std::ffi::OsStr::new("rust-coding-agent"));
                 }
                 report(Progress::Ready);
             }
@@ -331,10 +331,6 @@ impl Drop for UpdateFolder {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
     }
-}
-
-fn link_alias(bin_dir: &Path) {
-    link_alias_to(bin_dir, std::ffi::OsStr::new("rust-coding-agent"));
 }
 
 fn link_alias_to(bin_dir: &Path, program: &std::ffi::OsStr) {
