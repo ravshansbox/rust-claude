@@ -372,9 +372,9 @@ async fn keeps_the_conversation_cached_after_a_round_with_many_tool_calls() {
     let body = &requests[1];
     let messages = body["messages"].as_array().unwrap();
     assert_eq!(messages.len(), 3);
-    let breakpoint = |message: &serde_json::Value| match message["content"].as_array() {
+    let breakpoint = |message: &Value| match message["content"].as_array() {
         Some(blocks) => blocks.last().unwrap()["cache_control"].clone(),
-        None => serde_json::Value::Null,
+        None => Value::Null,
     };
     let ephemeral = json!({ "type": "ephemeral" });
     // The prompt ended the first request, where its cache entry was written.

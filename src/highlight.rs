@@ -345,7 +345,7 @@ fn highlight_body(syntax: &SyntaxReference, body: &str, dark: bool) -> Vec<Highl
 /// the model or a tool can be written to a terminal as plain text. Carriage
 /// returns go too: a lone one could overwrite what is shown, and a terminal
 /// already starts a new line at column one after a newline.
-pub fn strip_controls(text: &str) -> std::borrow::Cow<'_, str> {
+pub fn strip_controls(text: &str) -> Cow<'_, str> {
     let removed = |c: char| c.is_control() && c != '\n' && c != '\t';
     if text.contains(removed) {
         text.chars()
