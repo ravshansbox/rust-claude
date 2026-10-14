@@ -376,3 +376,24 @@ fn keeps_the_selected_command_visible_in_a_long_list() {
     assert!(shown.contains("/skill:skill20"), "{shown}");
     assert!(!shown.contains("/skill:skill19"), "{shown}");
 }
+
+#[test]
+fn shades_the_command_list_like_tool_calls() {
+    let mut app = app_with_reply();
+    app.push(Role::Tool, "! make");
+    handle_input(Event::Paste("/".into()), &mut app, |_| {});
+    let shown = screen(&mut app);
+    let mut terminal = Terminal::new(TestBackend::new(100, 24)).unwrap();
+    terminal.draw(|frame| super::draw(frame, &mut app)).unwrap();
+    let buffer = terminal.backend().buffer();
+    let cell_of = |text: &str| {
+        let (y, row) = shown
+            .lines()
+            .enumerate()
+            .find(|(_, row)| row.contains(text))
+            .unwrap_or_else(|| panic!("{shown}"));
+        let x = row.find(text).unwrap();
+        (u16::try_from(x).unwrap(), u16::try_from(y).unwrap())
+    };
+    assert_eq!(buffer[cell_of("/compact")].bg, buffer[cell_of("make")].bg);
+}

@@ -73,10 +73,7 @@ impl Theme {
     }
 
     pub(super) fn subtle_style(self) -> Style {
-        match self {
-            Self::Light => Style::new().bg(Color::Rgb(245, 245, 245)),
-            Self::Dark => Style::new().bg(Color::Rgb(35, 35, 35)),
-        }
+        self.tool_style(BACKGROUND.get().copied().flatten())
     }
 
     fn code_theme(self) -> CodeTheme {
