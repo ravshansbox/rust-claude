@@ -1,6 +1,10 @@
 use std::{collections::BTreeMap, fs::File, io, path::PathBuf, sync::Mutex};
 
-use crate::{auth::now_millis, config};
+use crate::{
+    auth::now_millis,
+    config,
+    mcp::config_file::{OAuthConfig, expand_variables},
+};
 use serde::{Deserialize, Serialize};
 
 /// Serialises changes to mcp-auth.json within this process.
@@ -80,16 +84,13 @@ pub(in crate::mcp) fn load(server_url: &str) -> Option<Saved> {
 
 /// Loads the sign-in for `server_url`, with the client secret from
 /// mcp.json when it is for the client `oauth` names.
-pub(in crate::mcp) fn load_for(
-    server_url: &str,
-    oauth: Option<&crate::mcp::config_file::OAuthConfig>,
-) -> Option<Saved> {
+pub(in crate::mcp) fn load_for(server_url: &str, oauth: Option<&OAuthConfig>) -> Option<Saved> {
     let mut saved = load(server_url)?;
     if let Some(oauth) = oauth
         && oauth.client_id.as_deref() == Some(saved.client_id.as_str())
         && let Some(secret) = &oauth.client_secret
     {
-        saved.client_secret = crate::mcp::config_file::expand_variables(secret).ok();
+        saved.client_secret = expand_variables(secret).ok();
         saved.secret_from_config = true;
     }
     Some(saved)

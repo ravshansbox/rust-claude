@@ -1,5 +1,6 @@
 use std::{collections::BTreeMap, time::Duration};
 
+use super::config_file::{OAuthConfig, expand_variables};
 use crate::{
     auth::{expires_at, pkce_challenge, random_token},
     skills::escape_xml,
@@ -417,7 +418,7 @@ async fn register(
 pub(super) async fn begin(
     client: &reqwest::Client,
     server_url: &str,
-    oauth: Option<&super::config_file::OAuthConfig>,
+    oauth: Option<&OAuthConfig>,
 ) -> Result<Pending, String> {
     let discovered = discover(client, server_url).await?;
     let listener = TcpListener::bind("127.0.0.1:0")
@@ -433,12 +434,13 @@ pub(super) async fn begin(
     let secret_from_config = client_id.is_some() && client_secret.is_some();
     let (client_id, client_secret) = match client_id {
         Some(client_id) => {
-            let client_secret = client_secret
-                .map(super::config_file::expand_variables)
-                .transpose()
-                .map_err(|variable| {
-                    format!("oauth clientSecret uses {variable}, which is not set")
-                })?;
+            let client_secret =
+                client_secret
+                    .map(expand_variables)
+                    .transpose()
+                    .map_err(|variable| {
+                        format!("oauth clientSecret uses {variable}, which is not set")
+                    })?;
             (client_id.clone(), client_secret)
         }
         None => {
