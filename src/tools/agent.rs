@@ -1,4 +1,4 @@
-use super::{plural, tool};
+use super::{argument, plural, tool};
 use serde_json::{Value, json};
 
 pub const NAME: &str = "agent";
@@ -55,7 +55,7 @@ pub struct Task {
 }
 
 pub fn parse(input: &Value) -> Result<(Mode, Vec<Task>), String> {
-    let mode = match super::argument(input, "mode")? {
+    let mode = match argument(input, "mode")? {
         "sequential" => Mode::Sequential,
         "parallel" => Mode::Parallel,
         other => return Err(format!("unknown mode: {other}")),
@@ -66,8 +66,8 @@ pub fn parse(input: &Value) -> Result<(Mode, Vec<Task>), String> {
         .iter()
         .map(|task| {
             Ok(Task {
-                description: super::argument(task, "description")?.to_string(),
-                prompt: super::argument(task, "prompt")?.to_string(),
+                description: argument(task, "description")?.to_string(),
+                prompt: argument(task, "prompt")?.to_string(),
             })
         })
         .collect::<Result<Vec<_>, String>>()?;
