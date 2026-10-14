@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT, argument, number};
+use super::{MAX_OUTPUT, argument, number, tool};
 use futures::{
     FutureExt,
     future::{Either, FusedFuture},
@@ -19,19 +19,16 @@ use tokio::{
 };
 
 pub(super) fn definition() -> Value {
-    json!({
-        "name": "bash",
-        "description": "Run a bash command in the cwd and return stdout and stderr",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "command": { "type": "string" },
-                "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" },
-                "run_in_background": { "type": "boolean", "description": "Return at once and give the output in a later message when the command finishes, for long waits such as CI runs" }
-            },
-            "required": ["command"]
-        }
-    })
+    tool(
+        "bash",
+        "Run a bash command in the cwd and return stdout and stderr",
+        json!({
+            "command": { "type": "string" },
+            "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" },
+            "run_in_background": { "type": "boolean", "description": "Return at once and give the output in a later message when the command finishes, for long waits such as CI runs" }
+        }),
+        &["command"],
+    )
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {

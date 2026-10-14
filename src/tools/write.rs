@@ -1,20 +1,17 @@
-use super::{argument, replace_file};
+use super::{argument, replace_file, tool};
 use serde_json::{Value, json};
 use std::io;
 
 pub(super) fn definition() -> Value {
-    json!({
-        "name": "write",
-        "description": "Create or replace a UTF-8 file in the cwd",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": { "type": "string" },
-                "content": { "type": "string" }
-            },
-            "required": ["path", "content"]
-        }
-    })
+    tool(
+        "write",
+        "Create or replace a UTF-8 file in the cwd",
+        json!({
+            "path": { "type": "string" },
+            "content": { "type": "string" }
+        }),
+        &["path", "content"],
+    )
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {

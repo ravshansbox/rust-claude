@@ -1,24 +1,21 @@
-use super::{argument, regular_file, replace_file};
+use super::{argument, regular_file, replace_file, tool};
 use serde_json::{Value, json};
 
 /// Larger files are refused rather than loaded whole into memory.
 const MAX_SIZE: u64 = 10 * 1024 * 1024;
 
 pub(super) fn definition() -> Value {
-    json!({
-        "name": "edit",
-        "description": "Replace text in a UTF-8 file. old_text must match exactly once, unless replace_all is true",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": { "type": "string" },
-                "old_text": { "type": "string" },
-                "new_text": { "type": "string" },
-                "replace_all": { "type": "boolean", "description": "Replace every match of old_text. Defaults to false" }
-            },
-            "required": ["path", "old_text", "new_text"]
-        }
-    })
+    tool(
+        "edit",
+        "Replace text in a UTF-8 file. old_text must match exactly once, unless replace_all is true",
+        json!({
+            "path": { "type": "string" },
+            "old_text": { "type": "string" },
+            "new_text": { "type": "string" },
+            "replace_all": { "type": "boolean", "description": "Replace every match of old_text. Defaults to false" }
+        }),
+        &["path", "old_text", "new_text"],
+    )
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {

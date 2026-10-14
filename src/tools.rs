@@ -40,6 +40,14 @@ pub fn definitions() -> Value {
     ])
 }
 
+fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
+    json!({
+        "name": name,
+        "description": description,
+        "input_schema": { "type": "object", "properties": properties, "required": required }
+    })
+}
+
 fn argument<'a>(input: &'a Value, key: &str) -> Result<&'a str, String> {
     input[key]
         .as_str()

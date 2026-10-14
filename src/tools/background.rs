@@ -1,4 +1,4 @@
-use super::{ProcessGroup, argument, bash};
+use super::{ProcessGroup, argument, bash, tool};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use tokio::task::{AbortHandle, JoinSet};
@@ -7,17 +7,14 @@ pub const STOP: &str = "bash_stop";
 pub const RUN_IN_BACKGROUND: &str = "run_in_background";
 
 pub(super) fn stop_definition() -> Value {
-    json!({
-        "name": STOP,
-        "description": "Stop a command running in the background",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "id": { "type": "integer", "description": "The number of the background task" }
-            },
-            "required": ["id"]
-        }
-    })
+    tool(
+        STOP,
+        "Stop a command running in the background",
+        json!({
+            "id": { "type": "integer", "description": "The number of the background task" }
+        }),
+        &["id"],
+    )
 }
 
 pub fn runs_in_background(name: &str, input: &Value) -> bool {

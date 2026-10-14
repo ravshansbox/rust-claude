@@ -1,37 +1,35 @@
+use super::tool;
 use serde_json::{Value, json};
 
 pub const NAME: &str = "agent";
 
 pub fn definition() -> Value {
-    json!({
-        "name": NAME,
-        "description": "Start subagents to work on tasks on their own. Each subagent starts a new conversation with the same instructions and tools as you, except this one, and returns only its final reply. Give each task a prompt with all the context it needs. Mode \"parallel\" runs the tasks at the same time. Mode \"sequential\" runs them one after another, and adds each task's final reply to the next task's prompt.",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "tasks": {
-                    "type": "array",
-                    "minItems": 1,
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "description": {
-                                "type": "string",
-                                "description": "A short label for the task, in 3 to 5 words"
-                            },
-                            "prompt": {
-                                "type": "string",
-                                "description": "The full task for the subagent"
-                            }
+    tool(
+        NAME,
+        "Start subagents to work on tasks on their own. Each subagent starts a new conversation with the same instructions and tools as you, except this one, and returns only its final reply. Give each task a prompt with all the context it needs. Mode \"parallel\" runs the tasks at the same time. Mode \"sequential\" runs them one after another, and adds each task's final reply to the next task's prompt.",
+        json!({
+            "tasks": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "description": {
+                            "type": "string",
+                            "description": "A short label for the task, in 3 to 5 words"
                         },
-                        "required": ["description", "prompt"]
-                    }
-                },
-                "mode": { "type": "string", "enum": ["sequential", "parallel"] }
+                        "prompt": {
+                            "type": "string",
+                            "description": "The full task for the subagent"
+                        }
+                    },
+                    "required": ["description", "prompt"]
+                }
             },
-            "required": ["tasks", "mode"]
-        }
-    })
+            "mode": { "type": "string", "enum": ["sequential", "parallel"] }
+        }),
+        &["tasks", "mode"],
+    )
 }
 
 pub fn summary(input: &Value) -> String {

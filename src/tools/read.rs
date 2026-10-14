@@ -1,4 +1,4 @@
-use super::{MAX_OUTPUT, argument, number, regular_file, truncate};
+use super::{MAX_OUTPUT, argument, number, regular_file, tool, truncate};
 use serde_json::{Value, json};
 use std::{
     fmt::Write,
@@ -8,19 +8,16 @@ use std::{
 };
 
 pub(super) fn definition() -> Value {
-    json!({
-        "name": "read",
-        "description": "Read a UTF-8 file from the cwd. Long output is cut at whole lines; use offset and limit to read the rest",
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "path": { "type": "string" },
-                "offset": { "type": "integer", "description": "Line number to start from, counting from 1" },
-                "limit": { "type": "integer", "description": "Maximum number of lines to read" }
-            },
-            "required": ["path"]
-        }
-    })
+    tool(
+        "read",
+        "Read a UTF-8 file from the cwd. Long output is cut at whole lines; use offset and limit to read the rest",
+        json!({
+            "path": { "type": "string" },
+            "offset": { "type": "integer", "description": "Line number to start from, counting from 1" },
+            "limit": { "type": "integer", "description": "Maximum number of lines to read" }
+        }),
+        &["path"],
+    )
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
