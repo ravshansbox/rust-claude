@@ -191,16 +191,12 @@ async fn run_loop(
             }
         }
         if let Some(generation) = app.start_listing_files() {
-            let events = background_events.clone();
-            tokio::task::spawn_blocking(move || {
-                let _ = events.send(UiEvent::Files(generation, list_files()));
+            send_blocking(&background_events, move || {
+                UiEvent::Files(generation, list_files())
             });
         }
         if std::mem::take(&mut app.workspace_stale) {
-            let events = background_events.clone();
-            tokio::task::spawn_blocking(move || {
-                let _ = events.send(UiEvent::Workspace(workspace_label()));
-            });
+            send_blocking(&background_events, || UiEvent::Workspace(workspace_label()));
         }
         for entry in app.unsaved_history.drain(..) {
             let _ = history_sender.send(entry);
@@ -262,6 +258,16 @@ fn perform(
             let _ = cancel.send(());
         }
     }
+}
+
+fn send_blocking(
+    events: &mpsc::UnboundedSender<UiEvent>,
+    event: impl FnOnce() -> UiEvent + Send + 'static,
+) {
+    let events = events.clone();
+    tokio::task::spawn_blocking(move || {
+        let _ = events.send(event());
+    });
 }
 
 /// Adds prompts to their history files one at a time, in order, on a thread
