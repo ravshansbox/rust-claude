@@ -70,7 +70,7 @@ impl Agent {
             match mode {
                 Mode::Parallel => {
                     futures::future::join_all(tasks.into_iter().enumerate().map(|(index, task)| {
-                        self.run_task(index, task.description, task.prompt, sender.clone())
+                        self.run_task(index, task.description, Some(task.prompt), sender.clone())
                     }))
                     .await
                 }
@@ -78,24 +78,12 @@ impl Agent {
                     let mut replies = Vec::new();
                     for (index, task) in tasks.into_iter().enumerate() {
                         let prompt = match replies.last() {
-                            Some(Err(_)) => {
-                                let _ = sender.send(AgentEvent::TaskStart {
-                                    task: index,
-                                    description: task.description,
-                                });
-                                let _ = sender.send(AgentEvent::TaskDone {
-                                    task: index,
-                                    reply: Err(NOT_RUN.into()),
-                                    tool_calls: 0,
-                                });
-                                replies.push(Err(NOT_RUN.into()));
-                                continue;
-                            }
-                            Some(Ok(previous)) => format!(
+                            Some(Err(_)) => None,
+                            Some(Ok(previous)) => Some(format!(
                                 "{}\n\n<previous-task-result>\n{previous}\n</previous-task-result>",
                                 task.prompt
-                            ),
-                            None => task.prompt,
+                            )),
+                            None => Some(task.prompt),
                         };
                         let reply = self
                             .run_task(index, task.description, prompt, sender.clone())
@@ -128,15 +116,19 @@ impl Agent {
         &self,
         task: usize,
         description: String,
-        prompt: String,
+        prompt: Option<String>,
         events: mpsc::UnboundedSender<AgentEvent>,
     ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
         Box::pin(async move {
             let _ = events.send(AgentEvent::TaskStart { task, description });
             let tool_calls = Arc::new(AtomicUsize::new(0));
-            let reply = self
-                .run_subagent(task, prompt, events.clone(), tool_calls.clone())
-                .await;
+            let reply = match prompt {
+                Some(prompt) => {
+                    self.run_subagent(task, prompt, events.clone(), tool_calls.clone())
+                        .await
+                }
+                None => Err(NOT_RUN.into()),
+            };
             let _ = events.send(AgentEvent::TaskDone {
                 task,
                 reply: reply.clone(),
