@@ -465,8 +465,8 @@ async fn skips_builds_from_main() {
     let (base, requests) = github("v0.2.0").await;
     let mut updater = updater(&base, None);
     updater.current_version = "0.0.0";
-    assert!(run(updater).await.is_empty());
-    assert!(requests.lock().unwrap().is_empty());
+    assert_eq!(run(updater).await, Vec::<String>::new());
+    assert_eq!(*requests.lock().unwrap(), Vec::<String>::new());
 }
 
 #[test]

@@ -146,7 +146,7 @@ fn names_loose_markdown_skills_after_their_file() {
             .iter()
             .all(|diagnostic| diagnostic.starts_with(&prefix))
     );
-    assert!(!loaded.diagnostics.is_empty());
+    assert_ne!(loaded.diagnostics, Vec::<String>::new());
 }
 
 #[test]
