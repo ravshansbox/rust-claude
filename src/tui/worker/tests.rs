@@ -4,7 +4,7 @@ use crate::{
         Agent, AgentEvent,
         test_support::{self, MockApi, Reply},
     },
-    auth::{Credentials, tests::AUTH_FILE},
+    auth::tests::AUTH_FILE,
     config,
     mcp::{self, Started},
 };
@@ -13,12 +13,7 @@ use std::time::Duration;
 use tokio::{sync::mpsc, task::JoinHandle};
 
 fn agent() -> Agent {
-    let credentials: Credentials = serde_json::from_value(json!({
-        "access": "access",
-        "refresh": "refresh",
-        "expires": 4_102_444_800_000u64,
-    }))
-    .unwrap();
+    let credentials = test_support::credentials(4_102_444_800_000);
     let mut agent = Agent::new(reqwest::Client::new(), credentials, "model".into()).unwrap();
     agent.api_base = "http://127.0.0.1:1".into();
     agent
@@ -139,13 +134,7 @@ async fn agent_renewing_sign_in() -> (Agent, MockApi) {
         .proxy(reqwest::Proxy::all(&api.base).unwrap())
         .build()
         .unwrap();
-    let credentials: Credentials = serde_json::from_value(json!({
-        "access": "access",
-        "refresh": "refresh",
-        "expires": 0,
-    }))
-    .unwrap();
-    let agent = Agent::new(http, credentials, "model".into()).unwrap();
+    let agent = Agent::new(http, test_support::credentials(0), "model".into()).unwrap();
     (agent, api)
 }
 

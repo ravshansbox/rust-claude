@@ -253,14 +253,22 @@ async fn write_response(mut stream: TcpStream, status: &str, content_type: &str,
     let _ = stream.write_all(response.as_bytes()).await;
 }
 
-pub(crate) fn agent(api: &MockApi, http: reqwest::Client) -> Agent {
-    let credentials: Credentials = serde_json::from_value(json!({
+pub(crate) fn credentials(expires: u64) -> Credentials {
+    serde_json::from_value(json!({
         "access": "access",
         "refresh": "refresh",
-        "expires": 4_102_444_800_000u64,
+        "expires": expires,
     }))
+    .unwrap()
+}
+
+pub(crate) fn agent(api: &MockApi, http: reqwest::Client) -> Agent {
+    let mut agent = Agent::new(
+        http,
+        credentials(4_102_444_800_000),
+        "claude-opus-5-5".into(),
+    )
     .unwrap();
-    let mut agent = Agent::new(http, credentials, "claude-opus-5-5".into()).unwrap();
     agent.api_base = api.base.clone();
     agent
 }
