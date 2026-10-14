@@ -51,7 +51,7 @@ async fn says_there_is_nothing_to_compact_in_a_new_session() {
     let compacted = agent.compact(|_| {}).await;
     test_support::remove_session(&agent);
     assert_eq!(compacted.unwrap_err().to_string(), "nothing to compact");
-    assert!(api.requests().await.is_empty());
+    assert_eq!(api.requests().await, Vec::<serde_json::Value>::new());
 }
 
 #[tokio::test]

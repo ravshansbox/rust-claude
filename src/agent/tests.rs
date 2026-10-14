@@ -558,8 +558,8 @@ async fn reports_a_skill_whose_file_was_removed_without_sending_the_prompt() {
     test_support::remove_session(&agent);
     let error = result.unwrap_err().to_string();
     assert_eq!(error, format!("failed to read skill {}", path.display()));
-    assert!(agent.messages().is_empty());
-    assert!(api.requests().await.is_empty());
+    assert_eq!(agent.messages(), Vec::<Value>::new());
+    assert_eq!(api.requests().await, Vec::<Value>::new());
 }
 
 #[tokio::test]

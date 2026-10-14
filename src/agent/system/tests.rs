@@ -39,5 +39,5 @@ fn skips_blank_and_missing_instructions() {
     let home = TemporaryDir::new("instructions-blank");
     let project = TemporaryDir::new("instructions-missing");
     std::fs::write(home.path().join("AGENTS.md"), " \n\n").unwrap();
-    assert!(loaded(Some(home.path()), project.path()).is_empty());
+    assert_eq!(loaded(Some(home.path()), project.path()), Vec::new());
 }
