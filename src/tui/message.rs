@@ -198,8 +198,8 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
     let mut finished = 0;
     // The code block `next_fence` sees open, by its simpler rule.
     let mut block = None;
-    // The fence character and length of the open code block that starts the line.
-    let mut open: Option<(char, usize)> = None;
+    // The fence character, length and indent of the open code block.
+    let mut open: Option<(char, usize, usize)> = None;
     // HTML can hold blank lines, so after it only code blocks end a part.
     let mut html = false;
     // Fences inside an HTML block, which runs to a blank line, are its text.
@@ -210,6 +210,11 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         let start = end;
         end += line.len();
         let trimmed = line.trim_start();
+        let indent = line.len() - trimmed.len();
+        // A line indented less than the fence may end the list item it is in.
+        if open.is_some_and(|(_, _, open_indent)| indent < open_indent) && !trimmed.is_empty() {
+            return finished;
+        }
         let in_fence = block.is_some();
         block = next_fence(block, line);
         if in_fence || open.is_some() {
@@ -234,19 +239,18 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         if length < 3 || in_html {
             continue;
         }
-        let indent = line.len() - trimmed.len();
         match open {
-            None if indent == 0 && !(fence == '`' && trimmed[length..].contains('`')) => {
-                open = Some((fence, length));
+            None if indent <= 3 && !(fence == '`' && trimmed[length..].contains('`')) => {
+                open = Some((fence, length, indent));
             }
-            Some((open_fence, open_length))
+            Some((open_fence, open_length, open_indent))
                 if indent <= 3
                     && fence == open_fence
                     && length >= open_length
                     && trimmed[length..].trim().is_empty() =>
             {
                 open = None;
-                if block.is_none() && line.ends_with('\n') {
+                if open_indent == 0 && block.is_none() && line.ends_with('\n') {
                     finished = end;
                 }
             }
