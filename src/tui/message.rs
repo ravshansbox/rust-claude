@@ -1,4 +1,4 @@
-use super::render::{borrowed_line, next_fence, render_message, wrapped_height};
+use super::render::{borrowed_line, fence_run, next_fence, render_message, wrapped_height};
 use ratatui::text::Line;
 
 #[derive(Clone, Copy)]
@@ -228,10 +228,9 @@ fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
             }
             after_blank = trimmed.is_empty();
         }
-        let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
+        let Some((fence, length)) = fence_run(trimmed) else {
             continue;
         };
-        let length = trimmed.chars().take_while(|c| *c == fence).count();
         if length < 3 || in_html {
             continue;
         }

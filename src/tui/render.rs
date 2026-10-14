@@ -195,10 +195,9 @@ pub(super) fn next_fence(
             (rest.trim_start(), depth + inner)
         }
     };
-    let Some(fence) = trimmed.chars().next().filter(|c| matches!(c, '`' | '~')) else {
+    let Some((fence, length)) = fence_run(trimmed) else {
         return open;
     };
-    let length = trimmed.chars().take_while(|c| *c == fence).count();
     if length < 3 {
         return open;
     }
@@ -214,6 +213,12 @@ pub(super) fn next_fence(
         }
         _ => open,
     }
+}
+
+/// The fence character `trimmed` starts with, and how many times it repeats.
+pub(super) fn fence_run(trimmed: &str) -> Option<(char, usize)> {
+    let fence = trimmed.chars().next().filter(|c| matches!(c, '`' | '~'))?;
+    Some((fence, trimmed.chars().take_while(|c| *c == fence).count()))
 }
 
 /// `line` after up to `limit` blockquote markers, and how many it had.
