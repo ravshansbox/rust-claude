@@ -21,7 +21,7 @@ const BOTTOM_BUTTON: &str = "↓ Bottom (End)";
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
-    let input_width = frame.area().width.max(1) as usize;
+    let input_width = usize::from(frame.area().width.max(1));
     app.input_width = input_width;
     let input_rows = input_rows(&app.input, input_width);
     let (cursor_row, cursor_column) = input_cursor(&app.input, app.cursor, input_width);
@@ -101,7 +101,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
                     .map(|line| wrapped_height(line, chat.width))
                     .sum::<usize>()
             };
-        let max_scroll = wrapped_line_count.saturating_sub(conversation_area.height as usize);
+        let max_scroll = wrapped_line_count.saturating_sub(usize::from(conversation_area.height));
         (pinned_lines, pinned_height, conversation_area, max_scroll)
     };
     let mut pinned = app.scroll_from_bottom > 0;
@@ -119,7 +119,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let viewport_height = conversation_area.height;
     app.status_pinned = pinned;
     app.max_scroll = max_scroll;
-    app.page_size = viewport_height.max(1) as usize;
+    app.page_size = usize::from(viewport_height.max(1));
     let scroll = app.max_scroll.saturating_sub(app.scroll_from_bottom);
     app.conversation_area = conversation_area;
     app.conversation_top = scroll;
@@ -222,7 +222,7 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
         .unwrap_or(u16::MAX)
         .min(chat.height);
     let selected = app.command_selected.min(matches.len() - 1);
-    let first = (selected + 1).saturating_sub(height as usize);
+    let first = (selected + 1).saturating_sub(usize::from(height));
     let name_width = matches
         .iter()
         .map(|(name, _)| name.chars().count() + 1)
@@ -242,7 +242,7 @@ fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
         .into_iter()
         .enumerate()
         .skip(first)
-        .take(height as usize)
+        .take(usize::from(height))
         .map(|(index, text)| {
             Line::from(reversed_if(
                 Span::from(format!("{text:<width$}")),
@@ -339,7 +339,7 @@ pub(super) fn conversation(app: &App, width: u16, top: usize, height_shown: u16)
             skipped += height;
             continue;
         }
-        if filled >= top - skipped + height_shown as usize {
+        if filled >= top - skipped + usize::from(height_shown) {
             break;
         }
         filled += height;
@@ -364,7 +364,7 @@ fn held_scroll_from_bottom(
 }
 
 fn render_list_scrollbar(frame: &mut Frame, list_area: Rect, count: usize, selected: usize) {
-    let visible = list_area.height as usize;
+    let visible = usize::from(list_area.height);
     if visible == 0 || count <= visible {
         return;
     }
@@ -381,7 +381,7 @@ fn picker_view(picker: &Picker, height: u16) -> Paragraph<'_> {
     let mut lines = vec![Line::from(
         format!("{} (↑↓ select, Enter confirm, Esc cancel)", picker.title).bold(),
     )];
-    let visible = (height as usize).saturating_sub(1).max(1);
+    let visible = usize::from(height).saturating_sub(1).max(1);
     let first = (picker.selected + 1).saturating_sub(visible);
     for (index, (_, text)) in picker.items.iter().enumerate().skip(first).take(visible) {
         lines.push(Line::from(reversed_if(
@@ -404,7 +404,7 @@ fn history_view(search: &HistorySearch, height: u16) -> Paragraph<'_> {
         Line::raw(format!("search: {}", search.query)),
     ];
     let matches = search.matches();
-    let visible = (height as usize).saturating_sub(2).max(1);
+    let visible = usize::from(height).saturating_sub(2).max(1);
     let first = (search.selected + 1).saturating_sub(visible);
     for (index, (prompt, folder)) in matches.into_iter().enumerate().skip(first).take(visible) {
         let mut prompt_lines = prompt.lines();
