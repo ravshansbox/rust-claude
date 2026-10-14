@@ -22,16 +22,11 @@ pub(super) struct Response {
 }
 
 impl Agent {
-    pub(super) async fn stream_message(
-        &mut self,
+    fn request_body(
+        &self,
         messages: &[Value],
         tool_choice: Option<&Value>,
-        on_event: &mut impl FnMut(AgentEvent),
-    ) -> Result<Response> {
-        let mut token = self.credentials.access_token(&self.http).await?;
-        if let Some(notice) = self.credentials.take_renewal_notice() {
-            on_event(AgentEvent::Notice(notice));
-        }
+    ) -> (Value, &'static str) {
         let mut system = self.system_prompt();
         if let Some(last) = system.last_mut() {
             last["cache_control"] = json!({ "type": "ephemeral" });
@@ -61,6 +56,20 @@ impl Agent {
         } else {
             "oauth-2025-04-20"
         };
+        (body, beta)
+    }
+
+    pub(super) async fn stream_message(
+        &mut self,
+        messages: &[Value],
+        tool_choice: Option<&Value>,
+        on_event: &mut impl FnMut(AgentEvent),
+    ) -> Result<Response> {
+        let mut token = self.credentials.access_token(&self.http).await?;
+        if let Some(notice) = self.credentials.take_renewal_notice() {
+            on_event(AgentEvent::Notice(notice));
+        }
+        let (body, beta) = self.request_body(messages, tool_choice);
         // The API may turn down a token before it expires, as when the
         // sign-in was revoked; renewing it is then worth one more try.
         let mut renewed = false;
