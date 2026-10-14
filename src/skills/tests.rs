@@ -77,21 +77,13 @@ fn loads_skills_from_all_locations_and_keeps_first_on_collision() {
     );
     assert_eq!(
         loaded.diagnostics,
-        [Diagnostic::Collision {
-            name: "alpha".into(),
-            winner: cwd.join(".rust-coding-agent/skills/alpha/SKILL.md"),
-            loser: home.join(".rust-coding-agent/skills/alpha/SKILL.md"),
-        }]
-    );
-    assert_eq!(
-        loaded.diagnostics[0].to_string(),
-        format!(
+        [format!(
             "skill \"alpha\" collision: kept {}, skipped {}",
             cwd.join(".rust-coding-agent/skills/alpha/SKILL.md")
                 .display(),
             home.join(".rust-coding-agent/skills/alpha/SKILL.md")
                 .display()
-        )
+        )]
     );
 }
 
@@ -147,10 +139,13 @@ fn names_loose_markdown_skills_after_their_file() {
 
     let loaded = load_from(Some(&home.join(".rust-coding-agent")), Some(&home), &cwd);
     assert_eq!(names(&loaded), ["My Notes", "commit", "review"]);
-    assert!(loaded.diagnostics.iter().all(|diagnostic| matches!(
-        diagnostic,
-        Diagnostic::Warning { path, .. } if *path == skills.join("My Notes.md")
-    )));
+    let prefix = format!("skill warning: {}: ", skills.join("My Notes.md").display());
+    assert!(
+        loaded
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.starts_with(&prefix))
+    );
     assert!(!loaded.diagnostics.is_empty());
 }
 
@@ -260,10 +255,10 @@ fn validates_skill_files() {
     assert!(skill.is_none());
     assert_eq!(
         diagnostics,
-        [Diagnostic::Warning {
-            path: missing,
-            message: "description is required".into(),
-        }]
+        [format!(
+            "skill warning: {}: description is required",
+            missing.display()
+        )]
     );
 
     let invalid = root.join("Bad--Name/SKILL.md");
@@ -275,18 +270,14 @@ fn validates_skill_files() {
     let skill = skill.unwrap();
     assert_eq!(skill.name, "Bad--Name");
     assert!(skill.disable_model_invocation);
-    let messages: Vec<String> = diagnostics
-        .into_iter()
-        .map(|diagnostic| match diagnostic {
-            Diagnostic::Warning { message, .. } => message,
-            Diagnostic::Collision { .. } => unreachable!(),
-        })
-        .collect();
+    let prefix = format!("skill warning: {}: ", invalid.display());
     assert_eq!(
-        messages,
+        diagnostics,
         [
-            "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
-            "name must not contain consecutive hyphens",
+            format!(
+                "{prefix}name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)"
+            ),
+            format!("{prefix}name must not contain consecutive hyphens"),
         ]
     );
 
@@ -333,10 +324,9 @@ fn warns_about_each_rule_a_skill_breaks() {
     );
     let (skill, diagnostics) = load_skill_file(&path, Scope::Project);
     assert_eq!(skill.unwrap().name, long_name);
-    let messages: Vec<String> = diagnostics.iter().map(ToString::to_string).collect();
     let prefix = format!("skill warning: {}: ", path.display());
     assert_eq!(
-        messages,
+        diagnostics,
         [
             format!("{prefix}description exceeds 1024 characters (1025)"),
             format!("{prefix}name exceeds 64 characters (65)"),

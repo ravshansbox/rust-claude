@@ -2,7 +2,7 @@ use super::{opening_app, show_skills_and_instructions};
 use crate::{
     agent::test_support::{self, MockApi, text_reply},
     mcp,
-    skills::{Diagnostic, Scope, Skill, Skills},
+    skills::{Scope, Skill, Skills},
     tui::test_support::new_app,
 };
 use std::path::PathBuf;
@@ -23,10 +23,7 @@ fn lists_loaded_skills_by_scope_then_their_problems_then_instructions() {
             skill("commit", Scope::Global),
             skill("deploy", Scope::Project),
         ],
-        diagnostics: vec![Diagnostic::Warning {
-            path: "broken/SKILL.md".into(),
-            message: "missing description".into(),
-        }],
+        diagnostics: vec!["skill warning: broken/SKILL.md: missing description".into()],
     };
     let mut app = new_app();
     show_skills_and_instructions(&mut app, &skills, ["~/AGENTS.md", "./AGENTS.md"]);

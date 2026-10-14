@@ -43,43 +43,10 @@ impl fmt::Display for Scope {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Diagnostic {
-    Warning {
-        path: PathBuf,
-        message: String,
-    },
-    Collision {
-        name: String,
-        winner: PathBuf,
-        loser: PathBuf,
-    },
-}
-
-impl fmt::Display for Diagnostic {
-    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Self::Warning { path, message } => {
-                write!(formatter, "skill warning: {}: {message}", path.display())
-            }
-            Self::Collision {
-                name,
-                winner,
-                loser,
-            } => write!(
-                formatter,
-                "skill \"{name}\" collision: kept {}, skipped {}",
-                winner.display(),
-                loser.display()
-            ),
-        }
-    }
-}
-
 #[derive(Debug, Default)]
 pub struct Skills {
     pub skills: Vec<Skill>,
-    pub diagnostics: Vec<Diagnostic>,
+    pub diagnostics: Vec<String>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -159,11 +126,12 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
             continue;
         }
         if let Some(existing) = skills.iter().find(|existing| existing.name == skill.name) {
-            collisions.push(Diagnostic::Collision {
-                name: skill.name,
-                winner: existing.path.clone(),
-                loser: skill.path,
-            });
+            collisions.push(format!(
+                "skill \"{}\" collision: kept {}, skipped {}",
+                skill.name,
+                existing.path.display(),
+                skill.path.display()
+            ));
         } else {
             real_paths.insert(real_path);
             skills.push(skill);
@@ -350,11 +318,8 @@ fn validate_description(description: Option<&str>) -> Vec<String> {
     }
 }
 
-fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>) {
-    let warning = |message: String| Diagnostic::Warning {
-        path: path.to_path_buf(),
-        message,
-    };
+fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<String>) {
+    let warning = |message: String| format!("skill warning: {}: {message}", path.display());
     let is_declared_skill = path.file_name().is_some_and(|name| name == SKILL_FILE);
     let content = match std::fs::read_to_string(path) {
         Ok(content) => content,
@@ -372,7 +337,7 @@ fn load_skill_file(path: &Path, scope: Scope) -> (Option<Skill>, Vec<Diagnostic>
         return (None, Vec::new());
     }
     let base_dir = path.parent().map(Path::to_path_buf).unwrap_or_default();
-    let mut diagnostics: Vec<Diagnostic> = validate_description(description)
+    let mut diagnostics: Vec<String> = validate_description(description)
         .into_iter()
         .map(&warning)
         .collect();
