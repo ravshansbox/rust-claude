@@ -278,25 +278,7 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             "the sign-in metadata of {server_url} is for another server: {resource}"
         ));
     }
-    let issuer_url = reqwest::Url::parse(&issuer)
-        .map_err(|error| format!("invalid sign-in server {issuer:?}: {error}"))?;
-    let mut metadata_urls = vec![
-        well_known(&issuer_url, "oauth-authorization-server"),
-        well_known(&issuer_url, "openid-configuration"),
-    ];
-    if !issuer_url.path().trim_end_matches('/').is_empty() {
-        metadata_urls.push(format!(
-            "{}/.well-known/openid-configuration",
-            issuer.trim_end_matches('/')
-        ));
-    }
-    let Some(server_metadata) = first_json(client, &metadata_urls, |metadata| {
-        metadata["authorization_endpoint"].is_string() && metadata["token_endpoint"].is_string()
-    })
-    .await
-    else {
-        return Err(format!("cannot find the sign-in server for {server_url}"));
-    };
+    let server_metadata = find_server_metadata(client, &issuer, server_url).await?;
     if resource_metadata.is_some()
         && let Some(named) = server_metadata["issuer"].as_str()
         && named.trim_end_matches('/') != issuer.trim_end_matches('/')
@@ -334,6 +316,30 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
         resource: resource.unwrap_or(server_url).to_string(),
         scope,
     })
+}
+
+async fn find_server_metadata(
+    client: &reqwest::Client,
+    issuer: &str,
+    server_url: &str,
+) -> Result<Value, String> {
+    let issuer_url = reqwest::Url::parse(issuer)
+        .map_err(|error| format!("invalid sign-in server {issuer:?}: {error}"))?;
+    let mut metadata_urls = vec![
+        well_known(&issuer_url, "oauth-authorization-server"),
+        well_known(&issuer_url, "openid-configuration"),
+    ];
+    if !issuer_url.path().trim_end_matches('/').is_empty() {
+        metadata_urls.push(format!(
+            "{}/.well-known/openid-configuration",
+            issuer.trim_end_matches('/')
+        ));
+    }
+    first_json(client, &metadata_urls, |metadata| {
+        metadata["authorization_endpoint"].is_string() && metadata["token_endpoint"].is_string()
+    })
+    .await
+    .ok_or_else(|| format!("cannot find the sign-in server for {server_url}"))
 }
 
 /// The `WWW-Authenticate` header the server sends to an unsigned `initialize` request.
