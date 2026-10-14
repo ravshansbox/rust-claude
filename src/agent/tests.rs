@@ -544,6 +544,33 @@ async fn tells_the_model_a_tool_it_named_does_not_exist() {
     assert_eq!(result["is_error"], true);
 }
 
+#[tokio::test]
+async fn runs_an_mcp_tool_the_model_calls_and_sends_back_its_result() {
+    let api = MockApi::start(vec![
+        tool_reply("call-1", "mcp__docs__echo", &json!({})),
+        text_reply("done"),
+    ])
+    .await;
+    let mut agent = test_support::agent(&api);
+    agent.mcp.add(crate::mcp::tests::echo_start("docs").await);
+    let mut errors = Vec::new();
+    let result = agent
+        .prompt("echo", &[], |event| {
+            if let AgentEvent::ToolDone { name, error, .. } = event {
+                errors.push((name, error));
+            }
+        })
+        .await;
+    test_support::remove_session(&agent);
+    result.unwrap();
+    assert_eq!(errors, [("mcp__docs__echo".to_string(), None)]);
+    let requests = api.requests().await;
+    let result = test_support::tool_result(&requests[1]);
+    assert_eq!(result["tool_use_id"], "call-1");
+    assert_eq!(result["content"], "pong");
+    assert_eq!(result.get("is_error"), Some(&json!(false)));
+}
+
 fn web_fetch_reply(url: &str, result: &Value, cited: u64) -> Reply {
     Reply::Events(vec![
         test_support::message_start(),
