@@ -10,47 +10,7 @@ use std::collections::HashMap;
 
 pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
     match event {
-        UiEvent::Agent(AgentEvent::Text(text)) => append_reply(app, &text),
-        UiEvent::Agent(AgentEvent::Thinking(text)) => match app.messages.last_mut() {
-            Some(last) if matches!(last.role, Role::Thinking) => last.append(&text),
-            _ => app.push(Role::Thinking, text),
-        },
-        UiEvent::Agent(AgentEvent::ToolStart {
-            name,
-            summary,
-            diff,
-        }) => {
-            if name == tools::agent::NAME {
-                app.tasks.clear();
-            }
-            app.push_tool(&name, summary, diff.as_deref());
-        }
-        UiEvent::Agent(AgentEvent::ToolDone { name, error, note }) => {
-            if name == "bash" {
-                app.workspace_stale = true;
-            }
-            if let Some(error) = error {
-                push_tool_failure(app, &name, &error);
-            }
-            if let Some(note) = note {
-                push_tool_note(app, &name, &note);
-            }
-        }
-        UiEvent::Agent(AgentEvent::Notice(text)) => app.push(Role::Event, text),
-        UiEvent::Agent(AgentEvent::TaskStart { task, description }) => {
-            app.start_task(task, &description);
-        }
-        UiEvent::Agent(AgentEvent::TaskToolCalls { task, count }) => {
-            app.count_task_tool_calls(task, count);
-        }
-        UiEvent::Agent(AgentEvent::TaskStats { task, stats }) => app.show_task_stats(task, stats),
-        UiEvent::Agent(AgentEvent::TaskDone {
-            task,
-            reply,
-            tool_calls,
-        }) => {
-            app.finish_task(task, tool_calls, reply.err().as_deref());
-        }
+        UiEvent::Agent(event) => apply_agent_event(event, app),
         UiEvent::McpRestarting {
             name,
             scope,
@@ -67,8 +27,6 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             }
         }
         UiEvent::Update(progress) => app.show_update(&progress),
-        UiEvent::Agent(AgentEvent::Queued(prompt)) => app.push(Role::User, prompt),
-        UiEvent::Agent(AgentEvent::Stats(stats)) => app.stats = stats,
         UiEvent::Done(result) => finish_reply(app, result),
         UiEvent::Cancelled(result) => {
             app.tasks.clear();
@@ -101,6 +59,54 @@ pub(super) fn handle_agent_event(event: UiEvent, app: &mut App) {
             replay_messages(app, &messages);
             app.push(Role::Event, "resumed session");
         }),
+    }
+}
+
+fn apply_agent_event(event: AgentEvent, app: &mut App) {
+    match event {
+        AgentEvent::Text(text) => append_reply(app, &text),
+        AgentEvent::Thinking(text) => match app.messages.last_mut() {
+            Some(last) if matches!(last.role, Role::Thinking) => last.append(&text),
+            _ => app.push(Role::Thinking, text),
+        },
+        AgentEvent::ToolStart {
+            name,
+            summary,
+            diff,
+        } => {
+            if name == tools::agent::NAME {
+                app.tasks.clear();
+            }
+            app.push_tool(&name, summary, diff.as_deref());
+        }
+        AgentEvent::ToolDone { name, error, note } => {
+            if name == "bash" {
+                app.workspace_stale = true;
+            }
+            if let Some(error) = error {
+                push_tool_failure(app, &name, &error);
+            }
+            if let Some(note) = note {
+                push_tool_note(app, &name, &note);
+            }
+        }
+        AgentEvent::Notice(text) => app.push(Role::Event, text),
+        AgentEvent::TaskStart { task, description } => {
+            app.start_task(task, &description);
+        }
+        AgentEvent::TaskToolCalls { task, count } => {
+            app.count_task_tool_calls(task, count);
+        }
+        AgentEvent::TaskStats { task, stats } => app.show_task_stats(task, stats),
+        AgentEvent::TaskDone {
+            task,
+            reply,
+            tool_calls,
+        } => {
+            app.finish_task(task, tool_calls, reply.err().as_deref());
+        }
+        AgentEvent::Queued(prompt) => app.push(Role::User, prompt),
+        AgentEvent::Stats(stats) => app.stats = stats,
     }
 }
 
