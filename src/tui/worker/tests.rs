@@ -4,7 +4,7 @@ use crate::{
         Agent, AgentEvent,
         test_support::{self, MockApi, Reply},
     },
-    auth::tests::AUTH_FILE,
+    auth::tests::{AUTH_FILE, answer_token_requests, expired, no_credentials_file},
     config,
     mcp::{self, Started},
     tools::test_support::TemporaryDir,
@@ -158,6 +158,30 @@ async fn quits_while_renewing_the_sign_in() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     let stopped = tokio::time::timeout(Duration::from_secs(5), worker.quit()).await;
     assert!(stopped.is_ok());
+}
+
+#[tokio::test]
+async fn says_when_it_renewed_the_sign_in_at_startup() {
+    let _lock = AUTH_FILE.lock().await;
+    answer_token_requests(
+        "200 OK",
+        json!({ "access_token": "new", "refresh_token": "next", "expires_in": 3600 }),
+    )
+    .await;
+    let path = no_credentials_file();
+    let mut agent = Agent::new(reqwest::Client::new(), expired("refresh"), "model".into()).unwrap();
+    agent.api_base = "http://127.0.0.1:1".into();
+    let session_id = agent.session.id.clone();
+    let mut worker = Worker::spawn(agent);
+    let shown = worker
+        .wait_for(|event| {
+            matches!(event, UiEvent::Agent(AgentEvent::Notice(notice)) if notice == "renewed sign-in token")
+        })
+        .await;
+    worker.quit().abort();
+    test_support::remove_session_files(&session_id);
+    let _ = std::fs::remove_file(&path);
+    assert!(shown);
 }
 
 #[tokio::test]

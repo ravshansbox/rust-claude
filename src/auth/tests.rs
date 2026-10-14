@@ -94,7 +94,7 @@ impl TokenEndpoint {
 }
 
 /// A token endpoint that gives every request the same answer.
-async fn answer_token_requests(status: &'static str, body: Value) {
+pub(crate) async fn answer_token_requests(status: &'static str, body: Value) {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     *TOKEN_URL.lock().await = Some(format!(
         "http://{}/v1/oauth/token",
@@ -146,7 +146,7 @@ async fn read_body(stream: &mut TcpStream) -> Value {
     }
 }
 
-fn no_credentials_file() -> PathBuf {
+pub(crate) fn no_credentials_file() -> PathBuf {
     let path = credentials_path().unwrap();
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
     let _ = std::fs::remove_file(&path);
@@ -160,7 +160,7 @@ fn credentials_file(saved: &str) -> PathBuf {
     path
 }
 
-fn expired(refresh: &str) -> Credentials {
+pub(crate) fn expired(refresh: &str) -> Credentials {
     serde_json::from_value(json!({ "access": "old", "refresh": refresh, "expires": 0 })).unwrap()
 }
 
