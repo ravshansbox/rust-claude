@@ -46,7 +46,7 @@ fn hex(bytes: &[u8]) -> String {
 
 fn new_uuid() -> Result<String> {
     let mut bytes = [0u8; 16];
-    getrandom::fill(&mut bytes).map_err(|error| anyhow::anyhow!("{error}"))?;
+    getrandom::fill(&mut bytes)?;
     bytes[6] = (bytes[6] & 0x0f) | 0x40;
     bytes[8] = (bytes[8] & 0x3f) | 0x80;
     let hex = hex(&bytes);

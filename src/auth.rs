@@ -293,7 +293,7 @@ async fn exchange_code(
 
 pub(crate) fn random_token() -> Result<String> {
     let mut random = [0u8; 32];
-    getrandom::fill(&mut random).map_err(|error| anyhow::anyhow!("{error}"))?;
+    getrandom::fill(&mut random)?;
     Ok(URL_SAFE_NO_PAD.encode(random))
 }
 
