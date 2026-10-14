@@ -308,6 +308,7 @@ impl App {
         self.spinner_frame = self.spinner_frame.wrapping_add(1);
         self.show_loading_mcp_groups();
     }
+
     pub(super) fn can_queue(&self) -> bool {
         self.activity.is_some_and(Activity::can_queue)
     }
@@ -354,9 +355,7 @@ impl App {
         if !self.input.is_empty() {
             parts.push(std::mem::take(&mut self.input));
         }
-        self.input = parts.join("\n\n");
-        self.cursor = self.input.len();
-        self.input_changed();
+        self.restore_input(parts.join("\n\n"));
     }
 
     /// Puts back text the user entered so they can fix it.
