@@ -41,7 +41,7 @@ impl Theme {
         }
     }
 
-    fn near_background(self, background: Option<Colour>) -> Colour {
+    fn tool_style(self, background: Option<Colour>) -> Style {
         let shift = |channel: u8| match self {
             Self::Light => channel.saturating_sub(12),
             Self::Dark => channel.saturating_add(12),
@@ -50,12 +50,7 @@ impl Theme {
             Self::Light => (255, 255, 255),
             Self::Dark => (23, 23, 23),
         });
-        (shift(red), shift(green), shift(blue))
-    }
-
-    fn tool_style(self, background: Option<Colour>) -> Style {
-        let (red, green, blue) = self.near_background(background);
-        Style::new().bg(Color::Rgb(red, green, blue))
+        Style::new().bg(Color::Rgb(shift(red), shift(green), shift(blue)))
     }
 
     fn from_colorfgbg(value: &str) -> Option<Self> {

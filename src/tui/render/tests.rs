@@ -179,16 +179,17 @@ fn counts_wide_characters_moved_to_the_next_row_in_print_mode() {
 
 #[test]
 fn shifts_the_terminal_background_towards_the_text() {
+    let near = |theme: Theme, background| theme.tool_style(background).bg;
     assert_eq!(
-        Theme::Dark.near_background(Some((30, 30, 30))),
-        (42, 42, 42)
+        near(Theme::Dark, Some((30, 30, 30))),
+        Some(Color::Rgb(42, 42, 42))
     );
     assert_eq!(
-        Theme::Light.near_background(Some((255, 250, 5))),
-        (243, 238, 0)
+        near(Theme::Light, Some((255, 250, 5))),
+        Some(Color::Rgb(243, 238, 0))
     );
-    assert_eq!(Theme::Dark.near_background(None), (35, 35, 35));
-    assert_eq!(Theme::Light.near_background(None), (243, 243, 243));
+    assert_eq!(near(Theme::Dark, None), Some(Color::Rgb(35, 35, 35)));
+    assert_eq!(near(Theme::Light, None), Some(Color::Rgb(243, 243, 243)));
 }
 
 #[test]
