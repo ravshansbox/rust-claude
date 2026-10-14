@@ -1,24 +1,27 @@
 use super::create_private_dir;
-use std::path::{Path, PathBuf};
+use std::{
+    fs::File,
+    path::{Path, PathBuf},
+    sync::LazyLock,
+};
 
 pub(super) fn default_dir() -> Option<PathBuf> {
-    static DIR: std::sync::LazyLock<(PathBuf, std::fs::File)> = std::sync::LazyLock::new(|| {
-        test_dir(&std::env::temp_dir().join("rust-coding-agent-test-config"))
-    });
+    static DIR: LazyLock<(PathBuf, File)> =
+        LazyLock::new(|| test_dir(&std::env::temp_dir().join("rust-coding-agent-test-config")));
     Some(DIR.0.clone())
 }
 
 /// Gives this test process its own folder under `base`, locked while the
 /// returned file stays open, and removes the folders of test processes that
 /// have exited.
-fn test_dir(base: &Path) -> (PathBuf, std::fs::File) {
+fn test_dir(base: &Path) -> (PathBuf, File) {
     let id = std::process::id().to_string();
     // Lock the folder before giving it the name other processes look at, so
     // they never see it unlocked.
     let unnamed = base.join(format!(".{id}"));
     let _ = std::fs::remove_dir_all(&unnamed);
     create_private_dir(&unnamed).unwrap();
-    let lock = std::fs::File::open(&unnamed).unwrap();
+    let lock = File::open(&unnamed).unwrap();
     lock.lock().unwrap();
     let own = base.join(&id);
     // A folder with this id is left from an exited process, and another
@@ -45,7 +48,7 @@ fn remove_unlocked(base: &Path, own: &str) {
             continue;
         }
         let path = entry.path();
-        if let Ok(folder) = std::fs::File::open(&path)
+        if let Ok(folder) = File::open(&path)
             && folder.try_lock().is_ok()
         {
             let _ = std::fs::remove_dir_all(&path);
