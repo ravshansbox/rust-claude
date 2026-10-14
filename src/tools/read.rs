@@ -11,7 +11,7 @@ pub(super) fn definition() -> Value {
     tool(
         "read",
         "Read a UTF-8 file from the cwd. Long output is cut at whole lines; use offset and limit to read the rest",
-        json!({
+        &json!({
             "path": { "type": "string" },
             "offset": { "type": "integer", "description": "Line number to start from, counting from 1" },
             "limit": { "type": "integer", "description": "Maximum number of lines to read" }

@@ -40,7 +40,7 @@ pub fn definitions() -> Value {
     ])
 }
 
-fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> Value {
+fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
     json!({
         "name": name,
         "description": description,

@@ -7,7 +7,7 @@ pub fn definition() -> Value {
     tool(
         NAME,
         "Start subagents to work on tasks on their own. Each subagent starts a new conversation with the same instructions and tools as you, except this one, and returns only its final reply. Give each task a prompt with all the context it needs. Mode \"parallel\" runs the tasks at the same time. Mode \"sequential\" runs them one after another, and adds each task's final reply to the next task's prompt.",
-        json!({
+        &json!({
             "tasks": {
                 "type": "array",
                 "minItems": 1,

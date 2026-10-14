@@ -22,7 +22,7 @@ pub(super) fn definition() -> Value {
     tool(
         "bash",
         "Run a bash command in the cwd and return stdout and stderr",
-        json!({
+        &json!({
             "command": { "type": "string" },
             "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" },
             "run_in_background": { "type": "boolean", "description": "Return at once and give the output in a later message when the command finishes, for long waits such as CI runs" }

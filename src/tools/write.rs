@@ -6,7 +6,7 @@ pub(super) fn definition() -> Value {
     tool(
         "write",
         "Create or replace a UTF-8 file in the cwd",
-        json!({
+        &json!({
             "path": { "type": "string" },
             "content": { "type": "string" }
         }),

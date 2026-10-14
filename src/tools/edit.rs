@@ -8,7 +8,7 @@ pub(super) fn definition() -> Value {
     tool(
         "edit",
         "Replace text in a UTF-8 file. old_text must match exactly once, unless replace_all is true",
-        json!({
+        &json!({
             "path": { "type": "string" },
             "old_text": { "type": "string" },
             "new_text": { "type": "string" },

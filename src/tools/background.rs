@@ -10,7 +10,7 @@ pub(super) fn stop_definition() -> Value {
     tool(
         STOP,
         "Stop a command running in the background",
-        json!({
+        &json!({
             "id": { "type": "integer", "description": "The number of the background task" }
         }),
         &["id"],
