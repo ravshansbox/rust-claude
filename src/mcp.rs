@@ -253,12 +253,10 @@ pub fn failed_start(name: &str, error: &str) -> Started {
     }
 }
 
-pub type Starting = std::pin::Pin<Box<dyn Future<Output = Started> + Send>>;
-
 pub struct StartingServer {
     pub name: String,
     pub scope: Scope,
-    pub started: Starting,
+    pub started: futures::future::BoxFuture<'static, Started>,
 }
 
 pub struct Added {
