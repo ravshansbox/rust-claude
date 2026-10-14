@@ -4,8 +4,7 @@ use super::*;
 async fn shows_server_errors_when_a_call_times_out() {
     let mut config = server_answering_calls_with("echo stuck >&2");
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Err(
@@ -18,8 +17,7 @@ async fn shows_server_errors_when_a_call_times_out() {
 async fn keeps_whole_characters_in_the_end_of_server_errors() {
     let mut config = server_answering_calls_with(&format!("echo '{}' >&2", "é".repeat(2_000)));
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Err(format!(
@@ -36,8 +34,7 @@ async fn reaps_a_server_that_exits_mid_session() {
         "echo $$ > '{}'; exit 0",
         pid_file.path().display()
     ));
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     assert!(
         mcp.call("mcp__test__echo", &json!({}))
             .await
@@ -60,8 +57,7 @@ async fn stops_what_a_server_left_running_when_it_exits() {
         "sleep 30 >/dev/null 2>&1 & echo $! > '{}'; exit 0",
         pid_file.path().display()
     ));
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     assert!(
         mcp.call("mcp__test__echo", &json!({}))
             .await
@@ -85,8 +81,7 @@ async fn stops_the_server_when_dropped() {
         pid_file.path().display()
     ));
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     let _ = mcp.call("mcp__test__echo", &json!({})).await;
     let pid = pid_file.content();
     drop(mcp);
@@ -104,8 +99,7 @@ async fn tells_the_server_when_a_call_times_out() {
         ":",
     );
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     assert!(
         mcp.call("mcp__test__echo", &json!({}))
             .await
@@ -123,8 +117,7 @@ async fn tells_the_server_when_a_call_times_out() {
 async fn times_out_when_the_server_stops_reading() {
     let mut config = server_answering_calls_with("sleep 30");
     config.timeout = Some(1);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     let timed_out = Some(Err("tools/call timed out after 1 seconds".into()));
     assert_eq!(mcp.call("mcp__test__echo", &json!({})).await, timed_out);
     let large = json!({ "text": "a".repeat(1_000_000) });
@@ -134,19 +127,12 @@ async fn times_out_when_the_server_stops_reading() {
 
 #[tokio::test]
 async fn keeps_working_after_a_large_call_is_cancelled_mid_write() {
-    let mut mcp = Mcp::default();
-    mcp.add(
-            start(
-                "test".into(),
-                Scope::Project,
-                server_answering_calls_with(
-                    r#"case "$line" in *'"slow"'*) sleep 1 ;; esac
+    let mcp = started(server_answering_calls_with(
+        r#"case "$line" in *'"slow"'*) sleep 1 ;; esac
        id=${line#'{"id":'}; id=${id%%,*}
        printf '{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
-                ),
-            )
-            .await,
-        );
+    ))
+    .await;
     let cancel = Duration::from_millis(200);
     let slow = json!({ "slow": true });
     assert!(
@@ -168,17 +154,10 @@ async fn keeps_working_after_a_large_call_is_cancelled_mid_write() {
 
 #[tokio::test]
 async fn skips_output_lines_that_are_not_utf8() {
-    let mut mcp = Mcp::default();
-    mcp.add(
-            start(
-                "test".into(),
-                Scope::Project,
-                server_answering_calls_with(
-                    r#"printf '\377\n{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
-                ),
-            )
-            .await,
-        );
+    let mcp = started(server_answering_calls_with(
+        r#"printf '\377\n{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
+    ))
+    .await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Ok("pong".into()))
@@ -230,8 +209,7 @@ async fn answers_server_requests_and_follows_tool_list_pages() {
 
 #[tokio::test]
 async fn calls_stdio_server_tools() {
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, echo_server()).await);
+    let mcp = started(echo_server()).await;
     assert_eq!(mcp.definitions().count(), 1);
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
@@ -245,8 +223,7 @@ async fn reports_tool_calls_the_server_marks_as_errors() {
     let server = server_answering_calls_with(
         r#"printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":"no such page"}]}}\n' "$id""#,
     );
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, server).await);
+    let mcp = started(server).await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Err("no such page".into()))
@@ -278,8 +255,7 @@ async fn fails_calls_when_the_server_sends_a_line_that_is_too_long() {
         MAX_LINE + 1
     ));
     config.timeout = Some(30);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     let call = tokio::time::timeout(
         Duration::from_secs(20),
         mcp.call("mcp__test__echo", &json!({})),
@@ -299,8 +275,7 @@ async fn reads_a_line_as_long_as_the_limit() {
         r#"reply=$(printf '{{"jsonrpc":"2.0","id":%s,"result":{{"content":[{{"type":"text","text":"pong"}}]}}}}' "$id"); printf '%s' "$reply"; head -c $(({MAX_LINE} - ${{#reply}})) /dev/zero | tr '\0' ' '; printf '\n'"#
     ));
     config.timeout = Some(30);
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
         Some(Ok("pong".into()))
@@ -314,8 +289,7 @@ async fn expands_a_leading_tilde_in_arguments_and_cwd() {
     );
     config.args.push("~/notes".into());
     config.cwd = Some("~/".into());
-    let mut mcp = Mcp::default();
-    mcp.add(start("test".into(), Scope::Project, config).await);
+    let mcp = started(config).await;
     let home = std::path::PathBuf::from(std::env::var("HOME").unwrap());
     assert_eq!(
         mcp.call("mcp__test__echo", &json!({})).await,
@@ -325,4 +299,10 @@ async fn expands_a_leading_tilde_in_arguments_and_cwd() {
             home.join("notes").display()
         )))
     );
+}
+
+async fn started(config: ServerConfig) -> Mcp {
+    let mut mcp = Mcp::default();
+    mcp.add(start("test".into(), Scope::Project, config).await);
+    mcp
 }
