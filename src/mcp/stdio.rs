@@ -58,7 +58,7 @@ async fn read_messages(
     loop {
         line.clear();
         match (&mut stdout)
-            .take(MAX_LINE as u64 + 1)
+            .take(u64::try_from(MAX_LINE + 1).unwrap_or(u64::MAX))
             .read_until(b'\n', &mut line)
             .await
         {
