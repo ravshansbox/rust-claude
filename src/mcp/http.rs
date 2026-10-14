@@ -64,8 +64,8 @@ struct OAuthSession {
     renewal_notice: Mutex<Option<String>>,
 }
 
-fn get<T: Clone>(value: &Mutex<Option<T>>) -> Option<T> {
-    value.lock().ok().and_then(|value| value.clone())
+fn get<T: Clone + Default>(value: &Mutex<T>) -> T {
+    value.lock().map(|value| value.clone()).unwrap_or_default()
 }
 
 fn set<T>(value: &Mutex<T>, new: T) {
@@ -108,7 +108,7 @@ impl Drop for HttpSession {
             .0
             .client
             .delete(&self.0.url)
-            .headers(self.0.current_headers())
+            .headers(get(&self.0.headers))
             .header(SESSION_HEADER, session)
             .timeout(Duration::from_secs(1));
         if let Some(saved) = self.0.oauth.as_ref().and_then(OAuthSession::current) {
@@ -251,13 +251,6 @@ impl Http {
         Ok(Some(renewed.saved.access_token))
     }
 
-    fn current_headers(&self) -> reqwest::header::HeaderMap {
-        self.headers
-            .lock()
-            .map(|headers| headers.clone())
-            .unwrap_or_default()
-    }
-
     /// Runs the `headersHelper`, if any, and sends its headers from now on.
     async fn run_headers_helper(&self) -> Result<(), PostError> {
         let Some(helper) = &self.headers_helper else {
@@ -324,7 +317,7 @@ impl Http {
         let mut request = self
             .client
             .post(&self.url)
-            .headers(self.current_headers())
+            .headers(get(&self.headers))
             .header(
                 reqwest::header::ACCEPT,
                 "application/json, text/event-stream",
