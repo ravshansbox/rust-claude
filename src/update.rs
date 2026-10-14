@@ -14,6 +14,7 @@ use crate::{config, settings::Settings};
 
 pub const RELEASES_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/latest";
+const PACKAGE: &str = "rust-coding-agent";
 const ASSET: &str = "rust-coding-agent.zip";
 const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
 const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
@@ -166,7 +167,7 @@ impl Updater {
         match outcome {
             Ok(()) => {
                 if let Some(bin_dir) = &self.bin_dir {
-                    link_alias_to(bin_dir, OsStr::new("rust-coding-agent"));
+                    link_alias_to(bin_dir, OsStr::new(PACKAGE));
                 }
                 report(Progress::Ready);
             }
@@ -211,7 +212,7 @@ impl Updater {
     fn get(&self, url: &str) -> reqwest::RequestBuilder {
         self.http
             .get(url)
-            .header(reqwest::header::USER_AGENT, "rust-coding-agent")
+            .header(reqwest::header::USER_AGENT, PACKAGE)
     }
 
     async fn latest_release(&self) -> Result<Release> {
@@ -280,7 +281,7 @@ impl Updater {
         }
         let output = command
             .arg("--path")
-            .arg(folder.join("rust-coding-agent"))
+            .arg(folder.join(PACKAGE))
             .stdin(Stdio::null())
             .output()
             .await
