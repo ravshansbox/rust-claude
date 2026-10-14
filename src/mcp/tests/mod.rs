@@ -160,7 +160,7 @@ struct HttpReply {
 }
 
 impl HttpReply {
-    fn json(body: Value) -> Self {
+    fn json(body: &Value) -> Self {
         Self {
             status: 200,
             headers: vec![("content-type".into(), "application/json".into())],
@@ -289,7 +289,7 @@ async fn read_http_request(stream: &mut tokio::net::TcpStream) -> Option<HttpReq
 fn http_mcp(request: &HttpRequest) -> HttpReply {
     let id = &request.body["id"];
     match request.body["method"].as_str() {
-        Some("initialize") => HttpReply::json(json!({
+        Some("initialize") => HttpReply::json(&json!({
             "jsonrpc": "2.0",
             "id": id,
             "result": {
@@ -299,12 +299,12 @@ fn http_mcp(request: &HttpRequest) -> HttpReply {
             },
         }))
         .with_header("mcp-session-id", "s1"),
-        Some("tools/list") => HttpReply::json(json!({
+        Some("tools/list") => HttpReply::json(&json!({
             "jsonrpc": "2.0",
             "id": id,
             "result": { "tools": [{ "name": "echo", "inputSchema": { "type": "object" } }] },
         })),
-        Some("tools/call") => HttpReply::json(json!({
+        Some("tools/call") => HttpReply::json(&json!({
             "jsonrpc": "2.0",
             "id": id,
             "result": { "content": [{ "type": "text", "text": "pong" }] },

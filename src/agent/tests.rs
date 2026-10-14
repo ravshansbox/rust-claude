@@ -101,7 +101,7 @@ async fn turns_thinking_off_without_asking_to_drop_mismatched_thinking() {
 #[tokio::test]
 async fn saves_finished_tool_rounds_while_the_prompt_runs() {
     let api = MockApi::start(vec![
-        tool_reply("call-1", "bash", json!({ "command": "echo round-one" })),
+        tool_reply("call-1", "bash", &json!({ "command": "echo round-one" })),
         Reply::Stall,
     ])
     .await;
@@ -201,7 +201,7 @@ async fn shows_only_context_counts_the_api_reported() {
         tool_reply(
             "call-1",
             "bash",
-            json!({ "command": "head -c 8000 /dev/zero | tr '\\0' x" }),
+            &json!({ "command": "head -c 8000 /dev/zero | tr '\\0' x" }),
         ),
         text_reply("done"),
         text_reply("summary of the work"),
@@ -235,7 +235,7 @@ async fn lets_prompts_be_queued_while_queued_images_are_saved() {
     };
 
     let api = MockApi::start(vec![
-        tool_reply("call-1", "bash", json!({ "command": "true" })),
+        tool_reply("call-1", "bash", &json!({ "command": "true" })),
         text_reply("done"),
     ])
     .await;
@@ -292,7 +292,7 @@ async fn lets_prompts_be_queued_while_queued_images_are_saved() {
 #[tokio::test]
 async fn keeps_prompts_queued_when_their_image_cannot_be_saved() {
     let api = MockApi::start(vec![
-        tool_reply("call-1", "bash", json!({ "command": "true" })),
+        tool_reply("call-1", "bash", &json!({ "command": "true" })),
         text_reply("done"),
     ])
     .await;
@@ -326,7 +326,7 @@ async fn keeps_prompts_queued_when_their_image_cannot_be_saved() {
 #[tokio::test]
 async fn keeps_the_conversation_cached_when_a_queued_prompt_follows_a_tool_round() {
     let api = MockApi::start(vec![
-        tool_reply("call-1", "bash", json!({ "command": "true" })),
+        tool_reply("call-1", "bash", &json!({ "command": "true" })),
         text_reply("done"),
     ])
     .await;
@@ -407,7 +407,7 @@ fn keeps_prompt_and_finished_tool_rounds_on_cancel() {
     );
 }
 
-fn web_search_reply(result: Value) -> Reply {
+fn web_search_reply(result: &Value) -> Reply {
     Reply::Events(vec![
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "server_tool_use", "id": "srvtoolu_1", "name": "web_search", "input": {} } }),
@@ -450,7 +450,7 @@ async fn offers_web_search_to_the_model() {
 #[tokio::test]
 async fn shows_a_web_search_its_results_and_the_sources_cited() {
     let api = MockApi::start(vec![
-        web_search_reply(search_results()),
+        web_search_reply(&search_results()),
         text_reply("again"),
     ])
     .await;
@@ -499,7 +499,7 @@ async fn shows_a_web_search_its_results_and_the_sources_cited() {
 
 #[tokio::test]
 async fn reports_a_web_search_that_failed() {
-    let api = MockApi::start(vec![web_search_reply(json!({
+    let api = MockApi::start(vec![web_search_reply(&json!({
         "type": "web_search_tool_result_error",
         "error_code": "too_many_requests",
     }))])
@@ -626,7 +626,7 @@ async fn runs_a_command_in_the_background_and_gives_its_output_when_it_finishes(
         tool_reply(
             "call-1",
             "bash",
-            json!({ "command": command, "run_in_background": true }),
+            &json!({ "command": command, "run_in_background": true }),
         ),
         text_reply("waiting"),
     ])
@@ -666,10 +666,10 @@ async fn stops_a_background_command() {
         tool_reply(
             "call-1",
             "bash",
-            json!({ "command": command, "run_in_background": true }),
+            &json!({ "command": command, "run_in_background": true }),
         ),
         text_reply("started"),
-        tool_reply("call-2", "bash_stop", json!({ "id": 1 })),
+        tool_reply("call-2", "bash_stop", &json!({ "id": 1 })),
         text_reply("stopped"),
     ])
     .await;
@@ -696,7 +696,7 @@ async fn stops_background_commands_when_a_new_session_starts() {
         tool_reply(
             "call-1",
             "bash",
-            json!({ "command": command, "run_in_background": true }),
+            &json!({ "command": command, "run_in_background": true }),
         ),
         text_reply("started"),
     ])

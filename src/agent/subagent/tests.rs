@@ -34,7 +34,7 @@ async fn runs_a_task_in_a_subagent_and_returns_its_final_reply() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "sequential",
                 "tasks": [{ "description": "work out the answer", "prompt": prompt }],
             }),
@@ -103,7 +103,7 @@ async fn gives_each_sequential_task_the_previous_final_reply() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "sequential",
                 "tasks": [task("list files", "list the files"), task("pick one", "pick a file")],
             }),
@@ -140,7 +140,7 @@ async fn returns_the_whole_reply_of_a_subagent_whose_reply_was_paused() {
         tool_reply(
             "call-1",
             "agent",
-            json!({ "mode": "sequential", "tasks": [task("search", "find it")] }),
+            &json!({ "mode": "sequential", "tasks": [task("search", "find it")] }),
         ),
         test_support::stopped_reply("The answer is ", "pause_turn"),
         text_reply("42."),
@@ -163,7 +163,7 @@ async fn says_when_a_subagent_finished_without_a_reply() {
         tool_reply(
             "call-1",
             "agent",
-            json!({ "mode": "sequential", "tasks": [task("search", "find it")] }),
+            &json!({ "mode": "sequential", "tasks": [task("search", "find it")] }),
         ),
         text_reply(""),
         text_reply("done"),
@@ -185,7 +185,7 @@ async fn stops_a_sequence_at_the_task_that_failed() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "sequential",
                 "tasks": [task("first", "one"), task("second", "two")],
             }),
@@ -214,7 +214,7 @@ async fn runs_parallel_tasks_at_the_same_time() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "parallel",
                 "tasks": [task("first", "one"), task("second", "two")],
             }),
@@ -265,7 +265,7 @@ async fn rejects_tasks_it_cannot_run() {
     ];
     for (input, error) in cases {
         let api = MockApi::start(vec![
-            tool_reply("call-1", "agent", input.clone()),
+            tool_reply("call-1", "agent", &input),
             text_reply("done"),
         ])
         .await;
@@ -307,12 +307,12 @@ async fn reports_when_each_subagent_starts_calls_tools_and_finishes() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "sequential",
                 "tasks": [task("say hi", "say hi"), task("say bye", "say bye")],
             }),
         ),
-        tool_reply("call-2", "bash", json!({ "command": "true" })),
+        tool_reply("call-2", "bash", &json!({ "command": "true" })),
         text_reply("hi"),
         text_reply("bye"),
         text_reply("done"),
@@ -348,12 +348,12 @@ async fn reports_the_stats_of_each_subagent() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "sequential",
                 "tasks": [task("first", "one"), task("second", "two")],
             }),
         ),
-        tool_reply("call-2", "bash", json!({ "command": "true" })),
+        tool_reply("call-2", "bash", &json!({ "command": "true" })),
         text_reply("one done"),
         text_reply("two done"),
         text_reply("done"),
@@ -379,7 +379,7 @@ async fn counts_the_tokens_subagents_use_in_the_totals() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "parallel",
                 "tasks": [task("first", "one"), task("second", "two")],
             }),
@@ -421,7 +421,7 @@ async fn counts_the_tokens_of_a_subagent_that_failed() {
         tool_reply(
             "call-1",
             "agent",
-            json!({ "mode": "parallel", "tasks": [task("first", "one")] }),
+            &json!({ "mode": "parallel", "tasks": [task("first", "one")] }),
         ),
         test_support::stopped_reply("partial", "refusal"),
         text_reply("done"),
@@ -438,7 +438,7 @@ async fn counts_finished_subagent_replies_when_cancelled() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "parallel",
                 "tasks": [task("first", "one"), task("second", "two")],
             }),

@@ -13,7 +13,7 @@ fn signed_in_mcp(request: &HttpRequest) -> HttpReply {
             && form.get("refresh_token").map(String::as_str) == Some("r1")
             && form.get("client_id").map(String::as_str) == Some("client")
         {
-            return HttpReply::json(json!({
+            return HttpReply::json(&json!({
                 "access_token": "fresh",
                 "refresh_token": "r2",
                 "token_type": "Bearer",
@@ -208,7 +208,7 @@ async fn uses_short_lived_oauth_tokens_until_they_expire() {
     let _file = AUTH_FILE.read().await;
     let (url, requests) = http_server(|request| {
         if request.path == "/token" {
-            return HttpReply::json(json!({
+            return HttpReply::json(&json!({
                 "access_token": "fresh",
                 "token_type": "Bearer",
                 "expires_in": 30,
@@ -254,12 +254,12 @@ async fn asks_to_sign_in_when_an_http_server_needs_it() {
 fn oauth_mcp(base: &str, request: &HttpRequest) -> HttpReply {
     let url = format!("{base}/mcp");
     match (request.method.as_str(), request.path.as_str()) {
-            ("GET", "/.well-known/oauth-protected-resource/mcp") => HttpReply::json(json!({
+            ("GET", "/.well-known/oauth-protected-resource/mcp") => HttpReply::json(&json!({
                 "resource": url,
                 "authorization_servers": [format!("{base}/auth")],
                 "scopes_supported": ["unused"],
             })),
-            ("GET", "/.well-known/oauth-authorization-server/auth") => HttpReply::json(json!({
+            ("GET", "/.well-known/oauth-authorization-server/auth") => HttpReply::json(&json!({
                 "issuer": format!("{base}/auth"),
                 "authorization_endpoint": format!("{base}/authorize"),
                 "token_endpoint": format!("{base}/token"),
@@ -267,11 +267,11 @@ fn oauth_mcp(base: &str, request: &HttpRequest) -> HttpReply {
                 "code_challenge_methods_supported": ["S256"],
             })),
             ("POST", "/register") if request.body["client_name"] == "Claude Code" => {
-                HttpReply::json(json!({ "client_id": "registered", "client_secret": "shh" }))
+                HttpReply::json(&json!({ "client_id": "registered", "client_secret": "shh" }))
             }
             ("POST", "/register") => HttpReply::status(403, "Forbidden"),
             ("POST", "/token") if request.form().get("code").map(String::as_str) == Some("the-code") => {
-                HttpReply::json(json!({
+                HttpReply::json(&json!({
                     "access_token": "issued",
                     "refresh_token": "r",
                     "token_type": "Bearer",
@@ -444,7 +444,7 @@ async fn asks_for_the_scopes_the_server_lists_when_the_challenge_names_none() {
         let base = shared.lock().unwrap().clone();
         let reply = oauth_mcp(&base, request);
         if request.path == "/.well-known/oauth-protected-resource/mcp" {
-            return HttpReply::json(json!({
+            return HttpReply::json(&json!({
                 "resource": format!("{base}/mcp"),
                 "authorization_servers": [format!("{base}/auth")],
                 "scopes_supported": ["read", "write"],
@@ -473,7 +473,7 @@ async fn refuses_sign_in_endpoints_without_https() {
     let (url, _) = http_server(move |request| {
         let base = shared.lock().unwrap().clone();
         if request.path == "/.well-known/oauth-authorization-server/auth" {
-            return HttpReply::json(json!({
+            return HttpReply::json(&json!({
                 "authorization_endpoint": "https://sign-in.example/authorize",
                 "token_endpoint": "http://sign-in.example/token",
                 "registration_endpoint": format!("{base}/register"),
@@ -516,7 +516,7 @@ async fn oauth_server_changing(
         if request.path == path {
             let mut metadata: Value = serde_json::from_str(&reply.body).unwrap();
             change(&mut metadata);
-            reply = HttpReply::json(metadata);
+            reply = HttpReply::json(&metadata);
         }
         reply
     })

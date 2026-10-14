@@ -190,7 +190,7 @@ async fn uses_an_effort_the_new_model_supports_for_background_turns() {
         test_support::tool_reply(
             "1",
             "bash",
-            json!({ "command": "sleep 0.5", "run_in_background": true }),
+            &json!({ "command": "sleep 0.5", "run_in_background": true }),
         ),
         test_support::text_reply("started"),
         test_support::text_reply("finished"),
@@ -228,7 +228,7 @@ async fn uses_the_effort_chosen_since_the_last_prompt_for_background_turns() {
         test_support::tool_reply(
             "1",
             "bash",
-            json!({ "command": "sleep 0.5", "run_in_background": true }),
+            &json!({ "command": "sleep 0.5", "run_in_background": true }),
         ),
         test_support::text_reply("started"),
         test_support::text_reply("finished"),
@@ -294,7 +294,7 @@ async fn starts_a_turn_when_a_background_command_finishes() {
         test_support::tool_reply(
             "call-1",
             "bash",
-            json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
+            &json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
         ),
         test_support::text_reply("waiting"),
         test_support::text_reply("seen it"),
@@ -332,9 +332,9 @@ async fn runs_a_prompt_already_sent_before_a_finished_background_command() {
         test_support::tool_reply(
             "call-1",
             "bash",
-            json!({ "command": "echo finished", "run_in_background": true }),
+            &json!({ "command": "echo finished", "run_in_background": true }),
         ),
-        test_support::tool_reply("call-2", "bash", json!({ "command": "sleep 0.3" })),
+        test_support::tool_reply("call-2", "bash", &json!({ "command": "sleep 0.3" })),
         test_support::text_reply("waiting"),
         test_support::text_reply("answered"),
         test_support::text_reply("seen it"),

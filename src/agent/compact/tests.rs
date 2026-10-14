@@ -99,7 +99,7 @@ async fn answers_the_prompt_when_automatic_compaction_fails() {
 #[tokio::test]
 async fn keeps_queued_prompts_word_for_word_when_compacting_after_a_tool_round() {
     let api = MockApi::start(vec![
-        full_context(tool_reply("call-1", "bash", json!({ "command": "true" }))),
+        full_context(tool_reply("call-1", "bash", &json!({ "command": "true" }))),
         text_reply("summary of the work"),
         text_reply("done"),
     ])
@@ -129,7 +129,7 @@ async fn keeps_queued_prompts_word_for_word_when_compacting_after_a_tool_round()
 async fn does_not_summarise_again_when_the_request_after_compaction_is_too_long() {
     let api = MockApi::start_with_message_limit(
         vec![
-            full_context(tool_reply("call-1", "bash", json!({ "command": "true" }))),
+            full_context(tool_reply("call-1", "bash", &json!({ "command": "true" }))),
             text_reply("summary of the work"),
             text_reply("second summary"),
         ],
@@ -163,7 +163,7 @@ async fn compacts_a_conversation_that_outgrew_the_context_window() {
             full_context(tool_reply(
                 "call-1",
                 "bash",
-                json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
+                &json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
             )),
             text_reply("summary of the work"),
             text_reply("done"),
@@ -202,7 +202,7 @@ async fn compacts_when_tool_output_makes_the_next_request_too_long() {
             tool_reply(
                 "call-1",
                 "bash",
-                json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
+                &json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
             ),
             text_reply("summary of the work"),
             text_reply("done"),
@@ -224,7 +224,7 @@ async fn compacts_only_once_when_a_paused_reply_makes_the_next_request_too_long(
             tool_reply(
                 "call-1",
                 "bash",
-                json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
+                &json!({ "command": "head -c 15000 /dev/zero | tr '\\0' x" }),
             ),
             text_reply("summary of the work"),
             stopped_reply(&"y".repeat(15_000), "pause_turn"),

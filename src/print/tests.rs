@@ -137,12 +137,12 @@ async fn keeps_escape_sequences_from_the_model_and_tools_out_of_the_terminal() {
         tool_reply(
             "call-1",
             "write",
-            json!({ "path": path, "content": format!("one{ESCAPES}\ntwo\n") }),
+            &json!({ "path": path, "content": format!("one{ESCAPES}\ntwo\n") }),
         ),
         tool_reply(
             "call-2",
             "bash",
-            json!({
+            &json!({
                 "command": format!("printf 'out\\033]52;c;aGk=\\007\\033[2J'; sleep 5 # {ESCAPES}"),
                 "timeout": 1,
             }),
@@ -174,7 +174,7 @@ async fn answers_each_background_command_when_it_finishes() {
         tool_reply(
             "call-1",
             "bash",
-            json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
+            &json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
         ),
         text_reply("waiting"),
         text_reply("seen it"),
@@ -204,7 +204,7 @@ async fn uses_github_high_contrast_colours() {
             tool_reply(
                 "call-1",
                 "bash",
-                json!({ "command": "python3 - <<'EOF'\ndef f():\n    pass\nEOF" }),
+                &json!({ "command": "python3 - <<'EOF'\ndef f():\n    pass\nEOF" }),
             ),
             text_reply("done"),
         ])
@@ -228,7 +228,7 @@ async fn highlights_bash_commands() {
         tool_reply(
             "call-1",
             "bash",
-            json!({ "command": "echo \"$HOME\" | wc -c" }),
+            &json!({ "command": "echo \"$HOME\" | wc -c" }),
         ),
         text_reply("done"),
     ])
@@ -251,7 +251,7 @@ async fn highlights_bash_commands() {
 #[tokio::test]
 async fn fills_tool_calls_with_a_background_near_the_terminal_one() {
     let api = MockApi::start(vec![
-        tool_reply("call-1", "bash", json!({ "command": "echo hi" })),
+        tool_reply("call-1", "bash", &json!({ "command": "echo hi" })),
         text_reply("done"),
     ])
     .await;
@@ -326,7 +326,7 @@ async fn prints_only_the_tasks_and_why_one_failed() {
         tool_reply(
             "call-1",
             "agent",
-            json!({
+            &json!({
                 "mode": "sequential",
                 "tasks": [
                     { "description": "say hi", "prompt": "say hi" },
@@ -334,7 +334,7 @@ async fn prints_only_the_tasks_and_why_one_failed() {
                 ],
             }),
         ),
-        tool_reply("call-2", "bash", json!({ "command": "true" })),
+        tool_reply("call-2", "bash", &json!({ "command": "true" })),
         text_reply("hi"),
         Reply::BadRequest("bad".into()),
         text_reply("done"),

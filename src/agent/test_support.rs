@@ -63,7 +63,7 @@ pub(crate) fn stopped_reply(text: &str, stop_reason: &str) -> Reply {
     ])
 }
 
-pub(crate) fn tool_reply(id: &str, name: &str, input: Value) -> Reply {
+pub(crate) fn tool_reply(id: &str, name: &str, input: &Value) -> Reply {
     Reply::Events(vec![
         json!({ "type": "message_start", "message": { "usage": { "input_tokens": 1, "output_tokens": 1 } } }),
         json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "tool_use", "id": id, "name": name, "input": input } }),
