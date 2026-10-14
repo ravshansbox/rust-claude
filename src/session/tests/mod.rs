@@ -1,5 +1,5 @@
 use super::{
-    Session, current_folder, images::inline_images, latest_in_folder, new_uuid, read_folder,
+    Session, current_folder, images::inline_images, latest_in_folder, new_uuid, read::read_folder,
     sessions_directory,
 };
 use crate::images::Image;

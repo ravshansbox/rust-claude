@@ -11,10 +11,12 @@ use serde_json::{Value, json};
 
 use crate::config;
 
+mod files;
 mod images;
 mod read;
 
-use read::{SavedSession, read_folder, read_messages, read_preview};
+use files::{latest_in_folder, session_files};
+use read::{SavedSession, read_messages, read_preview};
 
 const EXTENSION: &str = "jsonl";
 
@@ -195,46 +197,6 @@ fn open_locked(path: &Path, create: bool) -> Result<File> {
             Err(TryLockError::Error(error)) => return Err(error.into()),
         }
     }
-}
-
-fn latest_in_folder(directory: &Path, folder: &str) -> Result<Option<String>> {
-    let mut files = session_files(directory)?;
-    files.sort_by_key(|file| Reverse(file.modified));
-    Ok(files
-        .into_iter()
-        .find(|file| read_folder(&file.path).ok().flatten().as_deref() == Some(folder))
-        .map(|file| file.id))
-}
-
-struct SessionFile {
-    id: String,
-    path: PathBuf,
-    modified: SystemTime,
-}
-
-/// Lists the session files in `directory`, skipping those whose name or
-/// change time can't be read.
-fn session_files(directory: &Path) -> Result<Vec<SessionFile>> {
-    if !directory.exists() {
-        return Ok(Vec::new());
-    }
-    let paths = std::fs::read_dir(directory)?
-        .map(|entry| entry.map(|entry| entry.path()))
-        .collect::<std::io::Result<Vec<_>>>()?;
-    Ok(paths
-        .into_iter()
-        .filter(|path| {
-            path.extension()
-                .is_some_and(|extension| extension == EXTENSION)
-        })
-        .filter_map(|path| {
-            let id = path.file_stem()?.to_str()?.to_string();
-            let modified = std::fs::metadata(&path)
-                .and_then(|metadata| metadata.modified())
-                .ok()?;
-            Some(SessionFile { id, path, modified })
-        })
-        .collect())
 }
 
 /// The folder rust-coding-agent runs in, as saved in sessions and prompt history.
