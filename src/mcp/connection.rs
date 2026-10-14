@@ -131,10 +131,12 @@ impl Connection {
         }
     }
 
+    fn closed_error(&self) -> String {
+        self.with_stderr("server closed the connection".into())
+    }
+
     fn send(&self, message: Value) -> Result<(), String> {
-        self.writer
-            .send(message)
-            .map_err(|_| self.with_stderr("server closed the connection".into()))
+        self.writer.send(message).map_err(|_| self.closed_error())
     }
 
     pub(super) fn notify(&self, method: &str) -> Result<(), String> {
@@ -159,12 +161,12 @@ impl Connection {
             writer: (method != "initialize").then_some(&self.writer),
         };
         if self.pending.closed.load(Ordering::SeqCst) {
-            return Err(self.with_stderr("server closed the connection".into()));
+            return Err(self.closed_error());
         }
         self.send(json!({ "jsonrpc": "2.0", "id": id, "method": method, "params": params }))?;
         match tokio::time::timeout(self.timeout, receiver).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(self.with_stderr("server closed the connection".into())),
+            Ok(Err(_)) => Err(self.closed_error()),
             Err(_) => Err(self.with_stderr(format!(
                 "{method} timed out after {} seconds",
                 self.timeout.as_secs()
