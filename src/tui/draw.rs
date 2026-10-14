@@ -20,7 +20,7 @@ const MAX_LIST_ROWS: usize = 10;
 const BOTTOM_BUTTON: &str = "↓ Bottom (End)";
 pub(super) const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
-fn saturating_u16(value: usize) -> u16 {
+pub(super) fn saturating_u16(value: usize) -> u16 {
     u16::try_from(value).unwrap_or(u16::MAX)
 }
 

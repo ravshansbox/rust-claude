@@ -1,4 +1,7 @@
-use super::{App, draw::conversation};
+use super::{
+    App,
+    draw::{conversation, saturating_u16},
+};
 use ratatui::{
     buffer::Buffer,
     layout::{Position, Rect},
@@ -90,7 +93,7 @@ impl App {
     /// trailing spaces.
     fn selected_text(&self, start: Point, end: Point) -> String {
         let width = self.conversation_area.width;
-        let height = u16::try_from(end.row - start.row + 1).unwrap_or(u16::MAX);
+        let height = saturating_u16(end.row - start.row + 1);
         let area = Rect::new(0, 0, width, height);
         let mut buffer = Buffer::empty(area);
         conversation(self, width, start.row, height).render(area, &mut buffer);
