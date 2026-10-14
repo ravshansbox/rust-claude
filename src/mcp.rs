@@ -95,6 +95,14 @@ async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
     }
 }
 
+fn initialize_params() -> Value {
+    json!({
+        "protocolVersion": PROTOCOL_VERSION,
+        "capabilities": {},
+        "clientInfo": { "name": "Claude Code", "version": env!("CARGO_PKG_VERSION") },
+    })
+}
+
 async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Server, String> {
     let connection = match (config.kind.as_deref(), &config.command, &config.url) {
         (Some("sse"), _, _) => {
@@ -111,14 +119,7 @@ async fn connect(name: String, scope: Scope, config: ServerConfig) -> Result<Ser
         (Some(kind), _, _) => return Err(format!("unknown type {kind:?}")),
     };
     let initialize = connection
-        .request(
-            "initialize",
-            json!({
-                "protocolVersion": PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": { "name": "Claude Code", "version": env!("CARGO_PKG_VERSION") },
-            }),
-        )
+        .request("initialize", initialize_params())
         .await?;
     connection.notify("notifications/initialized")?;
     let tools = if initialize["capabilities"]["tools"].is_null() {

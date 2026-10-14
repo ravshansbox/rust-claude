@@ -260,11 +260,7 @@ async fn discover(client: &reqwest::Client, server_url: &str) -> Result<Discover
             "jsonrpc": "2.0",
             "id": 0,
             "method": "initialize",
-            "params": {
-                "protocolVersion": super::PROTOCOL_VERSION,
-                "capabilities": {},
-                "clientInfo": { "name": "Claude Code", "version": env!("CARGO_PKG_VERSION") },
-            },
+            "params": super::initialize_params(),
         }))
         .send()
         .await
