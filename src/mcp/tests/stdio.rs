@@ -4,7 +4,7 @@ use super::*;
 async fn shows_server_errors_when_a_call_times_out() {
     let mcp = started_with_short_timeout(server_answering_calls_with("echo stuck >&2")).await;
     assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
+        call_test_echo(&mcp).await,
         Some(Err(
             "tools/call timed out after 1 seconds\nstderr:\nstuck".into()
         ))
@@ -19,7 +19,7 @@ async fn keeps_whole_characters_in_the_end_of_server_errors() {
     )))
     .await;
     assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
+        call_test_echo(&mcp).await,
         Some(Err(format!(
             "tools/call timed out after 1 seconds\nstderr:\n{}",
             "é".repeat(1_999)
@@ -35,12 +35,7 @@ async fn reaps_a_server_that_exits_mid_session() {
         pid_file.path().display()
     ));
     let mcp = started(config).await;
-    assert!(
-        mcp.call("mcp__test__echo", &json!({}))
-            .await
-            .unwrap()
-            .is_err()
-    );
+    assert!(call_test_echo(&mcp).await.unwrap().is_err());
     let pid = pid_file.content();
     assert_eq!(
         wait_until_gone(pid.trim()).await,
@@ -58,12 +53,7 @@ async fn stops_what_a_server_left_running_when_it_exits() {
         pid_file.path().display()
     ));
     let mcp = started(config).await;
-    assert!(
-        mcp.call("mcp__test__echo", &json!({}))
-            .await
-            .unwrap()
-            .is_err()
-    );
+    assert!(call_test_echo(&mcp).await.unwrap().is_err());
     let pid = pid_file.content();
     assert_eq!(
         wait_until_gone(pid.trim()).await,
@@ -81,7 +71,7 @@ async fn stops_the_server_when_dropped() {
         pid_file.path().display()
     )))
     .await;
-    let _ = mcp.call("mcp__test__echo", &json!({})).await;
+    let _ = call_test_echo(&mcp).await;
     let pid = pid_file.content();
     drop(mcp);
     assert_eq!(wait_until_gone(pid.trim()).await, "");
@@ -98,12 +88,7 @@ async fn tells_the_server_when_a_call_times_out() {
         ":",
     ))
     .await;
-    assert!(
-        mcp.call("mcp__test__echo", &json!({}))
-            .await
-            .unwrap()
-            .is_err()
-    );
+    assert!(call_test_echo(&mcp).await.unwrap().is_err());
     let logged = eventually(|| log.content(), |logged| !logged.is_empty()).await;
     let message: Value = serde_json::from_str(logged.trim()).unwrap();
     assert_eq!(message["method"], "notifications/cancelled");
@@ -115,7 +100,7 @@ async fn tells_the_server_when_a_call_times_out() {
 async fn times_out_when_the_server_stops_reading() {
     let mcp = started_with_short_timeout(server_answering_calls_with("sleep 30")).await;
     let timed_out = Some(Err("tools/call timed out after 1 seconds".into()));
-    assert_eq!(mcp.call("mcp__test__echo", &json!({})).await, timed_out);
+    assert_eq!(call_test_echo(&mcp).await, timed_out);
     let large = json!({ "text": "a".repeat(1_000_000) });
     let call = tokio::time::timeout(Duration::from_secs(10), mcp.call("mcp__test__echo", &large));
     assert_eq!(call.await.ok(), Some(timed_out));
@@ -142,10 +127,7 @@ async fn keeps_working_after_a_large_call_is_cancelled_mid_write() {
             .await
             .is_err()
     );
-    assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_test_echo(&mcp).await, Some(Ok("pong".into())));
 }
 
 #[tokio::test]
@@ -154,10 +136,7 @@ async fn skips_output_lines_that_are_not_utf8() {
         r#"printf '\377\n{"jsonrpc":"2.0","id":%s,"result":{"content":[{"type":"text","text":"pong"}]}}\n' "$id""#,
     ))
     .await;
-    assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_test_echo(&mcp).await, Some(Ok("pong".into())));
 }
 
 #[tokio::test]
@@ -207,10 +186,7 @@ async fn answers_server_requests_and_follows_tool_list_pages() {
 async fn calls_stdio_server_tools() {
     let mcp = started(echo_server()).await;
     assert_eq!(mcp.definitions().count(), 1);
-    assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_test_echo(&mcp).await, Some(Ok("pong".into())));
     assert_eq!(mcp.call("bash", &json!({})).await, None);
 }
 
@@ -220,10 +196,7 @@ async fn reports_tool_calls_the_server_marks_as_errors() {
         r#"printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":"no such page"}]}}\n' "$id""#,
     );
     let mcp = started(server).await;
-    assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
-        Some(Err("no such page".into()))
-    );
+    assert_eq!(call_test_echo(&mcp).await, Some(Err("no such page".into())));
 }
 
 #[tokio::test]
@@ -252,11 +225,7 @@ async fn fails_calls_when_the_server_sends_a_line_that_is_too_long() {
     ));
     config.timeout = Some(30);
     let mcp = started(config).await;
-    let call = tokio::time::timeout(
-        Duration::from_secs(20),
-        mcp.call("mcp__test__echo", &json!({})),
-    )
-    .await;
+    let call = tokio::time::timeout(Duration::from_secs(20), call_test_echo(&mcp)).await;
     assert_eq!(
         call.ok(),
         Some(Some(Err(
@@ -272,10 +241,7 @@ async fn reads_a_line_as_long_as_the_limit() {
     ));
     config.timeout = Some(30);
     let mcp = started(config).await;
-    assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_test_echo(&mcp).await, Some(Ok("pong".into())));
 }
 
 #[tokio::test]
@@ -288,7 +254,7 @@ async fn expands_a_leading_tilde_in_arguments_and_cwd() {
     let mcp = started(config).await;
     let home = std::path::PathBuf::from(std::env::var("HOME").unwrap());
     assert_eq!(
-        mcp.call("mcp__test__echo", &json!({})).await,
+        call_test_echo(&mcp).await,
         Some(Ok(format!(
             "{} {}",
             std::fs::canonicalize(&home).unwrap().display(),
@@ -306,4 +272,8 @@ async fn started(config: ServerConfig) -> Mcp {
 async fn started_with_short_timeout(mut config: ServerConfig) -> Mcp {
     config.timeout = Some(1);
     started(config).await
+}
+
+async fn call_test_echo(mcp: &Mcp) -> Option<Result<String, String>> {
+    mcp.call("mcp__test__echo", &json!({})).await
 }
