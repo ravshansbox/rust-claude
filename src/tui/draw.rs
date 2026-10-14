@@ -44,33 +44,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         message.render(chat.width);
     }
 
-    let panel_height = |content: usize| {
-        u16::try_from(content)
-            .unwrap_or(u16::MAX)
-            .saturating_add(1)
-            .min(chat.height)
-    };
-    let panel = if let Some(picker) = &app.picker {
-        let count = picker.items.len();
-        let height = panel_height(count.min(MAX_LIST_ROWS) + 1);
-        let list = (count, 1, picker.selected);
-        Some((
-            picker_view(picker, height.saturating_sub(1)),
-            height,
-            Some(list),
-        ))
-    } else if let Some(search) = &app.history_search {
-        let count = search.matches().len();
-        let height = panel_height(count.min(MAX_LIST_ROWS) + 2);
-        let list = (count, 2, search.selected);
-        Some((
-            history_view(search, height.saturating_sub(1)),
-            height,
-            Some(list),
-        ))
-    } else {
-        None
-    };
+    let panel = panel(app.picker.as_ref(), app.history_search.as_ref(), chat);
     let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
     let mut pinned = app.scroll_from_bottom > 0;
     let (mut pinned_lines, mut pinned_height, mut conversation_area, mut max_scroll) =
@@ -182,6 +156,40 @@ fn draw_bottom_button(frame: &mut Frame, chat: Rect, pinned_area: Rect) -> Rect 
 }
 
 type Panel<'a> = (Paragraph<'a>, u16, Option<(usize, u16, usize)>);
+
+fn panel<'a>(
+    picker: Option<&'a Picker>,
+    history_search: Option<&'a HistorySearch>,
+    chat: Rect,
+) -> Option<Panel<'a>> {
+    let panel_height = |content: usize| {
+        u16::try_from(content)
+            .unwrap_or(u16::MAX)
+            .saturating_add(1)
+            .min(chat.height)
+    };
+    if let Some(picker) = picker {
+        let count = picker.items.len();
+        let height = panel_height(count.min(MAX_LIST_ROWS) + 1);
+        let list = (count, 1, picker.selected);
+        Some((
+            picker_view(picker, height.saturating_sub(1)),
+            height,
+            Some(list),
+        ))
+    } else if let Some(search) = history_search {
+        let count = search.matches().len();
+        let height = panel_height(count.min(MAX_LIST_ROWS) + 2);
+        let list = (count, 2, search.selected);
+        Some((
+            history_view(search, height.saturating_sub(1)),
+            height,
+            Some(list),
+        ))
+    } else {
+        None
+    }
+}
 
 fn draw_panel(frame: &mut Frame, chat: Rect, panel: Option<Panel>) {
     if let Some((view, height, list)) = panel {
