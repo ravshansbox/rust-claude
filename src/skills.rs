@@ -73,40 +73,32 @@ pub fn same_dir(a: &Path, b: &Path) -> bool {
 }
 
 fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skills {
-    let with_scope =
-        |files: Vec<PathBuf>, scope: Scope| files.into_iter().map(move |path| (path, scope));
     let project_dir = cwd.join(".rust-coding-agent");
-    let mut paths = Vec::new();
-    if !config_dir.is_some_and(|config_dir| same_dir(config_dir, &project_dir)) {
-        paths.extend(with_scope(
-            collect_skill_files(&project_dir.join("skills"), Mode::RustClaude),
-            Scope::Project,
-        ));
-    }
     let user_agents_dir = home.map(|home| home.join(".agents").join("skills"));
-    for dir in ancestor_agents_skill_dirs(cwd) {
-        if !user_agents_dir
-            .as_ref()
-            .is_some_and(|user| same_dir(user, &dir))
-        {
-            paths.extend(with_scope(
-                collect_skill_files(&dir, Mode::Agents),
-                Scope::Project,
-            ));
-        }
-    }
-    if let Some(config_dir) = config_dir {
-        paths.extend(with_scope(
-            collect_skill_files(&config_dir.join("skills"), Mode::RustClaude),
-            Scope::Global,
-        ));
-    }
-    if let Some(dir) = &user_agents_dir {
-        paths.extend(with_scope(
-            collect_skill_files(dir, Mode::Agents),
-            Scope::Global,
-        ));
-    }
+    let project = (!config_dir.is_some_and(|config_dir| same_dir(config_dir, &project_dir)))
+        .then(|| (project_dir.join("skills"), Mode::RustClaude, Scope::Project));
+    let ancestors = ancestor_agents_skill_dirs(cwd)
+        .into_iter()
+        .filter(|dir| {
+            !user_agents_dir
+                .as_ref()
+                .is_some_and(|user| same_dir(user, dir))
+        })
+        .map(|dir| (dir, Mode::Agents, Scope::Project));
+    let global = config_dir.map(|dir| (dir.join("skills"), Mode::RustClaude, Scope::Global));
+    let user = user_agents_dir
+        .clone()
+        .map(|dir| (dir, Mode::Agents, Scope::Global));
+    let paths = project
+        .into_iter()
+        .chain(ancestors)
+        .chain(global)
+        .chain(user)
+        .flat_map(|(dir, mode, scope)| {
+            collect_skill_files(&dir, mode)
+                .into_iter()
+                .map(move |path| (path, scope))
+        });
 
     let mut skills: Vec<Skill> = Vec::new();
     let mut real_paths = HashSet::new();
