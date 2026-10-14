@@ -220,6 +220,7 @@ fn code_after(command: &str, start: usize, language: Language) -> Option<Range<u
 }
 
 fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<Range<usize>> {
+    let strips_tabs = heredoc.starts_with('-');
     let specification = heredoc.strip_prefix('-').unwrap_or(heredoc).trim_start();
     let delimiter: String = specification
         .chars()
@@ -232,7 +233,12 @@ fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<Range<u
     let body_start = line_end + 1;
     let mut line_start = body_start;
     for line in command[body_start..].split('\n') {
-        if line.trim() == delimiter {
+        let text = if strips_tabs {
+            line.trim_start_matches('\t')
+        } else {
+            line
+        };
+        if text == delimiter {
             return Some(body_start..line_start.saturating_sub(1).max(body_start));
         }
         line_start += line.len() + 1;

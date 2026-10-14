@@ -117,3 +117,13 @@ fn recognises_versioned_python_by_path() {
         assert_eq!(colour_of(&lines, "import"), None, "{program}");
     }
 }
+
+#[test]
+fn ends_heredocs_only_at_an_exact_delimiter_line() {
+    let keyword = keyword_colour("x.py", "import os", "import");
+    let plain = bash("python3 - <<EOF\nx = 1\n  EOF\nEOF \nimport os\nEOF");
+    assert_eq!(colour_of(&plain, "import"), Some(keyword));
+    let tabbed = bash("python3 - <<-EOF\nx = 1\n  EOF\nimport os\n\t\tEOF\necho done");
+    assert_eq!(colour_of(&tabbed, "import"), Some(keyword));
+    assert_eq!(colour_of(&tabbed, "echo"), colour_of(&bash("echo"), "echo"));
+}
