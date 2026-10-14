@@ -14,10 +14,7 @@ async fn calls_http_server_tools() {
             .status,
         "loaded global MCP server: web (1 tools)"
     );
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     let initialize = &requests_for(&requests, "initialize")[0];
     assert_eq!(initialize.method, "POST");
     assert_eq!(initialize.headers["authorization"], "Bearer secret");
@@ -56,10 +53,7 @@ async fn reads_http_replies_sent_as_events() {
     })
     .await;
     let mcp = started(http_config(&url)).await;
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("streamed".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("streamed".into())));
     let replies = || -> Vec<Value> {
         requests
             .lock()
@@ -91,10 +85,7 @@ async fn reads_events_split_over_lines_with_crlf_endings_and_an_empty_type() {
     })
     .await;
     let mcp = started(http_config(&url)).await;
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("split".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("split".into())));
 }
 
 #[tokio::test]
@@ -113,7 +104,7 @@ async fn fails_calls_when_an_http_reply_is_too_long() {
         config.timeout = Some(60);
         let mcp = started(config).await;
         assert_eq!(
-            mcp.call("mcp__web__echo", &json!({})).await,
+            call_web_echo(&mcp).await,
             Some(Err("server sent a reply longer than 32 MiB".into())),
             "{content_type}"
         );
@@ -141,7 +132,7 @@ async fn reports_http_errors() {
     .await;
     mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
     assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
+        call_web_echo(&mcp).await,
         Some(Err("server accepted tools/call without a reply".into()))
     );
 }
@@ -155,7 +146,7 @@ async fn times_out_when_an_http_server_does_not_answer() {
     .await;
     let mcp = started_with_short_timeout(http_config(&url)).await;
     assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
+        call_web_echo(&mcp).await,
         Some(Err("tools/call timed out after 1 seconds".into()))
     );
 }
@@ -171,15 +162,12 @@ async fn stops_waiting_for_an_http_notification_the_server_does_not_answer() {
     .await;
     let mcp = started_with_short_timeout(http_config(&url)).await;
     assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
+        call_web_echo(&mcp).await,
         Some(Err("tools/call timed out after 1 seconds".into()))
     );
     // The cancellation of that call stalls until its own timeout.
     tokio::time::sleep(Duration::from_millis(1_500)).await;
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
 }
 
 #[tokio::test]
@@ -225,10 +213,7 @@ async fn sends_headers_from_the_headers_helper() {
             .status,
         "loaded global MCP server: web (1 tools)"
     );
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     for method in ["initialize", "tools/call"] {
         let request = &requests_for(&requests, method)[0];
         assert_eq!(
@@ -339,10 +324,7 @@ async fn runs_the_headers_helper_again_after_401_and_for_a_new_session() {
         counter.path().display()
     ));
     let mcp = started(config).await;
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     let tokens = |method: &str| -> Vec<String> {
         requests_for(&requests, method)
             .iter()
@@ -404,10 +386,7 @@ async fn starts_a_new_http_session_when_the_old_one_expires() {
     })
     .await;
     let mcp = started(http_config(&url)).await;
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     let sessions_used = |method: &str| -> Vec<String> {
         requests_for(&requests, method)
             .iter()
@@ -443,14 +422,8 @@ async fn tries_a_new_http_session_again_after_a_failed_renewal() {
     })
     .await;
     let mcp = started(http_config(&url)).await;
-    assert!(matches!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Err(_))
-    ));
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert!(matches!(call_web_echo(&mcp).await, Some(Err(_))));
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
 }
 
 #[tokio::test]

@@ -58,10 +58,7 @@ async fn renews_oauth_tokens_that_an_http_server_turns_down() {
             .status,
         "loaded global MCP server: web (1 tools)"
     );
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     let saved = oauth::load(&url).unwrap();
     assert_eq!(saved.access_token, "fresh");
     assert_eq!(saved.refresh_token.as_deref(), Some("r2"));
@@ -91,7 +88,7 @@ async fn keeps_renewed_oauth_tokens_that_could_not_be_saved() {
     std::fs::create_dir(&path).unwrap();
     let wait = expires_at.saturating_sub(now_millis()) + 10;
     tokio::time::sleep(Duration::from_millis(wait.try_into().unwrap())).await;
-    let called = mcp.call("mcp__web__echo", &json!({})).await;
+    let called = call_web_echo(&mcp).await;
     let notices = mcp.take_renewal_notices();
     std::fs::remove_dir(&path).unwrap();
     std::fs::rename(&aside, &path).unwrap();
@@ -220,10 +217,7 @@ async fn uses_short_lived_oauth_tokens_until_they_expire() {
     save_tokens(&url, "stale", now_millis() - 1);
     let mut mcp = Mcp::default();
     mcp.add(start("web".into(), Scope::Global, http_config(&url)).await);
-    assert_eq!(
-        mcp.call("mcp__web__echo", &json!({})).await,
-        Some(Ok("pong".into()))
-    );
+    assert_eq!(call_web_echo(&mcp).await, Some(Ok("pong".into())));
     assert_eq!(requests_for_path(&requests, "/token").len(), 1);
 }
 

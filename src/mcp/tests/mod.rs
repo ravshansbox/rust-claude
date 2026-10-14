@@ -313,6 +313,10 @@ fn http_config(url: &str) -> ServerConfig {
     }
 }
 
+async fn call_web_echo(mcp: &Mcp) -> Option<Result<String, String>> {
+    mcp.call("mcp__web__echo", &json!({})).await
+}
+
 fn requests_for(requests: &Requests, method: &str) -> Vec<HttpRequest> {
     requests
         .lock()
