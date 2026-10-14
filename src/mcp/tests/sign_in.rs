@@ -294,10 +294,20 @@ fn oauth_mcp(base: &str, request: &HttpRequest) -> HttpReply {
 }
 
 async fn oauth_server() -> (String, Requests) {
+    oauth_server_with(oauth_mcp).await
+}
+
+/// Serves `handler`, which gets the server's base URL with each request.
+async fn oauth_server_with(
+    handler: impl Fn(&str, &HttpRequest) -> HttpReply + Send + Sync + 'static,
+) -> (String, Requests) {
     let base = Arc::new(Mutex::new(String::new()));
     let shared = base.clone();
-    let (url, requests) =
-        http_server(move |request| oauth_mcp(&shared.lock().unwrap(), request)).await;
+    let (url, requests) = http_server(move |request| {
+        let base = shared.lock().unwrap().clone();
+        handler(&base, request)
+    })
+    .await;
     *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
     (url, requests)
 }
@@ -392,34 +402,27 @@ async fn signs_in_while_another_connection_to_the_callback_stays_idle() {
 
 #[tokio::test]
 async fn reads_sign_in_parameters_outside_quoted_values() {
-    let base = Arc::new(Mutex::new(String::new()));
-    let shared = base.clone();
-    let (url, _) = http_server(move |request| {
-            let base = shared.lock().unwrap().clone();
-            let reply = oauth_mcp(&base, request);
-            if reply.status != 401 {
-                return reply;
-            }
-            HttpReply::status(401, "").with_header(
-                "www-authenticate",
-                &format!(
-                    r#"Bearer error="insufficient_scope", error_description="needs scope=admin, see resource_metadata=https://elsewhere.example", resource_metadata="{base}/.well-known/oauth-protected-resource/mcp", scope="mcp:connect""#
-                ),
-            )
-        })
-        .await;
-    *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
+    let (url, _) = oauth_server_with(|base, request| {
+        let reply = oauth_mcp(base, request);
+        if reply.status != 401 {
+            return reply;
+        }
+        HttpReply::status(401, "").with_header(
+            "www-authenticate",
+            &format!(
+                r#"Bearer error="insufficient_scope", error_description="needs scope=admin, see resource_metadata=https://elsewhere.example", resource_metadata="{base}/.well-known/oauth-protected-resource/mcp", scope="mcp:connect""#
+            ),
+        )
+    })
+    .await;
     let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
 }
 
 #[tokio::test]
 async fn reads_sign_in_parameters_whatever_their_case() {
-    let base = Arc::new(Mutex::new(String::new()));
-    let shared = base.clone();
-    let (url, _) = http_server(move |request| {
-        let base = shared.lock().unwrap().clone();
-        let reply = oauth_mcp(&base, request);
+    let (url, _) = oauth_server_with(|base, request| {
+        let reply = oauth_mcp(base, request);
         if reply.status != 401 {
             return reply;
         }
@@ -431,18 +434,14 @@ async fn reads_sign_in_parameters_whatever_their_case() {
         )
     })
     .await;
-    *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
     let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
 }
 
 #[tokio::test]
 async fn asks_for_the_scopes_the_server_lists_when_the_challenge_names_none() {
-    let base = Arc::new(Mutex::new(String::new()));
-    let shared = base.clone();
-    let (url, _) = http_server(move |request| {
-        let base = shared.lock().unwrap().clone();
-        let reply = oauth_mcp(&base, request);
+    let (url, _) = oauth_server_with(|base, request| {
+        let reply = oauth_mcp(base, request);
         if request.path == "/.well-known/oauth-protected-resource/mcp" {
             return HttpReply::json(&json!({
                 "resource": format!("{base}/mcp"),
@@ -461,17 +460,13 @@ async fn asks_for_the_scopes_the_server_lists_when_the_challenge_names_none() {
         )
     })
     .await;
-    *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
     let sign_in = begin_sign_in_with("web", &http_config(&url)).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "read write");
 }
 
 #[tokio::test]
 async fn refuses_sign_in_endpoints_without_https() {
-    let base = Arc::new(Mutex::new(String::new()));
-    let shared = base.clone();
-    let (url, _) = http_server(move |request| {
-        let base = shared.lock().unwrap().clone();
+    let (url, _) = oauth_server_with(|base, request| {
         if request.path == "/.well-known/oauth-authorization-server/auth" {
             return HttpReply::json(&json!({
                 "authorization_endpoint": "https://sign-in.example/authorize",
@@ -479,10 +474,9 @@ async fn refuses_sign_in_endpoints_without_https() {
                 "registration_endpoint": format!("{base}/register"),
             }));
         }
-        oauth_mcp(&base, request)
+        oauth_mcp(base, request)
     })
     .await;
-    *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
     assert_eq!(
         begin_sign_in_with("web", &http_config(&url)).await.err(),
         Some(
@@ -508,11 +502,8 @@ async fn oauth_server_changing(
     path: &'static str,
     change: impl Fn(&mut Value) + Send + Sync + 'static,
 ) -> String {
-    let base = Arc::new(Mutex::new(String::new()));
-    let shared = base.clone();
-    let (url, _) = http_server(move |request| {
-        let base = shared.lock().unwrap().clone();
-        let mut reply = oauth_mcp(&base, request);
+    let (url, _) = oauth_server_with(move |base, request| {
+        let mut reply = oauth_mcp(base, request);
         if request.path == path {
             let mut metadata: Value = serde_json::from_str(&reply.body).unwrap();
             change(&mut metadata);
@@ -521,7 +512,6 @@ async fn oauth_server_changing(
         reply
     })
     .await;
-    *base.lock().unwrap() = url.trim_end_matches("/mcp").to_string();
     url
 }
 
