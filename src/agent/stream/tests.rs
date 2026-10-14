@@ -6,6 +6,13 @@ use crate::agent::{
     test_support::{self, MockApi, Reply, stopped_reply, text_reply},
 };
 
+async fn reply_text(api: &MockApi) -> String {
+    let mut text = String::new();
+    let (_, result) = test_support::run_prompt(api, "hi", test_support::text(&mut text)).await;
+    result.unwrap();
+    text
+}
+
 #[tokio::test]
 async fn retries_a_reply_that_stops_arriving() {
     let api = MockApi::start(vec![Reply::Stall, text_reply("hello")]).await;
@@ -48,10 +55,7 @@ async fn puts_together_a_reply_that_arrives_a_few_bytes_at_a_time() {
         text_reply("done"),
     ])
     .await;
-    let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
-    result.unwrap();
-    assert_eq!(text, "héllo 👋 wörlddone");
+    assert_eq!(reply_text(&api).await, "héllo 👋 wörlddone");
     let requests = api.requests().await;
     let reply = &requests[1]["messages"][1]["content"];
     assert_eq!(reply[0]["text"], "héllo 👋 wörld");
@@ -73,10 +77,7 @@ async fn skips_pings_and_events_it_does_not_know() {
         json!({ "type": "message_stop" }),
     ])])
     .await;
-    let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
-    result.unwrap();
-    assert_eq!(text, "hello");
+    assert_eq!(reply_text(&api).await, "hello");
 }
 
 #[tokio::test]
@@ -92,19 +93,13 @@ async fn skips_frames_without_data_such_as_keep_alive_comments() {
         json!({ "type": "message_stop" }),
     ])])
     .await;
-    let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
-    result.unwrap();
-    assert_eq!(text, "hello");
+    assert_eq!(reply_text(&api).await, "hello");
 }
 
 #[tokio::test]
 async fn retries_an_overloaded_reply_whose_error_breaks_off() {
     let api = MockApi::start(vec![Reply::CutOffOverloaded, text_reply("hello")]).await;
-    let mut text = String::new();
-    let (_, result) = test_support::run_prompt(&api, "hi", test_support::text(&mut text)).await;
-    result.unwrap();
-    assert_eq!(text, "hello");
+    assert_eq!(reply_text(&api).await, "hello");
     assert_eq!(api.requests().await.len(), 2);
 }
 
