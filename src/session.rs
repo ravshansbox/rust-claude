@@ -35,6 +35,10 @@ fn sessions_directory() -> Result<PathBuf> {
     config::file("sessions")
 }
 
+fn session_path(directory: &Path, id: &str) -> PathBuf {
+    directory.join(format!("{id}.jsonl"))
+}
+
 fn hex(bytes: &[u8]) -> String {
     use std::fmt::Write as _;
     bytes
@@ -96,7 +100,7 @@ impl Session {
             None => {
                 let directory = sessions_directory()?;
                 config::create_private_dir(&directory)?;
-                let path = directory.join(format!("{}.jsonl", self.id));
+                let path = session_path(&directory, &self.id);
                 self.file.insert(open_locked(&path, true)?)
             }
         };
@@ -164,7 +168,7 @@ impl Session {
     }
 
     pub fn load(id: &str) -> Result<(Self, Vec<Value>)> {
-        let path = sessions_directory()?.join(format!("{id}.jsonl"));
+        let path = session_path(&sessions_directory()?, id);
         let mut file = open_locked(&path, false)?;
         let mut bytes = Vec::new();
         file.read_to_end(&mut bytes)
