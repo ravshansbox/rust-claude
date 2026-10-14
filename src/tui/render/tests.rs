@@ -1,5 +1,6 @@
 use super::*;
 use crate::tools;
+use ratatui::style::Modifier;
 
 fn texts(lines: &[Line]) -> Vec<String> {
     lines.iter().map(ToString::to_string).collect()
