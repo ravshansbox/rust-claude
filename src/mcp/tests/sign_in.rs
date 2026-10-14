@@ -352,7 +352,10 @@ async fn signs_in_to_an_http_server_with_oauth() {
     let authorize_url = sign_in.authorize_url.clone();
     let finished = tokio::spawn(sign_in.finish());
     let page = visit_callback(&authorize_url, "the-code", None).await;
-    assert!(page.contains("Signed in"), "{page}");
+    assert!(
+        page.contains("Signed in. You can close this tab and go back to Claude Code."),
+        "{page}"
+    );
     assert_eq!(finished.await.unwrap(), Ok(()));
     let registration = &requests_for_path(&requests, "/register")[0];
     assert_eq!(

@@ -587,8 +587,7 @@ impl Pending {
             let (status, message) = match &result {
                 Ok(_) => (
                     "200 OK",
-                    "Signed in. You can close this tab and go back to rust-coding-agent."
-                        .to_string(),
+                    "Signed in. You can close this tab and go back to Claude Code.".to_string(),
                 ),
                 Err(reason) => ("400 Bad Request", format!("Sign-in failed: {reason}")),
             };
