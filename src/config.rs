@@ -1,5 +1,5 @@
 use std::{
-    fs::{File, OpenOptions, TryLockError},
+    fs::{DirBuilder, File, OpenOptions, TryLockError},
     io::{self, ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{
@@ -40,11 +40,15 @@ use test_support::default_dir;
 
 /// Creates a folder, and any missing parents, that only the user can open.
 pub fn create_private_dir(path: &Path) -> io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
-    builder.recursive(true);
+    private_dir().recursive(true).create(path)
+}
+
+/// Returns a builder that creates a folder only the user can open.
+pub fn private_dir() -> DirBuilder {
+    let mut builder = DirBuilder::new();
     #[cfg(unix)]
     std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder.create(path)
+    builder
 }
 
 /// Returns options that create a file only the user can read and write.

@@ -326,10 +326,7 @@ impl Updater {
 }
 
 fn create_update_folder(folder: &Path) -> io::Result<()> {
-    let mut builder = std::fs::DirBuilder::new();
-    #[cfg(unix)]
-    std::os::unix::fs::DirBuilderExt::mode(&mut builder, 0o700);
-    builder.create(folder)
+    config::private_dir().create(folder)
 }
 
 /// An update's own folder, deleted when the update ends, even when the app
