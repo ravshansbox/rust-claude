@@ -39,8 +39,12 @@ fn position(app: &mut App, text: &str) -> (u16, u16) {
         .lines()
         .enumerate()
         .find_map(|(row, line)| {
-            line.find(text)
-                .map(|index| (line[..index].chars().count() as u16, row as u16))
+            line.find(text).map(|index| {
+                (
+                    u16::try_from(line[..index].chars().count()).unwrap(),
+                    u16::try_from(row).unwrap(),
+                )
+            })
         })
         .unwrap_or_else(|| panic!("{text:?} not shown in\n{shown}"))
 }

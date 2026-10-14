@@ -24,7 +24,7 @@ fn shows_the_input_without_a_marker() {
     let mut terminal = Terminal::new(TestBackend::new(10, 24)).unwrap();
     terminal.draw(|frame| super::draw(frame, &mut app)).unwrap();
     let cursor = terminal.get_cursor_position().unwrap();
-    assert_eq!((cursor.x, cursor.y), (7, first as u16 + 1));
+    assert_eq!((cursor.x, cursor.y), (7, u16::try_from(first).unwrap() + 1));
     press(&mut app, KeyCode::Up);
     assert_eq!(app.cursor, "lorem i".len());
 }
@@ -204,7 +204,7 @@ fn shows_a_scroll_to_bottom_button_above_the_prompt_when_scrolled_up() {
             .unwrap_or_else(|| panic!("{shown}"));
         assert!(rows[row + 1].starts_with('─'), "{shown}");
         assert_eq!(rows[row].contains(" working"), working, "{shown}");
-        let column = 100 - "↓ Bottom (End)".chars().count() as u16;
+        let column = 100 - u16::try_from("↓ Bottom (End)".chars().count()).unwrap();
         for kind in [
             MouseEventKind::Down(MouseButton::Left),
             MouseEventKind::Up(MouseButton::Left),
@@ -212,7 +212,7 @@ fn shows_a_scroll_to_bottom_button_above_the_prompt_when_scrolled_up() {
             let event = Event::Mouse(MouseEvent {
                 kind,
                 column,
-                row: row as u16,
+                row: u16::try_from(row).unwrap(),
                 modifiers: KeyModifiers::NONE,
             });
             handle_input(event, &mut app, |_| {});
