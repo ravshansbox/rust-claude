@@ -296,8 +296,7 @@ async fn fails_calls_when_the_server_sends_a_line_that_is_too_long() {
 #[tokio::test]
 async fn reads_a_line_as_long_as_the_limit() {
     let mut config = server_answering_calls_with(&format!(
-        r#"reply=$(printf '{{"jsonrpc":"2.0","id":%s,"result":{{"content":[{{"type":"text","text":"pong"}}]}}}}' "$id"); printf '%s' "$reply"; head -c $(({} - ${{#reply}})) /dev/zero | tr '\0' ' '; printf '\n'"#,
-        MAX_LINE
+        r#"reply=$(printf '{{"jsonrpc":"2.0","id":%s,"result":{{"content":[{{"type":"text","text":"pong"}}]}}}}' "$id"); printf '%s' "$reply"; head -c $(({MAX_LINE} - ${{#reply}})) /dev/zero | tr '\0' ' '; printf '\n'"#
     ));
     config.timeout = Some(30);
     let mut mcp = Mcp::default();

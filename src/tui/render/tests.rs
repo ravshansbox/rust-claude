@@ -232,7 +232,7 @@ fn keeps_line_breaks_after_a_code_block_holding_another_fence() {
     let text = "```\n~~~\n```\nfirst\nsecond";
     let lines: Vec<String> = render_message(Role::Assistant, text, 40)
         .iter()
-        .map(|line| line.to_string())
+        .map(ToString::to_string)
         .collect();
     assert!(lines.iter().any(|line| line.trim() == "first"), "{lines:?}");
     assert!(
