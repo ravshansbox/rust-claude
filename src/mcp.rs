@@ -70,12 +70,11 @@ fn tool_definition(qualified_name: &str, mut tool: Value) -> Value {
         .or_else(|| tool["title"].as_str())
         .or_else(|| tool["name"].as_str())
         .unwrap_or_default();
-    let mut definition = json!({
+    json!({
         "name": qualified_name,
         "description": description,
-    });
-    definition["input_schema"] = Value::Object(schema);
-    definition
+        "input_schema": schema,
+    })
 }
 
 async fn list_tools(connection: &Connection) -> Result<Vec<Value>, String> {
