@@ -13,6 +13,7 @@ mod bash;
 mod display;
 mod edit;
 mod read;
+pub mod sources;
 #[cfg(test)]
 pub(crate) mod test_support;
 pub mod web_search;

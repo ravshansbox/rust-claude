@@ -508,7 +508,7 @@ impl Agent {
             if let Some(cause) = cut_off {
                 on_event(AgentEvent::Notice(format!("reply cut off: {cause}")));
             }
-            if let Some(sources) = tools::web_search::sources(&content) {
+            if let Some(sources) = tools::sources::sources(&content) {
                 on_event(AgentEvent::Text(sources));
             }
             if stop_reason == "pause_turn" {

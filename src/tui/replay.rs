@@ -214,7 +214,7 @@ pub(super) fn replay_messages(app: &mut App, messages: &[Value]) {
         }
         if role == "assistant"
             && let Some(blocks) = message["content"].as_array()
-            && let Some(sources) = tools::web_search::sources(blocks)
+            && let Some(sources) = tools::sources::sources(blocks)
         {
             append_reply(app, &sources);
         }
