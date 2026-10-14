@@ -198,7 +198,7 @@ impl Captured {
         }
         let half = limit / 2;
         let mut start = &all[..half];
-        while let Err(error) = std::str::from_utf8(start)
+        if let Err(error) = std::str::from_utf8(start)
             && error.error_len().is_none()
         {
             start = &start[..error.valid_up_to()];
