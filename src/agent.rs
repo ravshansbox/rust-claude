@@ -156,6 +156,14 @@ pub struct Agent {
 impl Agent {
     pub fn new(http: reqwest::Client, credentials: Credentials, model: String) -> Result<Self> {
         Ok(Self {
+            instructions: load_instructions(),
+            skills: skills::load(),
+            ..Self::base(http, credentials, model)?
+        })
+    }
+
+    fn base(http: reqwest::Client, credentials: Credentials, model: String) -> Result<Self> {
+        Ok(Self {
             http,
             api_base: API_BASE.into(),
             credentials,
@@ -165,8 +173,8 @@ impl Agent {
             pending_usage: Usage::default(),
             tool_results: Vec::new(),
             quota: Quota::default(),
-            instructions: load_instructions(),
-            skills: skills::load(),
+            instructions: Vec::new(),
+            skills: Skills::default(),
             mcp: Mcp::default(),
             session: Session::new()?,
             queue: Queue::default(),

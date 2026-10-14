@@ -11,14 +11,10 @@ use anyhow::Result;
 use serde_json::{Value, json};
 use tokio::sync::mpsc;
 
-use super::{Agent, AgentEvent, Queue, Usage, text_of};
+use super::{Agent, AgentEvent, Usage, text_of};
 use crate::{
-    session::Session,
     skills::Skills,
-    tools::{
-        agent::{self, Mode},
-        background::Background,
-    },
+    tools::agent::{self, Mode},
 };
 
 const NOT_RUN: &str = "This task did not run, because an earlier task failed.";
@@ -34,14 +30,8 @@ type Callback = Box<dyn FnMut(AgentEvent) + Send>;
 impl Agent {
     fn subagent(&self) -> Result<Self> {
         Ok(Self {
-            http: self.http.clone(),
             api_base: self.api_base.clone(),
-            credentials: self.credentials.clone(),
-            model: self.model.clone(),
             effort: self.effort,
-            messages: Vec::new(),
-            pending_usage: Usage::default(),
-            tool_results: Vec::new(),
             quota: self.quota,
             instructions: self.instructions.clone(),
             skills: Skills {
@@ -49,11 +39,12 @@ impl Agent {
                 diagnostics: Vec::new(),
             },
             mcp: self.mcp.clone(),
-            session: Session::new()?,
-            queue: Queue::default(),
-            subagent_usage: Arc::default(),
             subagent: true,
-            background: Background::default(),
+            ..Self::base(
+                self.http.clone(),
+                self.credentials.clone(),
+                self.model.clone(),
+            )?
         })
     }
 
