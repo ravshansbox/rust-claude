@@ -614,6 +614,28 @@ async fn shows_a_web_fetch_and_the_page_cited_counting_earlier_fetches() {
 }
 
 #[tokio::test]
+async fn lists_a_cited_page_without_a_title_by_its_url() {
+    let api = MockApi::start(vec![web_fetch_reply(
+        "https://example.com",
+        &fetched_page("https://example.com", ""),
+        0,
+    )])
+    .await;
+    let mut text = String::new();
+    let (_, result) = test_support::run_prompt(&api, "fetch", |event| {
+        if let AgentEvent::Text(delta) = event {
+            text.push_str(&delta);
+        }
+    })
+    .await;
+    result.unwrap();
+    assert_eq!(
+        text,
+        "Quoted.\n\nSources:\n- https://example.com: https://example.com\n"
+    );
+}
+
+#[tokio::test]
 async fn reports_a_web_fetch_that_failed() {
     let api = MockApi::start(vec![web_fetch_reply(
         "https://example.com",

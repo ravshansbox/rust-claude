@@ -26,7 +26,7 @@ pub fn sources(context: &[Value], content: &[Value]) -> Option<String> {
             continue;
         }
         urls.push(url);
-        let title = title.unwrap_or(url);
+        let title = title.filter(|title| !title.is_empty()).unwrap_or(url);
         let _ = writeln!(list, "- {title}: {url}");
     }
     (!list.is_empty()).then(|| format!("\n\nSources:\n{list}"))
