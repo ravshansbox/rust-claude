@@ -160,7 +160,7 @@ struct Discovered {
 }
 
 /// A sign-in waiting for the browser to come back to `redirect_uri`.
-pub(super) struct Pending {
+pub struct Pending {
     pub authorize_url: String,
     client: reqwest::Client,
     server_url: String,

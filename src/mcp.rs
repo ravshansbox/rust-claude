@@ -9,6 +9,7 @@ mod http;
 mod oauth;
 mod stdio;
 
+pub use self::oauth::Pending as SignIn;
 use self::{
     config_file::{
         Configs, ServerConfig, enabled, http_url, http_url_of, read_configs, uses_oauth,
@@ -179,19 +180,6 @@ fn result_text(result: &Value) -> String {
     text
 }
 
-/// A sign-in waiting for the user to finish it in the browser.
-pub struct SignIn {
-    pub authorize_url: String,
-    pending: oauth::Pending,
-}
-
-impl SignIn {
-    /// Waits for the browser to come back, then saves the tokens.
-    pub async fn finish(self) -> Result<(), String> {
-        self.pending.finish().await
-    }
-}
-
 async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn, String> {
     let url = http_url_of(name, config)?;
     if !uses_oauth(config) {
@@ -204,11 +192,7 @@ async fn begin_sign_in_with(name: &str, config: &ServerConfig) -> Result<SignIn,
         .timeout(Duration::from_secs(60))
         .build()
         .map_err(|error| format!("cannot set up HTTP: {error}"))?;
-    let pending = oauth::begin(&client, url, config.oauth.as_ref()).await?;
-    Ok(SignIn {
-        authorize_url: pending.authorize_url.clone(),
-        pending,
-    })
+    oauth::begin(&client, url, config.oauth.as_ref()).await
 }
 
 fn sign_out_with(name: &str, config: &ServerConfig) -> Result<String, String> {
