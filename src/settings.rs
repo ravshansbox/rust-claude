@@ -1,4 +1,7 @@
-use std::{io::ErrorKind, path::Path};
+use std::{
+    io::ErrorKind,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -19,16 +22,18 @@ impl Settings {
     /// Reads settings.json, or the defaults when it is missing. When it
     /// cannot be read, update checks are off, so a typo cannot turn them on.
     pub fn load() -> Self {
-        config::file("settings.json")
-            .map(|path| load_file(&path))
-            .unwrap_or_default()
+        path().map(|path| load_file(&path)).unwrap_or_default()
     }
 
     /// Applies `change` to settings.json, keeping the settings it leaves
     /// alone. Fails instead of replacing a file it cannot read.
     pub fn update(change: impl FnOnce(&mut Self)) -> Result<()> {
-        update_file(&config::file("settings.json")?, change)
+        update_file(&path()?, change)
     }
+}
+
+fn path() -> Result<PathBuf> {
+    config::file("settings.json")
 }
 
 fn load_file(path: &Path) -> Settings {
