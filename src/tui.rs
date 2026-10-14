@@ -148,11 +148,7 @@ async fn run_loop(
             }
             Some(event) = event_rx.recv() => {
                 dirty = true;
-                let mut next = Some(event);
-                while let Some(event) = next {
-                    handle_agent_event(event, &mut app);
-                    next = event_rx.try_recv().ok();
-                }
+                handle_agent_events(event, &mut event_rx, &mut app);
                 send_queued_and_notify(&mut app, terminal, &request_tx);
                 save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
             }
@@ -173,6 +169,18 @@ fn skipping_interval(period: Duration) -> Interval {
     let mut ticks = interval(period);
     ticks.set_missed_tick_behavior(MissedTickBehavior::Skip);
     ticks
+}
+
+fn handle_agent_events(
+    first: UiEvent,
+    events: &mut mpsc::UnboundedReceiver<UiEvent>,
+    app: &mut App,
+) {
+    let mut next = Some(first);
+    while let Some(event) = next {
+        handle_agent_event(event, app);
+        next = events.try_recv().ok();
+    }
 }
 
 fn worker_error(joined: Result<(), JoinError>) -> anyhow::Error {
