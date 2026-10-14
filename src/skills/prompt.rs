@@ -103,6 +103,16 @@ pub struct SkillBlock<'a> {
     pub user_message: Option<&'a str>,
 }
 
+impl SkillBlock<'_> {
+    /// The `/skill:name request` command that sent this block.
+    pub fn command(&self) -> String {
+        match self.user_message {
+            Some(user_message) => format!("{COMMAND_PREFIX}{} {user_message}", self.name),
+            None => format!("{COMMAND_PREFIX}{}", self.name),
+        }
+    }
+}
+
 pub fn parse_block(text: &str) -> Option<SkillBlock<'_>> {
     let rest = text.strip_prefix("<skill name=\"")?;
     let (name, rest) = rest.split_once('"')?;

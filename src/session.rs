@@ -334,10 +334,7 @@ fn read_preview(path: &Path) -> Result<String> {
             return Ok(format!("!{command}"));
         }
         if let Some(block) = skills::parse_block(text) {
-            return Ok(match block.user_message {
-                Some(user_message) => format!("/skill:{} {user_message}", block.name),
-                None => format!("/skill:{}", block.name),
-            });
+            return Ok(block.command());
         }
         return Ok(text.to_string());
     }
