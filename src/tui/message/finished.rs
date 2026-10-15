@@ -21,7 +21,15 @@ pub(super) fn finished_markdown_len(text: &str, paragraphs: bool) -> usize {
         let start = end;
         end += line.len();
         let trimmed = line.trim_start();
-        let indent = line.len() - trimmed.len();
+        let indent = line[..line.len() - trimmed.len()]
+            .chars()
+            .fold(0, |column, c| {
+                if c == '\t' {
+                    column + 4 - column % 4
+                } else {
+                    column + 1
+                }
+            });
         // A line indented less than the fence may end the list item it is in.
         if open.is_some_and(|(_, _, open_indent)| indent < open_indent) && !trimmed.is_empty() {
             return finished;

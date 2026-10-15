@@ -68,6 +68,7 @@ fn renders_streamed_blocks_split_by_blank_lines_the_same_as_the_whole_reply() {
         "Code:\n\n    let a = 1;\n\n    let b = 2;\n\nafter code\n",
         "> quoted\n\n> more quote\n\nlazy\ncontinued\n",
         "Title\n---\n    ```\n   ```\n~~~\n~~~\n```\ntext\n   ```\nmore code\n",
+        "```\na\n\t```\nb\n```\n",
     ];
     for reply in replies {
         let mut streamed = stream_in_chunks(reply, 1);
