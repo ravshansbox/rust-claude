@@ -74,7 +74,9 @@ impl App {
         };
         if let Some((start, end)) = selection.bounds() {
             let text = self.selected_text(start, end);
-            self.quote(&text);
+            if !text.trim().is_empty() {
+                self.quote(&text);
+            }
         }
     }
 

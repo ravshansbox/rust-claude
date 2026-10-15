@@ -163,6 +163,14 @@ fn quotes_nothing_on_a_click() {
 }
 
 #[test]
+fn quotes_nothing_after_dragging_over_blank_cells() {
+    let mut app = app_with_reply();
+    let (column, row) = position(&mut app, "Earlier reply");
+    let input = drag(&mut app, (column + 20, row), (column + 30, row));
+    assert_eq!(input, "");
+}
+
+#[test]
 fn keeps_the_selection_on_the_same_text_while_scrolling() {
     let mut app = app_with_reply();
     for number in 0..40 {
