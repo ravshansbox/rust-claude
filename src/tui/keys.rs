@@ -1,17 +1,17 @@
 use super::{
     Activity, App, PickerKind, Role,
-    input::{
-        next_grapheme, next_word_end, previous_grapheme, previous_word_start, row_above, row_below,
-    },
+    input::{row_above, row_below},
 };
 use crate::{images::Image, models};
 use crossterm::event::{
     Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers, MouseButton, MouseEvent, MouseEventKind,
 };
+use editing::edit_input;
 use overlays::{handle_history_search_key, handle_picker_key, handle_suggestion_key};
 use ratatui::layout::Position;
 use slash_command::run_command;
 
+mod editing;
 mod overlays;
 mod slash_command;
 
@@ -158,31 +158,6 @@ fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool
         _ => edit_input(key, app),
     }
     false
-}
-
-fn edit_input(key: KeyEvent, app: &mut App) {
-    match (key.code, key.modifiers) {
-        (KeyCode::Left | KeyCode::Char('b'), KeyModifiers::ALT) => {
-            app.cursor = previous_word_start(&app.input, app.cursor);
-        }
-        (KeyCode::Right | KeyCode::Char('f'), KeyModifiers::ALT) => {
-            app.cursor = next_word_end(&app.input, app.cursor);
-        }
-        (KeyCode::Char('a'), KeyModifiers::CONTROL) => app.cursor = 0,
-        (KeyCode::Char('e'), KeyModifiers::CONTROL) => app.cursor = app.input.len(),
-        (KeyCode::Left, _) => app.cursor = previous_grapheme(&app.input, app.cursor),
-        (KeyCode::Right, _) => app.cursor = next_grapheme(&app.input, app.cursor),
-        (KeyCode::Backspace, KeyModifiers::ALT) | (KeyCode::Char('w'), KeyModifiers::CONTROL) => {
-            app.delete_to(previous_word_start(&app.input, app.cursor));
-        }
-        (KeyCode::Backspace, _) => {
-            app.delete_to(previous_grapheme(&app.input, app.cursor));
-        }
-        (KeyCode::Char(character), modifiers) if !modifiers.contains(KeyModifiers::CONTROL) => {
-            app.insert(character.encode_utf8(&mut [0; 4]));
-        }
-        _ => {}
-    }
 }
 
 fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {
