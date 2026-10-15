@@ -22,12 +22,14 @@ use crate::tools::test_support::{TemporaryDir, TemporaryFile};
 mod config_errors;
 mod config_files;
 mod http;
+mod http_mcp;
 mod http_server;
 mod servers;
 pub(crate) mod sign_in;
 mod stdio;
 mod tool;
 
+use http_mcp::*;
 use http_server::*;
 
 #[test]
