@@ -26,6 +26,14 @@ fn mcp_server_failed(name: &str, summary: &str, status: &str) -> UiEvent {
     })
 }
 
+fn mcp_server_restarting(name: &str, scope: Scope) -> UiEvent {
+    UiEvent::McpRestarting {
+        name: name.into(),
+        scope,
+        notice: format!("signed in to MCP server {name}"),
+    }
+}
+
 #[test]
 fn groups_mcp_servers_by_scope_on_two_lines_with_spinners() {
     let mut app = new_app();
@@ -88,14 +96,7 @@ fn shows_global_mcp_servers_that_project_entries_override() {
         .find("loaded project MCP servers: docs (3 tools)")
         .expect(&shown);
     assert!(global < project, "{shown}");
-    handle_agent_event(
-        UiEvent::McpRestarting {
-            name: "docs".into(),
-            scope: Scope::Project,
-            notice: "signed in to MCP server docs".into(),
-        },
-        &mut app,
-    );
+    handle_agent_event(mcp_server_restarting("docs", Scope::Project), &mut app);
     let shown = screen(&mut app);
     assert!(shown.contains("project MCP servers: ⠋ docs"), "{shown}");
     assert!(
@@ -143,14 +144,7 @@ fn shows_a_signed_in_server_loading_again_in_its_group() {
         mcp_server_failed("figma", "figma (needs sign-in)", "needs sign-in"),
         &mut app,
     );
-    handle_agent_event(
-        UiEvent::McpRestarting {
-            name: "figma".into(),
-            scope: Scope::Global,
-            notice: "signed in to MCP server figma".into(),
-        },
-        &mut app,
-    );
+    handle_agent_event(mcp_server_restarting("figma", Scope::Global), &mut app);
     let shown = screen(&mut app);
     let group = shown.find("global MCP servers: ⠋ figma").expect(&shown);
     let notice = shown.find("signed in to MCP server figma").expect(&shown);
