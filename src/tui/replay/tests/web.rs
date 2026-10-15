@@ -1,7 +1,8 @@
+use super::texts;
 use crate::agent::AgentEvent;
 use crate::tools;
 use crate::tui::{
-    App, UiEvent,
+    UiEvent,
     replay::{handle_agent_event, replay_messages},
     test_support::new_app,
 };
@@ -40,12 +41,6 @@ fn shows_web_search_and_sources_live_and_replayed() {
             { "type": "text", "text": " is the latest." },
         ] })],
     );
-    let texts = |app: &App| -> Vec<String> {
-        app.messages[1..]
-            .iter()
-            .map(|message| message.text.clone())
-            .collect()
-    };
     assert_eq!(
         texts(&live),
         [

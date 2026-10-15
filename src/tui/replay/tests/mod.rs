@@ -73,11 +73,7 @@ fn replays_compaction_as_event() {
             json!({ "role": "assistant", "stop_reason": "compacted", "content": [], "summary": "greeted" }),
         ],
     );
-    let texts: Vec<&str> = app.messages[1..]
-        .iter()
-        .map(|message| message.text.as_str())
-        .collect();
-    assert_eq!(texts, ["hello", "compacted conversation"]);
+    assert_eq!(texts(&app), ["hello", "compacted conversation"]);
 }
 
 #[test]
@@ -118,12 +114,6 @@ fn shows_skill_commands_live_and_replayed() {
             json!({ "role": "user", "content": "<skill name=\"demo\" location=\"/skills/demo/SKILL.md\">\nReferences are relative to /skills/demo.\n\nBody\n</skill>\n\nfix it" }),
         ],
     );
-    let texts = |app: &App| -> Vec<String> {
-        app.messages[1..]
-            .iter()
-            .map(|message| message.text.clone())
-            .collect()
-    };
     assert_eq!(texts(&live), ["[skill] demo", "fix it"]);
     assert_eq!(texts(&replayed), texts(&live));
     assert_eq!(replayed.prompt_history, live.prompt_history);
@@ -157,12 +147,6 @@ fn shows_replacement_count_live_and_replayed() {
             json!({ "role": "user", "content": [{ "type": "tool_result", "tool_use_id": "1", "content": "edited a.rs (3 replacements)", "is_error": false }] }),
         ],
     );
-    let texts = |app: &App| -> Vec<String> {
-        app.messages[1..]
-            .iter()
-            .map(|message| message.text.clone())
-            .collect()
-    };
     assert_eq!(texts(&live), ["edit a.rs\n-a\n+b", "edit: 3 replacements"]);
     assert_eq!(texts(&replayed), texts(&live));
 }
