@@ -39,6 +39,10 @@ fn start_tasks(app: &mut App) {
     }
 }
 
+fn status_line(app: &mut App) -> String {
+    screen(app).lines().last().unwrap().trim_end().to_string()
+}
+
 #[test]
 fn shows_each_task_while_it_works() {
     let mut app = new_app();
@@ -57,9 +61,6 @@ fn shows_each_task_while_it_works() {
 
 #[test]
 fn shows_how_many_agents_run_on_the_status_line() {
-    fn status_line(app: &mut App) -> String {
-        screen(app).lines().last().unwrap().trim_end().to_string()
-    }
     let mut app = new_app();
     let idle = status_line(&mut app);
     start_tasks(&mut app);
@@ -89,12 +90,7 @@ fn shows_how_many_agents_run_on_the_status_line() {
 #[test]
 fn shows_how_many_background_commands_run_on_the_status_line() {
     let mut app = new_app();
-    let idle = screen(&mut app)
-        .lines()
-        .last()
-        .unwrap()
-        .trim_end()
-        .to_string();
+    let idle = status_line(&mut app);
     start_tasks(&mut app);
     handle_agent_event(
         UiEvent::Agent(AgentEvent::Stats(Stats {
@@ -103,12 +99,7 @@ fn shows_how_many_background_commands_run_on_the_status_line() {
         })),
         &mut app,
     );
-    let shown = screen(&mut app)
-        .lines()
-        .last()
-        .unwrap()
-        .trim_end()
-        .to_string();
+    let shown = status_line(&mut app);
     assert_eq!(shown, format!("{idle} · 2 agents · 2 background"));
 }
 
