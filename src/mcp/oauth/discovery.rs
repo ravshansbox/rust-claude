@@ -1,3 +1,6 @@
+mod challenge;
+
+use challenge::{challenge, challenge_parameter, requested_scope};
 use serde_json::Value;
 
 /// What the sign-in server needs, found from the MCP server.
@@ -7,50 +10,6 @@ pub(super) struct Discovered {
     pub registration_endpoint: Option<String>,
     pub resource: String,
     pub scope: Option<String>,
-}
-
-/// Reads a `key="value"` or `key=value` parameter of a `WWW-Authenticate`
-/// challenge, skipping text inside quoted values.
-fn challenge_parameter(challenge: &str, key: &str) -> Option<String> {
-    let mut quoted = false;
-    let mut escaped = false;
-    let mut before = None;
-    for (start, character) in challenge.char_indices() {
-        let at_key = !quoted
-            && !before.is_some_and(|before: char| before.is_ascii_alphanumeric() || before == '_');
-        before = Some(character);
-        if quoted {
-            match character {
-                _ if escaped => escaped = false,
-                '\\' => escaped = true,
-                '"' => quoted = false,
-                _ => {}
-            }
-            continue;
-        }
-        if character == '"' {
-            quoted = true;
-            continue;
-        }
-        let Some(value) = challenge
-            .get(start..start + key.len())
-            .filter(|name| at_key && name.eq_ignore_ascii_case(key))
-            .map(|_| &challenge[start + key.len()..])
-            .and_then(|after| after.trim_start().strip_prefix('='))
-        else {
-            continue;
-        };
-        let value = value.trim_start();
-        return Some(match value.strip_prefix('"') {
-            Some(quoted) => quoted.split('"').next().unwrap_or_default().to_string(),
-            None => value
-                .split([',', ' '])
-                .next()
-                .unwrap_or_default()
-                .to_string(),
-        });
-    }
-    None
 }
 
 /// `{origin}/.well-known/{name}{path}`, as RFC 8414 and RFC 9728 place
@@ -152,18 +111,6 @@ pub(super) async fn discover(
     })
 }
 
-fn requested_scope(challenge: &str, resource_metadata: Option<&Value>) -> Option<String> {
-    challenge_parameter(challenge, "scope").or_else(|| {
-        let scopes: Vec<&str> = resource_metadata?
-            .get("scopes_supported")?
-            .as_array()?
-            .iter()
-            .filter_map(Value::as_str)
-            .collect();
-        (!scopes.is_empty()).then(|| scopes.join(" "))
-    })
-}
-
 async fn find_server_metadata(
     client: &reqwest::Client,
     issuer: &str,
@@ -186,31 +133,6 @@ async fn find_server_metadata(
     })
     .await
     .ok_or_else(|| format!("cannot find the sign-in server for {server_url}"))
-}
-
-/// The `WWW-Authenticate` header the server sends to an unsigned `initialize` request.
-async fn challenge(client: &reqwest::Client, server_url: &str) -> Result<String, String> {
-    let probe = client
-        .post(server_url)
-        .header(
-            reqwest::header::ACCEPT,
-            "application/json, text/event-stream",
-        )
-        .json(&serde_json::json!({
-            "jsonrpc": "2.0",
-            "id": 0,
-            "method": "initialize",
-            "params": crate::mcp::initialize_params(),
-        }))
-        .send()
-        .await
-        .map_err(|error| format!("cannot reach {server_url}: {error}"))?;
-    Ok(probe
-        .headers()
-        .get(reqwest::header::WWW_AUTHENTICATE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_string())
 }
 
 /// Whether `resource` is `url`, or its origin or a parent path of it.
