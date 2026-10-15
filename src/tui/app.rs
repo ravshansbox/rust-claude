@@ -1,8 +1,5 @@
 use super::{
-    files::FileList,
-    mcp_status::McpGroup,
-    message::{ChatMessage, Role},
-    selection::Selection,
+    files::FileList, mcp_status::McpGroup, message::ChatMessage, selection::Selection,
     workspace_label,
 };
 use crate::{
@@ -19,6 +16,7 @@ use std::path::PathBuf;
 
 mod activity;
 mod input;
+mod messages;
 mod model;
 mod picker;
 mod queue;
@@ -121,48 +119,6 @@ impl App {
     fn show_version(&mut self) {
         let text = self.version_line.clone();
         self.version_message = Some(self.show_event(self.version_message, text));
-    }
-
-    pub(super) fn show_event(&mut self, message: Option<usize>, text: String) -> usize {
-        if let Some(message) = message {
-            self.messages[message].replace(text);
-            message
-        } else {
-            self.push(Role::Event, text);
-            self.messages.len() - 1
-        }
-    }
-
-    /// Rows left blank above the message: none above the first one or
-    /// between notices in a row, one elsewhere.
-    pub(super) fn gap_before(&self, index: usize) -> usize {
-        let notices = index
-            .checked_sub(1)
-            .and_then(|previous| self.messages.get(previous))
-            .zip(self.messages.get(index))
-            .is_some_and(|(previous, message)| {
-                matches!((previous.role, message.role), (Role::Event, Role::Event))
-            });
-        usize::from(index > 0 && !notices)
-    }
-
-    pub(super) fn push(&mut self, role: Role, text: impl Into<String>) {
-        self.reads.clear();
-        if let Some(last) = self.messages.last_mut() {
-            last.finish_streaming();
-        }
-        self.messages.push(ChatMessage {
-            role,
-            text: text.into(),
-            rendered: None,
-            streaming: false,
-        });
-    }
-
-    pub(super) fn set_message_text(&mut self, index: usize, text: String) {
-        if let Some(message) = self.messages.get_mut(index) {
-            message.replace(text);
-        }
     }
 
     pub(super) fn clear_session(&mut self) {

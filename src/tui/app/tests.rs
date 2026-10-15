@@ -1,6 +1,7 @@
-use super::{App, Role};
+use super::App;
 use crate::agent::AgentEvent;
 use crate::tools::test_support::TemporaryDir;
+use crate::tui::message::Role;
 use crate::tui::{
     UiEvent,
     keys::handle_input,
