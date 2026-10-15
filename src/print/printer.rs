@@ -4,6 +4,7 @@ use crate::{
 };
 use std::{collections::HashMap, io::Write};
 
+mod messages;
 mod spacing;
 
 /// Writes a print mode run: the answer goes to `out`, tool activity and
@@ -174,32 +175,5 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         };
         result?;
         Ok(ended?)
-    }
-
-    /// Writes a tool call or task as the interface shows it, or as plain
-    /// text when `err` is not a terminal.
-    pub(super) fn tool(&mut self, text: &str) {
-        self.begin_err();
-        if !self.colour {
-            let (first, rest) = text.split_once('\n').unwrap_or((text, ""));
-            self.line(first.trim_end());
-            for line in rest.lines() {
-                self.line(line);
-            }
-            return;
-        }
-        let columns = crossterm::terminal::size().ok().map(|(columns, _)| columns);
-        for line in tui::ansi_tool_lines(text, self.dark, self.background, columns) {
-            let _ = writeln!(self.err, "{line}");
-        }
-    }
-
-    fn message(&mut self, text: &str) {
-        self.begin_err();
-        self.line(text);
-    }
-
-    fn line(&mut self, text: &str) {
-        let _ = writeln!(self.err, "{}", highlight::strip_controls(text));
     }
 }
