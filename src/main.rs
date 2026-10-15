@@ -12,6 +12,7 @@ mod print;
 mod session;
 mod settings;
 mod skills;
+mod stop;
 mod tools;
 mod tui;
 mod update;
@@ -23,7 +24,7 @@ use std::{
 
 use anyhow::{Context, Result, bail};
 use cli::{Command, OPTIONS, USAGE, parse_arguments};
-use tokio::signal::unix::{Signal, SignalKind, signal};
+use stop::{RENEWAL_WAIT, StopSignals, stopped};
 
 /// How long quitting waits for background jobs such as listing files for
 /// `@`, reading the Git branch or reading the clipboard. Their results are
@@ -194,43 +195,4 @@ async fn run_print(
         }
     };
     printer.finish(result)
-}
-
-/// Ctrl+C, a closed terminal (hangup) and `kill` (terminate) all stop
-/// rust-coding-agent the same way, so running commands and MCP servers are stopped
-/// instead of left behind.
-struct StopSignals {
-    interrupt: Signal,
-    hangup: Signal,
-    terminate: Signal,
-}
-
-impl StopSignals {
-    fn new() -> Result<Self> {
-        Ok(Self {
-            interrupt: signal(SignalKind::interrupt())?,
-            hangup: signal(SignalKind::hangup())?,
-            terminate: signal(SignalKind::terminate())?,
-        })
-    }
-
-    /// Waits for a stop signal and returns the conventional exit status for
-    /// it: 128 plus the signal number.
-    async fn recv(&mut self) -> i32 {
-        tokio::select! {
-            _ = self.interrupt.recv() => 130,
-            _ = self.hangup.recv() => 129,
-            _ = self.terminate.recv() => 143,
-        }
-    }
-}
-
-/// How long stopping waits for a sign-in renewal to be saved.
-const RENEWAL_WAIT: Duration = Duration::from_secs(5);
-
-/// Exits after a stop signal, once a sign-in renewal in progress is saved.
-async fn stopped(status: i32) -> Result<()> {
-    auth::finish_renewal(RENEWAL_WAIT).await;
-    eprintln!("\ncancelled");
-    std::process::exit(status);
 }

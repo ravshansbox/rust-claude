@@ -24,7 +24,7 @@ mod test_support;
 mod worker;
 mod workspace;
 
-use crate::{StopSignals, agent::Agent, highlight::Colour, history, mcp, settings::Settings};
+use crate::{agent::Agent, highlight::Colour, history, mcp, settings::Settings, stop::StopSignals};
 use anyhow::Result;
 use app::{Activity, App, Picker, PickerKind};
 use background::{start_background_work, start_mcp_servers, start_updater};
