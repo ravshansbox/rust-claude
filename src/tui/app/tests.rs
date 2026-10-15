@@ -135,6 +135,14 @@ fn renders_a_finished_reply_the_same_as_the_whole_reply() {
 }
 
 #[test]
+fn shows_a_link_defined_after_a_code_block_once_the_reply_finishes() {
+    let reply = "See [docs].\n\n```\ncode\n```\n\n[docs]: https://example.com\n";
+    let mut app = stream_in_chunks(reply, 3);
+    handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+    assert!(screen(&mut app).contains("See docs (https://example.com)."));
+}
+
+#[test]
 fn sends_a_prompt_while_another_copy_holds_the_history_lock() {
     let folder = TemporaryDir::new("history-lock");
     let path = folder.path().join("history.jsonl");

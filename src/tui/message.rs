@@ -66,7 +66,7 @@ impl ChatMessage {
         };
         rendered.lines.truncate(rendered.finished_lines);
         rendered.heights.truncate(rendered.finished_lines);
-        if matches!(self.role, Role::Assistant) {
+        if matches!(self.role, Role::Assistant) && self.streaming {
             let start = rendered.finished_text;
             let finished = start + finished_markdown_len(&self.text[start..], self.streaming);
             if finished > start {
