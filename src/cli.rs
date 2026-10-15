@@ -1,4 +1,5 @@
 use anyhow::{Context, Result, bail};
+use std::io;
 
 pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]...]";
 
@@ -74,6 +75,29 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
         _ => bail!(USAGE),
     };
     Ok((command, options))
+}
+
+pub fn command_line_arguments() -> Result<Vec<String>> {
+    std::env::args_os()
+        .skip(1)
+        .map(|argument| {
+            argument.into_string().map_err(|argument| {
+                anyhow::anyhow!(
+                    "argument is not valid UTF-8: {}\n{USAGE}",
+                    argument.to_string_lossy()
+                )
+            })
+        })
+        .collect()
+}
+
+pub fn read_stdin_prompt() -> Result<String> {
+    let input = io::read_to_string(io::stdin()).context("failed to read standard input")?;
+    let prompt = input.trim_end();
+    if prompt.is_empty() {
+        bail!("no prompt on standard input\n{USAGE}");
+    }
+    Ok(prompt.to_string())
 }
 
 #[cfg(test)]

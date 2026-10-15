@@ -23,7 +23,7 @@ use std::{
 };
 
 use anyhow::{Context, Result, bail};
-use cli::{Command, OPTIONS, USAGE, parse_arguments};
+use cli::{Command, OPTIONS, USAGE, command_line_arguments, parse_arguments, read_stdin_prompt};
 use stop::{RENEWAL_WAIT, StopSignals, stopped};
 
 /// How long quitting waits for background jobs such as listing files for
@@ -106,29 +106,6 @@ async fn run() -> Result<()> {
         return result;
     };
     run_print(agent, stop, &prompt, &images).await
-}
-
-fn command_line_arguments() -> Result<Vec<String>> {
-    std::env::args_os()
-        .skip(1)
-        .map(|argument| {
-            argument.into_string().map_err(|argument| {
-                anyhow::anyhow!(
-                    "argument is not valid UTF-8: {}\n{USAGE}",
-                    argument.to_string_lossy()
-                )
-            })
-        })
-        .collect()
-}
-
-fn read_stdin_prompt() -> Result<String> {
-    let input = io::read_to_string(io::stdin()).context("failed to read standard input")?;
-    let prompt = input.trim_end();
-    if prompt.is_empty() {
-        bail!("no prompt on standard input\n{USAGE}");
-    }
-    Ok(prompt.to_string())
 }
 
 fn load_images(paths: &[String]) -> Result<Vec<images::Image>> {
