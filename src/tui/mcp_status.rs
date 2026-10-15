@@ -63,9 +63,10 @@ impl App {
         for (name, scope) in servers {
             if let Some((index, server)) = self.mcp_server(name) {
                 server.summary = None;
-                changed.push(index);
+                changed.push(self.mcp_groups[index].scope);
                 continue;
             }
+            changed.push(scope);
             let index = self.mcp_group(scope);
             self.mcp_groups[index].servers.push(McpEntry {
                 name: name.into(),
@@ -75,6 +76,7 @@ impl App {
         }
         let mut overridden = overridden.into_iter().peekable();
         if overridden.peek().is_some() {
+            changed.push(Scope::Global);
             let index = self.mcp_group(Scope::Global);
             let servers = &mut self.mcp_groups[index].servers;
             servers.extend(overridden.map(|name| McpEntry {
@@ -85,7 +87,7 @@ impl App {
             servers.sort_by(|first, second| first.name.cmp(&second.name));
         }
         for index in 0..self.mcp_groups.len() {
-            if self.mcp_groups[index].message.is_none() || changed.contains(&index) {
+            if changed.contains(&self.mcp_groups[index].scope) {
                 self.show_mcp_group(index);
             }
         }

@@ -177,3 +177,27 @@ fn shows_mcp_servers_again_after_clearing_the_session() {
         ["new session", "loaded project MCP servers: docs (3 tools)"]
     );
 }
+
+#[test]
+fn shows_only_the_restarted_servers_group_after_clearing_the_session() {
+    let mut app = new_app();
+    app.start_mcp_servers([("web", Scope::Global), ("docs", Scope::Project)], []);
+    handle_agent_event(mcp_server_loaded("web", "web (2 tools)"), &mut app);
+    handle_agent_event(mcp_server_loaded("docs", "docs (3 tools)"), &mut app);
+    app.clear_session();
+    app.push(Role::Event, "new session");
+    handle_agent_event(mcp_server_restarting("docs", Scope::Project), &mut app);
+    let texts: Vec<&str> = app
+        .messages
+        .iter()
+        .map(|message| message.text.as_str())
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            "new session",
+            "signed in to MCP server docs",
+            "project MCP servers: ⠋ docs"
+        ]
+    );
+}
