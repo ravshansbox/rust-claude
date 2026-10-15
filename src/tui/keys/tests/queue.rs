@@ -87,3 +87,25 @@ fn restores_queued_prompts_when_the_prompt_fails() {
     assert!(app.send_queued().is_none());
     assert_eq!(app.messages.last().unwrap().text, "error: overloaded");
 }
+
+#[test]
+fn restores_queued_images_ahead_of_the_draft_images() {
+    let image = |byte| Image {
+        media_type: "image/png",
+        data: vec![byte],
+    };
+    let mut app = new_app();
+    app.start(Activity::Working);
+    handle_agent_event(UiEvent::ImagePasted(Ok(Some(image(1)))), &mut app);
+    press(&mut app, KeyCode::Enter);
+    handle_agent_event(UiEvent::ImagePasted(Ok(Some(image(2)))), &mut app);
+    handle_agent_event(UiEvent::Done(Err(anyhow::anyhow!("overloaded"))), &mut app);
+    assert_eq!(app.input, "[image 1]\n\n[image 2]");
+    let mut sent = None;
+    press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+        if let Action::Submit(_, images, _) = action {
+            sent = Some(images);
+        }
+    });
+    assert_eq!(sent, Some(vec![image(1), image(2)]));
+}

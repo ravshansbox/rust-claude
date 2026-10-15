@@ -45,10 +45,13 @@ impl App {
             return;
         }
         let mut parts = Vec::new();
+        let mut images = Vec::new();
         for queued in queued {
             parts.push(queued.prompt);
-            self.images.extend(queued.images);
+            images.extend(queued.images);
         }
+        images.append(&mut self.images);
+        self.images = images;
         if !self.input.is_empty() {
             parts.push(std::mem::take(&mut self.input));
         }
