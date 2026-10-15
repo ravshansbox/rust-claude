@@ -76,3 +76,19 @@ async fn stops_cargo_and_deletes_the_update_folder_when_quit_while_building() {
     tokio::time::sleep(Duration::from_millis(1500)).await;
     assert!(!finished.exists());
 }
+
+#[tokio::test]
+async fn shows_why_building_failed_when_cargo_colours_its_output() {
+    let dir = TemporaryDir::new("update-failed-colour");
+    let (base, _) = github("v0.2.0").await;
+    let cargo = write_script(
+        dir.path().join("cargo"),
+        "#!/bin/sh\nif [ \"$CARGO_TERM_COLOR\" = never ]; then echo 'error: could not compile' >&2; else printf '\\033[1m\\033[91merror\\033[0m: could not compile\\n' >&2; fi\nexit 101\n".into(),
+    );
+    let shown = run(updater(&base, Some(cargo))).await;
+    let last = shown.last().unwrap();
+    assert!(
+        last.starts_with("build failed after ") && last.ends_with("s: error: could not compile"),
+        "{shown:?}"
+    );
+}

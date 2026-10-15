@@ -12,6 +12,7 @@ impl Updater {
         command
             .kill_on_drop(true)
             .current_dir(folder)
+            .env("CARGO_TERM_COLOR", "never")
             .args(["install", "--locked", "--force"]);
         if let Some(build_dir) = &self.build_dir {
             self.prepare_build_dir(build_dir, folder).await;
