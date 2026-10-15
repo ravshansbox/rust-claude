@@ -190,3 +190,22 @@ fn follows_the_end_after_resizing_and_while_a_reply_grows() {
     assert!(shown.contains("line 29"), "{shown}");
     assert!(!shown.contains("Start"), "{shown}");
 }
+
+#[test]
+fn shows_the_first_row_after_one_press_of_home() {
+    let mut app = app_with_reply();
+    for number in 0..100 {
+        app.push(Role::Event, format!("event {number}"));
+    }
+    screen(&mut app);
+    press(&mut app, KeyCode::Home);
+    let shown = screen(&mut app);
+    assert!(
+        shown
+            .lines()
+            .next()
+            .unwrap()
+            .starts_with("Rust Coding Agent v"),
+        "{shown}"
+    );
+}

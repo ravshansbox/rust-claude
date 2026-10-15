@@ -52,7 +52,11 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     let (mut pinned_lines, mut pinned_height, mut conversation_area, mut max_scroll) =
         conversation_layout(app, chat, panel_height, pinned);
     app.scroll_from_bottom = if pinned && !app.status_pinned {
-        app.scroll_from_bottom.min(max_scroll)
+        if app.scroll_from_bottom >= app.max_scroll {
+            max_scroll
+        } else {
+            app.scroll_from_bottom.min(max_scroll)
+        }
     } else {
         held_scroll_from_bottom(app.scroll_from_bottom, app.max_scroll, max_scroll)
     };
