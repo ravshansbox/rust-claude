@@ -7,18 +7,20 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use serde_json::{Value, json};
+use serde_json::Value;
 
 use crate::config;
 
 mod files;
 mod id;
 mod images;
+mod lines;
 mod lock;
 mod read;
 
 use files::{latest_in_folder, session_files};
 use id::{hex, new_uuid};
+use lines::{drop_mismatched_thinking_line, header};
 use lock::open_locked;
 use read::{SavedSession, read_messages, read_preview};
 
@@ -157,20 +159,6 @@ pub fn current_folder() -> String {
     std::env::current_dir()
         .map(|folder| folder.display().to_string())
         .unwrap_or_default()
-}
-
-fn header() -> Value {
-    json!({ "type": "session", "cwd": current_folder() })
-}
-
-fn is_header(line: &Value) -> bool {
-    line["type"] == "session"
-}
-
-/// Records that the session drops thinking blocks whose earlier conversation
-/// changed.
-fn drop_mismatched_thinking_line() -> Value {
-    json!({ "type": "thinking_block_binding", "prefix_mismatch_behavior": "drop_block" })
 }
 
 #[cfg(test)]

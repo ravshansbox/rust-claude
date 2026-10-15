@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use serde_json::Value;
 
-use super::{drop_mismatched_thinking_line, is_header};
+use super::lines::{drop_mismatched_thinking_line, is_header};
 use crate::{agent, skills};
 
 pub(super) fn read_folder(path: &Path) -> Result<Option<String>> {
