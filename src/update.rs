@@ -1,11 +1,8 @@
 use std::{
     ffi::OsStr,
-    path::{Path, PathBuf},
+    path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
-    time::Instant,
 };
-
-use anyhow::{Context, Result};
 
 use crate::{config, settings::Settings};
 
@@ -13,11 +10,11 @@ mod alias;
 mod build;
 mod download;
 mod folder;
+mod install;
 mod progress;
 
 pub use alias::link_alias_beside_this_program;
 use alias::link_alias_to;
-use download::Release;
 use folder::{UpdateFolder, create_update_folder};
 pub use progress::Progress;
 
@@ -25,7 +22,6 @@ pub const RELEASES_URL: &str =
     "https://api.github.com/repos/ravshansbox/rust-coding-agent/releases/latest";
 const PACKAGE: &str = "rust-coding-agent";
 const ASSET: &str = "rust-coding-agent.zip";
-const SIGNATURE_ASSET: &str = "rust-coding-agent.zip.minisig";
 const PUBLIC_KEY: &str = "RWSa19cgsH6sJ8TomZ0rN68H2QSZmUNhCpxJtnW6IQW/gn6XDhilg5A8";
 static RUNS: AtomicUsize = AtomicUsize::new(0);
 
@@ -117,40 +113,6 @@ impl Updater {
             }
             Err(failure) => report(failure),
         }
-    }
-
-    async fn install(
-        &self,
-        release: &Release,
-        version: &str,
-        cargo: &Path,
-        folder: &Path,
-        report: &impl Fn(Progress),
-    ) -> Result<(), Progress> {
-        let asset_url = |name: &str| {
-            release
-                .assets
-                .iter()
-                .find(|asset| asset.name == name)
-                .map(|asset| asset.browser_download_url.clone())
-                .with_context(|| format!("the release has no {name}"))
-                .map_err(|error| Progress::Failed(format!("{error:#}")))
-        };
-        let url = asset_url(ASSET)?;
-        let signature_url = asset_url(SIGNATURE_ASSET)?;
-        report(Progress::Downloading);
-        let started = Instant::now();
-        self.download(&url, &signature_url, version, folder)
-            .await
-            .map_err(|error| Progress::DownloadFailed(format!("{error:#}"), started.elapsed()))?;
-        report(Progress::Downloaded(started.elapsed()));
-        report(Progress::Building);
-        let started = Instant::now();
-        self.build(cargo, folder)
-            .await
-            .map_err(|error| Progress::BuildFailed(format!("{error:#}"), started.elapsed()))?;
-        report(Progress::Built(started.elapsed()));
-        Ok(())
     }
 }
 
