@@ -20,11 +20,13 @@ use std::path::PathBuf;
 mod activity;
 mod input;
 mod model;
+mod picker;
 mod queue;
 mod scroll;
 mod tool_messages;
 
 pub(super) use activity::Activity;
+pub(super) use picker::{Picker, PickerKind};
 
 const VERSION_LINE: &str = concat!("Rust Coding Agent v", env!("CARGO_PKG_VERSION"));
 
@@ -85,20 +87,6 @@ pub(super) struct App {
     pub(super) focused: bool,
     /// The message to show in a terminal notification, until it is sent.
     pub(super) notification: Option<String>,
-}
-
-#[derive(Clone, Copy)]
-pub(super) enum PickerKind {
-    Session,
-    Model,
-    Effort,
-}
-
-pub(super) struct Picker {
-    pub(super) kind: PickerKind,
-    pub(super) title: &'static str,
-    pub(super) items: Vec<(String, String)>,
-    pub(super) selected: usize,
 }
 
 impl App {
@@ -175,13 +163,6 @@ impl App {
         if let Some(message) = self.messages.get_mut(index) {
             message.replace(text);
         }
-    }
-
-    /// Shows the picker in place of the prompt history search, so keys go
-    /// to the list on screen. The input stays as it was.
-    pub(super) fn open_picker(&mut self, picker: Picker) {
-        self.history_search = None;
-        self.picker = Some(picker);
     }
 
     pub(super) fn clear_session(&mut self) {
