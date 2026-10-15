@@ -95,18 +95,15 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
     let mut diagnostics = Vec::new();
     let mut collisions = Vec::new();
     for (path, scope) in paths {
+        let real_path = path.canonicalize().unwrap_or_else(|_| path.clone());
+        if !real_paths.insert(real_path) {
+            continue;
+        }
         let (skill, warnings) = load_skill_file(&path, scope);
         diagnostics.extend(warnings);
         let Some(skill) = skill else {
             continue;
         };
-        let real_path = skill
-            .path
-            .canonicalize()
-            .unwrap_or_else(|_| skill.path.clone());
-        if real_paths.contains(&real_path) {
-            continue;
-        }
         if let Some(existing) = skills.iter().find(|existing| existing.name == skill.name) {
             collisions.push(format!(
                 "skill \"{}\" collision: kept {}, skipped {}",
@@ -115,7 +112,6 @@ fn load_from(config_dir: Option<&Path>, home: Option<&Path>, cwd: &Path) -> Skil
                 skill.path.display()
             ));
         } else {
-            real_paths.insert(real_path);
             skills.push(skill);
         }
     }
