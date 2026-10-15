@@ -1,5 +1,5 @@
 use super::{
-    Session, current_folder, images::inline_images, latest_in_folder, new_uuid, read::read_folder,
+    Session, current_folder, images::inline_images, latest_in_folder, read::read_folder,
     sessions_directory,
 };
 use crate::images::Image;
@@ -11,6 +11,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+mod listing;
 mod previews;
 mod resuming;
 
@@ -162,58 +163,4 @@ fn does_not_create_file_without_messages() {
         .unwrap()
         .join(format!("{}.jsonl", session.id));
     assert!(!path.exists());
-}
-
-#[test]
-fn skips_unreadable_session_files() {
-    let session = Session::new().unwrap();
-    let mut readable = Session::new().unwrap();
-    readable
-        .save(&[json!({ "role": "user", "content": "hello" })])
-        .unwrap();
-    let directory = sessions_directory().unwrap();
-    let unreadable = new_uuid().unwrap();
-    let path = directory.join(format!("{unreadable}.jsonl"));
-    std::fs::write(&path, "not json\n").unwrap();
-    let listed = Session::list_except(&session.id);
-    std::fs::remove_file(&path).unwrap();
-    std::fs::remove_file(directory.join(format!("{}.jsonl", readable.id))).unwrap();
-    let ids: Vec<String> = listed
-        .unwrap()
-        .into_iter()
-        .map(|summary| summary.id)
-        .collect();
-    assert!(ids.contains(&readable.id));
-    assert!(!ids.contains(&unreadable));
-}
-
-#[test]
-fn lists_other_sessions_newest_first() {
-    let directory = sessions_directory().unwrap();
-    let mut sessions = Vec::new();
-    for (prompt, age) in [("older", 120), ("newer", 60), ("current", 0)] {
-        let mut session = Session::new().unwrap();
-        session
-            .save(&[json!({ "role": "user", "content": prompt })])
-            .unwrap();
-        let path = directory.join(format!("{}.jsonl", session.id));
-        File::options()
-            .write(true)
-            .open(&path)
-            .unwrap()
-            .set_modified(SystemTime::now() - Duration::from_secs(age))
-            .unwrap();
-        sessions.push((session.id.clone(), path));
-    }
-    let listed = Session::list_except(&sessions[2].0);
-    for (_, path) in &sessions {
-        std::fs::remove_file(path).unwrap();
-    }
-    let previews: Vec<String> = listed
-        .unwrap()
-        .into_iter()
-        .filter(|summary| sessions.iter().any(|(id, _)| *id == summary.id))
-        .map(|summary| summary.preview)
-        .collect();
-    assert_eq!(previews, ["newer", "older"]);
 }
