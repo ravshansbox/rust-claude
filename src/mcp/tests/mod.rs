@@ -19,6 +19,7 @@ use crate::agent::test_support::read_chunk;
 use crate::auth::now_millis;
 use crate::tools::test_support::{TemporaryDir, TemporaryFile};
 
+mod config_errors;
 mod config_files;
 mod http;
 mod http_server;
