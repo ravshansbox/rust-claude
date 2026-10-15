@@ -103,7 +103,10 @@ pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<Strin
     };
     let mut text = output_text(&stdout_output, &stderr_output);
     if !status.success() {
-        let _ = write!(text, "\n{status}");
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        let _ = write!(text, "{status}");
     }
     Ok(text)
 }

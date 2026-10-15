@@ -73,6 +73,12 @@ async fn reports_exit_status_once() {
 }
 
 #[tokio::test]
+async fn reports_exit_status_alone_when_command_prints_nothing() {
+    let input = json!({ "command": "exit 4" });
+    assert_eq!(call("bash", &input).await, Ok("exit status: 4".into()));
+}
+
+#[tokio::test]
 async fn returns_when_background_process_keeps_output_open() {
     let input = json!({ "command": "sleep 30 & echo $!", "timeout": 10 });
     let started = Instant::now();
