@@ -1,5 +1,6 @@
 use super::{
-    UiEvent, history_writer, save_changed_settings, test_support::new_app, workspace::git_branch,
+    UiEvent, prompt_history::history_writer, settings_sync::save_changed_settings,
+    test_support::new_app, workspace::git_branch,
 };
 use crate::{
     agent::AgentEvent, config, history, settings::Settings, tools::test_support::TemporaryDir,

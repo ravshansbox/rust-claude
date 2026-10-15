@@ -1,7 +1,8 @@
 use super::super::{Action, handle_input};
 use crate::session::SessionSummary;
 use crate::tui::{
-    Activity, UiEvent, handle_agent_event,
+    Activity, UiEvent,
+    replay::handle_agent_event,
     test_support::{app_with_reply, new_app, press, press_with, screen},
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};

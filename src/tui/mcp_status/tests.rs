@@ -1,7 +1,8 @@
 use super::Scope;
 use crate::mcp;
 use crate::tui::{
-    Role, UiEvent, handle_agent_event,
+    Role, UiEvent,
+    replay::handle_agent_event,
     test_support::{new_app, screen},
 };
 

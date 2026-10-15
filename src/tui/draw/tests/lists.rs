@@ -1,7 +1,9 @@
 use crate::session::SessionSummary;
 use crate::skills::{Scope, Skill};
 use crate::tui::{
-    App, Role, UiEvent, handle_agent_event, handle_input,
+    App, Role, UiEvent,
+    keys::handle_input,
+    replay::handle_agent_event,
     test_support::{app_with_reply, press, screen},
 };
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyModifiers};

@@ -2,7 +2,9 @@ use super::{App, Role};
 use crate::agent::AgentEvent;
 use crate::tools::test_support::TemporaryDir;
 use crate::tui::{
-    UiEvent, handle_agent_event, handle_input,
+    UiEvent,
+    keys::handle_input,
+    replay::handle_agent_event,
     test_support::{new_app, press, screen},
 };
 use crossterm::event::{Event, KeyCode};

@@ -3,8 +3,8 @@ use crate::tools::test_support::TemporaryDir;
 use crate::tui::{
     UiEvent,
     app::Activity,
-    handle_agent_event,
     keys::{Action, handle_input},
+    replay::handle_agent_event,
     test_support::{new_app, press, press_with, screen},
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};

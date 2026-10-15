@@ -1,8 +1,10 @@
 use crate::history;
 use crate::tools::test_support::TemporaryDir;
 use crate::tui::{
-    App, UiEvent, handle_agent_event, history_writer,
+    App, UiEvent,
     keys::{Action, handle_input},
+    prompt_history::history_writer,
+    replay::handle_agent_event,
     test_support::{new_app, press, press_with},
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};

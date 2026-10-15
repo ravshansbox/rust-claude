@@ -1,7 +1,9 @@
 use super::held_scroll_from_bottom;
 use crate::agent::AgentEvent;
 use crate::tui::{
-    Activity, Role, UiEvent, handle_agent_event, handle_input,
+    Activity, Role, UiEvent,
+    keys::handle_input,
+    replay::handle_agent_event,
     test_support::{app_with_reply, new_app, press, screen, screen_of_width},
 };
 use crossterm::event::{Event, KeyCode, KeyModifiers};

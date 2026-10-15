@@ -1,7 +1,8 @@
 use super::{Action, handle_input, may_change_screen};
 use crate::images::Image;
 use crate::tui::{
-    Activity, App, UiEvent, handle_agent_event,
+    Activity, App, UiEvent,
+    replay::handle_agent_event,
     test_support::{new_app, press, press_with, screen},
 };
 use crossterm::event::{
