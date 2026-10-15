@@ -1,11 +1,12 @@
 use super::Printer;
 use crate::agent::AgentEvent;
-use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
+use crate::agent::test_support::{self, MockApi, text_reply, tool_reply};
 use crate::tools::test_support::TemporaryDir;
 use serde_json::json;
 use std::{cell::RefCell, io};
 
 mod colours;
+mod runs;
 
 const ESCAPES: &str = "\x1b]52;c;aGk=\x07\x1b[2J\u{9b}2J\r";
 
@@ -172,35 +173,6 @@ async fn keeps_escape_sequences_from_the_model_and_tools_out_of_the_terminal() {
 }
 
 #[tokio::test]
-async fn answers_each_background_command_when_it_finishes() {
-    let api = MockApi::start(vec![
-        tool_reply(
-            "call-1",
-            "bash",
-            &json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
-        ),
-        text_reply("waiting"),
-        text_reply("seen it"),
-    ])
-    .await;
-    let mut out = Vec::new();
-    let mut err = Vec::new();
-    let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
-    let mut agent = test_support::agent(&api);
-    let mut checkpoint = None;
-    let result = super::run(&mut agent, &mut printer, "go", &[], &mut checkpoint).await;
-    test_support::remove_session(&agent);
-    printer.finish(result).unwrap();
-    assert_eq!(checkpoint, None);
-    assert_eq!(String::from_utf8(out).unwrap(), "waiting\n\nseen it\n");
-    let err = String::from_utf8(err).unwrap();
-    assert!(
-        err.contains("background task 1 finished\nfinished"),
-        "{err}"
-    );
-}
-
-#[tokio::test]
 async fn writes_piped_answers_byte_for_byte() {
     let answer = format!("done{ESCAPES}\r\n");
     let api = MockApi::start(vec![text_reply(&answer)]).await;
@@ -210,75 +182,6 @@ async fn writes_piped_answers_byte_for_byte() {
     let finished = printer.finish(result);
     finished.unwrap();
     assert_eq!(String::from_utf8(out).unwrap(), format!("{answer}\n"));
-}
-
-#[tokio::test]
-async fn ends_an_answer_that_broke_off_before_the_error_is_shown() {
-    let api = MockApi::start(vec![
-        Reply::Events(vec![
-            test_support::message_start(),
-            test_support::text_block_start(),
-            json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "text_delta", "text": "partial" } }),
-            json!({ "type": "error", "error": { "type": "overloaded_error", "message": "Overloaded" } }),
-        ]),
-        Reply::BadRequest("bad".into()),
-    ])
-    .await;
-    let mut agent = test_support::agent(&api);
-    let mut outputs = Vec::new();
-    for _ in 0..2 {
-        let mut out = Vec::new();
-        let mut printer = Printer::new(&mut out, false, io::sink(), false, false, None);
-        let result = agent.prompt("go", &[], |event| printer.event(event)).await;
-        let finished = printer.finish(result);
-        outputs.push((String::from_utf8(out).unwrap(), finished.is_err()));
-    }
-    test_support::remove_session(&agent);
-
-    // The broken-off answer ends its line, so the error starts on its
-    // own; a run that printed nothing adds no blank line.
-    assert_eq!(
-        outputs,
-        [("partial\n".to_string(), true), (String::new(), true)]
-    );
-}
-
-#[tokio::test]
-async fn prints_only_the_tasks_and_why_one_failed() {
-    let api = MockApi::start(vec![
-        tool_reply(
-            "call-1",
-            "agent",
-            &json!({
-                "mode": "sequential",
-                "tasks": [
-                    { "description": "say hi", "prompt": "say hi" },
-                    { "description": "say bye", "prompt": "say bye" },
-                ],
-            }),
-        ),
-        tool_reply("call-2", "bash", &json!({ "command": "true" })),
-        text_reply("hi"),
-        Reply::BadRequest("bad".into()),
-        text_reply("done"),
-    ])
-    .await;
-    let mut out = Vec::new();
-    let mut err = Vec::new();
-    let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
-    let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
-    let finished = printer.finish(result);
-    finished.unwrap();
-    assert_eq!(String::from_utf8(out).unwrap(), "done\n");
-    let err = String::from_utf8(err).unwrap();
-    assert!(
-        err.starts_with("agent sequential, 2 tasks\n\n[agent 1] say hi · 1 tool call · "),
-        "{err}"
-    );
-    assert!(
-        err.contains("\n\n[agent 2] say bye\n  This task failed: 400 Bad Request: "),
-        "{err}"
-    );
 }
 
 #[test]
