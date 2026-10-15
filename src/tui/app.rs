@@ -21,6 +21,7 @@ mod activity;
 mod input;
 mod model;
 mod queue;
+mod scroll;
 mod tool_messages;
 
 pub(super) use activity::Activity;
@@ -181,25 +182,6 @@ impl App {
     pub(super) fn open_picker(&mut self, picker: Picker) {
         self.history_search = None;
         self.picker = Some(picker);
-    }
-
-    pub(super) fn scroll_up(&mut self, amount: usize) {
-        self.scroll_from_bottom = self
-            .scroll_from_bottom
-            .saturating_add(amount)
-            .min(self.max_scroll);
-    }
-
-    pub(super) fn scroll_down(&mut self, amount: usize) {
-        self.scroll_from_bottom = self.scroll_from_bottom.saturating_sub(amount);
-    }
-
-    pub(super) fn scroll_to_top(&mut self) {
-        self.scroll_from_bottom = self.max_scroll;
-    }
-
-    pub(super) fn scroll_to_bottom(&mut self) {
-        self.scroll_from_bottom = 0;
     }
 
     pub(super) fn clear_session(&mut self) {
