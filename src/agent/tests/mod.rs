@@ -10,7 +10,8 @@ mod queue;
 mod shell;
 mod thinking;
 mod tool_rounds;
-mod web;
+mod web_fetch;
+mod web_search;
 
 #[tokio::test]
 async fn reports_why_a_prompt_failed_when_saving_the_session_also_fails() {
