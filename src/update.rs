@@ -1,6 +1,5 @@
 use std::{
     ffi::OsStr,
-    io,
     path::{Path, PathBuf},
     sync::atomic::{AtomicUsize, Ordering},
     time::Instant,
@@ -13,11 +12,13 @@ use crate::{config, settings::Settings};
 mod alias;
 mod build;
 mod download;
+mod folder;
 mod progress;
 
 pub use alias::link_alias_beside_this_program;
 use alias::link_alias_to;
 use download::Release;
+use folder::{UpdateFolder, create_update_folder};
 pub use progress::Progress;
 
 pub const RELEASES_URL: &str =
@@ -150,20 +151,6 @@ impl Updater {
             .map_err(|error| Progress::BuildFailed(format!("{error:#}"), started.elapsed()))?;
         report(Progress::Built(started.elapsed()));
         Ok(())
-    }
-}
-
-fn create_update_folder(folder: &Path) -> io::Result<()> {
-    config::private_dir().create(folder)
-}
-
-/// An update's own folder, deleted when the update ends, even when the app
-/// quits halfway and drops it.
-struct UpdateFolder(PathBuf);
-
-impl Drop for UpdateFolder {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
     }
 }
 
