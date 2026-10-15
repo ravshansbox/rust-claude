@@ -62,7 +62,15 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
                     bail!(USAGE);
                 }
             }
-            "--print" => set_value(&mut prompt, &mut arguments)?,
+            "--print" => {
+                set_value(&mut prompt, &mut arguments)?;
+                if prompt
+                    .as_deref()
+                    .is_some_and(|prompt| prompt.trim().is_empty())
+                {
+                    bail!("no prompt after --print\n{USAGE}");
+                }
+            }
             "--continue" if !options.continue_session => options.continue_session = true,
             "--help" if !help => help = true,
             _ => bail!(USAGE),

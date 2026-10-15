@@ -14,7 +14,7 @@ Run one prompt and print the answer with `--print`. The argument after it is alw
 rca --print "explain src/main.rs"
 ```
 
-Without `--print`, when standard input is not a terminal, rca reads the prompt from it and runs in print mode. Trailing white space is removed, and an empty prompt is an error. This lets you run the same prompt in a loop, each time in a new session:
+Without `--print`, when standard input is not a terminal, rca reads the prompt from it and runs in print mode. Trailing white space is removed, and an empty prompt is an error, as it is with `--print`. This lets you run the same prompt in a loop, each time in a new session:
 
 ```sh
 while :; do cat PROMPT.md | rca || break; done

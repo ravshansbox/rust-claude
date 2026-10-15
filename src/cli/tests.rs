@@ -145,3 +145,10 @@ fn takes_a_prompt_that_looks_like_an_option() {
         ))
     );
 }
+
+#[test]
+fn rejects_an_empty_print_prompt() {
+    assert_eq!(parse(&["--print", ""]), None);
+    assert_eq!(parse(&["--print", " \n"]), None);
+    assert_eq!(parse(&["--print", "", "--image", "a.png"]), None);
+}
