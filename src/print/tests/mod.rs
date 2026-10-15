@@ -153,3 +153,18 @@ fn groups_reads_in_a_row_and_shows_tool_notes() {
         "read src/main.rs, src/lib.rs\n\nedit: 2 replacements\n\nread README.md\n"
     );
 }
+
+#[test]
+fn leaves_one_blank_line_after_an_answer_part_that_ends_its_line() {
+    let mut out = Vec::new();
+    let mut printer = Printer::new(&mut out, false, io::sink(), false, false, None);
+    printer.event(AgentEvent::Text("I'll look.\n".into()));
+    printer.event(AgentEvent::ToolStart {
+        name: "bash".into(),
+        summary: String::new(),
+        diff: Some("ls".into()),
+    });
+    printer.event(AgentEvent::Text("Done.".into()));
+    printer.finish(Ok(())).unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "I'll look.\n\nDone.\n");
+}

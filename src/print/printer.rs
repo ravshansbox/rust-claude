@@ -23,6 +23,7 @@ pub struct Printer<Out, Err> {
     printed: bool,
     /// Whether the text written last to `out` or `err` did not end its line.
     out_open: bool,
+    answer_ends_line: bool,
     err_open: bool,
     err_shown: bool,
     answering: bool,
@@ -50,6 +51,7 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
             background,
             printed: false,
             out_open: false,
+            answer_ends_line: false,
             err_open: false,
             err_shown: false,
             answering: false,

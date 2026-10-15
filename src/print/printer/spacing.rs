@@ -44,7 +44,8 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 let _ = writeln!(self.err);
             }
         } else if self.printed {
-            let _ = write!(self.out, "\n\n");
+            let gap = if self.answer_ends_line { "\n" } else { "\n\n" };
+            let _ = write!(self.out, "{gap}");
         }
     }
 }

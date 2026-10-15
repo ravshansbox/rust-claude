@@ -13,7 +13,8 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         }
         let _ = self.out.flush();
         self.printed = true;
-        self.out_open = !text.ends_with('\n');
+        self.answer_ends_line = text.ends_with('\n');
+        self.out_open = !self.answer_ends_line;
     }
 
     pub(super) fn thinking_text(&mut self, text: &str) {
