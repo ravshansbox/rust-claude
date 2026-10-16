@@ -44,17 +44,17 @@ impl App {
     }
 
     pub(super) fn press_mouse(&mut self, column: u16, row: u16) {
-        self.selection = self
-            .conversation_area
-            .contains(Position::new(column, row))
-            .then(|| {
-                let point = self.point(column, row);
-                Selection {
-                    anchor: point,
-                    focus: point,
-                    dragging: true,
-                }
-            });
+        let position = Position::new(column, row);
+        self.selection = (self.conversation_area.contains(position)
+            && !self.suggestions_area.contains(position))
+        .then(|| {
+            let point = self.point(column, row);
+            Selection {
+                anchor: point,
+                focus: point,
+                dragging: true,
+            }
+        });
     }
 
     pub(super) fn drag_mouse(&mut self, column: u16, row: u16) {

@@ -90,7 +90,7 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
 
     draw_panel(frame, chat, panel);
 
-    draw_suggestions(frame, app, chat);
+    app.suggestions_area = draw_suggestions(frame, app, chat);
 
     draw_input(frame, input, input_lines, cursor_row, cursor_column);
 

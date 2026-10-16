@@ -85,6 +85,7 @@ pub(super) struct App {
     /// Where the conversation was last drawn, and its first row shown.
     pub(super) conversation_area: Rect,
     pub(super) bottom_button: Rect,
+    pub(super) suggestions_area: Rect,
     pub(super) conversation_top: usize,
     version_line: String,
     version_message: Option<usize>,

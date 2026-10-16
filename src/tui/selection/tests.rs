@@ -203,3 +203,15 @@ fn drops_the_selection_when_the_terminal_is_resized() {
     handle_input(Event::Resize(100, 24), &mut app, |_| {});
     assert_eq!(reversed_text(&mut app), "");
 }
+
+#[test]
+fn ignores_drags_that_start_on_the_suggestion_list() {
+    let mut app = app_with_reply();
+    for number in 0..40 {
+        app.push(Role::Assistant, format!("hidden line {number}"));
+    }
+    app.insert("/");
+    let (column, row) = position(&mut app, "/effort");
+    let input = drag(&mut app, (column, row), (column + 7, row));
+    assert_eq!(input, "/");
+}

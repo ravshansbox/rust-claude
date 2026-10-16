@@ -67,12 +67,12 @@ pub(super) fn draw_panel(frame: &mut Frame, chat: Rect, panel: Option<Panel>) {
     }
 }
 
-pub(super) fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
+pub(super) fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) -> Rect {
     let Some(suggestions) = app
         .visible_suggestions()
         .filter(|_| app.history_search.is_none() && app.picker.is_none())
     else {
-        return;
+        return Rect::default();
     };
     let matches = suggestions.items;
     let height = saturating_u16(matches.len().min(MAX_LIST_ROWS)).min(chat.height);
@@ -115,6 +115,7 @@ pub(super) fn draw_suggestions(frame: &mut Frame, app: &App, chat: Rect) {
     frame.render_widget(Clear, area);
     frame.render_widget(Paragraph::new(lines).style(theme().subtle_style()), area);
     render_list_scrollbar(frame, area, matches.len(), selected);
+    area
 }
 
 fn render_list_scrollbar(frame: &mut Frame, list_area: Rect, count: usize, selected: usize) {
