@@ -60,5 +60,5 @@ async fn writes_piped_answers_byte_for_byte() {
     let (_, result) = test_support::run_prompt(&api, "go", |event| printer.event(event)).await;
     let finished = printer.finish(result);
     finished.unwrap();
-    assert_eq!(String::from_utf8(out).unwrap(), format!("{answer}\n"));
+    assert_eq!(String::from_utf8(out).unwrap(), answer);
 }

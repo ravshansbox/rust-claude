@@ -168,3 +168,12 @@ fn leaves_one_blank_line_after_an_answer_part_that_ends_its_line() {
     printer.finish(Ok(())).unwrap();
     assert_eq!(String::from_utf8(out).unwrap(), "I'll look.\n\nDone.\n");
 }
+
+#[test]
+fn does_not_add_a_blank_line_after_an_answer_that_ends_its_line() {
+    let mut out = Vec::new();
+    let mut printer = Printer::new(&mut out, false, io::sink(), false, false, None);
+    printer.event(AgentEvent::Text("Done.\n".into()));
+    printer.finish(Ok(())).unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "Done.\n");
+}
