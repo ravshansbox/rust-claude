@@ -57,6 +57,14 @@ fn cuts_long_output_between_characters() {
 }
 
 #[tokio::test]
+async fn cuts_long_output_between_characters_after_invalid_bytes() {
+    let command = format!("printf '\\377'; yes é | head -n {MAX_OUTPUT} | tr -d '\\n'");
+    let text = call("bash", &json!({ "command": command })).await.unwrap();
+    assert_eq!(text.matches('\u{FFFD}').count(), 1);
+    assert!(text.contains(&format!("\n… {} bytes left out …\n", MAX_OUTPUT + 2)));
+}
+
+#[tokio::test]
 async fn gives_one_stream_the_room_the_other_does_not_use() {
     let command = format!("head -c {} /dev/zero | tr '\\0' a", MAX_OUTPUT * 3 / 4);
     let text = call("bash", &json!({ "command": command })).await.unwrap();

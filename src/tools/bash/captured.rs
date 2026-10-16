@@ -31,10 +31,12 @@ impl Captured {
         }
         let half = limit / 2;
         let mut start = &all[..half];
-        if let Err(error) = std::str::from_utf8(start)
-            && error.error_len().is_none()
-        {
-            start = &start[..error.valid_up_to()];
+        let last = start
+            .iter()
+            .rposition(|byte| byte & 0b1100_0000 != 0b1000_0000)
+            .unwrap_or(0);
+        if std::str::from_utf8(&start[last..]).is_err_and(|error| error.error_len().is_none()) {
+            start = &start[..last];
         }
         let mut end = &all[all.len() - half..];
         while end
