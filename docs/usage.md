@@ -104,7 +104,7 @@ The `/resume`, `/model` and `/effort` pickers open in a box above the input. The
 
 `/loop` turns loop mode on and shows `loop mode on`. The next prompt you send, including a skill command and its images, then runs again and again, each time in a new session. The screen clears and the first run starts in a new session too, so it does not see the conversation before it. After each run, once no background command or queued prompt is waiting, the screen clears and the prompt goes out again in a new session. The status line shows `loop` while loop mode waits for a prompt, then the run number, for example `loop 3`.
 
-The loop stops, and loop mode turns off with `loop mode off`, when a run fails or you press Esc. `/loop` turns it off too, even while a run is going; that run then finishes and no other starts. While loop mode is on, rust-coding-agent does not restart into an installed update. For the same loop in print mode, see `--loop` under [Command line](#command-line).
+The loop stops, and loop mode turns off with `loop mode off`, when a run fails or you press Esc. Press Ctrl+C while a run is going to stop after it: rust-coding-agent shows `loop stops after this run`, the run finishes and no other starts. When there is text in the input, the first Ctrl+C clears it. A second Ctrl+C quits, which stops the run. `/loop` also turns loop mode off while a run is going, and that run finishes too. While loop mode is on, rust-coding-agent does not restart into an installed update. For the same loop in print mode, see `--loop` under [Command line](#command-line).
 
 ## Files
 
@@ -125,7 +125,7 @@ In the interface, rust-coding-agent saves each prompt you send, including `!` co
 | Enter | Send prompt, or queue it while the agent works |
 | Shift+Enter / Alt+Enter | Add a new line |
 | Esc | Cancel the running prompt, or quit when idle |
-| Ctrl+C | Clear input, or quit when input is empty. In a picker or prompt search, close it |
+| Ctrl+C | Clear input, or quit when input is empty. In loop mode, stop after the current run. In a picker or prompt search, close it |
 | Ctrl+D | Quit when input is empty |
 | Ctrl+V | Paste an image from the clipboard |
 | Ctrl+R | Search prompt history |

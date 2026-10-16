@@ -23,6 +23,17 @@ impl App {
         }
     }
 
+    pub(in crate::tui) fn loop_running(&self) -> bool {
+        self.looping
+            .as_ref()
+            .is_some_and(|looping| looping.prompt.is_some())
+    }
+
+    pub(in crate::tui) fn stop_loop_after_run(&mut self) {
+        self.looping = None;
+        self.push(Role::Event, "loop stops after this run");
+    }
+
     /// Keeps the first prompt sent in loop mode to send again after each
     /// run, and returns whether it is that prompt.
     pub(super) fn start_loop(&mut self, prompt: &str, images: &[Image]) -> bool {

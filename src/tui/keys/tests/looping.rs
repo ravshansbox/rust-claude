@@ -116,3 +116,27 @@ fn turns_loop_mode_off_while_a_run_is_going() {
     handle_agent_event(UiEvent::Done(Ok(())), &mut app);
     assert_eq!(app.next_loop_round(), None);
 }
+
+#[test]
+fn ctrl_c_stops_the_loop_after_the_current_run() {
+    let mut app = new_app();
+    enter(&mut app, "/loop");
+    enter(&mut app, "go");
+    let quit = press_with(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, |_| {});
+    assert!(!quit);
+    assert!(app.busy());
+    assert!(screen(&mut app).contains("loop stops after this run"));
+    assert!(!footer(&mut app).contains("loop"), "{}", footer(&mut app));
+    handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+    assert_eq!(app.next_loop_round(), None);
+    let quit = press_with(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, |_| {});
+    assert!(quit);
+}
+
+#[test]
+fn ctrl_c_quits_when_loop_mode_waits_for_a_prompt() {
+    let mut app = new_app();
+    enter(&mut app, "/loop");
+    let quit = press_with(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, |_| {});
+    assert!(quit);
+}

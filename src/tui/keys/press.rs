@@ -35,6 +35,9 @@ pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Actio
         (KeyCode::Char('c'), KeyModifiers::CONTROL) if !app.input.is_empty() => {
             app.restore_input(String::new());
         }
+        (KeyCode::Char('c'), KeyModifiers::CONTROL) if app.loop_running() => {
+            app.stop_loop_after_run();
+        }
         (KeyCode::Esc, _) if app.busy() => {
             if app.activity.is_some_and(Activity::can_cancel) {
                 app.start(Activity::Cancelling);
