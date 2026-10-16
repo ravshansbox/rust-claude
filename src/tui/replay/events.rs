@@ -32,6 +32,7 @@ pub(in crate::tui) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.push(Role::Event, "cancelled");
             app.restore_queued();
             app.finish(result, |_, ()| {});
+            app.stop_loop();
         }
         UiEvent::Sessions(result) => app.finish(result, open_session_picker),
         UiEvent::NewSession(result) => app.finish(result, |app, ()| {
@@ -118,7 +119,8 @@ fn finish_reply(app: &mut App, result: Result<()>) {
     if cancelled && result.is_ok() {
         app.push(Role::Event, "cancelled");
     }
-    if cancelled || result.is_err() {
+    let stop_loop = cancelled || result.is_err();
+    if stop_loop {
         app.restore_queued();
     }
     if app.notifications && !app.focused && !cancelled {
@@ -131,6 +133,9 @@ fn finish_reply(app: &mut App, result: Result<()>) {
         });
     }
     app.finish(result, |_, ()| {});
+    if stop_loop {
+        app.stop_loop();
+    }
 }
 
 fn open_session_picker(app: &mut App, sessions: Vec<SessionSummary>) {

@@ -11,6 +11,12 @@ pub(super) async fn handle_request(
 ) -> Option<(Option<(String, Vec<Image>)>, &'static str)> {
     match request {
         Request::Prompt(prompt, images, effort) => return Some((Some((prompt, images)), effort)),
+        Request::LoopPrompt(prompt, images, effort) => match agent.new_session() {
+            Ok(()) => return Some((Some((prompt, images)), effort)),
+            Err(error) => {
+                let _ = events.send(UiEvent::Done(Err(error)));
+            }
+        },
         Request::Background(message) => {
             let _ = events.send(UiEvent::Background(message.clone()));
             return Some((Some((message, Vec::new())), agent.effort));

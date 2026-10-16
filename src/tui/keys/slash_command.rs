@@ -80,6 +80,7 @@ pub(super) fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Act
             app.push(Role::Event, models::unknown(argument));
             app.restore_input(prompt);
         }
+        "/loop" => app.toggle_loop(),
         "/resume" => {
             app.start(Activity::LoadingSessions);
             act(Action::ListSessions);

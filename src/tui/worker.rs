@@ -40,6 +40,8 @@ pub(super) enum UiEvent {
 
 pub(super) enum Request {
     Prompt(String, Vec<Image>, &'static str),
+    /// Sends the loop prompt in a new session.
+    LoopPrompt(String, Vec<Image>, &'static str),
     Shell(String),
     Compact(&'static str),
     ListSessions,
@@ -122,7 +124,9 @@ pub(super) async fn agent_task(
         if cancelled && is_cancellable(&request) {
             cancelled = false;
             let result = match &request {
-                Request::Prompt(prompt, images, _) => agent.cancel_unsent(prompt, images),
+                Request::Prompt(prompt, images, _) | Request::LoopPrompt(prompt, images, _) => {
+                    agent.cancel_unsent(prompt, images)
+                }
                 _ => Ok(()),
             };
             let _ = events.send(UiEvent::Cancelled(result));
@@ -143,7 +147,7 @@ pub(super) async fn agent_task(
 fn is_cancellable(request: &Request) -> bool {
     matches!(
         request,
-        Request::Prompt(..) | Request::Shell(_) | Request::Compact(_)
+        Request::Prompt(..) | Request::LoopPrompt(..) | Request::Shell(_) | Request::Compact(_)
     )
 }
 

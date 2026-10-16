@@ -3,6 +3,10 @@ use crate::{mcp::SignInServer, skills::Skill};
 pub(super) const COMMANDS: &[(&str, &str)] = &[
     ("/new", "start a new session"),
     ("/compact", "summarise the conversation to free context"),
+    (
+        "/loop",
+        "turn loop mode on or off, to send the next prompt again and again",
+    ),
     ("/mcp", "sign in to or out of an MCP server"),
     ("/resume", "resume a previous session"),
     ("/model", "select model"),

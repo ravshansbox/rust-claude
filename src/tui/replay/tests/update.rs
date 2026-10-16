@@ -149,3 +149,13 @@ fn shows_the_restart_and_brings_back_the_unsent_input() {
     assert_eq!(app.input, "half a prompt");
     assert_eq!(app.cursor, "half a prompt".len());
 }
+
+#[test]
+fn does_not_restart_in_loop_mode() {
+    let mut app = new_app();
+    installed(&mut app);
+    app.toggle_loop();
+    assert_eq!(app.restart_due(), None);
+    app.toggle_loop();
+    assert_eq!(app.restart_due(), Some(PathBuf::from("/bin/rca-new")));
+}

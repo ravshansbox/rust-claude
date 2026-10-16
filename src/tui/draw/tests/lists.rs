@@ -86,7 +86,7 @@ fn keeps_the_selected_command_visible_in_a_long_list() {
     assert!(shown.contains("/compact"), "{shown}");
     assert!(!shown.contains("/skill:skill03"), "{shown}");
     assert!(shown.contains('█'), "{shown}");
-    for _ in 0..36 {
+    for _ in 0..37 {
         press(&mut app, KeyCode::Down);
     }
     let shown = screen(&mut app);

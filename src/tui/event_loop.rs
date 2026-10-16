@@ -153,6 +153,9 @@ fn send_queued_and_notify(
     terminal: &mut DefaultTerminal,
     requests: &mpsc::UnboundedSender<Request>,
 ) {
+    if let Some((prompt, images)) = app.next_loop_round() {
+        let _ = requests.send(Request::LoopPrompt(prompt, images, app.effort));
+    }
     if !app.busy()
         && let Some((prompt, images)) = app.send_queued()
     {

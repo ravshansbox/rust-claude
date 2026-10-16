@@ -11,6 +11,7 @@ use crossterm::event::{
 
 mod editing;
 mod effort;
+mod looping;
 mod models;
 mod queue;
 mod quitting;

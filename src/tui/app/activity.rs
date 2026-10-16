@@ -58,7 +58,8 @@ impl App {
         self.remember(&prompt);
         self.start(Activity::Working);
         let images = self.take_numbered_images(&prompt);
-        let images = images.into_iter().map(|(_, image)| image).collect();
+        let images: Vec<_> = images.into_iter().map(|(_, image)| image).collect();
+        self.start_loop(&prompt, &images);
         Action::Submit(prompt, images, self.effort)
     }
 

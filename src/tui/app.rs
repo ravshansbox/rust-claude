@@ -20,6 +20,7 @@ use std::path::PathBuf;
 
 mod activity;
 mod input;
+mod looping;
 mod messages;
 mod model;
 mod picker;
@@ -93,6 +94,7 @@ pub(super) struct App {
     pub(super) notification: Option<String>,
     /// The installed update to restart with once idle.
     restart_program: Option<PathBuf>,
+    looping: Option<looping::Loop>,
 }
 
 impl App {
@@ -128,10 +130,10 @@ impl App {
     }
 
     /// The installed update to restart with, once no reply, background
-    /// command or queued prompt is waiting.
+    /// command or queued prompt is waiting and loop mode is off.
     pub(super) fn restart_due(&self) -> Option<PathBuf> {
         let queued = self.queue.lock().map_or(0, |queue| queue.len());
-        (!self.busy() && self.stats.background == 0 && queued == 0)
+        (!self.busy() && self.stats.background == 0 && queued == 0 && self.looping.is_none())
             .then(|| self.restart_program.clone())
             .flatten()
     }

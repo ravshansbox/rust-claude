@@ -113,3 +113,28 @@ async fn returns_the_session_to_restart_with_once_it_has_messages() {
     test_support::remove_session_files(&id);
     assert_eq!(returned, Some(id));
 }
+
+#[tokio::test]
+async fn sends_a_loop_prompt_in_a_new_session() {
+    let api = MockApi::start(vec![
+        test_support::text_reply("one"),
+        test_support::text_reply("two"),
+    ])
+    .await;
+    let agent = test_support::agent(&api);
+    let first = agent.session.id.clone();
+    let mut worker = Worker::spawn(agent);
+    worker.prompt("go", "off");
+    assert!(worker.wait_for_done().await);
+    worker
+        .requests
+        .send(Request::LoopPrompt("go".into(), Vec::new(), "off"))
+        .unwrap();
+    assert!(worker.wait_for_done().await);
+    let second = worker.quit().await.unwrap().unwrap();
+    test_support::remove_session_files(&first);
+    test_support::remove_session_files(&second);
+    assert_ne!(first, second);
+    let requests = api.requests().await;
+    assert_eq!(requests[1]["messages"].as_array().unwrap().len(), 1);
+}

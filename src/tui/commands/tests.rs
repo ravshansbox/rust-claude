@@ -27,6 +27,7 @@ fn lists_commands_and_skill_commands_in_alphabetical_order() {
     let names = [
         "/compact",
         "/effort",
+        "/loop",
         "/mcp",
         "/model",
         "/new",

@@ -65,6 +65,10 @@ pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Actio
         (KeyCode::PageDown, _) => app.scroll_down(app.page_size),
         (KeyCode::Home, _) => app.scroll_to_top(),
         (KeyCode::End, _) => app.scroll_to_bottom(),
+        (KeyCode::Enter, _) if app.input.trim() == "/loop" => {
+            app.take_input();
+            app.toggle_loop();
+        }
         (KeyCode::Enter, _)
             if app.can_queue()
                 && !app.input.trim().is_empty()

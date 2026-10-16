@@ -139,6 +139,7 @@ fn footer(app: &App) -> Paragraph<'static> {
     let mut footer_parts: Vec<Cow<str>> = vec![
         Cow::Borrowed(&app.workspace),
         format!("{}:{}", display_model(&app.model), app.effort).into(),
+        app.loop_label().unwrap_or_default().into(),
         match app.tasks.len() {
             0 => Cow::Borrowed(""),
             1 => Cow::Borrowed("1 agent"),
