@@ -102,6 +102,30 @@ fn shows_thinking_in_grey_italics() {
 }
 
 #[test]
+fn ends_the_thinking_line_before_the_answer_when_both_streams_are_piped_together() {
+    struct Log<'a>(&'a RefCell<Vec<u8>>);
+    impl io::Write for Log<'_> {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.borrow_mut().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let log = RefCell::new(Vec::new());
+    let mut printer = Printer::new(Log(&log), false, Log(&log), false, false, None);
+    printer.event(AgentEvent::Thinking("hmm".into()));
+    printer.event(AgentEvent::Text("answer".into()));
+    printer.finish(Ok(())).unwrap();
+    drop(printer);
+    assert_eq!(
+        String::from_utf8(log.into_inner()).unwrap(),
+        "hmm\nanswer\n"
+    );
+}
+
+#[test]
 fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
     struct Screen<'a>(&'a RefCell<Vec<u8>>);
     impl io::Write for Screen<'_> {
