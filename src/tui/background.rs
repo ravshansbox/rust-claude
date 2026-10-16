@@ -1,5 +1,8 @@
 use super::{
-    App, UiEvent, files::list_files, prompt_history::send_history, workspace::workspace_label,
+    App, UiEvent,
+    files::{list_files, list_folder},
+    prompt_history::send_history,
+    workspace::workspace_label,
 };
 use crate::{history, mcp, settings::Settings, update::Updater};
 use std::path::PathBuf;
@@ -38,6 +41,12 @@ pub(super) fn start_background_work(
 ) {
     if let Some(generation) = app.start_listing_files() {
         send_blocking(events, move || UiEvent::Files(generation, list_files()));
+    }
+    if let Some((generation, folder)) = app.start_listing_folder() {
+        send_blocking(events, move || {
+            let names = list_folder(&folder);
+            UiEvent::Folder(generation, folder, names)
+        });
     }
     if std::mem::take(&mut app.workspace_stale) {
         send_blocking(events, || UiEvent::Workspace(workspace_label()));

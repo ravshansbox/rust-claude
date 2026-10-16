@@ -2,6 +2,12 @@ use super::App;
 use ignore::WalkBuilder;
 use std::{path::Path, process::Command};
 
+mod folders;
+
+#[cfg(test)]
+pub(super) use folders::folder_path;
+pub(super) use folders::{FolderList, list_folder, path_query};
+
 const MAX_MATCHES: usize = 10;
 const MAX_FILES: usize = 10_000;
 
@@ -134,6 +140,8 @@ impl App {
     pub(super) fn forget_files(&mut self) {
         self.files = None;
         self.listing_files = false;
+        self.folder = None;
+        self.listing_folder = None;
         self.files_generation += 1;
     }
 }

@@ -10,6 +10,7 @@ use crate::tui::{
 use crossterm::event::{Event, KeyCode, KeyModifiers};
 use std::process::Command;
 
+mod paths;
 mod picking;
 
 #[test]

@@ -1,4 +1,8 @@
-use super::{App, commands::command_matches, files::file_query};
+use super::{
+    App,
+    commands::command_matches,
+    files::{file_query, path_query},
+};
 use std::borrow::Cow;
 
 pub(super) struct Suggestions {
@@ -23,10 +27,11 @@ impl App {
             });
         }
         let (start, query) = file_query(&self.input, self.cursor)?;
-        let items: Vec<(String, String)> = self
-            .files
-            .as_ref()?
-            .matches(query)
+        let paths = match path_query(query) {
+            Some((folder, name)) => self.folder.as_ref()?.matches(folder, name)?,
+            None => self.files.as_ref()?.matches(query),
+        };
+        let items: Vec<(String, String)> = paths
             .into_iter()
             .map(|path| (path, String::new()))
             .collect();
@@ -48,13 +53,16 @@ impl App {
 
     pub(super) fn accept_suggestion(&mut self, suggestions: &Suggestions) {
         let name = &suggestions.items[self.command_selected].0;
-        let replacement = if suggestions.files {
+        let folder = suggestions.files && name.ends_with('/');
+        let replacement = if folder {
+            Cow::Owned(format!("@{name}"))
+        } else if suggestions.files {
             Cow::Owned(format!("@{name} "))
         } else {
             Cow::Borrowed(name.as_str())
         };
         let mut end = suggestions.end;
-        if suggestions.files && self.input[end..].starts_with(' ') {
+        if suggestions.files && !folder && self.input[end..].starts_with(' ') {
             end += 1;
         }
         self.input

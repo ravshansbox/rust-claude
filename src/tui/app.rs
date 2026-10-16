@@ -1,5 +1,9 @@
 use super::{
-    Role, files::FileList, mcp_status::McpGroup, message::ChatMessage, selection::Selection,
+    Role,
+    files::{FileList, FolderList},
+    mcp_status::McpGroup,
+    message::ChatMessage,
+    selection::Selection,
     workspace_label,
 };
 use crate::{
@@ -56,6 +60,8 @@ pub(super) struct App {
     pub(super) commands_dismissed: bool,
     pub(super) files: Option<FileList>,
     pub(super) listing_files: bool,
+    pub(super) folder: Option<FolderList>,
+    pub(super) listing_folder: Option<String>,
     /// Counts prompts sent, so a list read before the last one is dropped.
     pub(super) files_generation: u64,
     pub(super) prompt_history: Vec<String>,

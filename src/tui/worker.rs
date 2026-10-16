@@ -24,6 +24,7 @@ pub(super) enum UiEvent {
     ImagePasted(Result<Option<Image>>),
     Shell(String, Result<String>),
     Files(u64, Vec<String>),
+    Folder(u64, String, Vec<String>),
     Workspace(String),
     McpServer(Added),
     /// The server starts again, after `notice`.
