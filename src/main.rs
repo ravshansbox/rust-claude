@@ -63,7 +63,9 @@ async fn run() -> Result<()> {
 
     // Look the session up before signing in, so a missing one is reported
     // without asking to sign in first.
-    let resume_id = if options.continue_session {
+    let resume_id = if let Some(id) = &options.resume {
+        Some(session::Session::find(id)?)
+    } else if options.continue_session {
         Some(
             session::Session::latest_in_current_folder()?
                 .context("no session to continue in this folder")?,

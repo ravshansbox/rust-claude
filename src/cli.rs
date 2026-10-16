@@ -1,10 +1,11 @@
 use anyhow::{Context, Result, bail};
 use std::io;
 
-pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]...]";
+pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue | --resume <id>] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]...]";
 
 pub const OPTIONS: &str = "Options:
   --continue           Continue the latest session in the current folder
+  --resume <id>        Continue the session with this id
   --config-dir <path>  Folder for sign-in, settings, sessions, history, skills and MCP config. Default: ~/.rust-coding-agent
   --model <id>         Model to use
   --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
@@ -24,6 +25,7 @@ pub struct Options {
     pub model: Option<String>,
     pub effort: Option<String>,
     pub continue_session: bool,
+    pub resume: Option<String>,
     pub config_dir: Option<String>,
 }
 
@@ -71,7 +73,12 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
                     bail!("no prompt after --print\n{USAGE}");
                 }
             }
-            "--continue" if !options.continue_session => options.continue_session = true,
+            "--resume" if !options.continue_session => {
+                set_value(&mut options.resume, &mut arguments)?;
+            }
+            "--continue" if !options.continue_session && options.resume.is_none() => {
+                options.continue_session = true;
+            }
             "--help" if !help => help = true,
             _ => bail!(USAGE),
         }

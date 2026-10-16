@@ -127,6 +127,18 @@ impl Session {
         latest_in_folder(&sessions_directory()?, &current_folder())
     }
 
+    /// The id of the saved session `id`, which must be made of hex digits
+    /// and dashes, as new ids are.
+    pub fn find(id: &str) -> Result<String> {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit() || c == '-') {
+            anyhow::bail!("not a session id: {id}");
+        }
+        if !session_path(&sessions_directory()?, id).is_file() {
+            anyhow::bail!("no session {id}");
+        }
+        Ok(id.to_string())
+    }
+
     pub fn load(id: &str) -> Result<(Self, Vec<Value>)> {
         let path = session_path(&sessions_directory()?, id);
         let mut file = open_locked(&path, false)?;

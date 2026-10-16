@@ -43,6 +43,8 @@ rca --continue --print "now add tests"
 
 If no session in the folder can be continued, rust-coding-agent stops with an error.
 
+Continue a given session with `--resume <id>`. The id is the name of the session file in `~/.rust-coding-agent/sessions/` without `.jsonl`. It works in the interface and in print mode, and cannot be used with `--continue`. If there is no session with that id, rust-coding-agent stops with an error.
+
 Keep sign-in, settings, sessions, prompt history, skills and MCP config in another folder with `--config-dir <path>`. It works in the interface and in print mode. Wherever these docs mention `~/.rust-coding-agent`, it means this folder when the option is given. `~/AGENTS.md` and `~/.agents/skills/` still come from your home folder.
 
 ```sh

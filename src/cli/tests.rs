@@ -32,6 +32,7 @@ fn rejects_options_given_twice() {
     assert_eq!(parse(&["--print", "one", "--print", "two"]), None);
     assert_eq!(parse(&["--continue", "--continue"]), None);
     assert_eq!(parse(&["--config-dir", "/a", "--config-dir", "/b"]), None);
+    assert_eq!(parse(&["--resume", "a", "--resume", "b"]), None);
 }
 
 #[test]
@@ -67,6 +68,19 @@ fn parses_continue_option() {
 }
 
 #[test]
+fn parses_resume_option() {
+    assert_eq!(
+        parse_with_options(&["--resume", "abc-123", "--print", "hello"])
+            .map(|(_, options)| options.resume),
+        Some(Some("abc-123".into()))
+    );
+    assert_eq!(parse(&["--resume"]), None);
+    assert_eq!(parse(&["--resume", "abc", "--continue"]), None);
+    assert_eq!(parse(&["--continue", "--resume", "abc"]), None);
+    assert_eq!(parse(&["--resume", "abc", "--help"]), None);
+}
+
+#[test]
 fn parses_config_dir_option() {
     assert_eq!(
         parse_with_options(&["--config-dir", "/tmp/rc", "--print", "hello"])
@@ -89,6 +103,7 @@ fn parses_model_and_effort_options() {
                 model: Some("claude-x".into()),
                 effort: Some("high".into()),
                 continue_session: false,
+                resume: None,
                 config_dir: None,
             }
         ))
@@ -104,6 +119,7 @@ fn parses_model_and_effort_options() {
                 model: None,
                 effort: Some("low".into()),
                 continue_session: false,
+                resume: None,
                 config_dir: None,
             }
         ))

@@ -234,6 +234,28 @@ fn continuing_without_a_session_fails_before_asking_to_sign_in() {
 }
 
 #[test]
+fn resuming_a_missing_session_fails_before_asking_to_sign_in() {
+    let setup = Setup::new("resume-missing-session");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+
+    for (id, error) in [
+        ("0123abcd-0000", "no session 0123abcd-0000"),
+        ("../auth", "not a session id: ../auth"),
+    ] {
+        let output = setup
+            .run(&["--resume", id, "--print", "hello"])
+            .wait_with_output()
+            .unwrap();
+
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert_eq!(output.status.code(), Some(1), "{stderr}");
+        assert!(stderr.contains(error), "{stderr}");
+        assert!(!stderr.contains("sign in"), "{stderr}");
+    }
+}
+
+#[test]
 fn rejects_a_model_that_is_not_in_the_list_before_asking_to_sign_in() {
     let setup = Setup::new("unknown-model");
     std::fs::create_dir_all(&setup.project).unwrap();
