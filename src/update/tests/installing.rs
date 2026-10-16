@@ -18,6 +18,28 @@ async fn downloads_and_builds_a_newer_release_and_offers_a_restart() {
 }
 
 #[tokio::test]
+async fn restarts_with_the_installed_program_once_idle() {
+    let dir = TemporaryDir::new("update-restart");
+    let (base, _) = github("v0.2.0").await;
+    let mut updater = updater(&base, Some(fake_cargo(dir.path(), 0)));
+    updater.bin_dir = Some(dir.path().join("bin"));
+    let shown = Arc::new(Mutex::new(Vec::new()));
+    let recorded = shown.clone();
+    updater
+        .run(move |progress: Progress| recorded.lock().unwrap().push(progress))
+        .await;
+    let last = shown.lock().unwrap().pop().unwrap();
+    assert_eq!(last.message(), "installed, restarting when idle");
+    assert_eq!(
+        last,
+        Progress::Ready(Some(dir.path().join(format!(
+            "bin/rust-coding-agent{}",
+            std::env::consts::EXE_SUFFIX
+        ))))
+    );
+}
+
+#[tokio::test]
 async fn unpacks_the_release_in_the_update_folder() {
     let dir = TemporaryDir::new("update-update-folder");
     let (base, _) = github("v0.2.0").await;

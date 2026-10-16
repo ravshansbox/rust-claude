@@ -106,10 +106,11 @@ impl Updater {
         drop(folder);
         match outcome {
             Ok(()) => {
-                if let Some(bin_dir) = &self.bin_dir {
+                let program = self.bin_dir.as_ref().map(|bin_dir| {
                     link_alias_to(bin_dir, OsStr::new(PACKAGE));
-                }
-                report(Progress::Ready);
+                    bin_dir.join(format!("{PACKAGE}{}", std::env::consts::EXE_SUFFIX))
+                });
+                report(Progress::Ready(program));
             }
             Err(failure) => report(failure),
         }

@@ -19,7 +19,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - `AGENTS.md` instructions and [Agent Skills](https://agentskills.io/specification)
 - MCP servers over stdio or Streamable HTTP, with OAuth sign-in
 - Retries for rate limits, overload and connection errors
-- Background updates
+- Background updates that restart into the new version when idle
 
 ## Install
 

@@ -25,7 +25,7 @@ mod test_support;
 mod worker;
 mod workspace;
 
-use crate::{agent::Agent, highlight::Colour, stop::StopSignals};
+use crate::{agent::Agent, highlight::Colour, restart::Restart, stop::StopSignals};
 use anyhow::Result;
 use app::{Activity, App, Picker, PickerKind};
 use event_loop::run_loop;
@@ -46,7 +46,12 @@ pub fn terminal_theme() -> (bool, Option<Colour>) {
     (matches!(theme, Theme::Dark), background)
 }
 
-pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
+/// Runs the interface, which returns how to restart after an update.
+pub async fn run(
+    agent: Agent,
+    stop: StopSignals,
+    restarted_input: Option<String>,
+) -> Result<Option<Restart>> {
     let (theme, background) = Theme::detect();
     THEME.get_or_init(|| theme);
     BACKGROUND.get_or_init(|| background);
@@ -60,7 +65,7 @@ pub async fn run(agent: Agent, stop: StopSignals) -> Result<()> {
             return Err(error.into());
         }
     };
-    let result = run_loop(&mut terminal, agent, stop).await;
+    let result = run_loop(&mut terminal, agent, stop, restarted_input).await;
     drop(modes);
     ratatui::restore();
     drop(held);

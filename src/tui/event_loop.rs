@@ -11,7 +11,9 @@ use super::{
     terminal::notify,
     worker::{Request, UiEvent, agent_task, quit},
 };
-use crate::{agent::Agent, history, mcp, settings::Settings, stop::StopSignals};
+use crate::{
+    agent::Agent, config, history, mcp, restart::Restart, settings::Settings, stop::StopSignals,
+};
 use anyhow::Result;
 use crossterm::event::EventStream;
 use futures::StreamExt;
@@ -30,9 +32,13 @@ pub(super) async fn run_loop(
     terminal: &mut DefaultTerminal,
     agent: Agent,
     mut stop: StopSignals,
-) -> Result<()> {
+    restarted_input: Option<String>,
+) -> Result<Option<Restart>> {
     let startup = mcp::startup();
     let mut app = opening_app(&agent, &startup, history::history_path());
+    if let Some(input) = restarted_input {
+        app.restored_after_update(input);
+    }
     let (request_tx, request_rx) = mpsc::unbounded_channel();
     let (cancel_tx, cancel_rx) = mpsc::unbounded_channel();
     let (event_tx, mut event_rx) = mpsc::unbounded_channel();
@@ -52,6 +58,7 @@ pub(super) async fn run_loop(
     let mut sent_effort = app.effort;
 
     let mut worker_stopped = false;
+    let mut restart_program = None;
     let result = loop {
         tokio::select! {
             joined = &mut worker => {
@@ -93,13 +100,27 @@ pub(super) async fn run_loop(
             }
         }
         start_background_work(&mut app, &background_events, &history_sender);
+        restart_program = app.restart_due();
+        if restart_program.is_some() {
+            break Ok(());
+        }
     };
     finish_history(&mut app, history_sender, history_writer);
     quit(request_tx, cancel_tx);
-    if !worker_stopped {
-        let _ = worker.await;
-    }
-    result
+    let session = if worker_stopped {
+        None
+    } else {
+        worker.await.ok().flatten()
+    };
+    result?;
+    Ok(restart_program.map(|program| Restart {
+        program,
+        session,
+        model: app.model.clone(),
+        effort: app.effort,
+        input: std::mem::take(&mut app.input),
+        config_dir: config::dir(),
+    }))
 }
 
 fn skipping_interval(period: Duration) -> Interval {
@@ -120,7 +141,7 @@ fn handle_agent_events(
     }
 }
 
-fn worker_error(joined: Result<(), JoinError>) -> anyhow::Error {
+fn worker_error<T>(joined: Result<T, JoinError>) -> anyhow::Error {
     match joined {
         Err(error) if error.is_panic() => anyhow::anyhow!("the agent crashed"),
         _ => anyhow::anyhow!("the agent stopped unexpectedly"),

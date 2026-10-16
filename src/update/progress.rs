@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{path::PathBuf, time::Duration};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Progress {
@@ -8,7 +8,8 @@ pub enum Progress {
     Downloaded(Duration),
     Building,
     Built(Duration),
-    Ready,
+    /// Installed, with the program to restart, if known.
+    Ready(Option<PathBuf>),
     DownloadFailed(String, Duration),
     BuildFailed(String, Duration),
     Failed(String),
@@ -23,7 +24,8 @@ impl Progress {
             Self::Downloaded(took) => format!("downloaded in {}", format_took(*took)),
             Self::Building => "building".into(),
             Self::Built(took) => format!("built in {}", format_took(*took)),
-            Self::Ready => "installed, restart rust-coding-agent to use it".into(),
+            Self::Ready(Some(_)) => "installed, restarting when idle".into(),
+            Self::Ready(None) => "installed, restart rust-coding-agent to use it".into(),
             Self::DownloadFailed(error, took) => {
                 format!("download failed after {}: {error}", format_took(*took))
             }

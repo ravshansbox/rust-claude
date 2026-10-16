@@ -98,3 +98,18 @@ async fn compacts_the_conversation_and_continues_from_the_summary() {
     );
     assert!(!sent.contains("first"), "{sent}");
 }
+
+#[tokio::test]
+async fn returns_the_session_to_restart_with_once_it_has_messages() {
+    let api = MockApi::start(vec![test_support::text_reply("one")]).await;
+    let agent = test_support::agent(&api);
+    let id = agent.session.id.clone();
+    let worker = Worker::spawn(test_support::agent(&api));
+    assert_eq!(worker.quit().await.unwrap(), None);
+    let mut worker = Worker::spawn(agent);
+    worker.prompt("first", "off");
+    assert!(worker.wait_for_done().await);
+    let returned = worker.quit().await.unwrap();
+    test_support::remove_session_files(&id);
+    assert_eq!(returned, Some(id));
+}

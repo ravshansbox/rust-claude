@@ -1,5 +1,5 @@
 use super::{
-    files::FileList, mcp_status::McpGroup, message::ChatMessage, selection::Selection,
+    Role, files::FileList, mcp_status::McpGroup, message::ChatMessage, selection::Selection,
     workspace_label,
 };
 use crate::{
@@ -85,6 +85,8 @@ pub(super) struct App {
     pub(super) focused: bool,
     /// The message to show in a terminal notification, until it is sent.
     pub(super) notification: Option<String>,
+    /// The installed update to restart with once idle.
+    restart_program: Option<PathBuf>,
 }
 
 impl App {
@@ -106,6 +108,9 @@ impl App {
     }
 
     pub(super) fn show_update(&mut self, progress: &Progress) {
+        if let Progress::Ready(Some(program)) = progress {
+            self.restart_program = Some(program.clone());
+        }
         if progress.finishes_step()
             && let Some(step) = self.version_line.rfind(" · ")
         {
@@ -114,6 +119,24 @@ impl App {
         self.version_line.push_str(" · ");
         self.version_line.push_str(&progress.message());
         self.show_version();
+    }
+
+    /// The installed update to restart with, once no reply, background
+    /// command or queued prompt is waiting.
+    pub(super) fn restart_due(&self) -> Option<PathBuf> {
+        let queued = self.queue.lock().map_or(0, |queue| queue.len());
+        (!self.busy() && self.stats.background == 0 && queued == 0)
+            .then(|| self.restart_program.clone())
+            .flatten()
+    }
+
+    pub(super) fn restored_after_update(&mut self, input: String) {
+        self.push(
+            Role::Event,
+            concat!("restarted after update to v", env!("CARGO_PKG_VERSION")),
+        );
+        self.cursor = input.len();
+        self.input = input;
     }
 
     fn show_version(&mut self) {

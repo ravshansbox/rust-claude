@@ -30,7 +30,7 @@ struct Worker {
     cancel: mpsc::UnboundedSender<()>,
     mcp_servers: mpsc::UnboundedSender<Started>,
     events: mpsc::UnboundedReceiver<UiEvent>,
-    task: JoinHandle<()>,
+    task: JoinHandle<Option<String>>,
 }
 
 impl Worker {
@@ -74,7 +74,7 @@ impl Worker {
             .await
     }
 
-    fn quit(self) -> JoinHandle<()> {
+    fn quit(self) -> JoinHandle<Option<String>> {
         quit(self.requests, self.cancel);
         self.task
     }

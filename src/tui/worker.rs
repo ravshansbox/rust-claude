@@ -77,7 +77,7 @@ pub(super) async fn agent_task(
     mut cancel: mpsc::UnboundedReceiver<()>,
     mut mcp_servers: mpsc::UnboundedReceiver<Started>,
     events: mpsc::UnboundedSender<UiEvent>,
-) {
+) -> Option<String> {
     // Stop renewing the sign-in on quit or Esc. Esc means the user cancelled
     // the request waiting behind the renewal, so cancel it when it comes up.
     let mut cancelled = false;
@@ -135,6 +135,7 @@ pub(super) async fn agent_task(
         run_turn(&mut agent, prompt, effort, &mut cancel, &events).await;
         send_stats(&agent, &events);
     }
+    (!agent.messages().is_empty()).then(|| agent.session.id.clone())
 }
 
 /// Requests the interface lets Esc cancel.

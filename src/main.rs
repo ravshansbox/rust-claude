@@ -9,6 +9,7 @@ mod images;
 mod mcp;
 mod models;
 mod print;
+mod restart;
 mod session;
 mod settings;
 mod skills;
@@ -33,13 +34,17 @@ use stop::{RENEWAL_WAIT, StopSignals, stopped};
 const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 fn main() -> Result<()> {
+    let restarted_input = restart::take_input();
     let runtime = tokio::runtime::Runtime::new()?;
-    let result = runtime.block_on(run());
+    let result = runtime.block_on(run(restarted_input));
     runtime.shutdown_timeout(SHUTDOWN_TIMEOUT);
-    result
+    match result? {
+        Some(restart) => restart.run(),
+        None => Ok(()),
+    }
 }
 
-async fn run() -> Result<()> {
+async fn run(restarted_input: Option<String>) -> Result<Option<restart::Restart>> {
     update::link_alias_beside_this_program();
     let (command, options) = parse_arguments(command_line_arguments()?)?;
     if let Some(config_dir) = &options.config_dir {
@@ -53,7 +58,7 @@ async fn run() -> Result<()> {
     let (print_prompt, image_paths) = match command {
         Command::Help => {
             println!("A small coding agent for the terminal.\n\n{USAGE}\n\n{OPTIONS}");
-            return Ok(());
+            return Ok(None);
         }
         Command::Interactive if io::stdin().is_terminal() => (None, Vec::new()),
         Command::Interactive => (Some(read_stdin_prompt()?), Vec::new()),
@@ -79,7 +84,7 @@ async fn run() -> Result<()> {
     let http = agent::http_client()?;
     let credentials = tokio::select! {
         credentials = auth::Credentials::load_or_login(&http) => credentials?,
-        status = stop.recv() => return stopped(status).await,
+        status = stop.recv() => return stopped(status).await.map(|()| None),
     };
     let settings = settings::Settings::load();
     let model = options.model.unwrap_or_else(|| {
@@ -103,11 +108,13 @@ async fn run() -> Result<()> {
     }
 
     let Some(prompt) = print_prompt else {
-        let result = tui::run(agent, stop).await;
+        let result = tui::run(agent, stop, restarted_input).await;
         auth::finish_renewal(RENEWAL_WAIT).await;
         return result;
     };
-    run_print(agent, stop, &prompt, &images).await
+    run_print(agent, stop, &prompt, &images)
+        .await
+        .map(|()| None)
 }
 
 fn load_images(paths: &[String]) -> Result<Vec<images::Image>> {
