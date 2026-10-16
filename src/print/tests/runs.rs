@@ -100,3 +100,33 @@ async fn prints_only_the_tasks_and_why_one_failed() {
         "{err}"
     );
 }
+
+#[tokio::test]
+async fn loops_the_prompt_in_new_sessions_until_a_run_fails() {
+    let api = MockApi::start(vec![
+        text_reply("one"),
+        text_reply("two"),
+        Reply::BadRequest("bad".into()),
+    ])
+    .await;
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
+    let mut agent = test_support::agent(&api);
+    let mut checkpoint = None;
+    let result = super::super::run_loop(&mut agent, &mut printer, "go", &[], &mut checkpoint).await;
+    test_support::remove_session(&agent);
+    assert!(printer.finish(result).is_err());
+    assert_eq!(String::from_utf8(out).unwrap(), "one\n\ntwo\n");
+    let err = String::from_utf8(err).unwrap();
+    let rounds: Vec<_> = err
+        .lines()
+        .filter(|line| line.starts_with("loop "))
+        .collect();
+    assert_eq!(rounds, ["loop 1", "loop 2", "loop 3"], "{err}");
+    let requests = api.requests().await;
+    assert_eq!(requests.len(), 3);
+    for request in requests {
+        assert_eq!(request["messages"].as_array().unwrap().len(), 1);
+    }
+}

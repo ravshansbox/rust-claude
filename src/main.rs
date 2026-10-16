@@ -60,6 +60,9 @@ async fn run(restarted_input: Option<String>) -> Result<Option<restart::Restart>
             println!("A small coding agent for the terminal.\n\n{USAGE}\n\n{OPTIONS}");
             return Ok(None);
         }
+        Command::Interactive if io::stdin().is_terminal() && options.looping => {
+            bail!("--loop needs a prompt from --print or standard input\n{USAGE}")
+        }
         Command::Interactive if io::stdin().is_terminal() => (None, Vec::new()),
         Command::Interactive => (Some(read_stdin_prompt()?), Vec::new()),
         Command::Print { prompt, images } => (Some(prompt), images),
@@ -112,7 +115,7 @@ async fn run(restarted_input: Option<String>) -> Result<Option<restart::Restart>
         auth::finish_renewal(RENEWAL_WAIT).await;
         return result;
     };
-    run_print(agent, stop, &prompt, &images)
+    run_print(agent, stop, &prompt, &images, options.looping)
         .await
         .map(|()| None)
 }
@@ -135,6 +138,7 @@ async fn run_print(
     mut stop: StopSignals,
     prompt: &str,
     images: &[images::Image],
+    looping: bool,
 ) -> Result<()> {
     let stopped = stop.recv();
     tokio::pin!(stopped);
@@ -162,7 +166,13 @@ async fn run_print(
     let mut printer =
         print::Printer::new(stdout, out_terminal, io::stderr(), colour, dark, background);
     let mut checkpoint = None;
-    let run = print::run(&mut agent, &mut printer, prompt, images, &mut checkpoint);
+    let run = async {
+        if looping {
+            print::run_loop(&mut agent, &mut printer, prompt, images, &mut checkpoint).await
+        } else {
+            print::run(&mut agent, &mut printer, prompt, images, &mut checkpoint).await
+        }
+    };
     let result = tokio::select! {
         result = run => Ok(result),
         status = &mut stopped => Err(status),

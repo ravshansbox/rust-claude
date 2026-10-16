@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use std::io;
 
-pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue | --resume <id>] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]...]";
+pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue | --resume <id>] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]... [--loop]]";
 
 pub const OPTIONS: &str = "Options:
   --continue           Continue the latest session in the current folder
@@ -11,6 +11,7 @@ pub const OPTIONS: &str = "Options:
   --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
   --print <prompt>     Run one prompt and print the answer. Without it, a prompt piped to standard input runs the same way
   --image <path>       Send an image with the prompt in print mode. Repeat for more images
+  --loop               Run the print mode prompt again and again, each time in a new session, until it fails or you stop it
   --help               Show this help";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -27,6 +28,7 @@ pub struct Options {
     pub continue_session: bool,
     pub resume: Option<String>,
     pub config_dir: Option<String>,
+    pub looping: bool,
 }
 
 /// Stores the value after an option, which may be given once.
@@ -79,6 +81,7 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
             "--continue" if !options.continue_session && options.resume.is_none() => {
                 options.continue_session = true;
             }
+            "--loop" if !options.looping => options.looping = true,
             "--help" if !help => help = true,
             _ => bail!(USAGE),
         }

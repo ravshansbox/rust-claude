@@ -12,6 +12,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Subagents that run tasks at the same time or one after another
 - Background commands, such as watching a CI run, whose output comes back when they finish
 - Print mode (`--print` or standard input) to run one prompt and print the answer
+- Loop mode (`--loop`) to run the same prompt again and again, each time in a new session
 - Four models, effort levels and thinking shown in the conversation
 - Saved sessions you can resume, automatic compaction and prompt caching
 - Status line with tokens, context use and quota

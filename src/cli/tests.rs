@@ -105,6 +105,7 @@ fn parses_model_and_effort_options() {
                 continue_session: false,
                 resume: None,
                 config_dir: None,
+                looping: false,
             }
         ))
     );
@@ -121,6 +122,7 @@ fn parses_model_and_effort_options() {
                 continue_session: false,
                 resume: None,
                 config_dir: None,
+                looping: false,
             }
         ))
     );
@@ -167,4 +169,23 @@ fn rejects_an_empty_print_prompt() {
     assert_eq!(parse(&["--print", ""]), None);
     assert_eq!(parse(&["--print", " \n"]), None);
     assert_eq!(parse(&["--print", "", "--image", "a.png"]), None);
+}
+
+#[test]
+fn parses_loop_option() {
+    for arguments in [
+        &["--loop", "--print", "hello"][..],
+        &["--print", "hello", "--loop"],
+    ] {
+        assert_eq!(
+            parse_with_options(arguments).map(|(_, options)| options.looping),
+            Some(true)
+        );
+    }
+    assert_eq!(
+        parse_with_options(&["--print", "--loop"]).map(|(_, options)| options.looping),
+        Some(false)
+    );
+    assert_eq!(parse(&["--loop", "--loop", "--print", "hello"]), None);
+    assert_eq!(parse(&["--loop", "--help"]), None);
 }

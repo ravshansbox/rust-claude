@@ -1,4 +1,8 @@
-use crate::{agent::Agent, images::Image, tools, tui};
+use crate::{
+    agent::{Agent, AgentEvent},
+    images::Image,
+    tools, tui,
+};
 use std::io::Write;
 
 mod printer;
@@ -25,6 +29,25 @@ pub async fn run<Out: Write, Err: Write>(
             ));
         }
         turn(agent, printer, &message, &[], checkpoint).await?;
+    }
+    Ok(())
+}
+
+/// Runs `prompt` again and again, each time in a new session, until a run
+/// fails.
+pub async fn run_loop<Out: Write, Err: Write>(
+    agent: &mut Agent,
+    printer: &mut Printer<Out, Err>,
+    prompt: &str,
+    images: &[Image],
+    checkpoint: &mut Option<usize>,
+) -> anyhow::Result<()> {
+    for round in 1.. {
+        if round > 1 {
+            agent.new_session()?;
+        }
+        printer.event(AgentEvent::Notice(format!("loop {round}")));
+        run(agent, printer, prompt, images, checkpoint).await?;
     }
     Ok(())
 }
