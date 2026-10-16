@@ -1,7 +1,7 @@
 use super::super::Printer;
 use crate::agent::test_support::{self, MockApi, Reply, text_reply, tool_reply};
 use serde_json::json;
-use std::io;
+use std::{io, sync::atomic::AtomicBool};
 
 #[tokio::test]
 async fn answers_each_background_command_when_it_finishes() {
@@ -114,7 +114,16 @@ async fn loops_the_prompt_in_new_sessions_until_a_run_fails() {
     let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
     let mut agent = test_support::agent(&api);
     let mut checkpoint = None;
-    let result = super::super::run_loop(&mut agent, &mut printer, "go", &[], &mut checkpoint).await;
+    let stop_after_run = AtomicBool::new(false);
+    let result = super::super::run_loop(
+        &mut agent,
+        &mut printer,
+        "go",
+        &[],
+        &mut checkpoint,
+        &stop_after_run,
+    )
+    .await;
     test_support::remove_session(&agent);
     assert!(printer.finish(result).is_err());
     assert_eq!(String::from_utf8(out).unwrap(), "one\n\ntwo\n");
@@ -129,4 +138,28 @@ async fn loops_the_prompt_in_new_sessions_until_a_run_fails() {
     for request in requests {
         assert_eq!(request["messages"].as_array().unwrap().len(), 1);
     }
+}
+
+#[tokio::test]
+async fn stops_the_loop_after_the_current_run_when_asked() {
+    let api = MockApi::start(vec![text_reply("one"), text_reply("two")]).await;
+    let mut out = Vec::new();
+    let mut err = Vec::new();
+    let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
+    let mut agent = test_support::agent(&api);
+    let mut checkpoint = None;
+    let stop_after_run = AtomicBool::new(true);
+    let result = super::super::run_loop(
+        &mut agent,
+        &mut printer,
+        "go",
+        &[],
+        &mut checkpoint,
+        &stop_after_run,
+    )
+    .await;
+    test_support::remove_session(&agent);
+    printer.finish(result).unwrap();
+    assert_eq!(String::from_utf8(out).unwrap(), "one\n");
+    assert_eq!(api.requests().await.len(), 1);
 }

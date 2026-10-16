@@ -20,12 +20,13 @@ mod update;
 
 use std::{
     io::{self, IsTerminal},
+    sync::atomic::{AtomicBool, Ordering},
     time::Duration,
 };
 
 use anyhow::{Context, Result, bail};
 use cli::{Command, OPTIONS, USAGE, command_line_arguments, parse_arguments, read_stdin_prompt};
-use stop::{RENEWAL_WAIT, StopSignals, stopped};
+use stop::{INTERRUPTED, RENEWAL_WAIT, StopSignals, stopped};
 
 /// How long quitting waits for background jobs such as listing files for
 /// `@`, reading the Git branch or reading the clipboard. Their results are
@@ -145,11 +146,9 @@ async fn run_print(
     images: &[images::Image],
     looping: bool,
 ) -> Result<()> {
-    let stopped = stop.recv();
-    tokio::pin!(stopped);
     tokio::select! {
         mcp = mcp::Mcp::load() => agent.mcp = mcp,
-        status = &mut stopped => {
+        status = stop.recv() => {
             if let Err(error) = agent.cancel_unsent(prompt, images) {
                 eprintln!("failed to save session: {error}");
             }
@@ -171,16 +170,36 @@ async fn run_print(
     let mut printer =
         print::Printer::new(stdout, out_terminal, io::stderr(), colour, dark, background);
     let mut checkpoint = None;
-    let run = async {
-        if looping {
-            print::run_loop(&mut agent, &mut printer, prompt, images, &mut checkpoint).await
-        } else {
-            print::run(&mut agent, &mut printer, prompt, images, &mut checkpoint).await
+    let stop_after_run = AtomicBool::new(false);
+    let result = {
+        let run = async {
+            if looping {
+                print::run_loop(
+                    &mut agent,
+                    &mut printer,
+                    prompt,
+                    images,
+                    &mut checkpoint,
+                    &stop_after_run,
+                )
+                .await
+            } else {
+                print::run(&mut agent, &mut printer, prompt, images, &mut checkpoint).await
+            }
+        };
+        tokio::pin!(run);
+        loop {
+            tokio::select! {
+                result = &mut run => break Ok(result),
+                status = stop.recv() => {
+                    if looping && status == INTERRUPTED && !stop_after_run.swap(true, Ordering::Relaxed) {
+                        eprintln!("\nloop stops after this run; press Ctrl+C again to cancel");
+                        continue;
+                    }
+                    break Err(status);
+                }
+            }
         }
-    };
-    let result = tokio::select! {
-        result = run => Ok(result),
-        status = &mut stopped => Err(status),
     };
     printer.flush_reads();
     let result = match result {

@@ -3,7 +3,10 @@ use crate::{
     images::Image,
     tools, tui,
 };
-use std::io::Write;
+use std::{
+    io::Write,
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 mod printer;
 
@@ -34,13 +37,14 @@ pub async fn run<Out: Write, Err: Write>(
 }
 
 /// Runs `prompt` again and again, each time in a new session, until a run
-/// fails.
+/// fails or `stop_after_run` is set when a run finishes.
 pub async fn run_loop<Out: Write, Err: Write>(
     agent: &mut Agent,
     printer: &mut Printer<Out, Err>,
     prompt: &str,
     images: &[Image],
     checkpoint: &mut Option<usize>,
+    stop_after_run: &AtomicBool,
 ) -> anyhow::Result<()> {
     for round in 1.. {
         if round > 1 {
@@ -48,6 +52,9 @@ pub async fn run_loop<Out: Write, Err: Write>(
         }
         printer.event(AgentEvent::Notice(format!("loop {round}")));
         run(agent, printer, prompt, images, checkpoint).await?;
+        if stop_after_run.load(Ordering::Relaxed) {
+            break;
+        }
     }
     Ok(())
 }

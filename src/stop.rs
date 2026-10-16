@@ -27,12 +27,15 @@ impl StopSignals {
     /// it: 128 plus the signal number.
     pub async fn recv(&mut self) -> i32 {
         tokio::select! {
-            _ = self.interrupt.recv() => 130,
+            _ = self.interrupt.recv() => INTERRUPTED,
             _ = self.hangup.recv() => 129,
             _ = self.terminate.recv() => 143,
         }
     }
 }
+
+/// The exit status after Ctrl+C.
+pub const INTERRUPTED: i32 = 130;
 
 /// How long stopping waits for a sign-in renewal to be saved.
 pub const RENEWAL_WAIT: Duration = Duration::from_secs(5);

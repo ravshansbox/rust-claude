@@ -28,7 +28,7 @@ Without `--print`, when standard input is not a terminal, rca reads the prompt f
 while :; do cat PROMPT.md | rca || break; done
 ```
 
-`--loop` does the same in one run. It sends the prompt from `--print` or standard input again and again, each time in a new session, until a run fails or you stop it. Before each run it shows `loop 1`, `loop 2` and so on on standard error. It cannot be used with `--continue` or `--resume`. Images from `--image` go with every run. Without a prompt from `--print` or standard input, `--loop` is an error:
+`--loop` does the same in one run. It sends the prompt from `--print` or standard input again and again, each time in a new session, until a run fails or you stop it. Before each run it shows `loop 1`, `loop 2` and so on on standard error. Press Ctrl+C to stop after the current run: rust-coding-agent shows `loop stops after this run; press Ctrl+C again to cancel`, finishes the run and exits. A second Ctrl+C cancels the run at once, as described below. Closing the terminal or `kill` still cancel at once. It cannot be used with `--continue` or `--resume`. Images from `--image` go with every run. Without a prompt from `--print` or standard input, `--loop` is an error:
 
 ```sh
 rca --loop --print "pick the next task from TODO.md, do it and commit"
