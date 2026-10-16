@@ -2,6 +2,7 @@ use std::{
     ffi::OsStr,
     path::PathBuf,
     sync::atomic::{AtomicUsize, Ordering},
+    time::Duration,
 };
 
 use crate::{config, settings::Settings};
@@ -63,27 +64,35 @@ impl Updater {
         })
     }
 
-    /// Checks for a newer release on every launch, and builds and
-    /// installs it with cargo. Builds from `main`, at version 0.0.0, never
-    /// check. A failed check stays quiet, as when offline.
-    pub async fn run(self, report: impl Fn(Progress)) {
+    /// Checks for a newer release at launch and then after each `every`,
+    /// until one is found.
+    pub async fn keep_checking(self, every: Duration, report: impl Fn(Progress)) {
+        while !self.run(&report).await {
+            tokio::time::sleep(every).await;
+        }
+    }
+
+    /// Checks for a newer release, and builds and installs it with cargo.
+    /// Returns whether one was found. Builds from `main`, at version
+    /// 0.0.0, never check. A failed check stays quiet, as when offline.
+    pub async fn run(&self, report: impl Fn(Progress)) -> bool {
         let Some(current) = parse_version(self.current_version) else {
-            return;
+            return true;
         };
         if current == [0, 0, 0] {
-            return;
+            return true;
         }
         let Ok(release) = self.latest_release().await else {
-            return;
+            return false;
         };
         if parse_version(&release.tag_name).is_none_or(|latest| latest <= current) {
-            return;
+            return false;
         }
         let version = format!("v{}", release.tag_name.trim_start_matches('v'));
         report(Progress::Available(version.clone()));
         let Some(cargo) = &self.cargo else {
             report(Progress::CargoMissing);
-            return;
+            return true;
         };
         let folder = self.update_dir.join(format!(
             "{}-{}",
@@ -97,7 +106,7 @@ impl Updater {
                 "creating {}: {error}",
                 folder.display()
             )));
-            return;
+            return true;
         }
         let folder = UpdateFolder(folder);
         let outcome = self
@@ -114,6 +123,7 @@ impl Updater {
             }
             Err(failure) => report(failure),
         }
+        true
     }
 }
 

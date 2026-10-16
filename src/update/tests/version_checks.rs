@@ -48,3 +48,27 @@ fn skips_debug_builds_such_as_cargo_run() {
         assert!(Updater::for_this_build(&settings).is_none());
     }
 }
+
+#[tokio::test]
+async fn checks_again_until_a_newer_release_is_found() {
+    let (base, requests) = github("v0.1.0").await;
+    let checking = updater(&base, None).keep_checking(Duration::from_millis(20), |_| {});
+    assert!(
+        tokio::time::timeout(Duration::from_millis(200), checking)
+            .await
+            .is_err()
+    );
+    assert!(requests.lock().unwrap().len() >= 3);
+}
+
+#[tokio::test]
+async fn stops_checking_once_a_newer_release_is_found() {
+    let (base, requests) = github("v0.2.0").await;
+    let checking = updater(&base, None).keep_checking(Duration::from_millis(20), |_| {});
+    assert!(
+        tokio::time::timeout(Duration::from_secs(5), checking)
+            .await
+            .is_ok()
+    );
+    assert_eq!(requests.lock().unwrap().len(), 1);
+}

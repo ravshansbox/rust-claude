@@ -5,7 +5,7 @@ use super::{
     workspace::workspace_label,
 };
 use crate::{history, mcp, settings::Settings, update::Updater};
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 use tokio::sync::mpsc;
 
 pub(super) fn start_mcp_servers(
@@ -26,7 +26,7 @@ pub(super) fn start_updater(settings: &Settings, events: &mpsc::UnboundedSender<
         let events = events.clone();
         tokio::spawn(async move {
             updater
-                .run(move |progress| {
+                .keep_checking(Duration::from_secs(60 * 60), move |progress| {
                     let _ = events.send(UiEvent::Update(progress));
                 })
                 .await;
