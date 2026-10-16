@@ -1,4 +1,5 @@
-use super::{MAX_OUTPUT, argument, failed, number, plural, regular_file, tool, truncate};
+use super::{MAX_OUTPUT, Output, argument, failed, number, plural, regular_file, tool, truncate};
+use crate::images;
 use serde_json::{Value, json};
 use std::{
     fmt::Write,
@@ -10,7 +11,7 @@ use std::{
 pub(super) fn definition() -> Value {
     tool(
         "read",
-        "Read a UTF-8 file from the cwd. Long output is cut at whole lines; use offset and limit to read the rest",
+        "Read a UTF-8 file or an image (PNG, JPEG, GIF, WebP or TIFF) from the cwd. Images are sent as attachments, scaled to fit 2000x2000. Long text output is cut at whole lines; use offset and limit to read the rest",
         &json!({
             "path": { "type": "string" },
             "offset": { "type": "integer", "description": "Line number to start from, counting from 1" },
@@ -20,7 +21,7 @@ pub(super) fn definition() -> Value {
     )
 }
 
-pub(super) async fn run(input: &Value) -> Result<String, String> {
+pub(super) async fn run(input: &Value) -> Result<Output, String> {
     let path = argument(input, "path")?;
     let offset = number(input, "offset", 0)?.map_or(1, |offset| {
         usize::try_from(offset.max(1)).unwrap_or(usize::MAX)
@@ -30,19 +31,35 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     });
     regular_file(path).await?;
     let file = PathBuf::from(path);
-    let read = tokio::task::spawn_blocking(move || {
-        read_lines(BufReader::new(File::open(file)?), offset, limit)
+    tokio::task::spawn_blocking(move || {
+        let mut reader = BufReader::new(File::open(&file)?);
+        if is_image(reader.fill_buf()?) {
+            let data = std::fs::read(&file)?;
+            return Ok(images::prepare(data)
+                .map(Output::Image)
+                .map_err(|error| format!("{error:#}")));
+        }
+        Ok(read_lines(reader, offset, limit)?
+            .map(Output::Text)
+            .map_err(|line_count| {
+                format!(
+                    "offset {offset} is past the end of {}, which has {}",
+                    file.display(),
+                    plural(line_count, "line")
+                )
+            }))
     })
     .await
     .map_err(io::Error::other)
     .flatten()
-    .map_err(failed("read", path))?;
-    read.map_err(|line_count| {
-        format!(
-            "offset {offset} is past the end of {path}, which has {}",
-            plural(line_count, "line")
-        )
-    })
+    .map_err(failed("read", path))?
+}
+
+/// Whether `header` starts like an image this build can decode. Formats it
+/// cannot decode are left out, since their headers, such as BM, can also
+/// start text.
+fn is_image(header: &[u8]) -> bool {
+    image::guess_format(header).is_ok_and(|format| format.reading_enabled())
 }
 
 /// Reads `limit` lines from line `offset`, stopping once the output is full,

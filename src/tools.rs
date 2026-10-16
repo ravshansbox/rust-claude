@@ -1,5 +1,7 @@
 use serde_json::{Value, json};
 
+use crate::images::Image;
+
 pub mod agent;
 pub mod background;
 mod bash;
@@ -74,10 +76,25 @@ fn number(input: &Value, key: &str, min: u64) -> Result<Option<u64>, String> {
     }
 }
 
+pub enum Output {
+    Text(String),
+    Image(Image),
+}
+
+pub async fn run(name: &str, input: &Value) -> Result<Output, String> {
+    match name {
+        "read" => read::run(input).await,
+        _ => call(name, input).await.map(Output::Text),
+    }
+}
+
 pub async fn call(name: &str, input: &Value) -> Result<String, String> {
     match name {
         "bash" => bash::run(input).await,
-        "read" => read::run(input).await,
+        "read" => match read::run(input).await? {
+            Output::Text(text) => Ok(text),
+            Output::Image(image) => Ok(format!("[image: {}]", image.media_type)),
+        },
         "write" => write::run(input).await,
         "edit" => edit::run(input).await,
         _ => Err(format!("unknown tool: {name}")),

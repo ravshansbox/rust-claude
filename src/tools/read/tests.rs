@@ -69,6 +69,13 @@ async fn refuses_files_that_are_not_utf8_text() {
 }
 
 #[tokio::test]
+async fn reads_text_that_starts_like_an_image_header_as_text() {
+    let file = TemporaryFile::new("image-like", "BM is a bitmap header\nP1 too\n");
+    let read = call("read", &json!({ "path": file.path() })).await;
+    assert_eq!(read, Ok("BM is a bitmap header\nP1 too\n".into()));
+}
+
+#[tokio::test]
 async fn rejects_offset_past_end_of_file() {
     let file = TemporaryFile::new("offset", "one\ntwo\n");
     let past_end = call("read", &json!({ "path": file.path(), "offset": 3 })).await;

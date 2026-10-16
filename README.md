@@ -15,7 +15,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Four models, effort levels and thinking shown in the conversation
 - Saved sessions you can resume, automatic compaction and prompt caching
 - Status line with tokens, context use and quota
-- Paste images, `@` file picker and prompt history search
+- Paste images or let the model read image files, `@` file picker and prompt history search
 - `AGENTS.md` instructions and [Agent Skills](https://agentskills.io/specification)
 - MCP servers over stdio or Streamable HTTP, with OAuth sign-in
 - Retries for rate limits, overload and connection errors

@@ -43,10 +43,17 @@ impl Agent {
             result.map(Value::from)
         } else {
             match self.mcp.call(name, &block["input"]).await {
-                Some(result) => result,
-                None => tools::call(name, &block["input"]).await,
+                Some(result) => result.map(Value::from),
+                None => match tools::run(name, &block["input"]).await {
+                    Ok(tools::Output::Text(text)) => Ok(Value::from(text)),
+                    Ok(tools::Output::Image(image)) => self
+                        .session
+                        .save_image(&image)
+                        .map(|image| json!([image]))
+                        .map_err(|error| format!("{error:#}")),
+                    Err(error) => Err(error),
+                },
             }
-            .map(Value::from)
         };
         let (content, is_error) = match result {
             Ok(content) => (content, false),

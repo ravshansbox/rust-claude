@@ -180,7 +180,7 @@ An image that would take more than 512 MiB of memory to decode, such as a small 
 
 ## Sessions
 
-Sessions are saved to `~/.rust-coding-agent/sessions/` as JSON Lines files. The first line records the folder the session started in, which `--continue` uses. Sessions saved before this line was added are not found by `--continue`, but `/resume` still lists them. Images sent with a prompt are saved in a folder named after the session, such as `~/.rust-coding-agent/sessions/<id>/`, and the session file refers to them by name.
+Sessions are saved to `~/.rust-coding-agent/sessions/` as JSON Lines files. The first line records the folder the session started in, which `--continue` uses. Sessions saved before this line was added are not found by `--continue`, but `/resume` still lists them. Images sent with a prompt or read by the `read` tool are saved in a folder named after the session, such as `~/.rust-coding-agent/sessions/<id>/`, and the session file refers to them by name.
 
 While a prompt runs, the session is saved after each finished round of tool calls, so a crash or a closed terminal loses at most the round in progress. If a crash or a full disk cuts a save short, resuming the session keeps the messages before the cut, leaves out tool calls whose results were cut off, and removes the rest from the file.
 

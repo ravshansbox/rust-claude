@@ -57,3 +57,35 @@ async fn runs_an_mcp_tool_the_model_calls_and_sends_back_its_result() {
     assert_eq!(result["content"], "pong");
     assert_eq!(result.get("is_error"), Some(&json!(false)));
 }
+
+#[tokio::test]
+async fn sends_an_image_the_model_reads_scaled_to_fit_2000_pixels() {
+    use base64::{Engine, engine::general_purpose::STANDARD};
+    use image::{DynamicImage, GenericImageView, ImageFormat, RgbImage};
+    let file = crate::tools::test_support::TemporaryFile::new("read-image", "");
+    DynamicImage::ImageRgb8(RgbImage::new(4000, 1000))
+        .save_with_format(file.path(), ImageFormat::Png)
+        .unwrap();
+    let api = MockApi::start(vec![
+        tool_reply("call-1", "read", &json!({ "path": file.path() })),
+        text_reply("a black strip"),
+    ])
+    .await;
+    let mut agent = test_support::agent(&api);
+    let result = agent.prompt("look", &[], |_| {}).await;
+    let saved = std::fs::read_to_string(test_support::session_file(&agent)).unwrap();
+    test_support::remove_session(&agent);
+    result.unwrap();
+    let requests = api.requests().await;
+    let result = test_support::tool_result(&requests[1]);
+    assert_eq!(result["is_error"], false);
+    let image = &result["content"][0];
+    assert_eq!(image["type"], "image");
+    assert_eq!(image["source"]["media_type"], "image/png");
+    let data = STANDARD
+        .decode(image["source"]["data"].as_str().unwrap())
+        .unwrap();
+    let decoded = image::load_from_memory(&data).unwrap();
+    assert_eq!(decoded.dimensions(), (2000, 500));
+    assert!(!saved.contains(image["source"]["data"].as_str().unwrap()));
+}

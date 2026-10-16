@@ -34,12 +34,26 @@ impl Session {
 }
 
 pub(super) fn inline_images(directory: &Path, messages: &mut [Value]) -> Result<()> {
-    let blocks = messages
-        .iter_mut()
-        .filter_map(|message| message["content"].as_array_mut())
-        .flatten()
-        .filter(|block| block["type"] == "image");
+    inline_blocks(
+        directory,
+        messages
+            .iter_mut()
+            .filter_map(|message| message["content"].as_array_mut())
+            .flatten(),
+    )
+}
+
+fn inline_blocks<'a>(directory: &Path, blocks: impl Iterator<Item = &'a mut Value>) -> Result<()> {
     for block in blocks {
+        if block["type"] == "tool_result"
+            && let Some(content) = block["content"].as_array_mut()
+        {
+            inline_blocks(directory, content.iter_mut())?;
+            continue;
+        }
+        if block["type"] != "image" {
+            continue;
+        }
         let Some(object) = block.as_object_mut() else {
             continue;
         };
