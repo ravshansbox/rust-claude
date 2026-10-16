@@ -3,17 +3,6 @@ use std::{
     process::Command,
 };
 
-/// Whether the process is alive. A zombie, killed but not yet reaped,
-/// counts as stopped.
-pub(crate) fn is_running(pid: &str) -> bool {
-    let output = Command::new("ps")
-        .args(["-o", "stat=", "-p", pid.trim()])
-        .output()
-        .unwrap();
-    let state = String::from_utf8_lossy(&output.stdout);
-    !state.trim().is_empty() && !state.trim_start().starts_with('Z')
-}
-
 fn temporary_path(name: &str) -> PathBuf {
     std::env::temp_dir().join(format!("rust-coding-agent-{name}-{}", std::process::id()))
 }
@@ -42,20 +31,6 @@ impl TemporaryFile {
 
     pub(crate) fn content(&self) -> String {
         std::fs::read_to_string(&self.0).unwrap()
-    }
-
-    /// Waits up to five seconds for the file to hold more than white space,
-    /// and gives what it holds.
-    pub(crate) async fn wait_for_content(&self) -> String {
-        let mut content = String::new();
-        for _ in 0..100 {
-            content = self.content();
-            if !content.trim().is_empty() {
-                break;
-            }
-            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-        }
-        content
     }
 }
 

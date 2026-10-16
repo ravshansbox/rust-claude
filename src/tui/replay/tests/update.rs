@@ -112,12 +112,9 @@ fn waits_for_the_reply_before_restarting() {
 }
 
 #[test]
-fn waits_for_background_commands_and_queued_prompts_before_restarting() {
+fn waits_for_queued_prompts_before_restarting() {
     let mut app = new_app();
     installed(&mut app);
-    app.stats.background = 1;
-    assert_eq!(app.restart_due(), None);
-    app.stats.background = 0;
     app.queue.lock().unwrap().push(crate::agent::Queued {
         prompt: "next".into(),
         images: Vec::new(),

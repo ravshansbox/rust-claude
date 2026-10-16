@@ -13,7 +13,6 @@ use serde_json::json;
 use std::time::Duration;
 use tokio::{sync::mpsc, task::JoinHandle};
 
-mod background;
 mod quitting;
 mod sessions;
 mod sign_in;

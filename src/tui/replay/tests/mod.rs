@@ -1,5 +1,5 @@
-mod background;
 mod notifications;
+mod queued;
 mod tasks;
 mod tool_calls;
 mod update;
@@ -12,7 +12,7 @@ use crate::images;
 use crate::skills::{Scope, Skill};
 use crate::tools;
 use crate::tui::{
-    Activity, App, Role, UiEvent,
+    App, Role, UiEvent,
     keys::{Action, handle_input},
     test_support::new_app,
 };

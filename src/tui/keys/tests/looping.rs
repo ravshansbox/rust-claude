@@ -65,14 +65,11 @@ fn sends_the_next_prompt_again_in_a_new_session_after_each_run() {
 }
 
 #[test]
-fn waits_for_background_commands_and_queued_prompts_between_runs() {
+fn waits_for_queued_prompts_between_runs() {
     let mut app = new_app();
     enter(&mut app, "/loop");
     enter(&mut app, "go");
     handle_agent_event(UiEvent::Done(Ok(())), &mut app);
-    app.stats.background = 1;
-    assert_eq!(app.next_loop_round(), None);
-    app.stats.background = 0;
     app.queue.lock().unwrap().push(crate::agent::Queued {
         prompt: "next".into(),
         images: Vec::new(),

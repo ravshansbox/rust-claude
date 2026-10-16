@@ -54,24 +54,6 @@ fn resumes_the_session_picked_from_the_list() {
 }
 
 #[test]
-fn resumes_behind_a_background_turn_started_while_picking() {
-    let mut app = new_app();
-    app.start(Activity::LoadingSessions);
-    let sessions = vec![SessionSummary {
-        id: "0".into(),
-        modified: SystemTime::now(),
-        preview: "prompt".into(),
-    }];
-    handle_agent_event(UiEvent::Sessions(Ok(sessions)), &mut app);
-    let message = crate::tools::background::message(1, "echo hi", "hi\n");
-    handle_agent_event(UiEvent::Background(message), &mut app);
-    press(&mut app, KeyCode::Enter);
-    assert_eq!(app.activity, Some(Activity::Working));
-    handle_agent_event(UiEvent::Done(Ok(())), &mut app);
-    assert_eq!(app.activity, Some(Activity::Resuming));
-}
-
-#[test]
 fn says_when_there_is_no_session_to_resume() {
     let mut app = new_app();
     app.start(Activity::LoadingSessions);

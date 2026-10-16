@@ -34,8 +34,6 @@ pub(super) enum UiEvent {
         notice: String,
     },
     Update(Progress),
-    /// A background command finished, and a turn starts with this message.
-    Background(String),
 }
 
 pub(super) enum Request {
@@ -50,8 +48,6 @@ pub(super) enum Request {
     SetEffort(&'static str),
     NewSession,
     ReplaceMcpServer(Started),
-    /// Starts a turn with the message of a finished background command.
-    Background(String),
 }
 
 pub(super) fn quit(requests: mpsc::UnboundedSender<Request>, cancel: mpsc::UnboundedSender<()>) {
@@ -93,7 +89,6 @@ pub(super) async fn agent_task(
     };
     notify_renewed(&mut agent, &events);
     loop {
-        // Requests the interface already sent come ahead of a background turn.
         let request = tokio::select! {
             biased;
             Some(result) = async { Some(quota.as_mut()?.await) }, if quota.is_some() => {
@@ -113,9 +108,6 @@ pub(super) async fn agent_task(
             // hold a sender of `requests` open for minutes.
             None = cancel.recv() => None,
             request = requests.recv() => request,
-            Some(message) = agent.background.next(), if !agent.background.is_empty() => {
-                Some(Request::Background(message))
-            }
         };
         let Some(request) = request else { break };
         if cancel.is_closed() {

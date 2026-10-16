@@ -4,35 +4,6 @@ use serde_json::json;
 use std::{io, sync::atomic::AtomicBool};
 
 #[tokio::test]
-async fn answers_each_background_command_when_it_finishes() {
-    let api = MockApi::start(vec![
-        tool_reply(
-            "call-1",
-            "bash",
-            &json!({ "command": "sleep 0.3; echo finished", "run_in_background": true }),
-        ),
-        text_reply("waiting"),
-        text_reply("seen it"),
-    ])
-    .await;
-    let mut out = Vec::new();
-    let mut err = Vec::new();
-    let mut printer = Printer::new(&mut out, false, &mut err, false, false, None);
-    let mut agent = test_support::agent(&api);
-    let mut checkpoint = None;
-    let result = super::super::run(&mut agent, &mut printer, "go", &[], &mut checkpoint).await;
-    test_support::remove_session(&agent);
-    printer.finish(result).unwrap();
-    assert_eq!(checkpoint, None);
-    assert_eq!(String::from_utf8(out).unwrap(), "waiting\n\nseen it\n");
-    let err = String::from_utf8(err).unwrap();
-    assert!(
-        err.contains("background task 1 finished\nfinished"),
-        "{err}"
-    );
-}
-
-#[tokio::test]
 async fn ends_an_answer_that_broke_off_before_the_error_is_shown() {
     let api = MockApi::start(vec![
         Reply::Events(vec![

@@ -2,10 +2,7 @@ use anyhow::{Result, anyhow};
 use serde_json::Value;
 
 use super::Agent;
-use crate::{
-    session::{Session, SessionSummary},
-    tools,
-};
+use crate::session::{Session, SessionSummary};
 
 impl Agent {
     pub async fn list_sessions(&self) -> Result<Vec<SessionSummary>> {
@@ -18,14 +15,12 @@ impl Agent {
         let (session, messages) = tokio::task::spawn_blocking(move || Session::load(&id)).await??;
         self.session = session;
         self.messages.clone_from(&messages);
-        self.background = tools::background::Background::default();
         Ok(messages)
     }
 
     pub fn new_session(&mut self) -> Result<()> {
         self.session = Session::new()?;
         self.messages.clear();
-        self.background = tools::background::Background::default();
         Ok(())
     }
 

@@ -37,7 +37,6 @@ impl Agent {
             context_tokens: context_tokens(&self.messages[active_start(&self.messages)..]),
             context_window: models::context_window(&self.model),
             quota: self.quota,
-            background: self.background.len(),
         }
     }
 

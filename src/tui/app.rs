@@ -46,9 +46,6 @@ pub(super) struct App {
     pub(super) effort: &'static str,
     /// What the app is waiting for, shown next to the spinner. `None` when idle.
     pub(super) activity: Option<Activity>,
-    /// What the app was already waiting for when a background turn started
-    /// ahead of it, shown again once that turn ends.
-    waiting_behind_background: Option<Activity>,
     pub(super) spinner_frame: usize,
     pub(super) stats: Stats,
     pub(super) scroll_from_bottom: usize,
@@ -130,11 +127,11 @@ impl App {
         self.show_version();
     }
 
-    /// The installed update to restart with, once no reply, background
-    /// command or queued prompt is waiting and loop mode is off.
+    /// The installed update to restart with, once no reply or queued prompt
+    /// is waiting and loop mode is off.
     pub(super) fn restart_due(&self) -> Option<PathBuf> {
         let queued = self.queue.lock().map_or(0, |queue| queue.len());
-        (!self.busy() && self.stats.background == 0 && queued == 0 && self.looping.is_none())
+        (!self.busy() && queued == 0 && self.looping.is_none())
             .then(|| self.restart_program.clone())
             .flatten()
     }

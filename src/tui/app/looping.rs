@@ -50,11 +50,11 @@ impl App {
         true
     }
 
-    /// Starts the next run of the loop in a new session once no reply,
-    /// background command or queued prompt is waiting.
+    /// Starts the next run of the loop in a new session once no reply or
+    /// queued prompt is waiting.
     pub(in crate::tui) fn next_loop_round(&mut self) -> Option<(String, Vec<Image>)> {
         let queued = self.queue.lock().map_or(0, |queue| queue.len());
-        if self.busy() || self.stats.background > 0 || queued > 0 {
+        if self.busy() || queued > 0 {
             return None;
         }
         let looping = self.looping.as_mut()?;

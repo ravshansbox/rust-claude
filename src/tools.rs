@@ -3,7 +3,6 @@ use serde_json::{Value, json};
 use crate::images::Image;
 
 pub mod agent;
-pub mod background;
 mod bash;
 mod display;
 mod edit;
@@ -37,7 +36,6 @@ pub fn definitions() -> Value {
         write::definition(),
         edit::definition(),
         agent::definition(),
-        background::stop_definition(),
         web_fetch::definition(),
         web_search::definition()
     ])

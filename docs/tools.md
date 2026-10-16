@@ -2,16 +2,15 @@
 
 The agent can use these tools:
 
-- `bash`: run a shell command. An optional `timeout` sets the seconds before the command is stopped, with all its background processes. Without it there is no limit. With `run_in_background`, it returns at once. See [Background commands](#background-commands)
+- `bash`: run a shell command. An optional `timeout` sets the seconds before the command is stopped, with all its background processes. Without it there is no limit
 - `read`: read a file. It reads only up to the requested lines and stops once it has 20,000 bytes of output, so the first lines of a huge file come back straight away. A PNG, JPEG, GIF, WebP or TIFF file is sent to the model as an image instead, prepared the same way as a pasted image (see [Images](usage.md#images)), so it fits within 2,000 by 2,000 pixels and keeps its aspect ratio. It refuses anything that is not a regular file, such as a pipe or device
 - `write`: create or replace a file. It refuses anything that is not a regular file, such as a pipe or device
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings, and writes the new text with CRLF line endings. A file counts as using CRLF when its first line ends with CRLF. It refuses files larger than 10 MiB and anything that is not a regular file, such as a pipe or device. If the file changes while it is being edited, for example by a subagent editing it at the same time, the edit fails instead of undoing the other change
 - `agent`: run tasks in subagents. See [Subagents](#subagents)
-- `bash_stop`: stop a background command. See [Background commands](#background-commands)
 - `web_search`: search the web. See [Web search](#web-search)
 - `web_fetch`: read a web page or PDF. See [Web fetch](#web-fetch)
 
-At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, bash, bash_stop, edit, read, web_fetch, web_search, write`.
+At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, bash, edit, read, web_fetch, web_search, write`.
 
 The agent can also use tools from [MCP servers](mcp.md).
 
@@ -20,16 +19,6 @@ The agent can also use tools from [MCP servers](mcp.md).
 `bash` returns at most 20,000 bytes of output. Standard output and standard error each get half, and a stream that needs less leaves the rest to the other. A longer stream keeps its start and its end, with a note of how many bytes were left out in between. It returns once the command exits, even if a background process it started keeps running. Output such a process writes after the command exits is kept while it keeps coming, until it pauses for a tenth of a second or a second has passed. If a command times out, `bash` returns the output so far, followed by the timeout notice. `bash` and `!` commands and MCP servers run without the terminal, so programs that prompt on it, such as `sudo`, `ssh` or `git` asking for a password, fail at once instead of waiting for input.
 
 Consecutive `read` calls show as one line with the paths separated by commas, for example `read src/main.rs (2), README.md`. A number in brackets shows how many times a file was read. A read with `offset` or `limit` shows its line range, for example `src/tools.rs:325-354`, or `src/tools.rs:325-` when only `offset` is given. A failed read starts a new line. In print mode, the line is printed when the next tool, text or notice arrives.
-
-## Background commands
-
-With `"run_in_background": true`, `bash` starts the command and returns at once with its task number, such as `started background task 1`. The agent can carry on, and you can send prompts, while the command runs. This suits long waits such as `gh run watch --exit-status` for a CI run. The call shows as `bash in the background`, with the command below it.
-
-When the command finishes, its output comes back in a message to the model, with the same limits as other `bash` output. It shows as `background task 1 finished`, with the output below it. Until then, the status line shows how many background commands are running, such as `1 background`. If the agent is idle, a turn starts at once with that message. If the agent is working, the message waits until the current turn ends. A prompt you have already sent runs first. If you send one just as the turn starts, the interface stays busy until your prompt has run after it too. The turn uses the model and effort level selected when it starts. `timeout` works as for other commands; output after a timeout comes back the same way.
-
-`bash_stop` with the task number stops a background command and all its processes, and no message comes back for it. If the command has already finished, `bash_stop` says so and its output still arrives in a later message. Esc cancels the current turn but leaves background commands running. Quitting, starting a new session with `/new`, resuming another with `/resume`, or a stop signal such as Ctrl+C, stops them all. In print mode, rust-coding-agent waits for every background command to finish, and answers each one, before it exits. Resumed sessions show the finished messages, but commands that were running when the session ended do not come back.
-
-Subagents cannot run commands in the background or use `bash_stop`. They do not get `run_in_background` or `bash_stop` at all.
 
 ## Web search
 

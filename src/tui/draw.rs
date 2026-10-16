@@ -145,10 +145,6 @@ fn footer(app: &App) -> Paragraph<'static> {
             1 => Cow::Borrowed("1 agent"),
             count => format!("{count} agents").into(),
         },
-        match app.stats.background {
-            0 => Cow::Borrowed(""),
-            count => format!("{count} background").into(),
-        },
         format_context(&app.stats).into(),
         format_stats(&app.stats).into(),
         format_quota(&app.stats).into(),

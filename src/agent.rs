@@ -31,7 +31,6 @@ use crate::{
     models,
     session::Session,
     skills::{self, Skills},
-    tools,
 };
 pub use cancel::CANCELLED;
 use cancel::cancel_point;
@@ -76,9 +75,8 @@ pub struct Agent {
     /// Tokens used by each subagent started since the last tool results.
     subagent_usage: Arc<Mutex<Vec<Usage>>>,
     /// Whether this agent runs a task for another agent. A subagent cannot
-    /// start subagents or background commands, and its conversation is not saved.
+    /// start subagents, and its conversation is not saved.
     subagent: bool,
-    pub(crate) background: tools::background::Background,
 }
 
 impl Agent {
@@ -108,7 +106,6 @@ impl Agent {
             queue: Queue::default(),
             subagent_usage: Arc::default(),
             subagent: false,
-            background: tools::background::Background::default(),
         })
     }
 

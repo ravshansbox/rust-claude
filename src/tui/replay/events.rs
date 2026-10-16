@@ -51,10 +51,6 @@ pub(in crate::tui) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Files(generation, files) => app.set_files(generation, files),
         UiEvent::Folder(generation, folder, names) => app.set_folder(generation, folder, names),
         UiEvent::Workspace(label) => app.workspace = label,
-        UiEvent::Background(message) => {
-            app.start_background();
-            app.push_background(&message);
-        }
         UiEvent::Resumed(result) => app.finish(result, |app, messages| {
             app.clear_session();
             replay_messages(app, &messages);

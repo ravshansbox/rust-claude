@@ -69,23 +69,6 @@ impl App {
         self.activity = Some(activity);
     }
 
-    /// Starts a turn for a finished background command. The worker may start
-    /// it just as a request is sent, which then waits behind it.
-    pub(in crate::tui) fn start_background(&mut self) {
-        self.waiting_behind_background = self.activity;
-        self.start(Activity::Working);
-    }
-
-    /// Starts `activity`, or shows it once a background turn ends if one is
-    /// running, as the request then waits behind that turn.
-    pub(in crate::tui) fn start_after_background(&mut self, activity: Activity) {
-        if self.busy() {
-            self.waiting_behind_background = Some(activity);
-        } else {
-            self.start(activity);
-        }
-    }
-
     pub(in crate::tui) fn finish<T>(
         &mut self,
         result: Result<T>,
@@ -98,6 +81,6 @@ impl App {
             Ok(value) => on_success(self, value),
             Err(error) => self.push(Role::Event, format!("error: {error:#}")),
         }
-        self.activity = self.waiting_behind_background.take();
+        self.activity = None;
     }
 }

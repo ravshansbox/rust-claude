@@ -8,18 +8,7 @@ impl Agent {
         let mut definitions = tools::definitions();
         if let Value::Array(list) = &mut definitions {
             if self.subagent {
-                list.retain(|definition| {
-                    definition["name"] != tools::agent::NAME
-                        && definition["name"] != tools::background::STOP
-                });
-                for definition in list.iter_mut() {
-                    if let Some(properties) = definition
-                        .pointer_mut("/input_schema/properties")
-                        .and_then(Value::as_object_mut)
-                    {
-                        properties.remove(tools::background::RUN_IN_BACKGROUND);
-                    }
-                }
+                list.retain(|definition| definition["name"] != tools::agent::NAME);
             }
             list.extend(self.mcp.definitions());
         }
@@ -36,11 +25,6 @@ impl Agent {
         });
         let result = if name == tools::agent::NAME && !self.subagent {
             self.run_tasks(&block["input"], on_event).await
-        } else if !self.subagent
-            && let Some(result) = self.background.call(name, &block["input"])
-        {
-            on_event(AgentEvent::Stats(self.stats()));
-            result.map(Value::from)
         } else {
             match self.mcp.call(name, &block["input"]).await {
                 Some(result) => result.map(Value::from),

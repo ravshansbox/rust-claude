@@ -17,10 +17,6 @@ pub(super) async fn handle_request(
                 let _ = events.send(UiEvent::Done(Err(error)));
             }
         },
-        Request::Background(message) => {
-            let _ = events.send(UiEvent::Background(message.clone()));
-            return Some((Some((message, Vec::new())), agent.effort));
-        }
         Request::Compact(effort) => return Some((None, effort)),
         Request::Shell(command) => {
             drain(cancel);

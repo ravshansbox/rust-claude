@@ -1,5 +1,5 @@
 use super::start_tasks;
-use crate::agent::{AgentEvent, Stats};
+use crate::agent::AgentEvent;
 use crate::tui::{
     App, UiEvent,
     replay::handle_agent_event,
@@ -36,22 +36,6 @@ fn shows_how_many_agents_run_on_the_status_line() {
             idle,
         ]
     );
-}
-
-#[test]
-fn shows_how_many_background_commands_run_on_the_status_line() {
-    let mut app = new_app();
-    let idle = status_line(&mut app);
-    start_tasks(&mut app);
-    handle_agent_event(
-        UiEvent::Agent(AgentEvent::Stats(Stats {
-            background: 2,
-            ..Default::default()
-        })),
-        &mut app,
-    );
-    let shown = status_line(&mut app);
-    assert_eq!(shown, format!("{idle} · 2 agents · 2 background"));
 }
 
 #[test]

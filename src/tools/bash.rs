@@ -12,10 +12,7 @@ use std::{
     sync::Mutex,
     time::Duration,
 };
-use tokio::{
-    process::{Child, Command},
-    time::Instant,
-};
+use tokio::{process::Command, time::Instant};
 
 mod captured;
 
@@ -25,20 +22,13 @@ pub(super) fn definition() -> Value {
         "Run a bash command in the cwd and return stdout and stderr",
         &json!({
             "command": { "type": "string" },
-            "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" },
-            "run_in_background": { "type": "boolean", "description": "Return at once and give the output in a later message when the command finishes, for long waits such as CI runs" }
+            "timeout": { "type": "integer", "description": "Seconds before the command is killed. No limit when omitted" }
         }),
         &["command"],
     )
 }
 
 pub(super) async fn run(input: &Value) -> Result<String, String> {
-    let (child, timeout) = start(input)?;
-    wait(child, timeout).await
-}
-
-/// Starts the command of a `bash` call, and gives it with its timeout.
-pub(super) fn start(input: &Value) -> Result<(Child, Option<u64>), String> {
     let timeout = number(input, "timeout", 1)?;
     let mut command = Command::new("bash");
     command
@@ -48,14 +38,9 @@ pub(super) fn start(input: &Value) -> Result<(Child, Option<u64>), String> {
         .stderr(Stdio::piped())
         .kill_on_drop(true);
     new_session(&mut command);
-    let child = command
+    let mut child = command
         .spawn()
         .map_err(|error| format!("failed to run command: {error}"))?;
-    Ok((child, timeout))
-}
-
-/// Waits for a started command and gives its output.
-pub(super) async fn wait(mut child: Child, timeout: Option<u64>) -> Result<String, String> {
     let mut process_group = ProcessGroup(child.id());
     let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
         return Err("failed to capture command output".into());

@@ -60,20 +60,6 @@ async fn runs_a_task_in_a_subagent_and_returns_its_final_reply() {
         child["tools"]
     );
     assert!(tool_names(child).contains(&"web_fetch".to_string()));
-    assert!(tool_names(&requests[0]).contains(&"bash_stop".to_string()));
-    assert!(!tool_names(child).contains(&"bash_stop".to_string()));
-    let background = |request: &Value| {
-        request["tools"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .find(|tool| tool["name"] == "bash")
-            .unwrap()["input_schema"]["properties"]
-            .get("run_in_background")
-            .is_some()
-    };
-    assert!(background(&requests[0]));
-    assert!(!background(child));
     assert_eq!(child["system"], requests[0]["system"]);
     assert_eq!(child["model"], requests[0]["model"]);
     assert_eq!(child["thinking"], requests[0]["thinking"]);

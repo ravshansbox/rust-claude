@@ -15,7 +15,7 @@ pub(super) fn handle_picker_key(key: KeyEvent, app: &mut App, mut act: impl FnMu
             app.picker = None;
             match kind {
                 PickerKind::Session => {
-                    app.start_after_background(Activity::Resuming);
+                    app.start(Activity::Resuming);
                     act(Action::Resume(value));
                 }
                 PickerKind::Effort => {
