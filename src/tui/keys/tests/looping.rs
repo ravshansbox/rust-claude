@@ -9,11 +9,16 @@ use crossterm::event::{Event, KeyCode, KeyModifiers};
 fn enter(app: &mut App, text: &str) -> Vec<String> {
     handle_input(Event::Paste(text.into()), app, |_| {});
     let mut submitted = Vec::new();
-    press_with(app, KeyCode::Enter, KeyModifiers::NONE, |action| {
-        if let Action::Submit(prompt, ..) = action {
-            submitted.push(prompt);
-        }
-    });
+    press_with(
+        app,
+        KeyCode::Enter,
+        KeyModifiers::NONE,
+        |action| match action {
+            Action::Submit(prompt, ..) => submitted.push(prompt),
+            Action::SubmitLoop(prompt, ..) => submitted.push(format!("loop: {prompt}")),
+            _ => {}
+        },
+    );
     submitted
 }
 
@@ -35,8 +40,16 @@ fn turns_loop_mode_on_and_off() {
 #[test]
 fn sends_the_next_prompt_again_in_a_new_session_after_each_run() {
     let mut app = new_app();
+    app.push(crate::tui::Role::Assistant, "earlier answer");
     enter(&mut app, "/loop");
-    assert_eq!(enter(&mut app, "do the next task"), ["do the next task"]);
+    assert!(screen(&mut app).contains("earlier answer"));
+    assert_eq!(
+        enter(&mut app, "do the next task"),
+        ["loop: do the next task"]
+    );
+    let shown = screen(&mut app);
+    assert!(!shown.contains("earlier answer"), "{shown}");
+    assert!(shown.contains("do the next task"), "{shown}");
     assert!(footer(&mut app).contains("loop 1"), "{}", footer(&mut app));
     app.push(crate::tui::Role::Assistant, "first answer");
     assert_eq!(app.next_loop_round(), None);

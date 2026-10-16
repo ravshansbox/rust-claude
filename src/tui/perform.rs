@@ -17,6 +17,9 @@ pub(super) fn perform(
     };
     match action {
         Action::Submit(prompt, images, effort) => send(Request::Prompt(prompt, images, effort)),
+        Action::SubmitLoop(prompt, images, effort) => {
+            send(Request::LoopPrompt(prompt, images, effort));
+        }
         Action::Shell(command) => send(Request::Shell(command)),
         Action::PasteImage => {
             let events = events.clone();

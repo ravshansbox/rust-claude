@@ -11,6 +11,8 @@ mod slash_command;
 
 pub(super) enum Action {
     Submit(String, Vec<Image>, &'static str),
+    /// Sends the first loop prompt in a new session.
+    SubmitLoop(String, Vec<Image>, &'static str),
     Shell(String),
     PasteImage,
     Compact(&'static str),

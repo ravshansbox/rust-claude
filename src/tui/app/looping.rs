@@ -23,14 +23,20 @@ impl App {
         }
     }
 
-    /// Keeps the first prompt sent in loop mode to send again after each run.
-    pub(super) fn start_loop(&mut self, prompt: &str, images: &[Image]) {
-        if let Some(looping) = &mut self.looping
-            && looping.prompt.is_none()
-        {
-            looping.prompt = Some((prompt.to_string(), images.to_vec()));
-            looping.round = 1;
+    /// Keeps the first prompt sent in loop mode to send again after each
+    /// run, and returns whether it is that prompt.
+    pub(super) fn start_loop(&mut self, prompt: &str, images: &[Image]) -> bool {
+        let Some(looping) = &mut self.looping else {
+            return false;
+        };
+        if looping.prompt.is_some() {
+            return false;
         }
+        looping.prompt = Some((prompt.to_string(), images.to_vec()));
+        looping.round = 1;
+        self.clear_session();
+        self.push(Role::User, prompt);
+        true
     }
 
     /// Starts the next run of the loop in a new session once no reply,

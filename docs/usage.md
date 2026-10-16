@@ -94,7 +94,7 @@ The `/resume`, `/model` and `/effort` pickers open in a box above the input. The
 
 ### Loop mode
 
-`/loop` turns loop mode on and shows `loop mode on`. The next prompt you send, including a skill command and its images, then runs again and again, each time in a new session. The first run uses the current session. After each run, once no background command or queued prompt is waiting, the screen clears and the prompt goes out again in a new session. The status line shows `loop` while loop mode waits for a prompt, then the run number, for example `loop 3`.
+`/loop` turns loop mode on and shows `loop mode on`. The next prompt you send, including a skill command and its images, then runs again and again, each time in a new session. The screen clears and the first run starts in a new session too, so it does not see the conversation before it. After each run, once no background command or queued prompt is waiting, the screen clears and the prompt goes out again in a new session. The status line shows `loop` while loop mode waits for a prompt, then the run number, for example `loop 3`.
 
 The loop stops, and loop mode turns off with `loop mode off`, when a run fails or you press Esc. `/loop` turns it off too, even while a run is going; that run then finishes and no other starts. While loop mode is on, rust-coding-agent does not restart into an installed update. For the same loop in print mode, see `--loop` under [Command line](#command-line).
 
