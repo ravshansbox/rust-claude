@@ -86,6 +86,9 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
             _ => bail!(USAGE),
         }
     }
+    if options.looping && (options.continue_session || options.resume.is_some()) {
+        bail!("--loop cannot be used with --continue or --resume\n{USAGE}");
+    }
     let command = match (help, prompt) {
         (true, None) if images.is_empty() && options == Options::default() => Command::Help,
         (false, None) if images.is_empty() => Command::Interactive,

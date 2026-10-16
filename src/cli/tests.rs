@@ -189,3 +189,17 @@ fn parses_loop_option() {
     assert_eq!(parse(&["--loop", "--loop", "--print", "hello"]), None);
     assert_eq!(parse(&["--loop", "--help"]), None);
 }
+
+#[test]
+fn rejects_loop_with_continue_or_resume() {
+    assert_eq!(parse(&["--loop", "--continue", "--print", "hello"]), None);
+    assert_eq!(parse(&["--continue", "--loop", "--print", "hello"]), None);
+    assert_eq!(
+        parse(&["--resume", "abc", "--loop", "--print", "hello"]),
+        None
+    );
+    assert_eq!(
+        parse(&["--loop", "--resume", "abc", "--print", "hello"]),
+        None
+    );
+}
