@@ -16,6 +16,7 @@ mod models;
 mod queue;
 mod quitting;
 mod sessions;
+mod starting;
 
 #[test]
 fn redraws_only_for_events_that_may_change_the_screen() {

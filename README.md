@@ -11,6 +11,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Built-in tools: `bash`, `read`, `write`, `edit`, `agent`, `bash_stop`, `web_search` and `web_fetch`
 - Subagents that run tasks at the same time or one after another
 - Background commands, such as watching a CI run, whose output comes back when they finish
+- Start the interface with a prompt (`rca fix the failing test`) to send it at once
 - Print mode (`--print` or standard input) to run one prompt and print the answer
 - Loop mode (`/loop` or `--loop`) to run the same prompt again and again, each time in a new session
 - Four models, effort levels and thinking shown in the conversation
@@ -42,6 +43,12 @@ Start the interactive interface:
 
 ```sh
 rca
+```
+
+Start the interface and send a prompt at once:
+
+```sh
+rca fix the failing test
 ```
 
 Run one prompt and print the answer:

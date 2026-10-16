@@ -389,6 +389,27 @@ fn reports_a_usage_error_for_an_argument_that_is_not_valid_text() {
 }
 
 #[test]
+fn rejects_a_prompt_in_the_arguments_and_on_standard_input() {
+    let setup = Setup::new("two-prompts");
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&setup.home).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
+        .args(["fix", "the bug"])
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(
+        stderr.contains("a prompt cannot come from both the arguments and standard input"),
+        "{stderr}"
+    );
+}
+
+#[test]
 fn moves_the_old_config_folder_to_the_new_one() {
     let setup = Setup::new("old-config");
     write_sign_in(&setup.home.join(".rust-claude"));

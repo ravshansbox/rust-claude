@@ -203,3 +203,38 @@ fn rejects_loop_with_continue_or_resume() {
         None
     );
 }
+
+#[test]
+fn parses_a_prompt_to_start_the_interface_with() {
+    assert_eq!(
+        parse(&["fix", "the bug"]),
+        Some(Command::Start {
+            prompt: "fix the bug".into(),
+            images: Vec::new(),
+        })
+    );
+    assert_eq!(
+        parse(&["--image", "a.png", "describe", "--image", "b.png"]),
+        Some(Command::Start {
+            prompt: "describe".into(),
+            images: vec!["a.png".into(), "b.png".into()],
+        })
+    );
+    assert_eq!(
+        parse_with_options(&["--continue", "now add tests"])
+            .map(|(_, options)| options.continue_session),
+        Some(true)
+    );
+}
+
+#[test]
+fn rejects_a_prompt_to_start_with_that_does_not_fit() {
+    assert_eq!(parse(&["--print", "one", "two"]), None);
+    assert_eq!(parse(&["two", "--print", "one"]), None);
+    assert_eq!(parse(&["--help", "hello"]), None);
+    assert_eq!(parse(&["--loop", "hello"]), None);
+    assert_eq!(parse(&[""]), None);
+    assert_eq!(parse(&[" ", "\n"]), None);
+    assert_eq!(parse(&["fix", "-v"]), None);
+    assert_eq!(parse(&["--", "--help"]), None);
+}

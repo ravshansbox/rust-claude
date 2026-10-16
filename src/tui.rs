@@ -25,7 +25,7 @@ mod test_support;
 mod worker;
 mod workspace;
 
-use crate::{agent::Agent, highlight::Colour, restart::Restart, stop::StopSignals};
+use crate::{agent::Agent, highlight::Colour, images::Image, restart::Restart, stop::StopSignals};
 use anyhow::Result;
 use app::{Activity, App, Picker, PickerKind};
 use event_loop::run_loop;
@@ -51,6 +51,7 @@ pub async fn run(
     agent: Agent,
     stop: StopSignals,
     restarted_input: Option<String>,
+    starting_prompt: Option<(String, Vec<Image>)>,
 ) -> Result<Option<Restart>> {
     let (theme, background) = Theme::detect();
     THEME.get_or_init(|| theme);
@@ -65,7 +66,7 @@ pub async fn run(
             return Err(error.into());
         }
     };
-    let result = run_loop(&mut terminal, agent, stop, restarted_input).await;
+    let result = run_loop(&mut terminal, agent, stop, restarted_input, starting_prompt).await;
     drop(modes);
     ratatui::restore();
     drop(held);

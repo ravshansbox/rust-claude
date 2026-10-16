@@ -1,6 +1,8 @@
 use super::{Activity, App, PickerKind, Role};
 use crate::images::Image;
-use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEvent, MouseEventKind};
+use crossterm::event::{
+    Event, KeyCode, KeyEvent, KeyEventKind, MouseButton, MouseEvent, MouseEventKind,
+};
 use press::handle_key;
 use ratatui::layout::Position;
 
@@ -55,6 +57,21 @@ pub(super) fn handle_input(event: Event, app: &mut App, act: impl FnMut(Action))
         Event::Key(_) => {}
     }
     false
+}
+
+/// Sends the prompt given on the command line as if it was typed.
+pub(super) fn submit_starting_prompt(
+    app: &mut App,
+    prompt: &str,
+    images: Vec<Image>,
+    act: impl FnMut(Action),
+) -> bool {
+    app.insert(prompt);
+    for image in images {
+        app.insert(" ");
+        app.attach_image(image);
+    }
+    handle_input(Event::Key(KeyEvent::from(KeyCode::Enter)), app, act)
 }
 
 fn handle_mouse(mouse: MouseEvent, app: &mut App) {

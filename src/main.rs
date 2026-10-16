@@ -55,7 +55,7 @@ async fn run(restarted_input: Option<String>) -> Result<Option<restart::Restart>
     {
         bail!(models::unknown(model));
     }
-    let (print_prompt, image_paths) = match command {
+    let (print_prompt, starting_prompt, image_paths) = match command {
         Command::Help => {
             println!("A small coding agent for the terminal.\n\n{USAGE}\n\n{OPTIONS}");
             return Ok(None);
@@ -63,9 +63,13 @@ async fn run(restarted_input: Option<String>) -> Result<Option<restart::Restart>
         Command::Interactive if io::stdin().is_terminal() && options.looping => {
             bail!("--loop needs a prompt from --print or standard input\n{USAGE}")
         }
-        Command::Interactive if io::stdin().is_terminal() => (None, Vec::new()),
-        Command::Interactive => (Some(read_stdin_prompt()?), Vec::new()),
-        Command::Print { prompt, images } => (Some(prompt), images),
+        Command::Interactive if io::stdin().is_terminal() => (None, None, Vec::new()),
+        Command::Interactive => (Some(read_stdin_prompt()?), None, Vec::new()),
+        Command::Start { .. } if !io::stdin().is_terminal() => {
+            bail!("a prompt cannot come from both the arguments and standard input\n{USAGE}")
+        }
+        Command::Start { prompt, images } => (None, Some(prompt), images),
+        Command::Print { prompt, images } => (Some(prompt), None, images),
     };
     let images = load_images(&image_paths)?;
 
@@ -111,7 +115,8 @@ async fn run(restarted_input: Option<String>) -> Result<Option<restart::Restart>
     }
 
     let Some(prompt) = print_prompt else {
-        let result = tui::run(agent, stop, restarted_input).await;
+        let starting_prompt = starting_prompt.map(|prompt| (prompt, images));
+        let result = tui::run(agent, stop, restarted_input, starting_prompt).await;
         auth::finish_renewal(RENEWAL_WAIT).await;
         return result;
     };

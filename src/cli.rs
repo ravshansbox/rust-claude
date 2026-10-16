@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, bail};
 use std::io;
 
-pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue | --resume <id>] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]... [--loop]]";
+pub const USAGE: &str = "usage: rust-coding-agent [--help] [--continue | --resume <id>] [--config-dir <path>] [--model <id>] [--effort <level>] [--print <prompt> [--image <path>]... [--loop] | <prompt>... [--image <path>]...]";
 
 pub const OPTIONS: &str = "Options:
   --continue           Continue the latest session in the current folder
@@ -12,13 +12,16 @@ pub const OPTIONS: &str = "Options:
   --print <prompt>     Run one prompt and print the answer. Without it, a prompt piped to standard input runs the same way
   --image <path>       Send an image with the prompt in print mode. Repeat for more images
   --loop               Run the print mode prompt again and again, each time in a new session, until it fails or you stop it
-  --help               Show this help";
+  --help               Show this help
+
+Words that are not options make a prompt, which the interface sends at once, as if you typed it";
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
     Interactive,
     Print { prompt: String, images: Vec<String> },
+    Start { prompt: String, images: Vec<String> },
 }
 
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -52,6 +55,7 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
     let mut options = Options::default();
     let mut images = Vec::new();
     let mut prompt = None;
+    let mut words: Vec<String> = Vec::new();
     let mut help = false;
     while let Some(argument) = arguments.next() {
         match argument.as_str() {
@@ -83,16 +87,28 @@ pub fn parse_arguments(arguments: Vec<String>) -> Result<(Command, Options)> {
             }
             "--loop" if !options.looping => options.looping = true,
             "--help" if !help => help = true,
+            word if !word.starts_with('-') => words.push(argument),
             _ => bail!(USAGE),
         }
     }
     if options.looping && (options.continue_session || options.resume.is_some()) {
         bail!("--loop cannot be used with --continue or --resume\n{USAGE}");
     }
-    let command = match (help, prompt) {
-        (true, None) if images.is_empty() && options == Options::default() => Command::Help,
-        (false, None) if images.is_empty() => Command::Interactive,
-        (false, Some(prompt)) => Command::Print { prompt, images },
+    let words = (!words.is_empty()).then(|| words.join(" "));
+    if words
+        .as_deref()
+        .is_some_and(|words| words.trim().is_empty())
+    {
+        bail!("no prompt\n{USAGE}");
+    }
+    if options.looping && words.is_some() {
+        bail!("--loop needs --print or standard input\n{USAGE}");
+    }
+    let command = match (help, prompt, words) {
+        (true, None, None) if images.is_empty() && options == Options::default() => Command::Help,
+        (false, None, None) if images.is_empty() => Command::Interactive,
+        (false, Some(prompt), None) => Command::Print { prompt, images },
+        (false, None, Some(prompt)) => Command::Start { prompt, images },
         _ => bail!(USAGE),
     };
     Ok((command, options))

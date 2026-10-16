@@ -8,6 +8,14 @@ Start the interactive interface:
 rca
 ```
 
+Start the interface and send a prompt at once by giving it after the options. Words that do not start with `-` are joined with spaces into one prompt, so quotes are optional. The interface sends it as if you typed it and pressed Enter, so commands such as `/effort high` and `!git status` work too. Images from `--image` are attached to it, each shown as `[image 1]`, `[image 2]` and so on after the prompt. It works with `--continue` and `--resume`. It cannot be used with `--print` or `--loop`, or when standard input is not a terminal. A word that starts with `-` is read as an option, so quote it together with the words before it, as in `rca "remove the -v flag"`:
+
+```sh
+rca fix the failing test
+rca --continue "now add tests"
+rca "what is wrong in this screenshot?" --image error.png
+```
+
 Run one prompt and print the answer with `--print`. The argument after it is always the prompt, even when it starts with `-`:
 
 ```sh

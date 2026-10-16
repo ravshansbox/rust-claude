@@ -2,7 +2,7 @@ use super::{
     App,
     background::{start_background_work, start_mcp_servers, start_updater},
     draw::draw,
-    keys::{handle_input, may_change_screen},
+    keys::{handle_input, may_change_screen, submit_starting_prompt},
     opening::opening_app,
     perform::perform,
     prompt_history::{finish_history, history_writer},
@@ -12,7 +12,8 @@ use super::{
     worker::{Request, UiEvent, agent_task, quit},
 };
 use crate::{
-    agent::Agent, config, history, mcp, restart::Restart, settings::Settings, stop::StopSignals,
+    agent::Agent, config, history, images::Image, mcp, restart::Restart, settings::Settings,
+    stop::StopSignals,
 };
 use anyhow::Result;
 use crossterm::event::EventStream;
@@ -33,6 +34,7 @@ pub(super) async fn run_loop(
     agent: Agent,
     mut stop: StopSignals,
     restarted_input: Option<String>,
+    starting_prompt: Option<(String, Vec<Image>)>,
 ) -> Result<Option<Restart>> {
     let startup = mcp::startup();
     let mut app = opening_app(&agent, &startup, history::history_path());
@@ -56,10 +58,21 @@ pub(super) async fn run_loop(
     let mut saved_model = app.model.clone();
     let mut saved_effort = app.effort;
     let mut sent_effort = app.effort;
+    let mut quit_at_start = false;
+    if let Some((prompt, images)) = starting_prompt {
+        quit_at_start = submit_starting_prompt(&mut app, &prompt, images, |action| {
+            perform(action, &request_tx, &cancel_tx, &background_events);
+        });
+        send_changed_effort(&app, &mut sent_effort, &request_tx);
+        save_changed_settings(&mut app, &mut saved_model, &mut saved_effort);
+    }
 
     let mut worker_stopped = false;
     let mut restart_program = None;
     let result = loop {
+        if quit_at_start {
+            break Ok(());
+        }
         tokio::select! {
             joined = &mut worker => {
                 worker_stopped = true;
