@@ -33,7 +33,7 @@ pub(super) fn challenge_parameter(challenge: &str, key: &str) -> Option<String> 
         };
         let value = value.trim_start();
         return Some(match value.strip_prefix('"') {
-            Some(quoted) => quoted.split('"').next().unwrap_or_default().to_string(),
+            Some(quoted) => unquote(quoted),
             None => value
                 .split([',', ' '])
                 .next()
@@ -42,6 +42,21 @@ pub(super) fn challenge_parameter(challenge: &str, key: &str) -> Option<String> 
         });
     }
     None
+}
+
+/// The text of a quoted value up to its closing quote, with each `\`
+/// escape replaced by the character it escapes.
+fn unquote(quoted: &str) -> String {
+    let mut value = String::new();
+    let mut characters = quoted.chars();
+    while let Some(character) = characters.next() {
+        match character {
+            '"' => break,
+            '\\' => value.extend(characters.next()),
+            _ => value.push(character),
+        }
+    }
+    value
 }
 
 pub(super) fn requested_scope(

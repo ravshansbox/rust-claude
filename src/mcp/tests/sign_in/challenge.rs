@@ -63,3 +63,25 @@ async fn asks_for_the_scopes_the_server_lists_when_the_challenge_names_none() {
     let sign_in = begin_web_sign_in(&url).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "read write");
 }
+
+#[tokio::test]
+async fn reads_escaped_characters_in_quoted_sign_in_parameters() {
+    let (url, _) = oauth_server_with(|base, request| {
+        let reply = oauth_mcp(base, request);
+        if reply.status != 401 {
+            return reply;
+        }
+        HttpReply::status(401, "").with_header(
+            "www-authenticate",
+            &format!(
+                r#"Bearer resource_metadata="{base}/.well-known/oauth-protected-resource/mcp", scope="mcp:\"connect\" mcp\:read""#
+            ),
+        )
+    })
+    .await;
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
+    assert_eq!(
+        query(&sign_in.authorize_url)["scope"],
+        r#"mcp:"connect" mcp:read"#
+    );
+}
