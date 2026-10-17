@@ -10,7 +10,7 @@ pub const OPTIONS: &str = "Options:
   --model <id>         Model to use
   --effort <level>     Effort level: off (Sonnet and Haiku), low, medium, high, xhigh, max
   --print <prompt>     Run one prompt and print the answer. Without it, a prompt piped to standard input runs the same way
-  --image <path>       Send an image with the prompt in print mode. Repeat for more images
+  --image <path>       Send an image with the prompt. Repeat for more images
   --loop               Run the print mode prompt again and again, each time in a new session, until it fails or you stop it
   --help               Show this help
 
