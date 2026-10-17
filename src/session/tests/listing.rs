@@ -58,3 +58,20 @@ fn lists_other_sessions_newest_first() {
         .collect();
     assert_eq!(previews, ["newer", "older"]);
 }
+
+#[test]
+fn leaves_out_subagent_sessions() {
+    let parent = Session::new().unwrap();
+    let mut subagent = Session::subagent(&parent.id).unwrap();
+    subagent
+        .save(&[json!({ "role": "user", "content": "task" })])
+        .unwrap();
+    let listed = Session::list_except("");
+    std::fs::remove_dir_all(sessions_directory().unwrap().join(&parent.id)).unwrap();
+    assert!(
+        !listed
+            .unwrap()
+            .iter()
+            .any(|summary| summary.id == subagent.id)
+    );
+}

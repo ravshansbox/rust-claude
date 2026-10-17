@@ -34,6 +34,8 @@ pub struct SessionSummary {
 
 pub struct Session {
     pub id: String,
+    /// The session that started this one as a subagent, whose folder holds its file.
+    parent: Option<String>,
     saved: usize,
     /// Whether requests ask the API to drop thinking blocks whose earlier
     /// conversation changed, instead of rejecting the request.
@@ -56,10 +58,26 @@ impl Session {
     pub fn new() -> Result<Self> {
         Ok(Self {
             id: new_uuid()?,
+            parent: None,
             saved: 0,
             drops_mismatched_thinking: false,
             drops_mismatched_thinking_unsaved: false,
             file: None,
+        })
+    }
+
+    pub fn subagent(parent: &str) -> Result<Self> {
+        Ok(Self {
+            parent: Some(parent.to_string()),
+            ..Self::new()?
+        })
+    }
+
+    fn directory(&self) -> Result<PathBuf> {
+        let directory = sessions_directory()?;
+        Ok(match &self.parent {
+            Some(parent) => directory.join(parent),
+            None => directory,
         })
     }
 
@@ -85,7 +103,7 @@ impl Session {
         let file = match &mut self.file {
             Some(file) => file,
             None => {
-                let directory = sessions_directory()?;
+                let directory = self.directory()?;
                 config::create_private_dir(&directory)?;
                 let path = session_path(&directory, &self.id);
                 self.file.insert(open_locked(&path, true)?)
@@ -157,6 +175,7 @@ impl Session {
         }
         let session = Self {
             id: id.to_string(),
+            parent: None,
             saved: messages.len(),
             drops_mismatched_thinking,
             drops_mismatched_thinking_unsaved: false,

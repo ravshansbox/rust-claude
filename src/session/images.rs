@@ -5,12 +5,12 @@ use base64::{Engine, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
-use super::{Session, hex, sessions_directory};
+use super::{Session, hex};
 use crate::{config, images::Image};
 
 impl Session {
     fn images_directory(&self) -> Result<PathBuf> {
-        Ok(sessions_directory()?.join(&self.id))
+        Ok(self.directory()?.join(&self.id))
     }
 
     pub fn save_image(&self, image: &Image) -> Result<Value> {
