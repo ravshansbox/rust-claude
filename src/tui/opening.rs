@@ -25,6 +25,9 @@ pub(super) fn opening_app(
     }
     app.queue = agent.queue.clone();
     app.push(Role::Event, tools_line());
+    for warning in tools::warnings() {
+        app.push(Role::Event, warning);
+    }
     app.start_mcp_servers(
         startup
             .servers

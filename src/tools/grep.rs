@@ -7,7 +7,7 @@ use tokio::{
 };
 
 pub const NAME: &str = "grep";
-const PROGRAM: &str = "rg";
+pub(super) const PROGRAM: &str = "rg";
 const DEFAULT_LIMIT: u64 = 100;
 pub(super) const GUIDANCE: &str =
     "Use grep to search file contents for text, such as strings, comments or names.";

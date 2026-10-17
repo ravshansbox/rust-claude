@@ -53,6 +53,26 @@ pub fn definitions() -> Value {
     Value::Array(definitions)
 }
 
+/// A warning for each tool left out because its program is not installed.
+pub fn warnings() -> Vec<String> {
+    missing_program_warnings([
+        (ast_grep::NAME, ast_grep::PROGRAM, ast_grep::installed()),
+        (grep::NAME, grep::PROGRAM, grep::installed()),
+    ])
+}
+
+fn missing_program_warnings<'a>(
+    tools: impl IntoIterator<Item = (&'a str, &'a str, bool)>,
+) -> Vec<String> {
+    tools
+        .into_iter()
+        .filter(|(_, _, installed)| !installed)
+        .map(|(name, program, _)| {
+            format!("tool warning: {name} is off because {program} is not on PATH")
+        })
+        .collect()
+}
+
 /// When to use the search tools that rely on programs installed separately.
 pub fn guidance() -> Option<String> {
     let installed: Vec<(&str, &str)> = [

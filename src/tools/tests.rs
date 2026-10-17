@@ -63,3 +63,22 @@ fn truncates_inside_multibyte_character() {
     assert!(text.ends_with("\n… output truncated"));
     assert_eq!(text.len(), MAX_OUTPUT - 1 + "\n… output truncated".len());
 }
+
+#[test]
+fn warns_about_each_tool_whose_program_is_missing() {
+    let tools = [("ast_grep", "ast-grep", false), ("grep", "rg", true)];
+    assert_eq!(
+        super::missing_program_warnings(tools),
+        ["tool warning: ast_grep is off because ast-grep is not on PATH"]
+    );
+    let tools = [("ast_grep", "ast-grep", false), ("grep", "rg", false)];
+    assert_eq!(
+        super::missing_program_warnings(tools),
+        [
+            "tool warning: ast_grep is off because ast-grep is not on PATH",
+            "tool warning: grep is off because rg is not on PATH",
+        ]
+    );
+    let tools = [("ast_grep", "ast-grep", true), ("grep", "rg", true)];
+    assert!(super::missing_program_warnings(tools).is_empty());
+}

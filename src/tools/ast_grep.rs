@@ -4,7 +4,7 @@ use std::{process::Stdio, sync::OnceLock};
 use tokio::process::Command;
 
 pub const NAME: &str = "ast_grep";
-const PROGRAM: &str = "ast-grep";
+pub(super) const PROGRAM: &str = "ast-grep";
 pub(super) const GUIDANCE: &str = "Use ast_grep to find code by its syntax, such as calls, functions or types, and to outline a file before reading all of it.";
 
 pub(super) fn installed() -> bool {
