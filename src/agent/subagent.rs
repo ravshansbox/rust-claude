@@ -14,6 +14,9 @@ mod child;
 use super::{Agent, AgentEvent};
 use crate::tools::agent::{self, Mode};
 
+/// A task's subagent session id, if it started, and its reply.
+type TaskReply = (Option<String>, Result<String, String>);
+
 const NOT_RUN: &str = "This task did not run, because an earlier task failed.";
 const FAILED: &str = "This task failed: ";
 const NO_REPLY: &str = "This task finished without a reply.";
@@ -43,7 +46,7 @@ impl Agent {
                 Mode::Sequential => {
                     let mut replies = Vec::new();
                     for (index, task) in tasks.into_iter().enumerate() {
-                        let prompt = match replies.last() {
+                        let prompt = match replies.last().map(|(_, reply)| reply) {
                             Some(Err(_)) => None,
                             Some(Ok(previous)) => Some(format!(
                                 "{}\n\n<previous-task-result>\n{previous}\n</previous-task-result>",
@@ -72,7 +75,14 @@ impl Agent {
         Ok(Value::Array(
             replies
                 .into_iter()
-                .map(|reply| json!({ "type": "text", "text": reply.unwrap_or_else(|error| error) }))
+                .map(|(session, reply)| {
+                    let mut block =
+                        json!({ "type": "text", "text": reply.unwrap_or_else(|error| error) });
+                    if let Some(session) = session {
+                        block["session"] = json!(session);
+                    }
+                    block
+                })
                 .collect(),
         ))
     }
@@ -84,24 +94,41 @@ impl Agent {
         description: String,
         prompt: Option<String>,
         events: mpsc::UnboundedSender<AgentEvent>,
-    ) -> Pin<Box<dyn Future<Output = Result<String, String>> + Send + '_>> {
+    ) -> Pin<Box<dyn Future<Output = TaskReply> + Send + '_>> {
         Box::pin(async move {
             let _ = events.send(AgentEvent::TaskStart { task, description });
             let tool_calls = Arc::new(AtomicUsize::new(0));
-            let reply = match prompt {
+            let (session, reply) = match prompt {
                 Some(prompt) => {
                     self.run_subagent(task, prompt, events.clone(), tool_calls.clone())
                         .await
                 }
-                None => Err(NOT_RUN.into()),
+                None => (None, Err(NOT_RUN.into())),
             };
             let _ = events.send(AgentEvent::TaskDone {
                 task,
                 reply: reply.clone(),
                 tool_calls: tool_calls.load(Ordering::Relaxed),
             });
-            reply
+            (session, reply)
         })
+    }
+}
+
+/// Removes the subagent session ids saved with task replies, which the API
+/// does not accept.
+pub(super) fn remove_session_ids(messages: &mut [Value]) {
+    let blocks = messages
+        .iter_mut()
+        .filter_map(|message| message["content"].as_array_mut())
+        .flatten()
+        .filter(|block| block["type"] == "tool_result")
+        .filter_map(|block| block["content"].as_array_mut())
+        .flatten();
+    for block in blocks {
+        if let Some(block) = block.as_object_mut() {
+            block.remove("session");
+        }
     }
 }
 

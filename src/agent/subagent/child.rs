@@ -7,9 +7,10 @@ use anyhow::Result;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
-use super::{FAILED, NO_REPLY};
+use super::{FAILED, NO_REPLY, TaskReply};
 use crate::{
     agent::{Agent, AgentEvent, Usage, text_of},
+    session::Session,
     skills::Skills,
 };
 
@@ -27,6 +28,7 @@ impl Agent {
                 diagnostics: Vec::new(),
             },
             mcp: self.mcp.clone(),
+            session: Session::subagent(&self.session.id)?,
             subagent: true,
             ..Self::base(
                 self.http.clone(),
@@ -42,9 +44,13 @@ impl Agent {
         prompt: String,
         events: mpsc::UnboundedSender<AgentEvent>,
         tool_calls: Arc<AtomicUsize>,
-    ) -> Result<String, String> {
+    ) -> TaskReply {
         let failed = |error: anyhow::Error| format!("{FAILED}{error:#}");
-        let mut child = self.subagent().map_err(failed)?;
+        let mut child = match self.subagent() {
+            Ok(child) => child,
+            Err(error) => return (None, Err(failed(error))),
+        };
+        let id = Some(child.session.id.clone());
         let usage = self.subagent_usage.clone();
         let slot = usage.lock().map_or(0, |mut slots| {
             slots.push(Usage::default());
@@ -76,9 +82,14 @@ impl Agent {
         if let Err(error) = child.run(&prompt, &[], callback).await {
             child.discard_from(child.messages.len(), "error", false);
             count_failed(child.stats().usage);
-            return Err(failed(error));
+            let error = child.save_after_failure(error);
+            return (id, Err(failed(error)));
         }
-        Ok(final_reply(&child.messages))
+        let reply = match child.session.save(&child.messages) {
+            Ok(()) => Ok(final_reply(&child.messages)),
+            Err(error) => Err(failed(error)),
+        };
+        (id, reply)
     }
 }
 

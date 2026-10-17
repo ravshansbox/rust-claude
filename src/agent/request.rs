@@ -5,6 +5,7 @@ use super::{
     Agent, AgentEvent,
     retry::{MAX_RETRIES, is_thinking_mismatch, retry_delay},
     stream::Response,
+    subagent::remove_session_ids,
 };
 
 impl Agent {
@@ -15,6 +16,7 @@ impl Agent {
         on_event: &mut impl FnMut(AgentEvent),
     ) -> Result<Response> {
         self.session.inline_images(&mut messages)?;
+        remove_session_ids(&mut messages);
         let mut attempt = 0;
         loop {
             match self

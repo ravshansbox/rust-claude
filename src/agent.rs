@@ -75,7 +75,8 @@ pub struct Agent {
     /// Tokens used by each subagent started since the last tool results.
     subagent_usage: Arc<Mutex<Vec<Usage>>>,
     /// Whether this agent runs a task for another agent. A subagent cannot
-    /// start subagents, and its conversation is not saved.
+    /// start subagents, and its conversation is saved in the folder of the
+    /// session that started it.
     subagent: bool,
 }
 
