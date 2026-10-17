@@ -154,6 +154,15 @@ fn quotes_wide_characters_once() {
 }
 
 #[test]
+fn quotes_a_wide_character_selected_from_its_right_half() {
+    let mut app = app_with_reply();
+    app.push(Role::Event, "日本語 text");
+    let (column, row) = position(&mut app, "text");
+    let input = drag(&mut app, (column - 6, row), (column + 3, row));
+    assert_eq!(input, "'日本語 text' - ");
+}
+
+#[test]
 fn quotes_nothing_on_a_click() {
     let mut app = app_with_reply();
     let (column, row) = position(&mut app, "Earlier reply");

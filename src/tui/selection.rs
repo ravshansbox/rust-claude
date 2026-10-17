@@ -116,7 +116,7 @@ impl App {
                     }
                     let symbol = buffer[(x, y)].symbol();
                     covered = Span::raw(symbol).width().saturating_sub(1);
-                    if (first..=last).contains(&x) {
+                    if x <= last && x.saturating_add(saturating_u16(covered)) >= first {
                         text.push_str(symbol);
                     }
                 }
