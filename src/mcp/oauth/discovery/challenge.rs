@@ -8,7 +8,9 @@ pub(super) fn challenge_parameter(challenge: &str, key: &str) -> Option<String> 
     let mut before = None;
     for (start, character) in challenge.char_indices() {
         let at_key = !quoted
-            && !before.is_some_and(|before: char| before.is_ascii_alphanumeric() || before == '_');
+            && !before.is_some_and(|before: char| {
+                before.is_ascii_alphanumeric() || "!#$%&'*+-.^_`|~".contains(before)
+            });
         before = Some(character);
         if quoted {
             match character {
