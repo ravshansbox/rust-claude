@@ -131,7 +131,11 @@ fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {
             None => (command, true),
         };
         let command = command.trim().to_string();
-        app.remember(&prompt);
+        if share {
+            app.remember(&prompt);
+        } else {
+            app.add_prompt(prompt);
+        }
         if !command.is_empty() {
             app.start(Activity::Running);
             act(Action::Shell(command, share));

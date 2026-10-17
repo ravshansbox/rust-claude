@@ -175,3 +175,29 @@ fn browses_prompt_history_past_a_recalled_command() {
     assert_eq!(press(&mut app, KeyCode::Backspace), "read @sr");
     assert!(app.visible_suggestions().is_some());
 }
+
+#[test]
+fn keeps_local_shell_commands_out_of_the_history_file() {
+    let folder = TemporaryDir::new("tui-local-shell-history");
+    let path = folder.path().join("history.jsonl");
+    let mut app = new_app();
+    app.load_history(Some(path.clone()));
+    for prompt in ["!ls", "!!env"] {
+        handle_input(Event::Paste(prompt.into()), &mut app, |_| {});
+        press(&mut app, KeyCode::Enter);
+        app.activity = None;
+    }
+    assert_eq!(press(&mut app, KeyCode::Up), "!!env");
+    assert_eq!(press(&mut app, KeyCode::Up), "!ls");
+    let (sender, writer) = history_writer(tokio::sync::mpsc::unbounded_channel().0);
+    app.unsaved_history
+        .drain(..)
+        .for_each(|entry| sender.send(entry).unwrap());
+    drop(sender);
+    writer.join().unwrap();
+    let mut restarted = new_app();
+    restarted.load_history(Some(path));
+    drop(folder);
+    assert_eq!(press(&mut restarted, KeyCode::Up), "!ls");
+    assert_eq!(press(&mut restarted, KeyCode::Up), "!ls");
+}
