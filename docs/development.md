@@ -1,6 +1,6 @@
 # Development
 
-Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Tests keep sign-in, sessions and other files in a temporary folder, not in `~/.rust-coding-agent`.
+The tests need [ast-grep](https://ast-grep.github.io) and [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`) on your `PATH`. Before each commit, run `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings` and `cargo test`. Tests keep sign-in, sessions and other files in a temporary folder, not in `~/.rust-coding-agent`.
 
 Write commit messages as [conventional commits](https://www.conventionalcommits.org) with type `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `style` or `test`, for example `fix(tui): hide notice` or `feat!: drop old config`. Nothing checks this, but releases depend on it.
 
