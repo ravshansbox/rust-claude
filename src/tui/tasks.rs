@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::{
-    App, Role,
+    Activity, App, Role,
     status::{format_context, format_stats},
 };
 use crate::{
@@ -14,6 +14,8 @@ pub(super) struct Task {
     description: String,
     tool_calls: usize,
     stats: Option<Stats>,
+    /// What the subagent shows, as its own conversation.
+    view: Box<App>,
 }
 
 /// The subagent tasks of the running `agent` call, by task number.
@@ -75,8 +77,61 @@ impl App {
                 description: description.to_string(),
                 tool_calls: 0,
                 stats: None,
+                view: Box::default(),
             },
         );
+        if let Some(view) = self.task_view(task) {
+            view.start(Activity::Working);
+        }
+    }
+
+    /// The conversation of the subagent on `task`, if it runs.
+    pub(super) fn task_view(&mut self, task: usize) -> Option<&mut App> {
+        self.tasks.get_mut(&task).map(|state| &mut *state.view)
+    }
+
+    /// The running tasks, in order, with their descriptions.
+    pub(super) fn task_tabs(&self) -> Vec<(usize, &str)> {
+        let mut tabs: Vec<_> = self
+            .tasks
+            .iter()
+            .map(|(task, state)| (*task, state.description.as_str()))
+            .collect();
+        tabs.sort_unstable();
+        tabs
+    }
+
+    /// The task line of the running `task`.
+    pub(super) fn task_line(&self, task: usize) -> Option<String> {
+        self.tasks.get(&task).map(|state| state.line(task))
+    }
+
+    pub(super) fn clear_tasks(&mut self) {
+        self.tasks.clear();
+        self.agent_view = None;
+    }
+
+    pub(super) fn open_agent_view(&mut self) {
+        self.agent_view = self.task_tabs().first().map(|(task, _)| *task);
+    }
+
+    /// Shows the next running agent after the one shown, or the one before
+    /// it, wrapping around at the ends.
+    pub(super) fn switch_agent(&mut self, forward: bool) {
+        let Some(shown) = self.agent_view else {
+            return;
+        };
+        let tasks: Vec<usize> = self.task_tabs().into_iter().map(|(task, _)| task).collect();
+        let next = if forward {
+            tasks.iter().find(|task| **task > shown).or(tasks.first())
+        } else {
+            tasks
+                .iter()
+                .rev()
+                .find(|task| **task < shown)
+                .or(tasks.last())
+        };
+        self.agent_view = next.copied();
     }
 
     fn update_task(&mut self, task: usize, change: impl FnOnce(&mut Task)) {
@@ -100,6 +155,9 @@ impl App {
         let Some(mut state) = self.tasks.remove(&task) else {
             return;
         };
+        if self.agent_view == Some(task) {
+            self.switch_agent(true);
+        }
         state.tool_calls = tool_calls;
         self.set_message_text(state.message, finished(&state.line(task), failure));
     }

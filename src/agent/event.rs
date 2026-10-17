@@ -38,4 +38,10 @@ pub enum AgentEvent {
         reply: Result<String, String>,
         tool_calls: usize,
     },
+    /// The subagent on `task` showed `event`: text, thinking, a tool call
+    /// or a notice.
+    TaskEvent {
+        task: usize,
+        event: Box<AgentEvent>,
+    },
 }

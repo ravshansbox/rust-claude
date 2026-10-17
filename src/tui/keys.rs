@@ -75,6 +75,16 @@ pub(super) fn submit_starting_prompt(
 }
 
 fn handle_mouse(mouse: MouseEvent, app: &mut App) {
+    if let Some(task) = app.agent_view {
+        if let Some(view) = app.task_view(task) {
+            match mouse.kind {
+                MouseEventKind::ScrollUp => view.scroll_up(3),
+                MouseEventKind::ScrollDown => view.scroll_down(3),
+                _ => {}
+            }
+        }
+        return;
+    }
     match mouse.kind {
         MouseEventKind::ScrollUp => app.scroll_up(3),
         MouseEventKind::ScrollDown => app.scroll_down(3),
@@ -96,7 +106,7 @@ fn handle_paste(text: &str, app: &mut App) {
     if let Some(search) = &mut app.history_search {
         search.query.push_str(&text.replace(['\r', '\n'], " "));
         search.selected = 0;
-    } else if app.picker.is_none() {
+    } else if app.picker.is_none() && app.agent_view.is_none() {
         app.insert(&text.replace("\r\n", "\n").replace('\r', "\n"));
     }
 }

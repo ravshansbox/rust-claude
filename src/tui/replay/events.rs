@@ -28,7 +28,7 @@ pub(in crate::tui) fn handle_agent_event(event: UiEvent, app: &mut App) {
         UiEvent::Update(progress) => app.show_update(&progress),
         UiEvent::Done(result) => finish_reply(app, result),
         UiEvent::Cancelled(result) => {
-            app.tasks.clear();
+            app.clear_tasks();
             app.push(Role::Event, "cancelled");
             app.restore_queued();
             app.finish(result, |_, ()| {});
@@ -74,7 +74,7 @@ fn apply_agent_event(event: AgentEvent, app: &mut App) {
             diff,
         } => {
             if name == tools::agent::NAME {
-                app.tasks.clear();
+                app.clear_tasks();
             }
             app.push_tool(&name, summary, diff.as_deref());
         }
@@ -106,11 +106,16 @@ fn apply_agent_event(event: AgentEvent, app: &mut App) {
         }
         AgentEvent::Queued(prompt) => app.push(Role::User, prompt),
         AgentEvent::Stats(stats) => app.stats = stats,
+        AgentEvent::TaskEvent { task, event } => {
+            if let Some(view) = app.task_view(task) {
+                apply_agent_event(*event, view);
+            }
+        }
     }
 }
 
 fn finish_reply(app: &mut App, result: Result<()>) {
-    app.tasks.clear();
+    app.clear_tasks();
     // Esc may come just as the reply finishes; it still keeps the
     // queued prompts from being sent.
     let cancelled = app.activity == Some(Activity::Cancelling);

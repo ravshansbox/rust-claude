@@ -11,6 +11,10 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool {
+    if app.agent_view.is_some() {
+        handle_agent_view_key(key, app);
+        return false;
+    }
     if app.picker.is_some() {
         handle_picker_key(key, app, act);
         return false;
@@ -52,6 +56,7 @@ pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Actio
             app.set_model(model);
             act(Action::SetModel(model.to_string()));
         }
+        (KeyCode::Left, KeyModifiers::NONE) if app.input.is_empty() => app.open_agent_view(),
         (KeyCode::Up, _) if app.input.is_empty() || app.history_index.is_some() => {
             app.previous_prompt();
         }
@@ -87,6 +92,31 @@ pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Actio
         _ => edit_input(key, app),
     }
     false
+}
+
+fn handle_agent_view_key(key: KeyEvent, app: &mut App) {
+    match key.code {
+        KeyCode::Esc => app.agent_view = None,
+        KeyCode::Left => app.switch_agent(false),
+        KeyCode::Right => app.switch_agent(true),
+        _ => {
+            if let Some(view) = app.agent_view.and_then(|task| app.task_view(task)) {
+                scroll(key.code, view);
+            }
+        }
+    }
+}
+
+fn scroll(code: KeyCode, app: &mut App) {
+    match code {
+        KeyCode::Up => app.scroll_up(1),
+        KeyCode::Down => app.scroll_down(1),
+        KeyCode::PageUp => app.scroll_up(app.page_size),
+        KeyCode::PageDown => app.scroll_down(app.page_size),
+        KeyCode::Home => app.scroll_to_top(),
+        KeyCode::End => app.scroll_to_bottom(),
+        _ => {}
+    }
 }
 
 fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {

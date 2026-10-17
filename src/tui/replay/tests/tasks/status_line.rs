@@ -31,8 +31,8 @@ fn shows_how_many_agents_run_on_the_status_line() {
     assert_eq!(
         shown,
         [
-            format!("{idle} · 2 agents"),
-            format!("{idle} · 1 agent"),
+            format!("{idle} · ← agents (2)"),
+            format!("{idle} · ← agents (1)"),
             idle,
         ]
     );

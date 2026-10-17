@@ -9,7 +9,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Sign in with a Claude Pro or Max account
 - Interactive terminal interface with streamed replies
 - Built-in tools: `bash`, `read`, `write`, `edit`, `ast_grep`, `grep`, `agent`, `web_search` and `web_fetch`. `ast_grep` needs [ast-grep](https://ast-grep.github.io) and `grep` needs [ripgrep](https://github.com/BurntSushi/ripgrep) on `PATH`
-- Subagents that run tasks at the same time or one after another, with live tool calls and stats for each task
+- Subagents that run tasks at the same time or one after another, with live tool calls and stats for each task, and a view of what each running agent does
 - Start the interface with a prompt (`rca fix the failing test`) to send it at once
 - Print mode (`--print` or standard input) to run one prompt and print the answer
 - Loop mode (`/loop` or `--loop`) to run the same prompt again and again, each time in a new session

@@ -8,6 +8,7 @@ use crate::tui::{
 };
 use serde_json::json;
 
+mod agent_view;
 mod status_line;
 
 fn agent_input() -> serde_json::Value {

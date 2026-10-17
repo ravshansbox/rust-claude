@@ -134,7 +134,7 @@ In the interface, rust-coding-agent saves each prompt you send, including `!` co
 | Up / Down | Browse prompt history, move between input rows, or scroll |
 | Page Up / Page Down | Scroll by a page |
 | Home / End | Scroll to top or bottom |
-| Left / Right | Move cursor by one character, keeping emoji such as 👍🏽 whole |
+| Left / Right | Move cursor by one character, keeping emoji such as 👍🏽 whole. Left on an empty prompt opens the [agent view](tools.md#agent-view) while subagents run |
 | Alt+Left / Alt+B, Alt+Right / Alt+F | Move by word |
 | Ctrl+A / Ctrl+E | Jump to start or end of input |
 | Alt+Backspace / Ctrl+W | Delete previous word |
@@ -190,7 +190,7 @@ If you cancel with Esc, or the prompt fails, the queued prompts go back into the
 
 ## Status line
 
-The status line is a single line below the input. It shows the folder and Git branch, the model name and effort level (for example `opus:medium`), `loop` or the run number (for example `loop 3`) while [loop mode](#loop-mode) is on, the number of subagents running while any run (for example `2 agents`), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
+The status line is a single line below the input. It shows the folder and Git branch, the model name and effort level (for example `opus:medium`), `loop` or the run number (for example `loop 3`) while [loop mode](#loop-mode) is on, the number of subagents running while any run (for example `← agents (2)`, a reminder that Left opens the [agent view](tools.md#agent-view)), context use, and stats for the session: input tokens (↑), output tokens (↓), cache reads (R), cache writes (W) and the average output speed in tokens per second (t/s), for example `↑4 ↓338 R6k W88 42t/s`. A `·` separates each part. It wraps when the terminal is too narrow. The folder and branch update in the background after each `bash` tool call and `!` command. Context use shows as a percentage of the context window, for example `25%/200k`.
 
 It also shows how much of the 5-hour and 7-day quota is left and when each resets. rust-coding-agent loads it in the background at start, so you can send a prompt straight away, and updates it after each reply. When only one of them is known, it is labelled, for example `5h 95% 1h16m` or `7d 81% 3d`. When the first unit is 2 or more, only that unit is shown, rounded to the nearest, so `2h40m` shows as `3h`.
 

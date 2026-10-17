@@ -75,7 +75,20 @@ impl Agent {
             }
             AgentEvent::ToolStart { .. } => {
                 let count = tool_calls.fetch_add(1, Ordering::Relaxed) + 1;
+                let _ = events.send(AgentEvent::TaskEvent {
+                    task,
+                    event: Box::new(event),
+                });
                 let _ = events.send(AgentEvent::TaskToolCalls { task, count });
+            }
+            AgentEvent::Text(_)
+            | AgentEvent::Thinking(_)
+            | AgentEvent::ToolDone { .. }
+            | AgentEvent::Notice(_) => {
+                let _ = events.send(AgentEvent::TaskEvent {
+                    task,
+                    event: Box::new(event),
+                });
             }
             _ => {}
         });

@@ -4,6 +4,7 @@ use super::{
     selection::highlight_selection,
     status::{format_context, format_quota, format_stats},
 };
+use agent::draw_agent;
 use conversation::{conversation_layout, held_scroll_from_bottom};
 use lists::{draw_panel, draw_suggestions, panel};
 use ratatui::{
@@ -15,6 +16,7 @@ use ratatui::{
 };
 use std::borrow::Cow;
 
+mod agent;
 mod conversation;
 mod lists;
 
@@ -28,6 +30,10 @@ pub(super) fn saturating_u16(value: usize) -> u16 {
 }
 
 pub(super) fn draw(frame: &mut Frame, app: &mut App) {
+    if let Some(task) = app.agent_view {
+        draw_agent(frame, app, task);
+        return;
+    }
     let input_width = usize::from(frame.area().width.max(1));
     app.input_width = input_width;
     let input_rows = input_rows(&app.input, input_width);
@@ -42,12 +48,26 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
     ])
     .areas(frame.area());
 
+    let panel_height = panel(app.picker.as_ref(), app.history_search.as_ref(), chat)
+        .map_or(0, |(_, height, _)| height);
+    draw_chat(frame, app, chat, panel_height);
+    let panel = panel(app.picker.as_ref(), app.history_search.as_ref(), chat);
+
+    draw_panel(frame, chat, panel);
+
+    app.suggestions_area = draw_suggestions(frame, app, chat);
+
+    draw_input(frame, input, input_lines, cursor_row, cursor_column);
+
+    frame.render_widget(footer_paragraph, footer);
+}
+
+/// Draws the conversation of `app` in `chat`, above a panel `panel_height`
+/// rows high.
+fn draw_chat(frame: &mut Frame, app: &mut App, chat: Rect, panel_height: u16) {
     for message in &mut app.messages {
         message.render(chat.width);
     }
-
-    let panel = panel(app.picker.as_ref(), app.history_search.as_ref(), chat);
-    let panel_height = panel.as_ref().map_or(0, |(_, height, _)| *height);
     let mut pinned = app.scroll_from_bottom > 0;
     let (mut pinned_lines, mut pinned_height, mut conversation_area, mut max_scroll) =
         conversation_layout(app, chat, panel_height, pinned);
@@ -87,14 +107,6 @@ pub(super) fn draw(frame: &mut Frame, app: &mut App) {
         pinned_area,
     );
     app.bottom_button = draw_bottom_button(frame, chat, pinned_area);
-
-    draw_panel(frame, chat, panel);
-
-    app.suggestions_area = draw_suggestions(frame, app, chat);
-
-    draw_input(frame, input, input_lines, cursor_row, cursor_column);
-
-    frame.render_widget(footer_paragraph, footer);
 }
 
 fn draw_bottom_button(frame: &mut Frame, chat: Rect, pinned_area: Rect) -> Rect {
@@ -142,8 +154,7 @@ fn footer(app: &App) -> Paragraph<'static> {
         app.loop_label().unwrap_or_default().into(),
         match app.tasks.len() {
             0 => Cow::Borrowed(""),
-            1 => Cow::Borrowed("1 agent"),
-            count => format!("{count} agents").into(),
+            count => format!("← agents ({count})").into(),
         },
         format_context(&app.stats).into(),
         format_stats(&app.stats).into(),

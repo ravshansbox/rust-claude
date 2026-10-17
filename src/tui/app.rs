@@ -66,6 +66,8 @@ pub(super) struct App {
     pub(super) history_index: Option<usize>,
     pub(super) reads: tools::ReadGroup,
     pub(super) tasks: super::tasks::Tasks,
+    /// The running task whose agent is shown instead of the main session.
+    pub(super) agent_view: Option<usize>,
     pub(super) skills: Vec<Skill>,
     pub(super) mcp_sign_in_servers: Vec<mcp::SignInServer>,
     pub(super) images: Vec<(usize, Image)>,

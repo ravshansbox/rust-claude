@@ -19,11 +19,12 @@ fn describe(event: AgentEvent) -> String {
         AgentEvent::Notice(text) => format!("notice {text}"),
         AgentEvent::Stats(_) | AgentEvent::TaskStats { .. } => "stats".into(),
         AgentEvent::Queued(prompt) => format!("queued {prompt}"),
+        AgentEvent::TaskEvent { task, event } => format!("{task} {}", describe(*event)),
     }
 }
 
 #[tokio::test]
-async fn reports_when_each_subagent_starts_calls_tools_and_finishes() {
+async fn reports_what_each_subagent_does_from_start_to_finish() {
     let api = MockApi::start(vec![
         tool_reply(
             "call-1",
@@ -55,9 +56,13 @@ async fn reports_when_each_subagent_starts_calls_tools_and_finishes() {
         [
             "tool agent",
             "0 start say hi",
+            "0 tool bash",
             "0 tool calls 1",
+            "0 tool done bash None",
+            "0 text hi",
             "0 done hi after 1",
             "1 start say bye",
+            "1 text bye",
             "1 done bye after 0",
         ]
     );
