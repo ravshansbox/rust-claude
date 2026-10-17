@@ -25,6 +25,19 @@ impl App {
         usize::from(index > 0 && !notices)
     }
 
+    /// Shows a sent prompt, with a skill command as its name and arguments.
+    pub(in crate::tui) fn show_prompt(&mut self, prompt: &str) {
+        match crate::skills::parse_command(prompt) {
+            Some((name, arguments)) => {
+                self.push(Role::Event, format!("[skill] {name}"));
+                if !arguments.is_empty() {
+                    self.push(Role::User, arguments);
+                }
+            }
+            None => self.push(Role::User, prompt),
+        }
+    }
+
     pub(in crate::tui) fn push(&mut self, role: Role, text: impl Into<String>) {
         self.reads.clear();
         if let Some(last) = self.messages.last_mut() {

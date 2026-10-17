@@ -95,16 +95,13 @@ pub(super) fn run_command(prompt: String, app: &mut App, mut act: impl FnMut(Act
                 app.restore_input(prompt);
             }
         },
-        _ if let Some((name, arguments)) = skills::parse_command(&prompt) => {
+        _ if let Some((name, _)) = skills::parse_command(&prompt) => {
             if !app.skills.iter().any(|skill| skill.name == name) {
                 app.push(Role::Event, format!("unknown skill: {name}"));
                 app.restore_input(prompt);
                 return false;
             }
-            app.push(Role::Event, format!("[skill] {name}"));
-            if !arguments.is_empty() {
-                app.push(Role::User, arguments);
-            }
+            app.show_prompt(&prompt);
             act(app.submit(prompt));
         }
         command => {

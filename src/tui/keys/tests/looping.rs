@@ -137,3 +137,31 @@ fn ctrl_c_quits_when_loop_mode_waits_for_a_prompt() {
     let quit = press_with(&mut app, KeyCode::Char('c'), KeyModifiers::CONTROL, |_| {});
     assert!(quit);
 }
+
+#[test]
+fn shows_a_skill_command_as_outside_loop_mode_in_each_run() {
+    let mut app = new_app();
+    app.skills = vec![crate::skills::Skill {
+        name: "review".into(),
+        description: "review skill".into(),
+        path: "/skills/review/SKILL.md".into(),
+        base_dir: "/skills/review".into(),
+        disable_model_invocation: false,
+        scope: crate::skills::Scope::Project,
+    }];
+    enter(&mut app, "/loop");
+    assert_eq!(
+        enter(&mut app, "/skill:review the diff"),
+        ["loop: /skill:review the diff"]
+    );
+    let texts = |app: &App| -> Vec<String> {
+        app.messages
+            .iter()
+            .map(|message| message.text.clone())
+            .collect()
+    };
+    assert_eq!(texts(&app), ["[skill] review", "the diff"]);
+    handle_agent_event(UiEvent::Done(Ok(())), &mut app);
+    app.next_loop_round().unwrap();
+    assert_eq!(texts(&app), ["[skill] review", "the diff"]);
+}

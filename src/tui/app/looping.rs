@@ -46,7 +46,7 @@ impl App {
         looping.prompt = Some((prompt.to_string(), images.to_vec()));
         looping.round = 1;
         self.clear_session();
-        self.push(Role::User, prompt);
+        self.show_prompt(prompt);
         true
     }
 
@@ -61,7 +61,7 @@ impl App {
         let (prompt, images) = looping.prompt.clone()?;
         looping.round += 1;
         self.clear_session();
-        self.push(Role::User, prompt.clone());
+        self.show_prompt(&prompt);
         self.start(Activity::Working);
         Some((prompt, images))
     }
