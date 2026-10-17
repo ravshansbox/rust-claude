@@ -9,7 +9,7 @@ fn highlights_bash_commands() {
         tools::diff("bash", &input).as_deref(),
     );
     let lines = render_message(Role::Tool, &message, 40);
-    assert_eq!(trimmed(&lines), [" bash  echo \"$HOME\" | wc -c"]);
+    assert_eq!(trimmed(&lines), ["bash echo \"$HOME\" | wc -c"]);
     let colours: std::collections::HashSet<_> = lines[0]
         .spans
         .iter()
@@ -23,7 +23,7 @@ fn keeps_later_lines_of_a_multi_line_command_below_the_tool_name() {
     let message = tool_message("bash", "", Some("cd src\nls"));
     assert_eq!(
         trimmed(&render_message(Role::Tool, &message, 40)),
-        [" bash  cd src", "ls"]
+        ["bash cd src", "ls"]
     );
     let printed = ansi_tool_lines(&message, true, None, None);
     assert_eq!(printed.len(), 2, "{printed:?}");
@@ -73,7 +73,7 @@ fn keeps_colours_but_not_escapes_from_the_text_in_print_mode() {
 #[test]
 fn shows_the_tool_name_in_bold() {
     let lines = render_message(Role::Tool, "bash ls", 20);
-    assert_eq!(lines[0].spans[0].content, " bash ");
+    assert_eq!(lines[0].spans[0].content, "bash");
     assert!(
         lines[0].spans[0]
             .style
@@ -87,12 +87,12 @@ fn shows_the_tool_name_in_bold() {
             .contains(Modifier::BOLD)
     );
     let line = &ansi_tool_lines("bash ls", true, None, None)[0];
-    assert!(line.contains("\x1b[1m bash "), "{line:?}");
+    assert!(line.contains("\x1b[1mbash\x1b[0m"), "{line:?}");
 }
 
 #[test]
 fn leaves_a_print_mode_line_that_fills_its_row_uncleared() {
-    let lines = ansi_tool_lines("! ls\nabcd", false, None, Some(4));
+    let lines = ansi_tool_lines("! l\nabcd", false, None, Some(4));
     assert!(!lines[1].contains("\x1b[K"), "{lines:?}");
     assert!(lines[0].contains("\x1b[K"), "{lines:?}");
 }

@@ -47,10 +47,7 @@ async fn highlights_bash_commands() {
     finished.unwrap();
     let err = String::from_utf8(err).unwrap();
     let plain = without_colours(&err);
-    assert!(
-        plain.contains(" bash  echo \"$HOME\" | wc -c\n"),
-        "{plain:?}"
-    );
+    assert!(plain.contains("bash echo \"$HOME\" | wc -c\n"), "{plain:?}");
     let command = err.lines().find(|line| line.contains("echo")).unwrap();
     assert!(command.matches("\x1b[38;2;").count() > 1, "{command:?}");
 }
@@ -69,7 +66,7 @@ async fn fills_tool_calls_with_a_background_near_the_terminal_one() {
     let err = String::from_utf8(err).unwrap();
     let lines: Vec<&str> = err.lines().take(1).collect();
     assert!(
-        lines[0].starts_with("\x1b[0m\x1b[48;2;50;50;50m\x1b[38;2;220;220;220m\x1b[1m bash "),
+        lines[0].starts_with("\x1b[0m\x1b[48;2;50;50;50m\x1b[38;2;220;220;220m\x1b[1mbash"),
         "{lines:?}"
     );
     for line in &lines {
@@ -80,6 +77,6 @@ async fn fills_tool_calls_with_a_background_near_the_terminal_one() {
     }
     assert_eq!(
         without_colours(&err).lines().take(1).collect::<Vec<_>>(),
-        [" bash  echo hi"]
+        ["bash echo hi"]
     );
 }

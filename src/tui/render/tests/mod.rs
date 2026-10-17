@@ -58,7 +58,7 @@ fn shows_tab_indentation_in_replies_and_tool_output() {
 #[test]
 fn shows_tabs_in_tool_header() {
     let lines = texts(&render_message(Role::Tool, "! printf 'a\tb'", 30));
-    assert_eq!(lines, [" !  printf 'a    b'           "]);
+    assert_eq!(lines, ["! printf 'a    b'             "]);
 }
 
 #[test]

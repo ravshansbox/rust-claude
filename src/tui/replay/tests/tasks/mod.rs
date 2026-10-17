@@ -54,7 +54,7 @@ fn shows_each_task_while_it_works() {
         ]
     );
     let screen = screen(&mut app);
-    assert!(screen.contains("[agent 1]  say hi"), "{screen}");
+    assert!(screen.contains("[agent 1] say hi"), "{screen}");
 }
 
 #[test]

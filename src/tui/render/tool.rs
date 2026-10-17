@@ -70,7 +70,7 @@ fn tool_header(first: &str, theme: Theme) -> (Line<'static>, bool) {
     };
     let line = Line::from(vec![
         Span::styled(
-            expand_tabs(format!(" {name} ")),
+            expand_tabs(name.to_string()),
             theme.highlight_style().bold(),
         ),
         Span::raw(expand_tabs(format!(" {rest}"))),

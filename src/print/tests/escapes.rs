@@ -47,7 +47,7 @@ async fn keeps_escape_sequences_from_the_model_and_tools_out_of_the_terminal() {
     let plain = without_colours(&err);
     assert!(!has_controls(&plain), "control characters in {plain:?}");
     assert!(plain.contains(" one]52;c;aGk=[2J2J"), "{plain:?}");
-    assert!(plain.contains(" bash  printf"), "{plain:?}");
+    assert!(plain.contains("bash printf"), "{plain:?}");
     assert!(plain.contains("bash failed: out]52;c;aGk=[2J"), "{plain:?}");
 }
 
