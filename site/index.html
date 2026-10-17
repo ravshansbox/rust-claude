@@ -33,19 +33,20 @@
 <li>Sign in with a Claude Pro or Max account</li>
 <li>Interactive terminal interface with streamed replies</li>
 <li>Built-in tools: <code>bash</code>, <code>read</code>, <code>write</code>, <code>edit</code>, <code>agent</code>, <code>web_search</code> and <code>web_fetch</code></li>
-<li>Subagents with live tool calls and stats for each task</li>
+<li>Subagents that run tasks at the same time or one after another, with live tool calls and stats for each task</li>
 <li>Start the interface with a prompt (<code>rca fix the failing test</code>) to send it at once</li>
 <li>Print mode (<code>--print</code> or standard input) to run one prompt and print the answer</li>
 <li>Loop mode (<code>/loop</code> or <code>--loop</code>) to run the same prompt again and again, each time in a new session</li>
-<li>Model and effort pickers, with thinking shown in the conversation</li>
-<li>Saved sessions you can resume, and automatic compaction</li>
+<li>Four models and effort levels, with pickers and thinking shown in the conversation</li>
+<li>Saved sessions you can resume, automatic compaction and prompt caching</li>
 <li><code>!command</code> to run a shell command and share its output with the model, or <code>!!command</code> to keep it private</li>
 <li>Status line with tokens, context use and quota</li>
 <li>Scroll-to-bottom button when you scroll up</li>
 <li>Paste images or let the model read image files, <code>@</code> file picker and prompt history search</li>
 <li>Drag over the conversation to quote it in your prompt</li>
-<li><code>AGENTS.md</code> instructions and Agent Skills</li>
-<li>MCP servers over stdio or Streamable HTTP</li>
+<li><code>AGENTS.md</code> instructions and <a href="https://agentskills.io/specification">Agent Skills</a></li>
+<li>MCP servers over stdio or Streamable HTTP, with OAuth sign-in</li>
+<li>Retries for rate limits, overload and connection errors</li>
 <li>Background updates that restart into the new version when idle</li>
 </ul>
 </section>

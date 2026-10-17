@@ -9,15 +9,17 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Sign in with a Claude Pro or Max account
 - Interactive terminal interface with streamed replies
 - Built-in tools: `bash`, `read`, `write`, `edit`, `agent`, `web_search` and `web_fetch`
-- Subagents that run tasks at the same time or one after another
+- Subagents that run tasks at the same time or one after another, with live tool calls and stats for each task
 - Start the interface with a prompt (`rca fix the failing test`) to send it at once
 - Print mode (`--print` or standard input) to run one prompt and print the answer
 - Loop mode (`/loop` or `--loop`) to run the same prompt again and again, each time in a new session
-- Four models, effort levels and thinking shown in the conversation
+- Four models and effort levels, with pickers and thinking shown in the conversation
 - Saved sessions you can resume, automatic compaction and prompt caching
 - `!command` to run a shell command and share its output with the model, or `!!command` to keep it private
 - Status line with tokens, context use and quota
+- Scroll-to-bottom button when you scroll up
 - Paste images or let the model read image files, `@` file picker and prompt history search
+- Drag over the conversation to quote it in your prompt
 - `AGENTS.md` instructions and [Agent Skills](https://agentskills.io/specification)
 - MCP servers over stdio or Streamable HTTP, with OAuth sign-in
 - Retries for rate limits, overload and connection errors
