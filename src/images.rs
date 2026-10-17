@@ -2,8 +2,8 @@ use std::io::Cursor;
 
 use anyhow::{Context, Result, bail};
 use image::{
-    DynamicImage, ImageDecoder, ImageFormat, ImageReader, Rgb, RgbImage, codecs::jpeg::JpegEncoder,
-    imageops::FilterType, metadata::Orientation,
+    ColorType, DynamicImage, ImageDecoder, ImageFormat, ImageReader, Rgb, RgbImage,
+    codecs::jpeg::JpegEncoder, imageops::FilterType, metadata::Orientation,
 };
 
 const MAX_EDGE: u32 = 2000;
@@ -86,7 +86,12 @@ pub fn prepare(data: Vec<u8>) -> Result<Image> {
     {
         bail!("image is too large");
     }
-    let mut decoded = DynamicImage::from_decoder(decoder).context("failed to decode image")?;
+    let decoded = DynamicImage::from_decoder(decoder).context("failed to decode image")?;
+    let mut decoded = match decoded.color() {
+        ColorType::Rgb32F => decoded.to_rgb16().into(),
+        ColorType::Rgba32F => decoded.to_rgba16().into(),
+        _ => decoded,
+    };
     // Photos are often stored sideways with an Exif note saying how to turn
     // them. Turn them upright, since the re-encoded image has no Exif data.
     let upright = matches!(orientation, Orientation::NoTransforms);

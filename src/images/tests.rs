@@ -124,3 +124,16 @@ fn shows_transparent_areas_as_white_in_jpeg() {
     let corner = decoded.get_pixel(10, 10);
     assert!(corner.0.iter().all(|channel| *channel > 240), "{corner:?}");
 }
+
+#[test]
+fn converts_floating_point_tiff_to_png() {
+    let image = DynamicImage::ImageRgb32F(image::Rgb32FImage::new(10, 20));
+    let mut data = Vec::new();
+    image
+        .write_to(&mut Cursor::new(&mut data), ImageFormat::Tiff)
+        .unwrap();
+    let prepared = prepare(data).unwrap();
+    assert_eq!(prepared.media_type, "image/png");
+    let decoded = image::load_from_memory(&prepared.data).unwrap();
+    assert_eq!(decoded.dimensions(), (10, 20));
+}
