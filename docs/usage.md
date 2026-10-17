@@ -180,7 +180,7 @@ Start a prompt with `!` to run the rest as a shell command, for example `!git st
 
 Start a prompt with `!!` to run a command without sharing it, for example `!!env`. Its output shows in the conversation as `!! env`, but the model never sees it, and the session does not save it, so resumed sessions do not show it.
 
-Output is capped at 20,000 bytes, as with the `bash` tool. The command has no time limit; press Esc to stop it. Resumed sessions show these commands and their output.
+Output is capped at 20,000 bytes, as with the `bash` tool. The command has no time limit; press Esc to stop it. Resumed sessions show `!` commands and their output.
 
 ## Queued prompts
 
