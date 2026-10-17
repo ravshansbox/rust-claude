@@ -109,3 +109,13 @@ fn restores_queued_images_ahead_of_the_draft_images() {
     });
     assert_eq!(sent, Some(vec![image(1), image(2)]));
 }
+
+#[test]
+fn does_not_queue_shell_commands_after_leading_spaces() {
+    let mut app = new_app();
+    app.start(Activity::Working);
+    handle_input(Event::Paste(" !! env".into()), &mut app, |_| {});
+    press(&mut app, KeyCode::Enter);
+    assert_eq!(app.input, " !! env");
+    assert_eq!(queued_prompts(&app), Vec::<String>::new());
+}

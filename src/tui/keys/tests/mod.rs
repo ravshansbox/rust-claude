@@ -200,3 +200,16 @@ fn sends_pasted_images_whose_markers_remain() {
     );
     assert_eq!(app.images, Vec::new());
 }
+
+#[test]
+fn runs_shell_commands_after_leading_spaces() {
+    let mut app = new_app();
+    handle_input(Event::Paste("  !! env".into()), &mut app, |_| {});
+    let mut command = None;
+    press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+        if let Action::Shell(text, false) = action {
+            command = Some(text);
+        }
+    });
+    assert_eq!(command.as_deref(), Some("env"));
+}

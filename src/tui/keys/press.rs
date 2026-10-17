@@ -82,7 +82,8 @@ pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Actio
         (KeyCode::Enter, _)
             if app.can_queue()
                 && !app.input.trim().is_empty()
-                && !app.input.starts_with(['/', '!']) =>
+                && !app.input.starts_with('/')
+                && !app.input.trim_start().starts_with('!') =>
         {
             app.queue_prompt();
         }
@@ -124,7 +125,7 @@ fn scroll(code: KeyCode, app: &mut App) {
 fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {
     app.scroll_to_bottom();
     let prompt = app.take_input();
-    if let Some(command) = prompt.strip_prefix('!') {
+    if let Some(command) = prompt.trim_start().strip_prefix('!') {
         let (command, share) = match command.strip_prefix('!') {
             Some(command) => (command, false),
             None => (command, true),
