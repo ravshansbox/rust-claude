@@ -30,20 +30,18 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
     let command = argument(input, "command")?;
     let mut arguments = match command {
         "search" => vec![
-            "run",
-            "--heading",
-            "never",
-            "--pattern",
-            argument(input, "pattern")?,
+            "run".to_string(),
+            "--heading=never".into(),
+            format!("--pattern={}", argument(input, "pattern")?),
         ],
-        "outline" => vec!["outline"],
+        "outline" => vec!["outline".to_string()],
         _ => return Err("command must be search or outline".into()),
     };
-    arguments.extend(["--color", "never"]);
+    arguments.push("--color=never".into());
     if let Some(lang) = input["lang"].as_str() {
-        arguments.extend(["--lang", lang]);
+        arguments.push(format!("--lang={lang}"));
     }
-    arguments.extend(["--", input["path"].as_str().unwrap_or(".")]);
+    arguments.extend(["--".into(), input["path"].as_str().unwrap_or(".").into()]);
     let output = Command::new(PROGRAM)
         .args(&arguments)
         .stdin(Stdio::null())

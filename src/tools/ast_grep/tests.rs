@@ -65,3 +65,14 @@ async fn checks_its_arguments() {
         assert_eq!(call("ast_grep", &input).await, Err(error.into()), "{input}");
     }
 }
+
+#[tokio::test]
+async fn searches_for_patterns_that_start_with_a_dash() {
+    let (_directory, file) = project("ast-grep-dash");
+    std::fs::write(&file, "fn main() {\n    let x = -1;\n}\n").unwrap();
+    let input = json!({ "command": "search", "pattern": "-1", "path": file, "lang": "rust" });
+    assert_eq!(
+        call("ast_grep", &input).await,
+        Ok(format!("{file}:2:    let x = -1;\n"))
+    );
+}
