@@ -39,7 +39,7 @@ pub(super) fn render_message(role: Role, text: &str, width: u16) -> Vec<Line<'st
     match role {
         Role::User => user_message_lines(text, usize::from(width)),
         Role::Assistant => tui_markdown::from_str_with_options(
-            &hard_line_breaks(text),
+            &hard_line_breaks(&expand_tabs(text.to_string())),
             &Options::new(MarkdownStyleSheet)
                 .code_theme(theme().code_theme())
                 .table_width(width),

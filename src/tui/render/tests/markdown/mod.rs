@@ -170,3 +170,10 @@ fn keeps_inline_code_across_an_ordered_marker_that_cannot_start_a_list() {
     let lines = texts(&render_message(Role::Assistant, "`a\n2. b`", 40));
     assert_eq!(lines, ["a 2. b"]);
 }
+
+#[test]
+fn keeps_table_borders_aligned_when_a_cell_holds_a_tab() {
+    let lines = render_message(Role::Assistant, "| a\tb | c |\n|---|---|\n| d | e |", 40);
+    let widths: Vec<usize> = lines.iter().map(Line::width).collect();
+    assert!(widths.iter().all(|width| *width == widths[0]), "{lines:?}");
+}
