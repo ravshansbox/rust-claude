@@ -149,6 +149,7 @@ Shift+Enter works in terminals that support the kitty keyboard protocol, such as
 - Multi-line input with Shift+Enter or Alt+Enter
 - Prompts queued while the agent works
 - `!command` to run a shell command and share its output with the model
+- `!!command` to run a shell command without sharing it with the model
 - Prompt history with Up and Down
 - Ctrl+R to search prompts from this folder or from all folders
 - Up and Down move between wrapped input rows
@@ -176,6 +177,8 @@ Shift+Enter works in terminals that support the kitty keyboard protocol, such as
 ## Shell commands
 
 Start a prompt with `!` to run the rest as a shell command, for example `!git status`. The command runs in the current directory, and its output shows in the conversation. It is also added to the conversation, so the model sees the command and its output with your next prompt. It is not sent on its own.
+
+Start a prompt with `!!` to run a command without sharing it, for example `!!env`. Its output shows in the conversation as `!! env`, but the model never sees it, and the session does not save it, so resumed sessions do not show it.
 
 Output is capped at 20,000 bytes, as with the `bash` tool. The command has no time limit; press Esc to stop it. Resumed sessions show these commands and their output.
 

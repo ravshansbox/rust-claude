@@ -77,7 +77,10 @@ async fn cancels_a_shell_command_sent_while_renewing_the_sign_in() {
     tokio::time::sleep(Duration::from_millis(200)).await;
     worker
         .requests
-        .send(Request::Shell(format!("touch '{}'", marker.display())))
+        .send(Request::Shell(
+            format!("touch '{}'", marker.display()),
+            true,
+        ))
         .unwrap();
     worker.cancel.send(()).unwrap();
     let cancelled = worker

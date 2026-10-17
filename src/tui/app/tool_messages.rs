@@ -18,9 +18,10 @@ impl App {
         self.reads = reads;
     }
 
-    pub(in crate::tui) fn push_shell(&mut self, command: &str, output: &str) {
+    pub(in crate::tui) fn push_shell(&mut self, command: &str, share: bool, output: &str) {
         let output = output.trim_end();
         let diff = (!output.is_empty()).then_some(output);
-        self.push(Role::Tool, tool_message("!", command, diff));
+        let prefix = if share { "!" } else { "!!" };
+        self.push(Role::Tool, tool_message(prefix, command, diff));
     }
 }

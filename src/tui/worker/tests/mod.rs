@@ -103,10 +103,10 @@ async fn runs_requests_while_mcp_servers_start() {
     let mut worker = Worker::spawn(agent);
     worker
         .requests
-        .send(Request::Shell("echo hi".into()))
+        .send(Request::Shell("echo hi".into(), true))
         .unwrap();
     let ran = worker
-        .wait_for(|event| matches!(event, UiEvent::Shell(_, Ok(output)) if output == "hi\n"))
+        .wait_for(|event| matches!(event, UiEvent::Shell(_, _, Ok(output)) if output == "hi\n"))
         .await;
     worker
         .mcp_servers

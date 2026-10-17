@@ -22,7 +22,7 @@ pub(super) enum UiEvent {
     Resumed(Result<Vec<Value>>),
     NewSession(Result<()>),
     ImagePasted(Result<Option<Image>>),
-    Shell(String, Result<String>),
+    Shell(String, bool, Result<String>),
     Files(u64, Vec<String>),
     Folder(u64, String, Vec<String>),
     Workspace(String),
@@ -40,7 +40,7 @@ pub(super) enum Request {
     Prompt(String, Vec<Image>, &'static str),
     /// Sends the loop prompt in a new session.
     LoopPrompt(String, Vec<Image>, &'static str),
-    Shell(String),
+    Shell(String, bool),
     Compact(&'static str),
     ListSessions,
     Resume(String),
@@ -139,7 +139,7 @@ pub(super) async fn agent_task(
 fn is_cancellable(request: &Request) -> bool {
     matches!(
         request,
-        Request::Prompt(..) | Request::LoopPrompt(..) | Request::Shell(_) | Request::Compact(_)
+        Request::Prompt(..) | Request::LoopPrompt(..) | Request::Shell(..) | Request::Compact(_)
     )
 }
 

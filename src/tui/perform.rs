@@ -20,7 +20,7 @@ pub(super) fn perform(
         Action::SubmitLoop(prompt, images, effort) => {
             send(Request::LoopPrompt(prompt, images, effort));
         }
-        Action::Shell(command) => send(Request::Shell(command)),
+        Action::Shell(command, share) => send(Request::Shell(command, share)),
         Action::PasteImage => {
             let events = events.clone();
             tokio::spawn(async move {

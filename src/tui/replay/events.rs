@@ -39,9 +39,11 @@ pub(in crate::tui) fn handle_agent_event(event: UiEvent, app: &mut App) {
             app.clear_session();
             app.push(Role::Event, "new session");
         }),
-        UiEvent::Shell(command, result) => {
+        UiEvent::Shell(command, share, result) => {
             app.workspace_stale = true;
-            app.finish(result, |app, output| app.push_shell(&command, &output));
+            app.finish(result, |app, output| {
+                app.push_shell(&command, share, &output)
+            });
         }
         UiEvent::ImagePasted(Ok(Some(image))) => app.attach_image(image),
         UiEvent::ImagePasted(Ok(None)) => app.push(Role::Event, "no image in the clipboard"),

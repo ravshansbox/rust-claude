@@ -18,11 +18,11 @@ pub(super) async fn handle_request(
             }
         },
         Request::Compact(effort) => return Some((None, effort)),
-        Request::Shell(command) => {
+        Request::Shell(command, share) => {
             drain(cancel);
             tokio::select! {
-                result = agent.shell(&command) => {
-                    let _ = events.send(UiEvent::Shell(command, result));
+                result = agent.shell(&command, share) => {
+                    let _ = events.send(UiEvent::Shell(command, share, result));
                 }
                 _ = cancel.recv() => {
                     let _ = events.send(UiEvent::Cancelled(Ok(())));

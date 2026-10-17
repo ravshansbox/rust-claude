@@ -115,7 +115,7 @@ fn runs_shell_commands() {
     handle_input(Event::Paste("! ls -a".into()), &mut app, |_| {});
     let mut command = None;
     press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
-        if let Action::Shell(text) = action {
+        if let Action::Shell(text, true) = action {
             command = Some(text);
         }
     });
@@ -127,11 +127,29 @@ fn runs_shell_commands() {
     });
     assert!(cancelled);
     handle_agent_event(
-        UiEvent::Shell("ls -a".into(), Ok("a\nb\n".into())),
+        UiEvent::Shell("ls -a".into(), true, Ok("a\nb\n".into())),
         &mut app,
     );
     assert!(!app.busy());
     assert_eq!(app.messages.last().unwrap().text, "! ls -a\na\nb");
+}
+
+#[test]
+fn runs_local_shell_commands() {
+    let mut app = new_app();
+    handle_input(Event::Paste("!! env".into()), &mut app, |_| {});
+    let mut command = None;
+    press_with(&mut app, KeyCode::Enter, KeyModifiers::NONE, |action| {
+        if let Action::Shell(text, false) = action {
+            command = Some(text);
+        }
+    });
+    assert_eq!(command.as_deref(), Some("env"));
+    handle_agent_event(
+        UiEvent::Shell("env".into(), false, Ok("A=1\n".into())),
+        &mut app,
+    );
+    assert_eq!(app.messages.last().unwrap().text, "!! env\nA=1");
 }
 
 #[test]

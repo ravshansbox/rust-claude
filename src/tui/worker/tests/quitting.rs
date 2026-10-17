@@ -11,7 +11,7 @@ async fn does_not_start_requests_sent_before_quitting() {
     let (_mcp_tx, mcp_rx) = mpsc::unbounded_channel();
     let (event_tx, _event_rx) = mpsc::unbounded_channel();
     request_tx
-        .send(Request::Shell(format!("touch {}", marker.display())))
+        .send(Request::Shell(format!("touch {}", marker.display()), true))
         .unwrap();
     quit(request_tx, cancel_tx);
     agent_task(agent, request_rx, cancel_rx, mcp_rx, event_tx).await;
@@ -28,7 +28,7 @@ async fn stops_running_request_when_quitting() {
     let worker = Worker::spawn(agent);
     worker
         .requests
-        .send(Request::Shell("sleep 30".into()))
+        .send(Request::Shell("sleep 30".into(), true))
         .unwrap();
     tokio::time::sleep(Duration::from_millis(200)).await;
     let stopped = tokio::time::timeout(Duration::from_secs(5), worker.quit()).await;

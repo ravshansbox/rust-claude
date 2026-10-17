@@ -137,7 +137,7 @@ fn append_reply(app: &mut App, text: &str) {
 
 fn replay_prompt(app: &mut App, text: &str) {
     if let Some((command, output)) = parse_shell_message(text) {
-        app.push_shell(command, output);
+        app.push_shell(command, true, output);
         app.add_prompt(format!("!{command}"));
         return;
     }

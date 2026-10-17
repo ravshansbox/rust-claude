@@ -5,10 +5,13 @@ use super::Agent;
 use crate::tools;
 
 impl Agent {
-    pub async fn shell(&mut self, command: &str) -> Result<String> {
+    pub async fn shell(&mut self, command: &str, share: bool) -> Result<String> {
         let output = match tools::call("bash", &json!({ "command": command })).await {
             Ok(output) | Err(output) => output,
         };
+        if !share {
+            return Ok(output);
+        }
         self.messages.push(json!({
             "role": "user",
             "content": shell_message(command, &output),

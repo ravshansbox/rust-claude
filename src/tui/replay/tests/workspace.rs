@@ -14,7 +14,7 @@ fn updates_branch_in_status_line_after_commands() {
             note: None,
         })
     };
-    let finished_shell = || UiEvent::Shell("git switch other".into(), Ok(String::new()));
+    let finished_shell = || UiEvent::Shell("git switch other".into(), true, Ok(String::new()));
     for event in [finished_tool("bash"), finished_shell()] {
         let mut app = new_app();
         app.workspace = "folder · stale-branch".into();

@@ -93,11 +93,15 @@ fn submit_input(app: &mut App, mut act: impl FnMut(Action)) -> bool {
     app.scroll_to_bottom();
     let prompt = app.take_input();
     if let Some(command) = prompt.strip_prefix('!') {
+        let (command, share) = match command.strip_prefix('!') {
+            Some(command) => (command, false),
+            None => (command, true),
+        };
         let command = command.trim().to_string();
         app.remember(&prompt);
         if !command.is_empty() {
             app.start(Activity::Running);
-            act(Action::Shell(command));
+            act(Action::Shell(command, share));
         }
         return false;
     }
