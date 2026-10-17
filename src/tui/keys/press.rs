@@ -11,7 +11,9 @@ use crate::{
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 
 pub(super) fn handle_key(key: KeyEvent, app: &mut App, mut act: impl FnMut(Action)) -> bool {
-    if app.agent_view.is_some() {
+    let quits =
+        key.modifiers == KeyModifiers::CONTROL && matches!(key.code, KeyCode::Char('c' | 'd'));
+    if app.agent_view.is_some() && !quits {
         handle_agent_view_key(key, app);
         return false;
     }

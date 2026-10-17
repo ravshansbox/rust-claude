@@ -90,5 +90,6 @@ While subagents run, press Left on an empty prompt to see what they do. The agen
 - Left and Right switch between agents, wrapping around at the ends
 - Up / Down, Page Up / Page Down, Home / End and the mouse wheel scroll
 - Esc goes back to the main session. It does not cancel the prompt; press Esc again in the main session for that
+- Ctrl+C and Ctrl+D work as in the main session
 
 Only running agents have tabs. When the shown agent finishes, the view moves to the next running agent. When the last one finishes, or the prompt ends, the view goes back to the main session. In sequential mode only one agent runs at a time, so the view goes back to the main session each time a task finishes. The agent view does not show agents in resumed sessions.

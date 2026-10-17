@@ -214,3 +214,13 @@ fn goes_back_to_the_main_session_when_the_prompt_ends() {
         assert_eq!(showing(&mut app), "main");
     }
 }
+
+#[test]
+fn ctrl_c_and_ctrl_d_quit_from_the_agent_view() {
+    for key in ['c', 'd'] {
+        let mut app = app_with_agents();
+        press(&mut app, KeyCode::Left);
+        let quit = press_with(&mut app, KeyCode::Char(key), KeyModifiers::CONTROL, |_| {});
+        assert!(quit, "Ctrl+{key}");
+    }
+}
