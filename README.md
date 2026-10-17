@@ -15,6 +15,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 - Loop mode (`/loop` or `--loop`) to run the same prompt again and again, each time in a new session
 - Four models, effort levels and thinking shown in the conversation
 - Saved sessions you can resume, automatic compaction and prompt caching
+- `!command` to run a shell command and share its output with the model, or `!!command` to keep it private
 - Status line with tokens, context use and quota
 - Paste images or let the model read image files, `@` file picker and prompt history search
 - `AGENTS.md` instructions and [Agent Skills](https://agentskills.io/specification)
