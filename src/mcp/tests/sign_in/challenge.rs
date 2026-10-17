@@ -104,3 +104,27 @@ async fn ignores_sign_in_parameters_whose_names_end_with_the_name_sought() {
     let sign_in = begin_web_sign_in(&url).await.unwrap();
     assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
 }
+
+#[tokio::test]
+async fn reads_sign_in_parameters_from_a_later_www_authenticate_line() {
+    let (url, _) = oauth_server_with(|base, request| {
+        let reply = oauth_mcp(base, request);
+        if reply.status != 401 {
+            return reply;
+        }
+        let mut reply = HttpReply::status(401, "");
+        reply
+            .headers
+            .push(("www-authenticate".into(), r#"Basic realm="mcp""#.into()));
+        reply.headers.push((
+            "www-authenticate".into(),
+            format!(
+                r#"Bearer resource_metadata="{base}/.well-known/oauth-protected-resource/mcp", scope="mcp:connect""#
+            ),
+        ));
+        reply
+    })
+    .await;
+    let sign_in = begin_web_sign_in(&url).await.unwrap();
+    assert_eq!(query(&sign_in.authorize_url)["scope"], "mcp:connect");
+}

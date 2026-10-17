@@ -98,8 +98,9 @@ pub(super) async fn challenge(
         .map_err(|error| format!("cannot reach {server_url}: {error}"))?;
     Ok(probe
         .headers()
-        .get(reqwest::header::WWW_AUTHENTICATE)
-        .and_then(|value| value.to_str().ok())
-        .unwrap_or_default()
-        .to_string())
+        .get_all(reqwest::header::WWW_AUTHENTICATE)
+        .iter()
+        .filter_map(|value| value.to_str().ok())
+        .collect::<Vec<_>>()
+        .join(", "))
 }
