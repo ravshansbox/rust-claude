@@ -56,6 +56,12 @@ fn shows_tab_indentation_in_replies_and_tool_output() {
 }
 
 #[test]
+fn shows_tabs_in_tool_header() {
+    let lines = texts(&render_message(Role::Tool, "! printf 'a\tb'", 30));
+    assert_eq!(lines, [" !  printf 'a    b'           "]);
+}
+
+#[test]
 fn leaves_out_blank_lines_at_the_end_of_thinking() {
     let lines = texts(&render_message(Role::Thinking, "one\n\ntwo.\n\n", 40));
     assert_eq!(lines, ["one", "", "two."]);

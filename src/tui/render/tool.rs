@@ -69,8 +69,11 @@ fn tool_header(first: &str, theme: Theme) -> (Line<'static>, bool) {
         _ => first.split_once(' ').unwrap_or((first, "")),
     };
     let line = Line::from(vec![
-        Span::styled(format!(" {name} "), theme.highlight_style().bold()),
-        Span::raw(format!(" {rest}")),
+        Span::styled(
+            expand_tabs(format!(" {name} ")),
+            theme.highlight_style().bold(),
+        ),
+        Span::raw(expand_tabs(format!(" {rest}"))),
     ]);
     (line, rest.is_empty())
 }
