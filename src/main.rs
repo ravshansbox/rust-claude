@@ -159,6 +159,9 @@ async fn run_print(
     for diagnostic in &agent.mcp.diagnostics {
         eprintln!("{}", highlight::strip_controls(diagnostic));
     }
+    for warning in tools::warnings() {
+        eprintln!("{warning}");
+    }
     let stdout = io::stdout();
     let out_terminal = stdout.is_terminal();
     let colour = io::stderr().is_terminal();

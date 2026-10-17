@@ -24,7 +24,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 ## ast-grep
 
-`ast_grep` runs [ast-grep](https://ast-grep.github.io), which you install separately, for example with `brew install ast-grep` or `npm install --global @ast-grep/cli`. rust-coding-agent looks for an `ast-grep` program on `PATH` when it starts. If there is none, the model is not offered `ast_grep`. The interface then shows `tool warning: ast_grep is off because ast-grep is not on PATH` below the `loaded tools` line. When there is one, the system prompt also tells the model to use `ast_grep` to find code by its syntax and to outline a file before reading all of it. See [Search order](#search-order).
+`ast_grep` runs [ast-grep](https://ast-grep.github.io), which you install separately, for example with `brew install ast-grep` or `npm install --global @ast-grep/cli`. rust-coding-agent looks for an `ast-grep` program on `PATH` when it starts. If there is none, the model is not offered `ast_grep`. The interface then shows `tool warning: ast_grep is off because ast-grep is not on PATH` below the `loaded tools` line. In print mode, the warning goes to standard error before the reply. When there is one, the system prompt also tells the model to use `ast_grep` to find code by its syntax and to outline a file before reading all of it. See [Search order](#search-order).
 
 It takes a `command`, an optional `path`, which defaults to the current folder, and an optional `lang`, such as `rust`. Without `lang`, ast-grep picks the language from each file's extension.
 
@@ -35,7 +35,7 @@ Output is cut at 20,000 bytes. The call shows its command, pattern and path, suc
 
 ## grep
 
-`grep` runs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`), which you install separately, for example with `brew install ripgrep`. As with `ast_grep`, the model is offered `grep` only if `rg` is on `PATH` when rust-coding-agent starts. If it is not, the interface shows `tool warning: grep is off because rg is not on PATH`.
+`grep` runs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`), which you install separately, for example with `brew install ripgrep`. As with `ast_grep`, the model is offered `grep` only if `rg` is on `PATH` when rust-coding-agent starts. If it is not, the interface, or standard error in print mode, shows `tool warning: grep is off because rg is not on PATH`.
 
 It takes a `pattern`, a regular expression in [Rust regex syntax](https://docs.rs/regex/latest/regex/#syntax), and these optional arguments:
 

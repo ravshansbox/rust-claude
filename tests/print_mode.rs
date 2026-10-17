@@ -519,3 +519,45 @@ fn reports_an_empty_prompt_on_standard_input() {
     assert!(stderr.contains("no prompt on standard input"), "{stderr}");
     assert!(!stderr.contains("sign in"), "{stderr}");
 }
+
+#[test]
+fn warns_about_tools_whose_programs_are_missing() {
+    use std::io::{BufRead, BufReader};
+    let setup = Setup::new("missing-programs");
+    let config_dir = setup.root.join("config");
+    let empty_path = setup.root.join("bin");
+    write_sign_in(&config_dir);
+    std::fs::create_dir_all(&setup.project).unwrap();
+    std::fs::create_dir_all(&empty_path).unwrap();
+
+    let mut child = Command::new(env!("CARGO_BIN_EXE_rust-coding-agent"))
+        .args([
+            "--config-dir",
+            config_dir.to_str().unwrap(),
+            "--print",
+            "hello",
+        ])
+        .current_dir(&setup.project)
+        .env("HOME", &setup.home)
+        .env("PATH", &empty_path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let lines: Vec<String> = BufReader::new(child.stderr.take().unwrap())
+        .lines()
+        .map_while(Result::ok)
+        .take(2)
+        .collect();
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert_eq!(
+        lines,
+        [
+            "tool warning: ast_grep is off because ast-grep is not on PATH",
+            "tool warning: grep is off because rg is not on PATH",
+        ]
+    );
+}
