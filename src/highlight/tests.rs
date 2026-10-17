@@ -123,7 +123,17 @@ fn ends_heredocs_only_at_an_exact_delimiter_line() {
     let keyword = keyword_colour("x.py", "import os", "import");
     let plain = bash("python3 - <<EOF\nx = 1\n  EOF\nEOF \nimport os\nEOF");
     assert_eq!(colour_of(&plain, "import"), Some(keyword));
-    let tabbed = bash("python3 - <<-EOF\nx = 1\n  EOF\nimport os\n\t\tEOF\necho done");
+    let tabbed = bash("python3 - <<-EOF\nx = 1\nEOF x\nimport os\n\t\tEOF\necho done");
     assert_eq!(colour_of(&tabbed, "import"), Some(keyword));
     assert_eq!(colour_of(&tabbed, "echo"), colour_of(&bash("echo"), "echo"));
+}
+
+#[test]
+fn ends_a_tab_stripping_heredoc_at_a_tab_indented_line_in_the_preview() {
+    let command = "python3 - <<-EOF\n\timport os\n\tEOF\necho done";
+    let preview = crate::tools::diff("bash", &serde_json::json!({ "command": command })).unwrap();
+    let lines = bash(&preview);
+    let keyword = keyword_colour("x.py", "import os", "import");
+    assert_eq!(colour_of(&lines, "import"), Some(keyword));
+    assert_eq!(colour_of(&lines, "echo"), colour_of(&bash("echo"), "echo"));
 }

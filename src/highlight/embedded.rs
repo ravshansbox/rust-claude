@@ -125,7 +125,7 @@ fn heredoc_body(command: &str, heredoc: &str, line_end: usize) -> Option<Range<u
     let mut line_start = body_start;
     for line in command[body_start..].split('\n') {
         let text = if strips_tabs {
-            line.trim_start_matches('\t')
+            line.trim_start_matches([' ', '\t'])
         } else {
             line
         };
