@@ -20,6 +20,7 @@ pub enum AgentEvent {
     TaskStart {
         task: usize,
         description: String,
+        prompt: Option<String>,
     },
     /// The subagent on `task` has made `count` tool calls so far.
     TaskToolCalls {

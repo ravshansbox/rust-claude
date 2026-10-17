@@ -38,6 +38,12 @@ impl Task {
 
 fn task_line(task: usize, description: &str, tool_calls: usize, stats: Option<&Stats>) -> String {
     let mut parts = vec![header(task, description)];
+    parts.extend(task_stats(tool_calls, stats));
+    parts.join(" · ")
+}
+
+fn task_stats(tool_calls: usize, stats: Option<&Stats>) -> Vec<String> {
+    let mut parts = Vec::new();
     if tool_calls > 0 {
         parts.push(tools::agent::tool_calls(tool_calls));
     }
@@ -45,7 +51,7 @@ fn task_line(task: usize, description: &str, tool_calls: usize, stats: Option<&S
         parts.extend([format_context(stats), format_stats(stats)]);
     }
     parts.retain(|part| !part.is_empty());
-    parts.join(" · ")
+    parts
 }
 
 /// A finished task as the interface shows it, for print mode.
@@ -68,7 +74,7 @@ fn finished(header: &str, failure: Option<&str>) -> String {
 }
 
 impl App {
-    pub(super) fn start_task(&mut self, task: usize, description: &str) {
+    pub(super) fn start_task(&mut self, task: usize, description: &str, prompt: Option<&str>) {
         self.push(Role::Tool, header(task, description));
         self.tasks.insert(
             task,
@@ -81,6 +87,9 @@ impl App {
             },
         );
         if let Some(view) = self.task_view(task) {
+            if let Some(prompt) = prompt {
+                view.push(Role::User, prompt);
+            }
             view.start(Activity::Working);
         }
     }
@@ -101,9 +110,11 @@ impl App {
         tabs
     }
 
-    /// The task line of the running `task`.
-    pub(super) fn task_line(&self, task: usize) -> Option<String> {
-        self.tasks.get(&task).map(|state| state.line(task))
+    /// The tool calls and stats of the running `task`.
+    pub(super) fn task_stats(&self, task: usize) -> Vec<String> {
+        self.tasks.get(&task).map_or_else(Vec::new, |state| {
+            task_stats(state.tool_calls, state.stats.as_ref())
+        })
     }
 
     pub(super) fn clear_tasks(&mut self) {

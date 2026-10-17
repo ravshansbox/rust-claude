@@ -85,7 +85,7 @@ In print mode, the `agent` call shows its mode and number of tasks, such as `age
 
 ### Agent view
 
-While subagents run, press Left on an empty prompt to see what they do. The agent view takes the place of the main session and hides the prompt. It shows the first running agent's text, thinking and tool calls as they stream, in the same form as the main session. A tab for each running agent shows at the top, and the agent's task line, as above, at the bottom.
+While subagents run, press Left on an empty prompt to see what they do. The agent view takes the place of the main session and hides the prompt. It shows the first running agent's prompt, then its text, thinking and tool calls as they stream, in the same form as the main session. A tab with the number of each running agent shows at the top, with the shown agent's description below it. The agent's tool calls, context use and stats, as above, show at the bottom.
 
 - Left and Right switch between agents, wrapping around at the ends
 - Up / Down, Page Up / Page Down, Home / End and the mouse wheel scroll

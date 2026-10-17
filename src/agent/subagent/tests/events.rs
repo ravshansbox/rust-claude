@@ -2,7 +2,9 @@ use super::*;
 
 fn describe(event: AgentEvent) -> String {
     match event {
-        AgentEvent::TaskStart { task, description } => format!("{task} start {description}"),
+        AgentEvent::TaskStart {
+            task, description, ..
+        } => format!("{task} start {description}"),
         AgentEvent::TaskToolCalls { task, count } => format!("{task} tool calls {count}"),
         AgentEvent::TaskDone {
             task,

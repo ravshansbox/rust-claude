@@ -93,7 +93,9 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
                 self.flush_reads();
                 self.message(&text);
             }
-            AgentEvent::TaskStart { task, description } => {
+            AgentEvent::TaskStart {
+                task, description, ..
+            } => {
                 self.tasks.insert(task, (description, None));
             }
             AgentEvent::TaskStats { task, stats } => {

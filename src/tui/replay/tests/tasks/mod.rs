@@ -31,11 +31,15 @@ fn start_tasks(app: &mut App) {
         }),
         app,
     );
-    for (task, description) in ["say hi", "list files"].into_iter().enumerate() {
+    for (task, (description, prompt)) in [("say hi", "say hi"), ("list files", "list the files")]
+        .into_iter()
+        .enumerate()
+    {
         handle_agent_event(
             UiEvent::Agent(AgentEvent::TaskStart {
                 task,
                 description: description.into(),
+                prompt: Some(prompt.into()),
             }),
             app,
         );

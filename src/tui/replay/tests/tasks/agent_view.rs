@@ -76,7 +76,49 @@ fn left_on_an_empty_prompt_shows_the_first_agent() {
     let screen = screen(&mut app);
     assert!(screen.contains("hello from one"), "{screen}");
     assert!(!screen.contains("main prompt"), "{screen}");
-    assert!(screen.contains("[agent 1] say hi"), "{screen}");
+    assert!(screen.contains("say hi"), "{screen}");
+}
+
+#[test]
+fn shows_only_the_agent_numbers_as_tabs() {
+    let mut app = app_with_agents();
+    press(&mut app, KeyCode::Left);
+    let screen = screen(&mut app);
+    assert_eq!(screen.lines().next().unwrap().trim(), "1   2", "{screen}");
+}
+
+#[test]
+fn shows_the_description_below_the_tabs() {
+    let mut app = app_with_agents();
+    press(&mut app, KeyCode::Left);
+    press(&mut app, KeyCode::Right);
+    let screen = screen(&mut app);
+    assert_eq!(
+        screen.lines().nth(1).unwrap().trim(),
+        "list files",
+        "{screen}"
+    );
+}
+
+#[test]
+fn shows_the_prompt_of_the_agent() {
+    let mut app = app_with_agents();
+    press(&mut app, KeyCode::Left);
+    press(&mut app, KeyCode::Right);
+    let screen = screen(&mut app);
+    assert!(screen.contains("list the files"), "{screen}");
+}
+
+#[test]
+fn shows_the_stats_without_the_description_at_the_bottom() {
+    let mut app = app_with_agents();
+    press(&mut app, KeyCode::Left);
+    let screen = screen(&mut app);
+    assert_eq!(
+        screen.lines().last().unwrap().trim(),
+        "←/→ switch agent · Esc back",
+        "{screen}"
+    );
 }
 
 #[test]

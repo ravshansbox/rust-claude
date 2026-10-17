@@ -96,7 +96,11 @@ impl Agent {
         events: mpsc::UnboundedSender<AgentEvent>,
     ) -> Pin<Box<dyn Future<Output = TaskReply> + Send + '_>> {
         Box::pin(async move {
-            let _ = events.send(AgentEvent::TaskStart { task, description });
+            let _ = events.send(AgentEvent::TaskStart {
+                task,
+                description,
+                prompt: prompt.clone(),
+            });
             let tool_calls = Arc::new(AtomicUsize::new(0));
             let (session, reply) = match prompt {
                 Some(prompt) => {

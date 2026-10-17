@@ -90,8 +90,12 @@ fn apply_agent_event(event: AgentEvent, app: &mut App) {
             }
         }
         AgentEvent::Notice(text) => app.push(Role::Event, text),
-        AgentEvent::TaskStart { task, description } => {
-            app.start_task(task, &description);
+        AgentEvent::TaskStart {
+            task,
+            description,
+            prompt,
+        } => {
+            app.start_task(task, &description, prompt.as_deref());
         }
         AgentEvent::TaskToolCalls { task, count } => {
             app.count_task_tool_calls(task, count);
