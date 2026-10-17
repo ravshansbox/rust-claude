@@ -97,7 +97,11 @@ impl Agent {
                 self.call_tool(block, &mut on_event).await;
             }
             self.push_tool_results();
-            self.session.save(&self.messages)?;
+            if let Err(error) = self.session.save(&self.messages)
+                && !self.subagent
+            {
+                return Err(error);
+            }
             // Compact before adding queued prompts, so they follow the summary
             // word for word instead of being summarised.
             end = self

@@ -98,11 +98,16 @@ impl Agent {
             let error = child.save_after_failure(error);
             return (id, Err(failed(error)));
         }
-        let reply = match child.session.save(&child.messages) {
-            Ok(()) => Ok(final_reply(&child.messages)),
-            Err(error) => Err(failed(error)),
-        };
-        (id, reply)
+        let reply = final_reply(&child.messages);
+        match child.session.save(&child.messages) {
+            Ok(()) => (id, Ok(reply)),
+            Err(error) => (
+                None,
+                Ok(format!(
+                    "{reply}\n\nfailed to save this conversation: {error:#}"
+                )),
+            ),
+        }
     }
 }
 

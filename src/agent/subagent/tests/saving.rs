@@ -91,3 +91,49 @@ async fn saves_the_conversation_of_a_subagent_that_failed() {
     assert_eq!(saved.len(), 2);
     assert_eq!(saved[1], json!({ "role": "user", "content": "one" }));
 }
+
+#[tokio::test]
+async fn keeps_the_replies_when_saving_a_subagent_conversation_fails() {
+    let api = MockApi::start(vec![
+        tool_reply(
+            "call-1",
+            "agent",
+            &json!({
+                "mode": "sequential",
+                "tasks": [task("first", "one"), task("second", "two")],
+            }),
+        ),
+        tool_reply("call-2", "read", &json!({ "path": "missing.txt" })),
+        text_reply("1"),
+        text_reply("2"),
+        text_reply("done"),
+    ])
+    .await;
+    let mut agent = test_support::agent(&api);
+    let blocker = test_support::session_file(&agent).with_extension("");
+    std::fs::create_dir_all(blocker.parent().unwrap()).unwrap();
+    std::fs::write(&blocker, "").unwrap();
+    let result = agent.prompt("ask", &[], |_| {}).await;
+    let _ = std::fs::remove_file(&blocker);
+    test_support::remove_session(&agent);
+    result.unwrap();
+    let requests = api.requests().await;
+    let content = tool_result(&requests[4])["content"].clone();
+    let texts: Vec<&str> = content
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|block| block["text"].as_str().unwrap())
+        .collect();
+    assert_eq!(texts.len(), 2);
+    assert!(
+        texts[0].starts_with("1\n\nfailed to save this conversation: "),
+        "{}",
+        texts[0]
+    );
+    assert!(
+        texts[1].starts_with("2\n\nfailed to save this conversation: "),
+        "{}",
+        texts[1]
+    );
+}
