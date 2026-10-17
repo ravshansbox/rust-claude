@@ -74,7 +74,7 @@ async fn opens_a_continued_session_with_its_conversation_then_what_loaded() {
             "hello",
             "Hi there",
             "continued session",
-            "loaded tools: agent, ast_grep, bash, edit, read, web_fetch, web_search, write",
+            "loaded tools: agent, ast_grep, bash, edit, grep, read, web_fetch, web_search, write",
         ]
     );
 }

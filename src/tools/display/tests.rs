@@ -55,6 +55,15 @@ fn shows_ast_grep_command_pattern_and_path_in_summary() {
 }
 
 #[test]
+fn shows_grep_pattern_and_path_in_summary() {
+    assert_eq!(summary("grep", &json!({ "pattern": "fn main" })), "fn main");
+    assert_eq!(
+        summary("grep", &json!({ "pattern": "fn main", "path": "src" })),
+        "fn main in src"
+    );
+}
+
+#[test]
 fn notes_replacement_count() {
     assert_eq!(
         note("edit", "edited a (b).rs (3 replacements)"),

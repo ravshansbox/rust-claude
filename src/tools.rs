@@ -8,6 +8,7 @@ mod bash;
 mod display;
 mod edit;
 mod files;
+mod grep;
 mod program;
 mod read;
 pub mod sources;
@@ -41,6 +42,9 @@ pub fn definitions() -> Value {
     if ast_grep::installed() {
         definitions.push(ast_grep::definition());
     }
+    if grep::installed() {
+        definitions.push(grep::definition());
+    }
     definitions.extend([
         agent::definition(),
         web_fetch::definition(),
@@ -49,9 +53,28 @@ pub fn definitions() -> Value {
     Value::Array(definitions)
 }
 
-/// When to use the tools that rely on programs installed separately.
-pub fn guidance() -> Option<&'static str> {
-    ast_grep::installed().then_some(ast_grep::GUIDANCE)
+/// When to use the search tools that rely on programs installed separately.
+pub fn guidance() -> Option<String> {
+    let installed: Vec<(&str, &str)> = [
+        (ast_grep::NAME, ast_grep::GUIDANCE, ast_grep::installed()),
+        (grep::NAME, grep::GUIDANCE, grep::installed()),
+    ]
+    .into_iter()
+    .filter(|(_, _, installed)| *installed)
+    .map(|(name, guidance, _)| (name, guidance))
+    .collect();
+    let (first, rest) = installed.split_first()?;
+    let mut text: Vec<&str> = installed.iter().map(|(_, guidance)| *guidance).collect();
+    let order = rest
+        .iter()
+        .map(|(name, _)| format!(", then {name}"))
+        .collect::<String>();
+    let order = format!(
+        "To find code, use {} first{order}, then read or bash.",
+        first.0
+    );
+    text.push(&order);
+    Some(text.join("\n"))
 }
 
 fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
@@ -109,6 +132,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         "write" => write::run(input).await,
         "edit" => edit::run(input).await,
         ast_grep::NAME => ast_grep::run(input).await,
+        grep::NAME => grep::run(input).await,
         _ => Err(format!("unknown tool: {name}")),
     }
 }

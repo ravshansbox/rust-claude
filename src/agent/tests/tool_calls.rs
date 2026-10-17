@@ -8,7 +8,7 @@ use crate::agent::{
 #[tokio::test]
 async fn tells_the_model_a_tool_it_named_does_not_exist() {
     let api = MockApi::start(vec![
-        tool_reply("call-1", "grep", &json!({ "pattern": "fn" })),
+        tool_reply("call-1", "find_files", &json!({ "pattern": "fn" })),
         text_reply("sorry"),
     ])
     .await;
@@ -22,12 +22,15 @@ async fn tells_the_model_a_tool_it_named_does_not_exist() {
     result.unwrap();
     assert_eq!(
         errors,
-        [("grep".to_string(), Some("unknown tool: grep".to_string()))]
+        [(
+            "find_files".to_string(),
+            Some("unknown tool: find_files".to_string())
+        )]
     );
     let requests = api.requests().await;
     let result = test_support::tool_result(&requests[1]);
     assert_eq!(result["tool_use_id"], "call-1");
-    assert_eq!(result["content"], "unknown tool: grep");
+    assert_eq!(result["content"], "unknown tool: find_files");
     assert_eq!(result["is_error"], true);
 }
 
@@ -91,16 +94,21 @@ async fn sends_an_image_the_model_reads_scaled_to_fit_2000_pixels() {
 }
 
 #[tokio::test]
-async fn offers_ast_grep_and_says_when_to_use_it() {
+async fn offers_ast_grep_and_grep_and_says_which_to_prefer() {
     let api = MockApi::start(vec![text_reply("hello")]).await;
     let (_, result) = test_support::run_prompt(&api, "hi", |_| {}).await;
     result.unwrap();
     let requests = api.requests().await;
     let tools = requests[0]["tools"].as_array().unwrap();
     assert!(
-        tools.iter().any(|tool| tool["name"] == "ast_grep"),
+        ["ast_grep", "grep"]
+            .iter()
+            .all(|name| tools.iter().any(|tool| tool["name"] == *name)),
         "{tools:?}"
     );
     let system = requests[0]["system"].to_string();
-    assert!(system.contains("Use ast_grep"), "{system}");
+    assert!(
+        system.contains("To find code, use ast_grep first, then grep, then read or bash."),
+        "{system}"
+    );
 }

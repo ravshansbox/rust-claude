@@ -7,11 +7,12 @@ The agent can use these tools:
 - `write`: create or replace a file. It refuses anything that is not a regular file, such as a pipe or device
 - `edit`: replace text in a file. The text must match exactly once, unless `replace_all` is true, which replaces every match and reports how many replacements it made. The count shows on a line such as `edit: 3 replacements`, in the interface, in resumed sessions and in print mode. In a file with Windows line endings (CRLF), it also matches text written with plain line endings, and writes the new text with CRLF line endings. A file counts as using CRLF when its first line ends with CRLF. It refuses files larger than 10 MiB and anything that is not a regular file, such as a pipe or device. If the file changes while it is being edited, for example by a subagent editing it at the same time, the edit fails instead of undoing the other change
 - `ast_grep`: search code by its syntax, or outline it, with the ast-grep program. See [ast-grep](#ast-grep)
+- `grep`: search file contents for text with the ripgrep program. See [grep](#grep)
 - `agent`: run tasks in subagents. See [Subagents](#subagents)
 - `web_search`: search the web. See [Web search](#web-search)
 - `web_fetch`: read a web page or PDF. See [Web fetch](#web-fetch)
 
-At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, ast_grep, bash, edit, read, web_fetch, web_search, write`.
+At start, the interface lists these tools on one line, before the MCP servers, such as `loaded tools: agent, ast_grep, bash, edit, grep, read, web_fetch, web_search, write`.
 
 The agent can also use tools from [MCP servers](mcp.md).
 
@@ -23,7 +24,7 @@ Consecutive `read` calls show as one line with the paths separated by commas, fo
 
 ## ast-grep
 
-`ast_grep` runs [ast-grep](https://ast-grep.github.io), which you install separately, for example with `brew install ast-grep` or `npm install --global @ast-grep/cli`. rust-coding-agent looks for an `ast-grep` program on `PATH` when it starts. If there is none, the model is not offered `ast_grep`. When there is one, the system prompt also tells the model to use `ast_grep` to find code by its syntax and to outline a file before reading all of it.
+`ast_grep` runs [ast-grep](https://ast-grep.github.io), which you install separately, for example with `brew install ast-grep` or `npm install --global @ast-grep/cli`. rust-coding-agent looks for an `ast-grep` program on `PATH` when it starts. If there is none, the model is not offered `ast_grep`. When there is one, the system prompt also tells the model to use `ast_grep` to find code by its syntax and to outline a file before reading all of it. See [Search order](#search-order).
 
 It takes a `command`, an optional `path`, which defaults to the current folder, and an optional `lang`, such as `rust`. Without `lang`, ast-grep picks the language from each file's extension.
 
@@ -31,6 +32,25 @@ It takes a `command`, an optional `path`, which defaults to the current folder, 
 - `outline` runs `ast-grep outline`. For a file, it lists the top-level items, such as functions and structs, with their line numbers. For a folder, it lists the exported items of each file, such as `pub` items in Rust
 
 Output is cut at 20,000 bytes. The call shows its command, pattern and path, such as `ast_grep search add($A, $B) in src` or `ast_grep outline src/main.rs`.
+
+## grep
+
+`grep` runs [ripgrep](https://github.com/BurntSushi/ripgrep) (`rg`), which you install separately, for example with `brew install ripgrep`. As with `ast_grep`, the model is offered `grep` only if `rg` is on `PATH` when rust-coding-agent starts.
+
+It takes a `pattern`, a regular expression in [Rust regex syntax](https://docs.rs/regex/latest/regex/#syntax), and these optional arguments:
+
+- `path`: a file or folder. Defaults to the current folder
+- `glob`: search only files that match, such as `*.rs`, or leave them out with `!`, such as `!*.lock`
+- `ignore_case`: match upper and lower case alike
+- `literal`: treat `pattern` as plain text
+- `context`: the number of lines to show before and after each match
+- `limit`: the most matches to return. Default: 100
+
+As ripgrep does by default, it skips files that `.gitignore` lists, hidden files and binary files. It returns each matching line as `path:line:text`, sorted by path. Lines of context look like `path-line-text`, and `--` separates groups of lines that are not next to each other. When it reaches `limit`, it stops and ends with a note such as `… stopped at 100 matches, use limit for more or refine the pattern`. With no matches it returns `no matches`. Output is cut at 20,000 bytes. The call shows its pattern and path, such as `grep fn main in src`.
+
+## Search order
+
+When `ast_grep` or `grep` is offered, the system prompt says what each is for, and the order to try them in: `To find code, use ast_grep first, then grep, then read or bash.` A tool that is not offered is left out of that line.
 
 ## Web search
 

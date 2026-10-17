@@ -8,7 +8,7 @@ Website: <https://ravshansbox.github.io/rust-coding-agent/>
 
 - Sign in with a Claude Pro or Max account
 - Interactive terminal interface with streamed replies
-- Built-in tools: `bash`, `read`, `write`, `edit`, `ast_grep`, `agent`, `web_search` and `web_fetch`. `ast_grep` needs [ast-grep](https://ast-grep.github.io) on `PATH`
+- Built-in tools: `bash`, `read`, `write`, `edit`, `ast_grep`, `grep`, `agent`, `web_search` and `web_fetch`. `ast_grep` needs [ast-grep](https://ast-grep.github.io) and `grep` needs [ripgrep](https://github.com/BurntSushi/ripgrep) on `PATH`
 - Subagents that run tasks at the same time or one after another, with live tool calls and stats for each task
 - Start the interface with a prompt (`rca fix the failing test`) to send it at once
 - Print mode (`--print` or standard input) to run one prompt and print the answer
@@ -67,7 +67,7 @@ Show all options with `--help`.
 - [Sign in](docs/sign-in.md): sign-in and renewal
 - [Usage](docs/usage.md): command line, commands, keys, input, display, sessions and images
 - [Configuration](docs/configuration.md): settings, instructions, skills and retries
-- [Tools](docs/tools.md): built-in tools, ast-grep, web search, web fetch and subagents
+- [Tools](docs/tools.md): built-in tools, ast-grep, grep, web search, web fetch and subagents
 - [MCP servers](docs/mcp.md): setup and sign-in
 - [Development](docs/development.md): checks, CI, releases and the website
 - [Architecture decision records](docs/adr)

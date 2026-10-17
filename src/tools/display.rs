@@ -1,4 +1,4 @@
-use super::{agent, ast_grep, plural, web_fetch, web_search};
+use super::{agent, ast_grep, grep, plural, web_fetch, web_search};
 use serde_json::Value;
 use std::borrow::Cow;
 use std::fmt::Write;
@@ -11,6 +11,7 @@ pub fn summary(name: &str, input: &Value) -> String {
         "bash" => return String::new(),
         agent::NAME => return agent::summary(input),
         ast_grep::NAME => return ast_grep_summary(input),
+        grep::NAME => return grep_summary(input),
         _ => return input.to_string(),
     };
     let value = input[key].as_str().unwrap_or_default().to_string();
@@ -39,6 +40,14 @@ fn ast_grep_summary(input: &Value) -> String {
         let _ = write!(summary, " {path}");
     }
     summary
+}
+
+fn grep_summary(input: &Value) -> String {
+    let pattern = input["pattern"].as_str().unwrap_or_default();
+    match input["path"].as_str() {
+        Some(path) => format!("{pattern} in {path}"),
+        None => pattern.to_string(),
+    }
 }
 
 pub fn note(name: &str, result: &str) -> Option<String> {

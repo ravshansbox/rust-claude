@@ -27,6 +27,7 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ steps.toolchain.outputs.cachekey }}-${{ hashFiles('**/Cargo.lock') }}
       - run: npm install --global @ast-grep/cli
+      - run: sudo apt-get install --yes ripgrep
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
