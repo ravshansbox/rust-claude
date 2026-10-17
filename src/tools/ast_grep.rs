@@ -1,6 +1,6 @@
-use super::{argument, tool, truncate};
+use super::{argument, program, tool, truncate};
 use serde_json::{Value, json};
-use std::{ffi::OsString, path::Path, process::Stdio, sync::OnceLock};
+use std::{process::Stdio, sync::OnceLock};
 use tokio::process::Command;
 
 pub const NAME: &str = "ast_grep";
@@ -9,25 +9,7 @@ pub(super) const GUIDANCE: &str = "Use ast_grep to find code by its syntax, such
 
 pub(super) fn installed() -> bool {
     static INSTALLED: OnceLock<bool> = OnceLock::new();
-    *INSTALLED.get_or_init(|| on_path(PROGRAM, std::env::var_os("PATH")))
-}
-
-pub(super) fn on_path(program: &str, path: Option<OsString>) -> bool {
-    path.is_some_and(|path| {
-        std::env::split_paths(&path).any(|dir| is_executable(&dir.join(program)))
-    })
-}
-
-#[cfg(unix)]
-fn is_executable(path: &Path) -> bool {
-    use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .is_ok_and(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0)
-}
-
-#[cfg(not(unix))]
-fn is_executable(path: &Path) -> bool {
-    path.with_extension("exe").is_file()
+    *INSTALLED.get_or_init(|| program::installed(PROGRAM))
 }
 
 pub(super) fn definition() -> Value {

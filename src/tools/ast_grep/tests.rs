@@ -1,7 +1,5 @@
-use super::on_path;
 use crate::tools::{call, test_support::TemporaryDir};
 use serde_json::json;
-use std::{ffi::OsString, os::unix::fs::PermissionsExt};
 
 const SOURCE: &str =
     "fn add(a: i32, b: i32) -> i32 {\n    a + b\n}\n\nfn main() {\n    add(1, 2);\n}\n";
@@ -66,20 +64,4 @@ async fn checks_its_arguments() {
     for (input, error) in cases {
         assert_eq!(call("ast_grep", &input).await, Err(error.into()), "{input}");
     }
-}
-
-#[test]
-fn finds_programs_on_the_path() {
-    let empty = TemporaryDir::new("path-empty");
-    let installed = TemporaryDir::new("path-installed");
-    let program = installed.path().join("ast-grep");
-    std::fs::write(&program, "").unwrap();
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o755)).unwrap();
-    let path =
-        |dirs: &[&TemporaryDir]| std::env::join_paths(dirs.iter().map(|dir| dir.path())).unwrap();
-    assert!(on_path("ast-grep", Some(path(&[&empty, &installed]))));
-    assert!(!on_path("ast-grep", Some(path(&[&empty]))));
-    assert!(!on_path("ast-grep", None::<OsString>));
-    std::fs::set_permissions(&program, std::fs::Permissions::from_mode(0o644)).unwrap();
-    assert!(!on_path("ast-grep", Some(path(&[&installed]))));
 }

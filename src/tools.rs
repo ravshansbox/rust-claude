@@ -8,6 +8,7 @@ mod bash;
 mod display;
 mod edit;
 mod files;
+mod program;
 mod read;
 pub mod sources;
 #[cfg(test)]
