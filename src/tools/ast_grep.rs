@@ -1,7 +1,7 @@
-use super::{argument, program, tool, truncate};
+use super::{MAX_OUTPUT, argument, program, tool, truncate};
 use serde_json::{Value, json};
 use std::{process::Stdio, sync::OnceLock};
-use tokio::process::Command;
+use tokio::{io::AsyncReadExt, process::Command};
 
 pub const NAME: &str = "ast_grep";
 pub(super) const PROGRAM: &str = "ast-grep";
@@ -42,28 +42,49 @@ pub(super) async fn run(input: &Value) -> Result<String, String> {
         arguments.push(format!("--lang={lang}"));
     }
     arguments.extend(["--".into(), input["path"].as_str().unwrap_or(".").into()]);
-    let output = Command::new(PROGRAM)
+    let failed = |error: std::io::Error| format!("failed to run {PROGRAM}: {error}");
+    let mut child = Command::new(PROGRAM)
         .args(&arguments)
         .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
         .kill_on_drop(true)
-        .output()
+        .spawn()
+        .map_err(failed)?;
+    let (Some(stdout), Some(mut stderr)) = (child.stdout.take(), child.stderr.take()) else {
+        return Err(format!("failed to capture {PROGRAM} output"));
+    };
+    let errors = tokio::spawn(async move {
+        let mut errors = Vec::new();
+        let _ = stderr.read_to_end(&mut errors).await;
+        errors
+    });
+    let mut output = Vec::new();
+    stdout
+        .take(MAX_OUTPUT as u64 + 1)
+        .read_to_end(&mut output)
         .await
-        .map_err(|error| format!("failed to run {PROGRAM}: {error}"))?;
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let stderr = String::from_utf8_lossy(&output.stderr);
+        .map_err(failed)?;
+    let stdout = String::from_utf8_lossy(&output);
+    if output.len() > MAX_OUTPUT {
+        return Ok(truncate(stdout.into_owned()));
+    }
+    let status = child.wait().await.map_err(failed)?;
+    let errors = errors.await.unwrap_or_default();
+    let stderr = String::from_utf8_lossy(&errors);
     let stderr = stderr.trim_end();
     let text = match (stdout.is_empty(), stderr.is_empty()) {
         (_, true) => stdout.into_owned(),
         (true, false) => stderr.to_string(),
         (false, false) => format!("{stdout}{stderr}"),
     };
-    if output.status.success() {
+    if status.success() {
         return Ok(truncate(text));
     }
     if command == "search" && text.is_empty() {
         return Ok("no matches".into());
     }
-    Err(truncate(format!("{text}\n{}", output.status)))
+    Err(truncate(format!("{text}\n{status}")))
 }
 
 #[cfg(test)]

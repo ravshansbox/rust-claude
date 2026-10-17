@@ -76,3 +76,12 @@ async fn searches_for_patterns_that_start_with_a_dash() {
         Ok(format!("{file}:2:    let x = -1;\n"))
     );
 }
+
+#[tokio::test]
+async fn truncates_long_output() {
+    let (directory, file) = project("ast-grep-long");
+    std::fs::write(&file, "fn main() {\n    add(1, 2);\n}\n".repeat(2_000)).unwrap();
+    let input = json!({ "command": "search", "pattern": "add($A, $B)", "path": directory.path() });
+    let output = call("ast_grep", &input).await.unwrap();
+    assert!(output.ends_with("\n… output truncated"), "{output}");
+}
