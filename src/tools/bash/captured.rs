@@ -87,7 +87,10 @@ pub(super) fn output_text(
     let stderr_limit = MAX_OUTPUT - stdout.total.min(stdout_limit);
     let mut text = stdout.text(stdout_limit);
     if stderr.total > 0 {
-        text.push_str("\nstderr:\n");
+        if !text.is_empty() {
+            text.push('\n');
+        }
+        text.push_str("stderr:\n");
         text.push_str(&stderr.text(stderr_limit));
     }
     text

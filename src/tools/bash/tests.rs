@@ -26,6 +26,15 @@ async fn keeps_output_when_bash_command_times_out() {
 }
 
 #[tokio::test]
+async fn shows_stderr_without_leading_blank_line_when_stdout_is_empty() {
+    let input = json!({ "command": "echo problem >&2; exit 2" });
+    assert_eq!(
+        call("bash", &input).await,
+        Ok("stderr:\nproblem\n\nexit status: 2".into())
+    );
+}
+
+#[tokio::test]
 async fn keeps_exit_status_when_output_is_truncated() {
     let input =
         json!({ "command": format!("head -c {} /dev/zero | tr '\\0' a; exit 3", MAX_OUTPUT * 2) });
