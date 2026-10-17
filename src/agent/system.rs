@@ -3,7 +3,7 @@ use std::path::Path;
 use serde_json::{Value, json};
 
 use super::Agent;
-use crate::{config, skills};
+use crate::{config, skills, tools};
 
 const IDENTITY: &str = "You are Claude Code, Anthropic's official CLI for Claude.";
 
@@ -56,6 +56,9 @@ impl Agent {
             json!({ "type": "text", "text": IDENTITY }),
             json!({ "type": "text", "text": SYSTEM_PROMPT }),
         ];
+        if let Some(guidance) = tools::guidance() {
+            system.push(json!({ "type": "text", "text": guidance }));
+        }
         for instructions in &self.instructions {
             system.push(json!({
                 "type": "text",

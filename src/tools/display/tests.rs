@@ -33,6 +33,28 @@ fn shows_read_range_in_summary() {
 }
 
 #[test]
+fn shows_ast_grep_command_pattern_and_path_in_summary() {
+    let cases = [
+        (
+            json!({ "command": "search", "pattern": "add($A)" }),
+            "search add($A)",
+        ),
+        (
+            json!({ "command": "search", "pattern": "add($A)", "path": "src" }),
+            "search add($A) in src",
+        ),
+        (
+            json!({ "command": "outline", "path": "src/a.rs" }),
+            "outline src/a.rs",
+        ),
+        (json!({ "command": "outline" }), "outline"),
+    ];
+    for (input, expected) in cases {
+        assert_eq!(summary("ast_grep", &input), expected);
+    }
+}
+
+#[test]
 fn notes_replacement_count() {
     assert_eq!(
         note("edit", "edited a (b).rs (3 replacements)"),

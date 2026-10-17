@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use crate::images::Image;
 
 pub mod agent;
+mod ast_grep;
 mod bash;
 mod display;
 mod edit;
@@ -30,15 +31,26 @@ pub fn truncate(mut text: String) -> String {
 }
 
 pub fn definitions() -> Value {
-    json!([
+    let mut definitions = vec![
         bash::definition(),
         read::definition(),
         write::definition(),
         edit::definition(),
+    ];
+    if ast_grep::installed() {
+        definitions.push(ast_grep::definition());
+    }
+    definitions.extend([
         agent::definition(),
         web_fetch::definition(),
-        web_search::definition()
-    ])
+        web_search::definition(),
+    ]);
+    Value::Array(definitions)
+}
+
+/// When to use the tools that rely on programs installed separately.
+pub fn guidance() -> Option<&'static str> {
+    ast_grep::installed().then_some(ast_grep::GUIDANCE)
 }
 
 fn tool(name: &str, description: &str, properties: &Value, required: &[&str]) -> Value {
@@ -95,6 +107,7 @@ pub async fn call(name: &str, input: &Value) -> Result<String, String> {
         },
         "write" => write::run(input).await,
         "edit" => edit::run(input).await,
+        ast_grep::NAME => ast_grep::run(input).await,
         _ => Err(format!("unknown tool: {name}")),
     }
 }

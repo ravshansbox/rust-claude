@@ -89,3 +89,18 @@ async fn sends_an_image_the_model_reads_scaled_to_fit_2000_pixels() {
     assert_eq!(decoded.dimensions(), (2000, 500));
     assert!(!saved.contains(image["source"]["data"].as_str().unwrap()));
 }
+
+#[tokio::test]
+async fn offers_ast_grep_and_says_when_to_use_it() {
+    let api = MockApi::start(vec![text_reply("hello")]).await;
+    let (_, result) = test_support::run_prompt(&api, "hi", |_| {}).await;
+    result.unwrap();
+    let requests = api.requests().await;
+    let tools = requests[0]["tools"].as_array().unwrap();
+    assert!(
+        tools.iter().any(|tool| tool["name"] == "ast_grep"),
+        "{tools:?}"
+    );
+    let system = requests[0]["system"].to_string();
+    assert!(system.contains("Use ast_grep"), "{system}");
+}
