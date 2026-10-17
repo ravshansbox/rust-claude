@@ -125,18 +125,20 @@ fn ends_the_thinking_line_before_the_answer_when_both_streams_are_piped_together
     );
 }
 
+struct Screen<'a>(&'a RefCell<Vec<u8>>);
+
+impl io::Write for Screen<'_> {
+    fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
 #[test]
 fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
-    struct Screen<'a>(&'a RefCell<Vec<u8>>);
-    impl io::Write for Screen<'_> {
-        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
-            self.0.borrow_mut().extend_from_slice(bytes);
-            Ok(bytes.len())
-        }
-        fn flush(&mut self) -> io::Result<()> {
-            Ok(())
-        }
-    }
     let screen = RefCell::new(Vec::new());
     let mut printer = Printer::new(Screen(&screen), true, Screen(&screen), true, true, None);
     printer.event(AgentEvent::Text("first".into()));
@@ -146,6 +148,18 @@ fn leaves_one_blank_line_before_the_answer_on_a_shared_terminal() {
     drop(printer);
     let shown = without_colours(&String::from_utf8(screen.into_inner()).unwrap());
     assert_eq!(shown, "first\n\nnote\n\nsecond\n");
+}
+
+#[test]
+fn ends_with_the_notice_after_an_open_answer_on_a_shared_terminal() {
+    let screen = RefCell::new(Vec::new());
+    let mut printer = Printer::new(Screen(&screen), true, Screen(&screen), true, true, None);
+    printer.event(AgentEvent::Text("Done.".into()));
+    printer.event(AgentEvent::Notice("reply cut off".into()));
+    printer.finish(Ok(())).unwrap();
+    drop(printer);
+    let shown = without_colours(&String::from_utf8(screen.into_inner()).unwrap());
+    assert_eq!(shown, "Done.\n\nreply cut off\n");
 }
 
 #[test]

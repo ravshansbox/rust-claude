@@ -4,7 +4,7 @@ use std::io::Write;
 impl<Out: Write, Err: Write> Printer<Out, Err> {
     /// Whether `out` and `err` show on the same terminal, so they share
     /// the blank lines between messages.
-    fn shared_screen(&self) -> bool {
+    pub(super) fn shared_screen(&self) -> bool {
         self.out_terminal && self.colour
     }
 

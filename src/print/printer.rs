@@ -136,7 +136,9 @@ impl<Out: Write, Err: Write> Printer<Out, Err> {
         if std::mem::take(&mut self.err_open) {
             let _ = writeln!(self.err);
         }
-        let ended = if self.printed && self.answer_ends_line {
+        let ended = if self.printed
+            && (self.answer_ends_line || (self.shared_screen() && !self.out_open))
+        {
             Ok(())
         } else if result.is_ok() || self.printed {
             writeln!(self.out)
